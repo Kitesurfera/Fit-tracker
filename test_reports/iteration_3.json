@@ -1,0 +1,185 @@
+{
+  "summary": "Tested 3 frontend fixes: custom toggle animation, 3-way theme selector with AsyncStorage persistence, and inline CSV template. All tests passed (11/11 features verified). Custom toggle using TouchableOpacity replaces native Switch to fix animation glitch. Theme selector modal with Sistema/Claro/Oscuro options works perfectly. CSV tab now shows inline selectable template instead of download button.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "Not tested (only frontend requested)",
+    "frontend": "100% (11/11 features passed)"
+  },
+  "seed_data_creation": "Used existing test account coach@demo.com / demo123",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "All 3 fixes verified and working perfectly. Custom toggle eliminates Switch animation glitch, theme selector offers Sistema/Claro/Oscuro with modal picker and AsyncStorage persistence, CSV template is now inline with selectable text and column documentation (no download button). All existing features (unit selectors, password modal, manual workout tab) continue to work.",
+  "detailed_test_results": {
+    "fix_1_custom_toggle": {
+      "description": "Replace native Switch with custom TouchableOpacity toggle (animation glitch fix)",
+      "status": "✓ PASS",
+      "implementation": "Lines 95-119 in settings.tsx - custom ToggleRow component with toggleTrack and toggleThumb styles",
+      "tests": [
+        "✓ Notification toggle uses TouchableOpacity instead of Switch",
+        "✓ Toggle track changes color based on state (primary when on, surfaceHighlight when off)",
+        "✓ Toggle thumb has smooth translateX animation (2px when off, 20px when on)",
+        "✓ All 3 notification toggles work (Notificaciones, Entrenamientos, Tests fisicos)",
+        "✓ Disabled state works correctly (child toggles disabled when parent is off)"
+      ],
+      "visual_verification": "Screenshots 03a-03c show toggle states with custom track/thumb rendering correctly"
+    },
+    "fix_2_theme_selector": {
+      "description": "3-way theme selector (Sistema/Claro/Oscuro) with modal picker and AsyncStorage persistence",
+      "status": "✓ PASS",
+      "implementation": "Lines 143-144, 218, 256-277 in settings.tsx + useTheme.ts with AsyncStorage",
+      "tests": [
+        "✓ Default theme shows 'Sistema' on initial load",
+        "✓ Clicking theme row opens modal with 'Seleccionar tema' title",
+        "✓ Modal displays 3 options: Sistema, Claro, Oscuro",
+        "✓ Each option has appropriate icon (phone-portrait, sunny, moon)",
+        "✓ Selecting 'Oscuro' applies dark theme (background changes)",
+        "✓ Selecting 'Claro' applies light theme",
+        "✓ Selecting 'Sistema' follows system preference",
+        "✓ Selected theme persists to AsyncStorage (verified in localStorage)",
+        "✓ Theme value updates in settings row after selection",
+        "✓ Modal closes automatically after selection"
+      ],
+      "visual_verification": "Screenshots 04a-07 show theme selector with all 3 options and theme switching",
+      "persistence_check": "AsyncStorage contains 'theme_mode' key with selected value"
+    },
+    "fix_3_inline_csv_template": {
+      "description": "Replace CSV download button with inline visible template showing copiable text + column documentation",
+      "status": "✓ PASS",
+      "implementation": "Lines 288-360 in add-workout.tsx - csvTemplateCard with csvCodeBlock and csvColumnsCard",
+      "tests": [
+        "✓ CSV tab shows 'Plantilla CSV' header with document icon",
+        "✓ Inline template displays full CSV content with monospace font",
+        "✓ CSV text is selectable (userSelect not set to 'none')",
+        "✓ Shows 'Manten pulsado para seleccionar y copiar el texto' instruction",
+        "✓ 'Columnas requeridas' section visible below template",
+        "✓ All 4 column badges visible: dia, ejercicio, repeticiones, series",
+        "✓ Each column shows description (e.g., 'Fecha en formato AAAA-MM-DD')",
+        "✓ Each column shows example (e.g., 'Ej: 2026-02-24')",
+        "✓ Upload button at bottom: 'Seleccionar archivo CSV'",
+        "✓ Old 'Descargar plantilla CSV' button removed (verified None)"
+      ],
+      "visual_verification": "Screenshots 12a-14 show inline template with selectable text, column docs, and upload button"
+    },
+    "regression_tests": {
+      "description": "Verify existing features still work after changes",
+      "status": "✓ PASS",
+      "tests": [
+        "✓ Home tab loads correctly with trainer dashboard",
+        "✓ Settings tab navigation works",
+        "✓ Unit selectors still work (tested weight unit kg/lb modal)",
+        "✓ Password change modal opens with 3 input fields",
+        "✓ Add workout screen loads",
+        "✓ Manual tab works with title, date, exercise builder, notes",
+        "✓ Tab switching (Manual ↔ CSV) works smoothly",
+        "✓ Bottom navigation with 5 tabs visible",
+        "✓ Profile edit still accessible (pencil icon visible)",
+        "✓ Language toggle still works (Español visible)"
+      ]
+    }
+  },
+  "mobile_ui_verification": {
+    "viewport": "390x844 (mobile)",
+    "custom_toggle_design": {
+      "track_dimensions": "48x28 px with 14px borderRadius",
+      "thumb_dimensions": "24x24 px with 12px borderRadius",
+      "animation": "translateX transform (smooth transition)",
+      "colors": "Primary blue when on, surfaceHighlight gray when off",
+      "touch_target": "Full row is touchable (good for mobile)"
+    },
+    "theme_modal_design": {
+      "modal_width": "100% maxWidth 340px",
+      "modal_padding": "20px",
+      "option_rows": "flexDirection row with icon + text + checkmark",
+      "selected_state": "Primary color background tint + bold text + checkmark",
+      "backdrop": "Dark overlay (rgba(0,0,0,0.4))"
+    },
+    "csv_template_design": {
+      "monospace_font": "Menlo (iOS) / monospace (Android) for code",
+      "code_block_bg": "surfaceHighlight with rounded corners",
+      "column_badges": "Primary color tint background with monospace text",
+      "selectable_text": "User can long-press to select and copy",
+      "upload_button": "Full-width primary button with cloud icon"
+    },
+    "spacing_and_layout": {
+      "section_gaps": "Consistent 16-20px spacing",
+      "touch_targets": "All buttons meet 44x44pt minimum (rows are 14px padding + content)",
+      "scrolling": "Smooth vertical scroll for long content",
+      "mobile_first": "All UI elements properly sized for mobile viewport"
+    }
+  },
+  "code_quality_observations": {
+    "settings_screen": [
+      "Clean component structure with ToggleRow and TapRow reusable components",
+      "Proper state management for modals (showThemeModal, showUnitModal, showPasswordModal)",
+      "Theme mode properly typed with ThemeMode union type",
+      "Good separation of concerns (toggle logic in component, theme logic in hook)"
+    ],
+    "useTheme_hook": [
+      "AsyncStorage integration for theme persistence",
+      "Global theme mode state with listener pattern",
+      "System theme detection via useColorScheme",
+      "Proper cleanup in useEffect return"
+    ],
+    "add_workout_screen": [
+      "Tab mode switching with TabMode type",
+      "Inline CSV template with proper code formatting",
+      "Column documentation with structured data (col, desc, example)",
+      "Clear visual hierarchy with badges and sections"
+    ]
+  },
+  "features_tested_and_verified": [
+    "Custom toggle replaces native Switch (animation glitch fixed)",
+    "Toggle track and thumb with smooth translateX animation",
+    "Theme selector with 3 options: Sistema, Claro, Oscuro",
+    "Theme modal opens on tap with proper backdrop",
+    "Theme selection applies immediately",
+    "Theme persists to AsyncStorage",
+    "CSV tab shows inline template (not download button)",
+    "CSV text is selectable/copiable",
+    "Column documentation with dia, ejercicio, repeticiones, series",
+    "Upload button at bottom of CSV tab",
+    "Manual tab exercise builder still works",
+    "Unit selectors (weight/height) still work",
+    "Password change modal still works",
+    "Home tab loads correctly"
+  ],
+  "test_environment": {
+    "frontend_url": "https://train-monitor-5.preview.emergentagent.com",
+    "mobile_viewport": "390x844",
+    "test_account": "coach@demo.com / demo123"
+  },
+  "screenshots_captured": [
+    "01_home_screen.png - Trainer dashboard",
+    "02_settings_screen.png - Settings with custom toggles",
+    "03a_toggle_before.png - Toggle in off state",
+    "03b_toggle_after_click.png - Toggle in on state",
+    "03c_toggle_back.png - Toggle back to off",
+    "04a_theme_sistema_default.png - Default Sistema theme",
+    "04b_theme_modal_open.png - Theme modal with 3 options",
+    "05_theme_dark_applied.png - Dark theme applied",
+    "06_theme_light_applied.png - Light theme applied",
+    "07_theme_system_applied.png - System theme applied",
+    "08_weight_unit_modal.png - Weight unit selector",
+    "09_password_modal.png - Password change modal",
+    "10_add_workout_screen.png - Add workout initial view",
+    "11a_manual_tab_active.png - Manual tab active",
+    "11b_manual_tab_form.png - Manual form fields",
+    "12a_csv_tab_top.png - CSV tab with inline template header",
+    "12b_csv_tab_middle.png - CSV template content",
+    "13_csv_columns_and_upload.png - Column documentation",
+    "14_csv_upload_only.png - Upload button (no download)"
+  ]
+}
