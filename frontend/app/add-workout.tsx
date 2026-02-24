@@ -251,6 +251,18 @@ export default function AddWorkoutScreen() {
                         />
                       </View>
                     </View>
+                    {/* Video URL input */}
+                    <View style={[styles.videoUrlRow, { borderTopColor: colors.border }]}>
+                      <Ionicons name="videocam-outline" size={16} color={colors.textSecondary} />
+                      <TextInput
+                        style={[styles.videoUrlInput, { color: colors.textPrimary }]}
+                        value={ex.video_url} onChangeText={v => updateExercise(i, 'video_url', v)}
+                        placeholder="URL de video (YouTube, Drive...)"
+                        placeholderTextColor={colors.textSecondary}
+                        autoCapitalize="none"
+                        keyboardType="url"
+                      />
+                    </View>
                   </View>
                 ))}
               </View>
