@@ -156,7 +156,81 @@ async def login(data: UserLogin):
 
 @api_router.get("/auth/me")
 async def get_me(user=Depends(get_current_user)):
-    return {k: v for k, v in user.items() if k != 'password'}
+    # Also load settings
+    settings = await db.settings.find_one({"user_id": user['id']}, {"_id": 0})
+    user_data = {k: v for k, v in user.items() if k != 'password'}
+    user_data['settings'] = settings or {
+        "notifications_enabled": True,
+        "notifications_workouts": True,
+        "notifications_tests": True,
+        "weight_unit": "kg",
+        "height_unit": "cm",
+        "language": "es",
+    }
+    return user_data
+
+# --- Profile & Settings ---
+@api_router.put("/profile")
+async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No data to update")
+    await db.users.update_one({"id": user['id']}, {"$set": update_data})
+    updated = await db.users.find_one({"id": user['id']}, {"_id": 0, "password": 0})
+    return updated
+
+@api_router.get("/settings")
+async def get_settings(user=Depends(get_current_user)):
+    settings = await db.settings.find_one({"user_id": user['id']}, {"_id": 0})
+    if not settings:
+        default = {
+            "user_id": user['id'],
+            "notifications_enabled": True,
+            "notifications_workouts": True,
+            "notifications_tests": True,
+            "weight_unit": "kg",
+            "height_unit": "cm",
+            "language": "es",
+        }
+        await db.settings.insert_one(default)
+        return {k: v for k, v in default.items() if k != '_id'}
+    return settings
+
+@api_router.put("/settings")
+async def update_settings(data: SettingsUpdate, user=Depends(get_current_user)):
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No data to update")
+    existing = await db.settings.find_one({"user_id": user['id']})
+    if existing:
+        await db.settings.update_one({"user_id": user['id']}, {"$set": update_data})
+    else:
+        default = {
+            "user_id": user['id'],
+            "notifications_enabled": True,
+            "notifications_workouts": True,
+            "notifications_tests": True,
+            "weight_unit": "kg",
+            "height_unit": "cm",
+            "language": "es",
+        }
+        default.update(update_data)
+        await db.settings.insert_one(default)
+    updated = await db.settings.find_one({"user_id": user['id']}, {"_id": 0})
+    return updated
+
+@api_router.put("/profile/password")
+async def change_password(
+    current_password: str,
+    new_password: str,
+    user=Depends(get_current_user)
+):
+    full_user = await db.users.find_one({"id": user['id']})
+    if not verify_password(current_password, full_user['password']):
+        raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
+    await db.users.update_one({"id": user['id']}, {"$set": {"password": hash_password(new_password)}})
+    return {"message": "Contraseña actualizada"}
+
 
 # --- Athlete Management (Trainer) ---
 @api_router.post("/athletes")
