@@ -135,8 +135,8 @@
     ]
   },
   "test_environment": {
-    "backend_url": "https://train-monitor-5.preview.emergentagent.com",
-    "frontend_url": "https://train-monitor-5.preview.emergentagent.com",
+    "backend_url": "https://training-mode-test.preview.emergentagent.com",
+    "frontend_url": "https://training-mode-test.preview.emergentagent.com",
     "mobile_viewport": "390x844",
     "test_accounts_created": [
       "trainer_81450@test.com / test123",

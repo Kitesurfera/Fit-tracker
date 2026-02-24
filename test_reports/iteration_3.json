@@ -157,7 +157,7 @@
     "Home tab loads correctly"
   ],
   "test_environment": {
-    "frontend_url": "https://train-monitor-5.preview.emergentagent.com",
+    "frontend_url": "https://training-mode-test.preview.emergentagent.com",
     "mobile_viewport": "390x844",
     "test_account": "coach@demo.com / demo123"
   },
