@@ -316,11 +316,10 @@ class FitnessAPITester:
 2026-02-25,Pull-ups,10,3,
 2026-02-26,Deadlifts,5,4,https://drive.google.com/deadlifts"""
             
-            # Create file-like object for the CSV data
-            csv_file = io.StringIO(csv_data)
-            files = {'file': ('test_workout.csv', csv_file.getvalue(), 'text/csv')}
-            # Remove Content-Type header for multipart form upload
-            headers_no_content_type = {k: v for k, v in headers.items() if k.lower() != 'content-type'}
+            # Create proper file tuple for multipart upload
+            files = {'file': ('test_workout.csv', csv_data.encode('utf-8'), 'text/csv')}
+            # Remove Content-Type header for multipart form upload since requests will set it automatically
+            headers_upload = {k: v for k, v in headers.items() if k.lower() != 'content-type'}
             
             response = self.session.post(f"{self.base_url}/api/workouts/csv?athlete_id={athlete_id}", 
                                        files=files, headers=headers_no_content_type)
