@@ -318,13 +318,13 @@ class FitnessAPITester:
 2026-02-25,Pull-ups,10,3,
 2026-02-26,Deadlifts,5,4,https://drive.google.com/deadlifts"""
             
-            # Use direct string method which works
+            # Create a new session specifically for file upload to avoid header conflicts
+            upload_session = requests.Session()
             files = {'file': ('test_workout.csv', csv_data, 'text/csv')}
-            # Remove Content-Type header completely for multipart upload
-            headers_upload = {k: v for k, v in headers.items() if k.lower() != 'content-type'}
+            auth_header = {"Authorization": f"Bearer {self.trainer_token}"}
             
-            response = self.session.post(f"{self.base_url}/api/workouts/csv?athlete_id={athlete_id}", 
-                                       files=files, headers=headers_upload)
+            response = upload_session.post(f"{self.base_url}/api/workouts/csv?athlete_id={athlete_id}", 
+                                         files=files, headers=auth_header)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('count', 0) > 0 and 'workouts' in data:
