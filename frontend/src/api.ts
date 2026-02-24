@@ -72,4 +72,11 @@ export const api = {
     return request(`/api/analytics/summary${query}`);
   },
   getProgress: (athleteId: string) => request(`/api/analytics/progress?athlete_id=${athleteId}`),
+
+  // Profile & Settings
+  updateProfile: (data: any) => request('/api/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  getSettings: () => request('/api/settings'),
+  updateSettings: (data: any) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  changePassword: (data: { current_password: string; new_password: string }) =>
+    request('/api/profile/password', { method: 'PUT', body: JSON.stringify(data) }),
 };
