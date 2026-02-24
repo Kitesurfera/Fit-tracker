@@ -37,65 +37,62 @@ export default function AddAthleteScreen() {
     }
   };
 
+  const InputField = ({ label, value, onChangeText, placeholder, testID, required, ...props }: any) => (
+    <View style={styles.field}>
+      <Text style={[styles.label, { color: colors.textSecondary }]}>
+        {label}{required ? '' : ' (opcional)'}
+      </Text>
+      <TextInput
+        testID={testID}
+        style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
+        value={value}
+        onChangeText={onChangeText}
+        placeholder={placeholder}
+        placeholderTextColor={colors.textSecondary}
+        {...props}
+      />
+    </View>
+  );
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} testID="close-add-athlete" activeOpacity={0.7}>
-            <Ionicons name="close" size={28} color={colors.textPrimary} />
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={() => router.back()} testID="close-add-athlete" activeOpacity={0.7} style={styles.headerBtn}>
+            <Ionicons name="close" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nuevo Deportista</Text>
-          <View style={{ width: 28 }} />
+          <View style={styles.headerBtn} />
         </View>
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE *</Text>
-            <TextInput
-              testID="athlete-name-input"
-              style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-              value={name} onChangeText={setName} placeholder="Nombre del deportista"
-              placeholderTextColor={colors.textSecondary} autoCapitalize="words"
-            />
+          <View style={[styles.infoBox, { backgroundColor: colors.primary + '10' }]}>
+            <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
+            <Text style={[styles.infoText, { color: colors.primary }]}>
+              El deportista podra iniciar sesion con el email y contraseña que definas aqui.
+            </Text>
           </View>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>EMAIL *</Text>
-            <TextInput
-              testID="athlete-email-input"
-              style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-              value={email} onChangeText={setEmail} placeholder="email@ejemplo.com"
-              placeholderTextColor={colors.textSecondary} keyboardType="email-address" autoCapitalize="none"
-            />
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>CONTRASEÑA *</Text>
-            <TextInput
-              testID="athlete-password-input"
-              style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-              value={password} onChangeText={setPassword} placeholder="Contraseña"
-              placeholderTextColor={colors.textSecondary} secureTextEntry
-            />
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>DEPORTE</Text>
-            <TextInput
-              testID="athlete-sport-input"
-              style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-              value={sport} onChangeText={setSport} placeholder="Ej: Futbol, Atletismo"
-              placeholderTextColor={colors.textSecondary}
-            />
-          </View>
-          <View style={styles.inputGroup}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>POSICION</Text>
-            <TextInput
-              testID="athlete-position-input"
-              style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-              value={position} onChangeText={setPosition} placeholder="Ej: Portero, Velocista"
-              placeholderTextColor={colors.textSecondary}
-            />
+
+          <InputField label="Nombre" value={name} onChangeText={setName}
+            placeholder="Nombre completo" testID="athlete-name-input" required autoCapitalize="words" />
+          <InputField label="Email" value={email} onChangeText={setEmail}
+            placeholder="email@ejemplo.com" testID="athlete-email-input" required
+            keyboardType="email-address" autoCapitalize="none" />
+          <InputField label="Contraseña" value={password} onChangeText={setPassword}
+            placeholder="Min. 4 caracteres" testID="athlete-password-input" required secureTextEntry />
+
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <InputField label="Deporte" value={sport} onChangeText={setSport}
+                placeholder="Ej: Futbol" testID="athlete-sport-input" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <InputField label="Posicion" value={position} onChangeText={setPosition}
+                placeholder="Ej: Portero" testID="athlete-position-input" />
+            </View>
           </View>
 
           {error ? (
-            <View style={[styles.errorBox, { backgroundColor: colors.error + '15' }]}>
+            <View style={[styles.errorBox, { backgroundColor: colors.error + '12' }]}>
               <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
             </View>
           ) : null}
@@ -106,7 +103,7 @@ export default function AddAthleteScreen() {
             onPress={handleCreate} disabled={submitting} activeOpacity={0.7}
           >
             {submitting ? <ActivityIndicator color="#FFF" /> : (
-              <Text style={styles.submitText}>CREAR DEPORTISTA</Text>
+              <Text style={styles.submitText}>Crear deportista</Text>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -118,14 +115,21 @@ export default function AddAthleteScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-  headerTitle: { fontSize: 18, fontWeight: '600' },
-  form: { padding: 16, gap: 16, paddingBottom: 32 },
-  inputGroup: { gap: 8 },
-  label: { fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
-  input: { borderRadius: 8, padding: 16, fontSize: 16, borderWidth: 1 },
-  errorBox: { borderRadius: 8, padding: 12 },
+  header: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5,
+  },
+  headerBtn: { width: 32 },
+  headerTitle: { fontSize: 17, fontWeight: '600' },
+  form: { padding: 20, gap: 16, paddingBottom: 48 },
+  field: { gap: 8 },
+  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
+  input: { borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1 },
+  row: { flexDirection: 'row', gap: 12 },
+  infoBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 10 },
+  infoText: { fontSize: 14, flex: 1, lineHeight: 20 },
+  errorBox: { borderRadius: 10, padding: 12 },
   errorText: { fontSize: 14, textAlign: 'center' },
-  submitBtn: { borderRadius: 8, padding: 16, alignItems: 'center', marginTop: 8 },
-  submitText: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 1 },
+  submitBtn: { borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8 },
+  submitText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
 });
