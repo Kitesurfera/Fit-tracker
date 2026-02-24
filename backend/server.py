@@ -225,14 +225,13 @@ async def update_settings(data: SettingsUpdate, user=Depends(get_current_user)):
 
 @api_router.put("/profile/password")
 async def change_password(
-    current_password: str,
-    new_password: str,
+    data: PasswordChange,
     user=Depends(get_current_user)
 ):
     full_user = await db.users.find_one({"id": user['id']})
-    if not verify_password(current_password, full_user['password']):
+    if not verify_password(data.current_password, full_user['password']):
         raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
-    await db.users.update_one({"id": user['id']}, {"$set": {"password": hash_password(new_password)}})
+    await db.users.update_one({"id": user['id']}, {"$set": {"password": hash_password(data.new_password)}})
     return {"message": "Contraseña actualizada"}
 
 
