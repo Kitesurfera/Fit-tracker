@@ -328,6 +328,7 @@ export default function AddWorkoutScreen() {
                   { col: 'ejercicio', desc: 'Nombre del ejercicio', example: 'Sentadilla' },
                   { col: 'repeticiones', desc: 'Numero de repeticiones', example: '8' },
                   { col: 'series', desc: 'Numero de series', example: '4' },
+                  { col: 'video', desc: 'URL de video (opcional)', example: 'https://youtube.com/...' },
                 ].map((item) => (
                   <View key={item.col} style={[styles.csvColRow, { borderBottomColor: colors.border }]}>
                     <View style={[styles.csvColBadge, { backgroundColor: colors.primary + '10' }]}>
