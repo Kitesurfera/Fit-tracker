@@ -290,50 +290,56 @@ export default function AddWorkoutScreen() {
           ) : (
             /* CSV Mode */
             <View style={styles.csvSection}>
-              {/* Format info */}
-              <View style={[styles.csvFormatCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={styles.csvFormatHeader}>
-                  <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
-                  <Text style={[styles.csvFormatTitle, { color: colors.textPrimary }]}>Formato esperado del CSV</Text>
-                </View>
-                <Text style={[styles.csvFormatDesc, { color: colors.textSecondary }]}>
-                  El archivo debe tener 4 columnas con los siguientes encabezados:
-                </Text>
-                <View style={[styles.csvTable, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
-                  <View style={[styles.csvRow, styles.csvHeaderRow, { borderBottomColor: colors.border }]}>
-                    <Text style={[styles.csvCell, styles.csvHeaderCell, { color: colors.primary }]}>dia</Text>
-                    <Text style={[styles.csvCell, styles.csvHeaderCell, { color: colors.primary }]}>ejercicio</Text>
-                    <Text style={[styles.csvCell, styles.csvHeaderCell, { color: colors.primary }]}>repeticiones</Text>
-                    <Text style={[styles.csvCell, styles.csvHeaderCell, { color: colors.primary }]}>series</Text>
+              {/* Inline template with copiable text */}
+              <View style={[styles.csvTemplateCard, { backgroundColor: colors.surface }]}>
+                <View style={styles.csvTemplateHeader}>
+                  <View style={[styles.csvTemplateBadge, { backgroundColor: colors.primary + '12' }]}>
+                    <Ionicons name="document-text" size={20} color={colors.primary} />
                   </View>
-                  <View style={[styles.csvRow, { borderBottomColor: colors.border }]}>
-                    <Text style={[styles.csvCell, { color: colors.textSecondary }]}>2026-02-24</Text>
-                    <Text style={[styles.csvCell, { color: colors.textSecondary }]}>Sentadilla</Text>
-                    <Text style={[styles.csvCell, { color: colors.textSecondary }]}>8</Text>
-                    <Text style={[styles.csvCell, { color: colors.textSecondary }]}>4</Text>
-                  </View>
-                  <View style={styles.csvRow}>
-                    <Text style={[styles.csvCell, { color: colors.textSecondary }]}>2026-02-24</Text>
-                    <Text style={[styles.csvCell, { color: colors.textSecondary }]}>Press banca</Text>
-                    <Text style={[styles.csvCell, { color: colors.textSecondary }]}>10</Text>
-                    <Text style={[styles.csvCell, { color: colors.textSecondary }]}>3</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.csvTemplateTitle, { color: colors.textPrimary }]}>Plantilla CSV</Text>
+                    <Text style={[styles.csvTemplateSubtitle, { color: colors.textSecondary }]}>Copia este contenido en un archivo .csv</Text>
                   </View>
                 </View>
-                <Text style={[styles.csvNote, { color: colors.textSecondary }]}>
-                  Los ejercicios del mismo dia se agruparan en un unico entrenamiento.
+
+                <View style={[styles.csvCodeBlock, { backgroundColor: colors.surfaceHighlight }]}>
+                  <Text style={[styles.csvCodeText, { color: colors.primary }]} selectable>
+                    {'dia,ejercicio,repeticiones,series\n2026-02-24,Sentadilla,8,4\n2026-02-24,Press banca,10,3\n2026-02-24,Peso muerto,6,4\n2026-02-25,Zancadas,12,3\n2026-02-25,Remo con barra,10,4'}
+                  </Text>
+                </View>
+
+                <Text style={[styles.csvTip, { color: colors.textSecondary }]}>
+                  Manten pulsado para seleccionar y copiar el texto
                 </Text>
               </View>
 
-              {/* Download template */}
-              <TouchableOpacity
-                testID="download-csv-template"
-                style={[styles.templateBtn, { borderColor: colors.primary }]}
-                onPress={handleDownloadTemplate}
-                activeOpacity={0.7}
-              >
-                <Ionicons name="download-outline" size={20} color={colors.primary} />
-                <Text style={[styles.templateBtnText, { color: colors.primary }]}>Descargar plantilla CSV</Text>
-              </TouchableOpacity>
+              {/* Columns explanation */}
+              <View style={[styles.csvColumnsCard, { backgroundColor: colors.surface }]}>
+                <Text style={[styles.csvColumnsTitle, { color: colors.textPrimary }]}>Columnas requeridas</Text>
+                {[
+                  { col: 'dia', desc: 'Fecha en formato AAAA-MM-DD', example: '2026-02-24' },
+                  { col: 'ejercicio', desc: 'Nombre del ejercicio', example: 'Sentadilla' },
+                  { col: 'repeticiones', desc: 'Numero de repeticiones', example: '8' },
+                  { col: 'series', desc: 'Numero de series', example: '4' },
+                ].map((item) => (
+                  <View key={item.col} style={[styles.csvColRow, { borderBottomColor: colors.border }]}>
+                    <View style={[styles.csvColBadge, { backgroundColor: colors.primary + '10' }]}>
+                      <Text style={[styles.csvColName, { color: colors.primary }]}>{item.col}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.csvColDesc, { color: colors.textPrimary }]}>{item.desc}</Text>
+                      <Text style={[styles.csvColExample, { color: colors.textSecondary }]}>Ej: {item.example}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <View style={[styles.csvInfoBox, { backgroundColor: colors.warning + '10' }]}>
+                <Ionicons name="bulb-outline" size={18} color={colors.warning} />
+                <Text style={[styles.csvInfoText, { color: colors.warning }]}>
+                  Los ejercicios del mismo dia se agruparan automaticamente en un unico entrenamiento.
+                </Text>
+              </View>
 
               {error ? (
                 <View style={[styles.errorBox, { backgroundColor: colors.error + '12' }]}>
