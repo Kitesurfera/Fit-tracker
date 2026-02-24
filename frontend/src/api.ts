@@ -79,4 +79,7 @@ export const api = {
   updateSettings: (data: any) => request('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
   changePassword: (data: { current_password: string; new_password: string }) =>
     request('/api/profile/password', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // CSV Template URL
+  getCSVTemplateURL: () => `${BACKEND_URL}/api/workouts/csv-template`,
 };
