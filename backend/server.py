@@ -324,7 +324,7 @@ async def upload_csv_workouts(athlete_id: str, file: UploadFile = File(...), tra
         if not exercise_name:
             continue
             
-        exercise = {"name": exercise_name, "sets": sets, "reps": reps, "weight": "", "rest": ""}
+        exercise = {"name": exercise_name, "sets": sets, "reps": reps, "weight": "", "rest": "", "video_url": row.get('video', '')}
         
         if date not in workouts_by_date:
             workouts_by_date[date] = []
