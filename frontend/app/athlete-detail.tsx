@@ -38,7 +38,7 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => { loadData(); }, []));
+  useEffect(() => { loadData(); }, []);
 
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
