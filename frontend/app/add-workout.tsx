@@ -95,11 +95,6 @@ export default function AddWorkoutScreen() {
     }
   };
 
-  const handleDownloadTemplate = () => {
-    const url = api.getCSVTemplateURL();
-    Linking.openURL(url);
-  };
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
