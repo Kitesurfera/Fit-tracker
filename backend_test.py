@@ -51,7 +51,9 @@ class FitnessAPITester:
         }
         
         try:
-            response = self.session.post(f"{self.base_url}/api/auth/register", json=trainer_payload)
+            response = self.session.post(f"{self.base_url}/api/auth/register", 
+                                       json=trainer_payload, 
+                                       headers={"Content-Type": "application/json"})
             if response.status_code == 200:
                 data = response.json()
                 self.trainer_token = data.get('token')
