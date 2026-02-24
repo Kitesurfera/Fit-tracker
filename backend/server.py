@@ -352,12 +352,12 @@ async def upload_csv_workouts(athlete_id: str, file: UploadFile = File(...), tra
 async def download_csv_template():
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['dia', 'ejercicio', 'repeticiones', 'series'])
-    writer.writerow(['2026-02-24', 'Sentadilla', '8', '4'])
-    writer.writerow(['2026-02-24', 'Press banca', '10', '3'])
-    writer.writerow(['2026-02-24', 'Peso muerto', '6', '4'])
-    writer.writerow(['2026-02-25', 'Zancadas', '12', '3'])
-    writer.writerow(['2026-02-25', 'Remo con barra', '10', '4'])
+    writer.writerow(['dia', 'ejercicio', 'repeticiones', 'series', 'video'])
+    writer.writerow(['2026-02-24', 'Sentadilla', '8', '4', 'https://youtube.com/watch?v=example1'])
+    writer.writerow(['2026-02-24', 'Press banca', '10', '3', ''])
+    writer.writerow(['2026-02-24', 'Peso muerto', '6', '4', 'https://drive.google.com/file/example'])
+    writer.writerow(['2026-02-25', 'Zancadas', '12', '3', ''])
+    writer.writerow(['2026-02-25', 'Remo con barra', '10', '4', ''])
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
