@@ -420,6 +420,8 @@ const styles = StyleSheet.create({
   exDetailLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' },
   exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 8, fontSize: 16, fontWeight: '600' },
   exDivider: { width: 0.5 },
+  videoUrlRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 0.5 },
+  videoUrlInput: { flex: 1, fontSize: 14 },
   // CSV Section
   csvSection: { gap: 16 },
   csvTemplateCard: { borderRadius: 14, padding: 16, gap: 14 },
