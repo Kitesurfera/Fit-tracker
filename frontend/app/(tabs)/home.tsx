@@ -40,7 +40,6 @@ export default function HomeScreen() {
   };
 
   useEffect(() => { loadData(); }, []);
-
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
   if (loading) {
@@ -51,6 +50,8 @@ export default function HomeScreen() {
     );
   }
 
+  const today = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+
   const TrainerView = () => (
     <FlatList
       testID="trainer-dashboard"
@@ -59,24 +60,17 @@ export default function HomeScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       ListHeaderComponent={
         <View>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={[styles.greeting, { color: colors.textSecondary }]}>BIENVENIDO</Text>
-              <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
-            </View>
-            <View style={[styles.roleBadge, { backgroundColor: colors.primary + '20' }]}>
-              <Text style={[styles.roleText, { color: colors.primary }]}>ENTRENADOR</Text>
-            </View>
-          </View>
+          <Text style={[styles.date, { color: colors.textSecondary }]}>{today}</Text>
+          <Text style={[styles.greeting, { color: colors.textPrimary }]}>Hola, {user?.name?.split(' ')[0]}</Text>
 
           <View style={styles.statsRow}>
-            <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.statValue, { color: colors.textPrimary }]}>{athletes.length}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>DEPORTISTAS</Text>
+            <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.statValue, { color: colors.primary }]}>{athletes.length}</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Deportistas</Text>
             </View>
-            <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
               <Text style={[styles.statValue, { color: colors.textPrimary }]}>{workouts.length}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>ENTRENAMIENTOS</Text>
+              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Entrenos</Text>
             </View>
           </View>
 
@@ -87,31 +81,33 @@ export default function HomeScreen() {
               onPress={() => router.push('/add-athlete')}
               activeOpacity={0.7}
             >
-              <Ionicons name="person-add-outline" size={20} color="#FFF" />
-              <Text style={styles.actionBtnText}>Deportista</Text>
+              <Ionicons name="person-add-outline" size={18} color="#FFF" />
+              <Text style={styles.actionBtnText}>Nuevo deportista</Text>
             </TouchableOpacity>
             <TouchableOpacity
               testID="add-workout-btn"
-              style={[styles.actionBtn, { backgroundColor: colors.accent }]}
+              style={[styles.actionBtnOutline, { borderColor: colors.primary }]}
               onPress={() => router.push('/add-workout')}
               activeOpacity={0.7}
             >
-              <Ionicons name="barbell-outline" size={20} color="#FFF" />
-              <Text style={styles.actionBtnText}>Entreno</Text>
+              <Ionicons name="barbell-outline" size={18} color={colors.primary} />
+              <Text style={[styles.actionBtnOutlineText, { color: colors.primary }]}>Nuevo entreno</Text>
             </TouchableOpacity>
           </View>
 
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Deportistas</Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
+            Deportistas{athletes.length > 0 ? ` (${athletes.length})` : ''}
+          </Text>
         </View>
       }
       renderItem={({ item }) => (
         <TouchableOpacity
           testID={`athlete-card-${item.id}`}
-          style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}
+          style={[styles.card, { backgroundColor: colors.surface }]}
           onPress={() => router.push({ pathname: '/athlete-detail', params: { id: item.id, name: item.name } })}
           activeOpacity={0.7}
         >
-          <View style={[styles.avatar, { backgroundColor: colors.primary + '20' }]}>
+          <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
             <Text style={[styles.avatarText, { color: colors.primary }]}>
               {item.name?.charAt(0)?.toUpperCase()}
             </Text>
@@ -119,20 +115,18 @@ export default function HomeScreen() {
           <View style={styles.cardContent}>
             <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
             <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
-              {item.sport || 'Sin deporte'} {item.position ? `· ${item.position}` : ''}
+              {[item.sport, item.position].filter(Boolean).join(' · ') || 'Sin deporte asignado'}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
         </TouchableOpacity>
       )}
       ListEmptyComponent={
         <View style={styles.emptyState}>
-          <Ionicons name="people-outline" size={48} color={colors.textSecondary} />
-          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-            No tienes deportistas aun
-          </Text>
+          <Ionicons name="people-outline" size={44} color={colors.textSecondary} />
+          <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Sin deportistas</Text>
           <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
-            Crea tu primer deportista con el boton de arriba
+            Crea tu primer deportista para empezar
           </Text>
         </View>
       }
@@ -148,29 +142,22 @@ export default function HomeScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       ListHeaderComponent={
         <View>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={[styles.greeting, { color: colors.textSecondary }]}>BIENVENIDO</Text>
-              <Text style={[styles.userName, { color: colors.textPrimary }]}>{user?.name}</Text>
-            </View>
-            <View style={[styles.roleBadge, { backgroundColor: colors.accent + '20' }]}>
-              <Text style={[styles.roleText, { color: colors.accent }]}>DEPORTISTA</Text>
-            </View>
-          </View>
+          <Text style={[styles.date, { color: colors.textSecondary }]}>{today}</Text>
+          <Text style={[styles.greeting, { color: colors.textPrimary }]}>Hola, {user?.name?.split(' ')[0]}</Text>
 
           {summary && (
             <View style={styles.statsRow}>
-              <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.statValue, { color: colors.textPrimary }]}>{summary.week_workouts}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>ESTA SEMANA</Text>
+              <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+                <Text style={[styles.statValue, { color: colors.primary }]}>{summary.week_workouts}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Esta semana</Text>
               </View>
-              <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.statValue, { color: colors.success || colors.primary }]}>{summary.completion_rate}%</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>COMPLETADOS</Text>
+              <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+                <Text style={[styles.statValue, { color: colors.success }]}>{summary.completion_rate}%</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Completados</Text>
               </View>
-              <View style={[styles.statCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
                 <Text style={[styles.statValue, { color: colors.textPrimary }]}>{summary.total_tests}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>TESTS</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Tests</Text>
               </View>
             </View>
           )}
@@ -179,26 +166,33 @@ export default function HomeScreen() {
         </View>
       }
       renderItem={({ item }) => (
-        <View style={[styles.workoutCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <View style={styles.workoutHeader}>
-            <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{item.title}</Text>
-            {item.completed && (
-              <View style={[styles.completedBadge, { backgroundColor: colors.success + '20' }]}>
+        <View style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.workoutTop}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{item.title}</Text>
+              <Text style={[styles.workoutDate, { color: colors.textSecondary }]}>{item.date}</Text>
+            </View>
+            {item.completed ? (
+              <View style={[styles.badge, { backgroundColor: colors.success + '15' }]}>
                 <Ionicons name="checkmark" size={14} color={colors.success} />
+                <Text style={[styles.badgeText, { color: colors.success }]}>Hecho</Text>
+              </View>
+            ) : (
+              <View style={[styles.badge, { backgroundColor: colors.warning + '15' }]}>
+                <Text style={[styles.badgeText, { color: colors.warning }]}>Pendiente</Text>
               </View>
             )}
           </View>
-          <Text style={[styles.workoutDate, { color: colors.textSecondary }]}>{item.date}</Text>
           {item.exercises?.length > 0 && (
-            <View style={styles.exerciseList}>
+            <View style={[styles.exercisePreview, { borderTopColor: colors.border }]}>
               {item.exercises.slice(0, 3).map((ex: any, i: number) => (
                 <Text key={i} style={[styles.exerciseText, { color: colors.textSecondary }]}>
-                  {ex.name} {ex.sets && `${ex.sets}x${ex.reps}`} {ex.weight && `@ ${ex.weight}kg`}
+                  {ex.name}{ex.sets ? ` — ${ex.sets}×${ex.reps}` : ''}{ex.weight ? ` @ ${ex.weight}kg` : ''}
                 </Text>
               ))}
               {item.exercises.length > 3 && (
-                <Text style={[styles.exerciseText, { color: colors.primary }]}>
-                  +{item.exercises.length - 3} mas...
+                <Text style={[styles.exerciseMore, { color: colors.primary }]}>
+                  +{item.exercises.length - 3} ejercicios mas
                 </Text>
               )}
             </View>
@@ -206,22 +200,22 @@ export default function HomeScreen() {
           {!item.completed && (
             <TouchableOpacity
               testID={`complete-workout-${item.id}`}
-              style={[styles.completeBtn, { borderColor: colors.success }]}
+              style={[styles.completeBtn, { backgroundColor: colors.success }]}
               onPress={async () => {
                 await api.updateWorkout(item.id, { completed: true });
                 loadData();
               }}
               activeOpacity={0.7}
             >
-              <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
-              <Text style={[styles.completeBtnText, { color: colors.success }]}>Completar</Text>
+              <Ionicons name="checkmark-circle-outline" size={16} color="#FFF" />
+              <Text style={styles.completeBtnText}>Marcar como completado</Text>
             </TouchableOpacity>
           )}
         </View>
       )}
       ListEmptyComponent={
         <View style={styles.emptyState}>
-          <Ionicons name="barbell-outline" size={48} color={colors.textSecondary} />
+          <Ionicons name="barbell-outline" size={44} color={colors.textSecondary} />
           <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Sin entrenamientos</Text>
           <Text style={[styles.emptySubtext, { color: colors.textSecondary }]}>
             Tu entrenador aun no ha asignado entrenamientos
@@ -241,47 +235,49 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  listContent: { padding: 16, paddingBottom: 32 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 },
-  greeting: { fontSize: 12, fontWeight: '600', letterSpacing: 1.5 },
-  userName: { fontSize: 28, fontWeight: '700', marginTop: 4 },
-  roleBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 },
-  roleText: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  statCard: {
-    flex: 1, borderRadius: 12, padding: 16, borderWidth: 1, alignItems: 'center',
-  },
-  statValue: { fontSize: 28, fontWeight: '700' },
-  statLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.5, marginTop: 4 },
-  actionsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
+  listContent: { padding: 20, paddingBottom: 32 },
+  date: { fontSize: 13, fontWeight: '500', textTransform: 'capitalize', marginBottom: 4 },
+  greeting: { fontSize: 26, fontWeight: '700', marginBottom: 24 },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  statCard: { flex: 1, borderRadius: 14, padding: 18, alignItems: 'center' },
+  statValue: { fontSize: 26, fontWeight: '700' },
+  statLabel: { fontSize: 12, fontWeight: '500', marginTop: 4 },
+  actionsRow: { flexDirection: 'row', gap: 10, marginBottom: 28 },
   actionBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, borderRadius: 8, padding: 14,
+    gap: 8, borderRadius: 10, paddingVertical: 14,
   },
-  actionBtnText: { color: '#FFF', fontSize: 15, fontWeight: '600' },
-  sectionTitle: { fontSize: 20, fontWeight: '700', marginBottom: 16 },
+  actionBtnText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  actionBtnOutline: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 8, borderRadius: 10, paddingVertical: 14, borderWidth: 1.5,
+  },
+  actionBtnOutlineText: { fontSize: 14, fontWeight: '600' },
+  sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 14 },
   card: {
-    flexDirection: 'row', alignItems: 'center', borderRadius: 12, padding: 16,
-    marginBottom: 12, borderWidth: 1,
+    flexDirection: 'row', alignItems: 'center', borderRadius: 14, padding: 14,
+    marginBottom: 10,
   },
   avatar: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 18, fontWeight: '700' },
+  avatarText: { fontSize: 17, fontWeight: '700' },
   cardContent: { flex: 1, marginLeft: 12 },
   cardTitle: { fontSize: 16, fontWeight: '600' },
   cardSub: { fontSize: 13, marginTop: 2 },
-  workoutCard: { borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1 },
-  workoutHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  workoutTitle: { fontSize: 17, fontWeight: '600', flex: 1 },
-  completedBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  workoutDate: { fontSize: 13, marginTop: 4 },
-  exerciseList: { marginTop: 12, gap: 4 },
+  workoutCard: { borderRadius: 14, padding: 16, marginBottom: 12 },
+  workoutTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  workoutTitle: { fontSize: 16, fontWeight: '600' },
+  workoutDate: { fontSize: 13, marginTop: 2 },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  badgeText: { fontSize: 12, fontWeight: '600' },
+  exercisePreview: { marginTop: 12, paddingTop: 12, borderTopWidth: 0.5, gap: 4 },
   exerciseText: { fontSize: 14 },
+  exerciseMore: { fontSize: 13, fontWeight: '500', marginTop: 2 },
   completeBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    marginTop: 12, borderRadius: 8, borderWidth: 1, padding: 10,
+    marginTop: 14, borderRadius: 8, paddingVertical: 12,
   },
-  completeBtnText: { fontSize: 14, fontWeight: '600' },
-  emptyState: { alignItems: 'center', paddingTop: 48, gap: 12 },
+  completeBtnText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+  emptyState: { alignItems: 'center', paddingTop: 48, gap: 10 },
   emptyText: { fontSize: 17, fontWeight: '600' },
-  emptySubtext: { fontSize: 14, textAlign: 'center' },
+  emptySubtext: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
 });
