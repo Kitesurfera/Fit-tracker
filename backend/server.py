@@ -73,6 +73,10 @@ class ProfileUpdate(BaseModel):
     sport: Optional[str] = None
     position: Optional[str] = None
 
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
+
 class SettingsUpdate(BaseModel):
     notifications_enabled: Optional[bool] = None
     notifications_workouts: Optional[bool] = None
