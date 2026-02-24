@@ -14,7 +14,7 @@ class FitnessAPITester:
     def __init__(self):
         self.base_url = "https://training-mode-test.preview.emergentagent.com"
         self.session = requests.Session()
-        self.session.headers.update({"Content-Type": "application/json"})
+        # Don't set Content-Type globally as it interferes with multipart uploads
         self.trainer_token = None
         self.athlete_token = None
         self.test_data = {}
