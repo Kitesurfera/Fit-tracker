@@ -18,11 +18,32 @@ def api_client():
     return session
 
 @pytest.fixture(scope="session")
-def test_trainer_credentials():
-    """Test trainer account credentials"""
+def test_trainer_credentials(base_url, api_client):
+    """Create and return fresh test trainer account credentials"""
+    import uuid
+    unique_email = f"TEST_trainer_{uuid.uuid4().hex[:8]}@test.com"
+    credentials = {
+        "email": unique_email,
+        "password": "test123",
+        "name": "Test Trainer"
+    }
+    
+    # Try to register new trainer
+    response = api_client.post(
+        f"{base_url}/api/auth/register",
+        json=credentials
+    )
+    
+    if response.status_code == 200:
+        print(f"Created fresh trainer account: {unique_email}")
+    elif response.status_code == 400 and "already registered" in response.text.lower():
+        print(f"Trainer account already exists: {unique_email}")
+    else:
+        pytest.fail(f"Failed to create trainer: {response.status_code} - {response.text}")
+    
     return {
-        "email": "coach@test.com",
-        "password": "test123"
+        "email": credentials["email"],
+        "password": credentials["password"]
     }
 
 @pytest.fixture(scope="session")
