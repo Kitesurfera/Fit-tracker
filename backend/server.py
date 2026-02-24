@@ -68,6 +68,19 @@ class TestCreate(BaseModel):
     notes: Optional[str] = ""
     custom_name: Optional[str] = ""
 
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    sport: Optional[str] = None
+    position: Optional[str] = None
+
+class SettingsUpdate(BaseModel):
+    notifications_enabled: Optional[bool] = None
+    notifications_workouts: Optional[bool] = None
+    notifications_tests: Optional[bool] = None
+    weight_unit: Optional[str] = None  # kg or lb
+    height_unit: Optional[str] = None  # cm or ft
+    language: Optional[str] = None  # es or en
+
 class TestUpdate(BaseModel):
     value: Optional[float] = None
     unit: Optional[str] = None
