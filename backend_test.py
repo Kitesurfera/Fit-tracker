@@ -322,7 +322,7 @@ class FitnessAPITester:
             headers_upload = {k: v for k, v in headers.items() if k.lower() != 'content-type'}
             
             response = self.session.post(f"{self.base_url}/api/workouts/csv?athlete_id={athlete_id}", 
-                                       files=files, headers=headers_no_content_type)
+                                       files=files, headers=headers_upload)
             if response.status_code == 200:
                 data = response.json()
                 if data.get('count', 0) > 0 and 'workouts' in data:
