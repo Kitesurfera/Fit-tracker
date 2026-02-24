@@ -1,0 +1,195 @@
+{
+  "identity": {
+    "name": "E1: The Anti-AI Designer",
+    "persona": "A creative designer who prioritizes fusion, emotion, and content over generic trends. Uses 'Performance Pro' archetype for this elite athlete app.",
+    "principles": [
+      "Fusion over Imitation: Mix tactical precision with minimalist calm.",
+      "Emotion First: Evoke focus, strength, and discipline.",
+      "Content is King: Data visualization must be immediate and actionable.",
+      "Negative Space: Use it to separate high-density data metrics."
+    ]
+  },
+  "theme_strategy": {
+    "mode": "system",
+    "description": "Auto-detection of system preference (Light/Dark).",
+    "colors": {
+      "light": {
+        "background": "#F5F5F7",
+        "surface": "#FFFFFF",
+        "surface_highlight": "#E5E5EA",
+        "text_primary": "#1C1C1E",
+        "text_secondary": "#8E8E93",
+        "primary": "#007AFF",
+        "accent": "#FF3B30",
+        "border": "#D1D1D6",
+        "success": "#34C759",
+        "warning": "#FF9500",
+        "error": "#FF3B30",
+        "chart_grid": "#E5E5EA"
+      },
+      "dark": {
+        "background": "#000000",
+        "surface": "#1C1C1E",
+        "surface_highlight": "#2C2C2E",
+        "text_primary": "#FFFFFF",
+        "text_secondary": "#8E8E93",
+        "primary": "#0A84FF",
+        "accent": "#FF453A",
+        "border": "#38383A",
+        "success": "#32D74B",
+        "warning": "#FF9F0A",
+        "error": "#FF453A",
+        "chart_grid": "#2C2C2E"
+      }
+    },
+    "palettes": {
+      "performance_pro": {
+        "obsidian": "#0A0A0A",
+        "pure_white": "#FFFFFF",
+        "electric_blaze": "#FF3B30",
+        "volt_blue": "#007AFF",
+        "tactical_grey": "#8E8E93"
+      }
+    }
+  },
+  "typography": {
+    "font_families": {
+      "headings": "Barlow Condensed, sans-serif",
+      "body": "Inter, sans-serif",
+      "mono": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": { "fontSize": 32, "lineHeight": 38, "fontWeight": "700", "letterSpacing": -0.5 },
+      "h2": { "fontSize": 24, "lineHeight": 30, "fontWeight": "600", "letterSpacing": -0.3 },
+      "h3": { "fontSize": 20, "lineHeight": 26, "fontWeight": "600" },
+      "body_lg": { "fontSize": 18, "lineHeight": 26 },
+      "body_base": { "fontSize": 16, "lineHeight": 24 },
+      "body_sm": { "fontSize": 14, "lineHeight": 20 },
+      "caption": { "fontSize": 12, "lineHeight": 16, "textTransform": "uppercase", "letterSpacing": 0.5 }
+    }
+  },
+  "spacing": {
+    "scale": {
+      "xs": 4,
+      "s": 8,
+      "m": 16,
+      "l": 24,
+      "xl": 32,
+      "xxl": 48
+    },
+    "layout": {
+      "screen_padding": 16,
+      "card_padding": 16,
+      "gap_default": 16
+    }
+  },
+  "components": {
+    "buttons": {
+      "primary": {
+        "borderRadius": 8,
+        "paddingVertical": 16,
+        "alignItems": "center",
+        "justifyContent": "center",
+        "backgroundColor": "primary",
+        "textStyle": { "color": "#FFFFFF", "fontWeight": "700", "fontSize": 16, "textTransform": "uppercase" }
+      },
+      "secondary": {
+        "borderRadius": 8,
+        "paddingVertical": 16,
+        "alignItems": "center",
+        "justifyContent": "center",
+        "backgroundColor": "transparent",
+        "borderWidth": 1,
+        "borderColor": "border",
+        "textStyle": { "color": "text_primary", "fontWeight": "600", "fontSize": 16 }
+      },
+      "ghost": {
+        "paddingVertical": 8,
+        "paddingHorizontal": 12,
+        "backgroundColor": "transparent",
+        "textStyle": { "color": "text_secondary", "fontWeight": "500" }
+      }
+    },
+    "inputs": {
+      "default": {
+        "borderRadius": 8,
+        "padding": 16,
+        "backgroundColor": "surface_highlight",
+        "color": "text_primary",
+        "fontSize": 16
+      },
+      "label": {
+        "color": "text_secondary",
+        "fontSize": 12,
+        "marginBottom": 8,
+        "textTransform": "uppercase",
+        "fontWeight": "600"
+      }
+    },
+    "cards": {
+      "container": {
+        "backgroundColor": "surface",
+        "borderRadius": 12,
+        "padding": 16,
+        "marginBottom": 16,
+        "borderWidth": 1,
+        "borderColor": "border"
+      },
+      "shadow": {
+        "shadowColor": "#000",
+        "shadowOffset": { "width": 0, "height": 2 },
+        "shadowOpacity": 0.1,
+        "shadowRadius": 4,
+        "elevation": 3
+      }
+    }
+  },
+  "layout_strategies": {
+    "dashboard": "Bento Grid Style. Use Flexbox with 'flexWrap: wrap'. Hero metric full width, secondary metrics 50% width.",
+    "list_view": "Clean vertical lists with ample padding. Use Swipeable for actions if needed.",
+    "charts": "Use 'react-native-gifted-charts' or 'victory-native'. Minimalist lines, no grid clutter, clear tooltips.",
+    "bottom_nav": "Blur effect background. Minimal icons. Active state needs a distinct color pop (Electric Blaze)."
+  },
+  "image_urls": {
+    "hero_athlete": "https://images.pexels.com/photos/14585533/pexels-photo-14585533.jpeg",
+    "weight_room": "https://images.pexels.com/photos/949131/pexels-photo-949131.jpeg",
+    "plyometrics": "https://images.unsplash.com/photo-1758875568074-0e7e4389b7d5",
+    "abstract_texture": "https://images.unsplash.com/photo-1654032391438-b49fc8aafe03"
+  },
+  "motion": {
+    "transitions": "Use 'LayoutAnimation' for list updates. 'Reanimated' for complex gestures.",
+    "touch_feedback": "All interactive elements must have opacity reduction on press (0.7).",
+    "screen_transition": "Standard iOS/Android slide/fade. Avoid custom jarring transitions."
+  },
+  "instructions_to_main_agent": {
+    "tech_stack": {
+      "frontend": "React Native (Expo)",
+      "backend": "FastAPI (Python)",
+      "database": "MongoDB",
+      "navigation": "expo-router",
+      "styling": "StyleSheet.create (NO TAILWIND)",
+      "icons": "@expo/vector-icons (Feather or Ionicons)"
+    },
+    "implementation_rules": [
+      "Use 'useColorScheme' hook for theme detection.",
+      "Create a 'ThemeContext' to supply colors to all components.",
+      "Use 'SafeAreaView' from 'react-native-safe-area-context'.",
+      "Ensure all touch targets are at least 44x44 points.",
+      "Use 'KeyboardAvoidingView' for forms.",
+      "For charts, install 'react-native-gifted-charts' if not present.",
+      "For CSV upload, use 'expo-document-picker'."
+    ],
+    "file_structure_suggestions": {
+      "components": "src/components/ui/ (Button.js, Card.js, Input.js)",
+      "screens": "src/app/ (index.js, (tabs)/_layout.js, etc.)",
+      "context": "src/context/ThemeContext.js"
+    }
+  },
+  "universal_guidelines": [
+    "Do not use gradients for text.",
+    "Avoid centering text unless it's a headline with specific intent.",
+    "Use dark mode as the default mental model for 'High Performance' but support light mode perfectly.",
+    "Profile images should always be circular.",
+    "Workout cards should show 'Completed' status clearly with color (Green vs Grey)."
+  ]
+}
