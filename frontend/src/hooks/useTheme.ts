@@ -1,4 +1,6 @@
 import { useColorScheme } from 'react-native';
+import { useState, useEffect, createContext, useContext } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const lightColors = {
   background: '#F5F5F7',
@@ -31,10 +33,34 @@ const darkColors = {
 };
 
 export type ThemeColors = typeof lightColors;
+export type ThemeMode = 'system' | 'light' | 'dark';
+
+let _globalThemeMode: ThemeMode = 'system';
+let _globalListener: ((mode: ThemeMode) => void) | null = null;
 
 export function useTheme() {
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
+  const systemScheme = useColorScheme();
+  const [themeMode, setThemeMode] = useState<ThemeMode>(_globalThemeMode);
+
+  useEffect(() => {
+    AsyncStorage.getItem('theme_mode').then((saved) => {
+      if (saved === 'light' || saved === 'dark' || saved === 'system') {
+        _globalThemeMode = saved;
+        setThemeMode(saved);
+      }
+    });
+    _globalListener = setThemeMode;
+    return () => { _globalListener = null; };
+  }, []);
+
+  const setMode = async (mode: ThemeMode) => {
+    _globalThemeMode = mode;
+    setThemeMode(mode);
+    await AsyncStorage.setItem('theme_mode', mode);
+  };
+
+  const isDark = themeMode === 'dark' || (themeMode === 'system' && systemScheme === 'dark');
   const colors = isDark ? darkColors : lightColors;
-  return { colors, isDark };
+
+  return { colors, isDark, themeMode, setThemeMode: setMode };
 }
