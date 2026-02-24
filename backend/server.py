@@ -310,27 +310,60 @@ async def upload_csv_workouts(athlete_id: str, file: UploadFile = File(...), tra
     content = await file.read()
     text = content.decode('utf-8')
     reader = csv.DictReader(io.StringIO(text))
-    workouts_created = []
+    
+    # Expected columns: dia, ejercicio, repeticiones, series
+    workouts_by_date: dict = {}
     for row in reader:
+        # Normalize column names (strip whitespace, lowercase)
+        row = {k.strip().lower(): v.strip() for k, v in row.items()}
+        date = row.get('dia', row.get('date', datetime.now(timezone.utc).strftime('%Y-%m-%d')))
+        exercise_name = row.get('ejercicio', row.get('exercise', ''))
+        reps = row.get('repeticiones', row.get('reps', ''))
+        sets = row.get('series', row.get('sets', ''))
+        
+        if not exercise_name:
+            continue
+            
+        exercise = {"name": exercise_name, "sets": sets, "reps": reps, "weight": "", "rest": ""}
+        
+        if date not in workouts_by_date:
+            workouts_by_date[date] = []
+        workouts_by_date[date].append(exercise)
+    
+    workouts_created = []
+    for date, exercises in workouts_by_date.items():
         workout_id = str(uuid.uuid4())
-        exercises = []
-        if 'exercise' in row:
-            exercise = {"name": row.get('exercise', ''), "sets": row.get('sets', ''), "reps": row.get('reps', ''), "weight": row.get('weight', ''), "rest": row.get('rest', '')}
-            exercises.append(exercise)
         workout = {
             "id": workout_id,
             "trainer_id": trainer['id'],
             "athlete_id": athlete_id,
-            "date": row.get('date', datetime.now(timezone.utc).strftime('%Y-%m-%d')),
-            "title": row.get('title', row.get('exercise', 'CSV Workout')),
+            "date": date,
+            "title": f"Entreno {date}",
             "exercises": exercises,
-            "notes": row.get('notes', ''),
+            "notes": "Importado desde CSV",
             "completed": False,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }
         await db.workouts.insert_one(workout)
         workouts_created.append({k: v for k, v in workout.items() if k != '_id'})
     return {"count": len(workouts_created), "workouts": workouts_created}
+
+@api_router.get("/workouts/csv-template")
+async def download_csv_template():
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(['dia', 'ejercicio', 'repeticiones', 'series'])
+    writer.writerow(['2026-02-24', 'Sentadilla', '8', '4'])
+    writer.writerow(['2026-02-24', 'Press banca', '10', '3'])
+    writer.writerow(['2026-02-24', 'Peso muerto', '6', '4'])
+    writer.writerow(['2026-02-25', 'Zancadas', '12', '3'])
+    writer.writerow(['2026-02-25', 'Remo con barra', '10', '4'])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=plantilla_entrenamientos.csv"}
+    )
 
 @api_router.get("/workouts")
 async def list_workouts(
