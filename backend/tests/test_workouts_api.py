@@ -126,3 +126,108 @@ class TestWorkoutsCRUD:
         print(f"Create workout no auth response: {response.status_code}")
         
         assert response.status_code in [401, 403]
+
+
+class TestCSVWorkouts:
+    """Test CSV template and upload functionality"""
+
+    def test_csv_template_download(self, base_url, api_client):
+        """Test GET /api/workouts/csv-template returns valid CSV"""
+        response = api_client.get(f"{base_url}/api/workouts/csv-template")
+        print(f"CSV template response: {response.status_code}")
+        
+        assert response.status_code == 200
+        assert response.headers.get('content-type') == 'text/csv; charset=utf-8'
+        
+        # Check CSV content has correct headers
+        content = response.text
+        lines = content.strip().split('\n')
+        assert len(lines) >= 2  # At least header + 1 data row
+        
+        # Verify header row has correct columns
+        header = lines[0]
+        assert 'dia' in header
+        assert 'ejercicio' in header
+        assert 'repeticiones' in header
+        assert 'series' in header
+        print(f"CSV template header: {header}")
+        print(f"CSV template has {len(lines)} lines")
+
+    def test_csv_upload_groups_by_date(self, base_url, api_client, auth_headers, test_athlete):
+        """Test POST /api/workouts/csv groups exercises by date into separate workouts"""
+        import io
+        
+        # Create CSV content with exercises on different dates
+        csv_content = """dia,ejercicio,repeticiones,series
+2026-02-24,Sentadilla,8,4
+2026-02-24,Press banca,10,3
+2026-02-25,Peso muerto,6,4
+2026-02-25,Zancadas,12,3"""
+        
+        # Create file-like object
+        files = {
+            'file': ('test_workout.csv', io.StringIO(csv_content), 'text/csv')
+        }
+        
+        # Upload CSV (need to handle multipart form data)
+        import requests
+        session = requests.Session()
+        session.headers.update(auth_headers)
+        
+        response = session.post(
+            f"{base_url}/api/workouts/csv?athlete_id={test_athlete['id']}",
+            files={'file': ('test.csv', csv_content, 'text/csv')}
+        )
+        print(f"CSV upload response: {response.status_code} - {response.text}")
+        
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Should create 2 workouts (one for each date)
+        assert "count" in data
+        assert data["count"] == 2
+        assert "workouts" in data
+        assert len(data["workouts"]) == 2
+        
+        # Verify workouts are grouped by date
+        workouts = data["workouts"]
+        dates = [w["date"] for w in workouts]
+        assert "2026-02-24" in dates
+        assert "2026-02-25" in dates
+        
+        # Verify exercises are grouped correctly
+        workout_24 = next(w for w in workouts if w["date"] == "2026-02-24")
+        workout_25 = next(w for w in workouts if w["date"] == "2026-02-25")
+        
+        assert len(workout_24["exercises"]) == 2
+        assert len(workout_25["exercises"]) == 2
+        
+        # Verify exercise data structure
+        ex1 = workout_24["exercises"][0]
+        assert ex1["name"] == "Sentadilla"
+        assert ex1["reps"] == "8"
+        assert ex1["sets"] == "4"
+        
+        # Verify persistence - check GET endpoint
+        workout_id = workout_24["id"]
+        get_response = api_client.get(
+            f"{base_url}/api/workouts/{workout_id}",
+            headers=auth_headers
+        )
+        assert get_response.status_code == 200
+        retrieved = get_response.json()
+        assert retrieved["date"] == "2026-02-24"
+        assert len(retrieved["exercises"]) == 2
+
+    def test_csv_upload_requires_auth(self, base_url, test_athlete):
+        """Test CSV upload without auth fails"""
+        import requests
+        csv_content = "dia,ejercicio,repeticiones,series\n2026-01-01,Test,10,3"
+        
+        response = requests.post(
+            f"{base_url}/api/workouts/csv?athlete_id={test_athlete['id']}",
+            files={'file': ('test.csv', csv_content, 'text/csv')}
+        )
+        print(f"CSV upload no auth response: {response.status_code}")
+        
+        assert response.status_code in [401, 403]
