@@ -45,10 +45,20 @@ export default function CalendarScreen() {
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
   const [allWorkouts, setAllWorkouts] = useState<any[]>([]);
   const [allTests, setAllTests] = useState<any[]>([]);
+  const [athleteMap, setAthleteMap] = useState<Record<string, string>>({});
 
   const loadAll = async () => {
     try {
       const [wk, ts] = await Promise.all([api.getWorkouts(), api.getTests()]);
+      // Load athlete names for trainers
+      if (user?.role === 'trainer') {
+        try {
+          const athletes = await api.getAthletes();
+          const map: Record<string, string> = {};
+          athletes.forEach((a: any) => { map[a.id] = a.name; });
+          setAthleteMap(map);
+        } catch (e) { console.log(e); }
+      }
       setAllWorkouts(wk);
       setAllTests(ts);
       setAllWorkoutDates(new Set(wk.map((w: any) => w.date)));
