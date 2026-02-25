@@ -9,6 +9,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
+type SetStatus = 'pending' | 'completed' | 'skipped';
+
 export default function TrainingModeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -16,12 +18,22 @@ export default function TrainingModeScreen() {
   const [workout, setWorkout] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [currentExIndex, setCurrentExIndex] = useState(0);
-  const [completedSets, setCompletedSets] = useState<Record<number, number>>({});
+  // Track each set's status per exercise: setsStatus[exerciseIndex][setIndex] = 'completed'|'skipped'|'pending'
+  const [setsStatus, setSetsStatus] = useState<Record<number, SetStatus[]>>({});
   const [finished, setFinished] = useState(false);
 
   useEffect(() => {
     if (workoutId) {
-      api.getWorkout(workoutId).then(setWorkout).catch(console.log).finally(() => setLoading(false));
+      api.getWorkout(workoutId).then((w) => {
+        setWorkout(w);
+        // Initialize sets status
+        const initial: Record<number, SetStatus[]> = {};
+        (w.exercises || []).forEach((ex: any, i: number) => {
+          const total = parseInt(ex.sets) || 1;
+          initial[i] = Array(total).fill('pending');
+        });
+        setSetsStatus(initial);
+      }).catch(console.log).finally(() => setLoading(false));
     }
   }, [workoutId]);
 
@@ -36,71 +48,173 @@ export default function TrainingModeScreen() {
   const exercises = workout.exercises || [];
   const currentEx = exercises[currentExIndex];
   const totalSets = parseInt(currentEx?.sets) || 1;
-  const doneSets = completedSets[currentExIndex] || 0;
-  const progress = exercises.length > 0 ? ((currentExIndex + (doneSets / totalSets)) / exercises.length) * 100 : 0;
+  const currentSets = setsStatus[currentExIndex] || [];
+  const doneSets = currentSets.filter(s => s === 'completed').length;
+  const skippedSets = currentSets.filter(s => s === 'skipped').length;
+  const nextPendingSet = currentSets.findIndex(s => s === 'pending');
+
+  // Calculate progress
+  const totalAllSets = exercises.reduce((sum: number, ex: any) => sum + (parseInt(ex.sets) || 1), 0);
+  const doneAllSets = Object.values(setsStatus).flat().filter(s => s !== 'pending').length;
+  const progress = totalAllSets > 0 ? (doneAllSets / totalAllSets) * 100 : 0;
+
+  const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => {
+    setSetsStatus(prev => {
+      const updated = { ...prev };
+      updated[exIdx] = [...(prev[exIdx] || [])];
+      updated[exIdx][setIdx] = status;
+      return updated;
+    });
+  };
 
   const completeSet = () => {
-    const newDone = doneSets + 1;
-    setCompletedSets({ ...completedSets, [currentExIndex]: newDone });
-    if (newDone >= totalSets) {
-      // Auto-advance after completing all sets
+    if (nextPendingSet === -1) return;
+    updateSetStatus(currentExIndex, nextPendingSet, 'completed');
+    // If this was the last pending set, auto-advance
+    const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
+    if (remaining === 0) {
       if (currentExIndex < exercises.length - 1) {
-        setTimeout(() => nextExercise(), 500);
+        setTimeout(() => setCurrentExIndex(currentExIndex + 1), 400);
       } else {
-        setFinished(true);
+        setTimeout(() => setFinished(true), 400);
       }
     }
   };
 
-  const nextExercise = () => {
-    if (currentExIndex < exercises.length - 1) {
-      setCurrentExIndex(currentExIndex + 1);
+  const skipSet = () => {
+    if (nextPendingSet === -1) return;
+    updateSetStatus(currentExIndex, nextPendingSet, 'skipped');
+    const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
+    if (remaining === 0) {
+      if (currentExIndex < exercises.length - 1) {
+        setTimeout(() => setCurrentExIndex(currentExIndex + 1), 400);
+      } else {
+        setTimeout(() => setFinished(true), 400);
+      }
     }
   };
 
-  const prevExercise = () => {
-    if (currentExIndex > 0) {
-      setCurrentExIndex(currentExIndex - 1);
+  const skipExercise = () => {
+    // Mark all remaining pending sets as skipped
+    setSetsStatus(prev => {
+      const updated = { ...prev };
+      updated[currentExIndex] = (prev[currentExIndex] || []).map(s => s === 'pending' ? 'skipped' : s);
+      return updated;
+    });
+    if (currentExIndex < exercises.length - 1) {
+      setTimeout(() => setCurrentExIndex(currentExIndex + 1), 300);
+    } else {
+      setTimeout(() => setFinished(true), 300);
     }
+  };
+
+  const nextExercise = () => {
+    if (currentExIndex < exercises.length - 1) setCurrentExIndex(currentExIndex + 1);
+  };
+  const prevExercise = () => {
+    if (currentExIndex > 0) setCurrentExIndex(currentExIndex - 1);
+  };
+
+  const buildCompletionData = () => {
+    return {
+      exercise_results: exercises.map((ex: any, i: number) => {
+        const sets = setsStatus[i] || [];
+        return {
+          exercise_index: i,
+          name: ex.name,
+          total_sets: parseInt(ex.sets) || 1,
+          completed_sets: sets.filter(s => s === 'completed').length,
+          skipped_sets: sets.filter(s => s === 'skipped').length,
+          set_details: sets.map((status, si) => ({ set: si + 1, status })),
+        };
+      }),
+    };
   };
 
   const handleFinish = async () => {
+    const completionData = buildCompletionData();
+    const allCompleted = completionData.exercise_results.every(
+      (r: any) => r.skipped_sets === 0
+    );
     try {
-      await api.updateWorkout(workoutId!, { completed: true });
-    } catch (e) {
-      console.log(e);
-    }
+      await api.updateWorkout(workoutId!, {
+        completed: true,
+        completion_data: completionData,
+      });
+    } catch (e) { console.log(e); }
     router.back();
   };
 
-  const handleExit = () => {
-    router.back();
-  };
+  const handleExit = () => router.back();
 
+  // Build finish summary
   if (finished) {
+    const completionData = buildCompletionData();
+    const totalCompleted = completionData.exercise_results.reduce((s: number, r: any) => s + r.completed_sets, 0);
+    const totalSkipped = completionData.exercise_results.reduce((s: number, r: any) => s + r.skipped_sets, 0);
+    const hasSkips = totalSkipped > 0;
+
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.finishedContainer}>
-          <View style={[styles.finishedIcon, { backgroundColor: colors.success + '15' }]}>
-            <Ionicons name="checkmark-circle" size={64} color={colors.success} />
+        <ScrollView contentContainerStyle={styles.finishedContainer}>
+          <View style={[styles.finishedIcon, { backgroundColor: hasSkips ? colors.warning + '15' : colors.success + '15' }]}>
+            <Ionicons name={hasSkips ? 'alert-circle' : 'checkmark-circle'} size={64} color={hasSkips ? colors.warning : colors.success} />
           </View>
-          <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>Entrenamiento completado!</Text>
-          <Text style={[styles.finishedSub, { color: colors.textSecondary }]}>
-            Has completado {exercises.length} ejercicios
+          <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>
+            {hasSkips ? 'Entrenamiento finalizado' : 'Entrenamiento completado!'}
           </Text>
+          <Text style={[styles.finishedSub, { color: colors.textSecondary }]}>
+            {totalCompleted} series completadas · {totalSkipped} series saltadas
+          </Text>
+
+          {/* Per-exercise summary */}
+          <View style={styles.summaryList}>
+            {completionData.exercise_results.map((r: any, i: number) => {
+              const allDone = r.skipped_sets === 0;
+              const allSkipped = r.completed_sets === 0;
+              return (
+                <View key={i} style={[styles.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[styles.summaryIcon, { backgroundColor: allDone ? colors.success + '15' : allSkipped ? colors.error + '15' : colors.warning + '15' }]}>
+                    <Ionicons
+                      name={allDone ? 'checkmark-circle' : allSkipped ? 'close-circle' : 'remove-circle'}
+                      size={22}
+                      color={allDone ? colors.success : allSkipped ? colors.error : colors.warning}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.summaryName, { color: colors.textPrimary }]}>{r.name}</Text>
+                    <View style={styles.summaryDots}>
+                      {r.set_details.map((sd: any, si: number) => (
+                        <View key={si} style={[
+                          styles.miniDot,
+                          sd.status === 'completed' && { backgroundColor: colors.success },
+                          sd.status === 'skipped' && { backgroundColor: colors.error },
+                          sd.status === 'pending' && { backgroundColor: colors.border },
+                        ]} />
+                      ))}
+                    </View>
+                  </View>
+                  <Text style={[styles.summaryCount, { color: colors.textSecondary }]}>
+                    {r.completed_sets}/{r.total_sets}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+
           <TouchableOpacity
             testID="finish-training-btn"
-            style={[styles.finishBtn, { backgroundColor: colors.success }]}
+            style={[styles.finishBtn, { backgroundColor: colors.primary }]}
             onPress={handleFinish}
             activeOpacity={0.7}
           >
             <Ionicons name="checkmark" size={20} color="#FFF" />
-            <Text style={styles.finishBtnText}>Marcar como completado</Text>
+            <Text style={styles.finishBtnText}>Guardar y salir</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.exitLink} onPress={handleExit} activeOpacity={0.6}>
-            <Text style={[styles.exitLinkText, { color: colors.textSecondary }]}>Volver sin marcar</Text>
+            <Text style={[styles.exitLinkText, { color: colors.textSecondary }]}>Volver sin guardar</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -144,7 +258,6 @@ export default function TrainingModeScreen() {
           </View>
           <Text style={[styles.exerciseName, { color: colors.textPrimary }]}>{currentEx.name}</Text>
 
-          {/* Details grid */}
           <View style={styles.detailsGrid}>
             {currentEx.sets && (
               <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}>
@@ -172,7 +285,6 @@ export default function TrainingModeScreen() {
             )}
           </View>
 
-          {/* Video link */}
           {currentEx.video_url ? (
             <TouchableOpacity
               testID="training-video-btn"
@@ -183,9 +295,7 @@ export default function TrainingModeScreen() {
               <Ionicons name="play-circle" size={24} color={colors.primary} />
               <View style={{ flex: 1 }}>
                 <Text style={[styles.videoBtnTitle, { color: colors.primary }]}>Ver video del ejercicio</Text>
-                <Text style={[styles.videoBtnUrl, { color: colors.textSecondary }]} numberOfLines={1}>
-                  {currentEx.video_url}
-                </Text>
+                <Text style={[styles.videoBtnUrl, { color: colors.textSecondary }]} numberOfLines={1}>{currentEx.video_url}</Text>
               </View>
               <Ionicons name="open-outline" size={18} color={colors.primary} />
             </TouchableOpacity>
@@ -194,40 +304,77 @@ export default function TrainingModeScreen() {
 
         {/* Sets tracker */}
         <View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
-          <Text style={[styles.setsTitle, { color: colors.textPrimary }]}>Series completadas</Text>
+          <Text style={[styles.setsTitle, { color: colors.textPrimary }]}>Series</Text>
           <View style={styles.setsGrid}>
-            {Array.from({ length: totalSets }).map((_, i) => (
+            {currentSets.map((status, i) => (
               <View
                 key={i}
                 style={[
                   styles.setCircle,
                   { borderColor: colors.border },
-                  i < doneSets && { backgroundColor: colors.success, borderColor: colors.success },
+                  status === 'completed' && { backgroundColor: colors.success, borderColor: colors.success },
+                  status === 'skipped' && { backgroundColor: colors.error, borderColor: colors.error },
                 ]}
               >
-                {i < doneSets ? (
+                {status === 'completed' ? (
                   <Ionicons name="checkmark" size={18} color="#FFF" />
+                ) : status === 'skipped' ? (
+                  <Ionicons name="close" size={18} color="#FFF" />
                 ) : (
                   <Text style={[styles.setNum, { color: colors.textSecondary }]}>{i + 1}</Text>
                 )}
               </View>
             ))}
           </View>
-          <TouchableOpacity
-            testID="complete-set-btn"
-            style={[
-              styles.completeSetBtn,
-              { backgroundColor: doneSets >= totalSets ? colors.surfaceHighlight : colors.primary },
-            ]}
-            onPress={completeSet}
-            disabled={doneSets >= totalSets}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="checkmark-circle-outline" size={22} color={doneSets >= totalSets ? colors.textSecondary : '#FFF'} />
-            <Text style={[styles.completeSetText, { color: doneSets >= totalSets ? colors.textSecondary : '#FFF' }]}>
-              {doneSets >= totalSets ? 'Todas completadas' : `Completar serie ${doneSets + 1}`}
-            </Text>
-          </TouchableOpacity>
+
+          {nextPendingSet !== -1 ? (
+            <View style={styles.setActions}>
+              <TouchableOpacity
+                testID="complete-set-btn"
+                style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 1 }]}
+                onPress={completeSet}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="checkmark-circle-outline" size={22} color="#FFF" />
+                <Text style={[styles.completeSetText, { color: '#FFF' }]}>
+                  Completar serie {nextPendingSet + 1}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="skip-set-btn"
+                style={[styles.skipSetBtn, { borderColor: colors.error }]}
+                onPress={skipSet}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="play-skip-forward" size={18} color={colors.error} />
+                <Text style={[styles.skipSetText, { color: colors.error }]}>Saltar</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={[styles.allDoneBadge, { backgroundColor: doneSets === totalSets ? colors.success + '12' : colors.warning + '12' }]}>
+              <Ionicons
+                name={doneSets === totalSets ? 'checkmark-circle' : 'alert-circle'}
+                size={18}
+                color={doneSets === totalSets ? colors.success : colors.warning}
+              />
+              <Text style={{ color: doneSets === totalSets ? colors.success : colors.warning, fontSize: 14, fontWeight: '600' }}>
+                {doneSets === totalSets ? 'Todas completadas' : `${doneSets} de ${totalSets} completadas`}
+              </Text>
+            </View>
+          )}
+
+          {/* Skip entire exercise */}
+          {nextPendingSet !== -1 && (
+            <TouchableOpacity
+              testID="skip-exercise-btn"
+              style={styles.skipExLink}
+              onPress={skipExercise}
+              activeOpacity={0.6}
+            >
+              <Text style={[styles.skipExText, { color: colors.textSecondary }]}>Saltar ejercicio completo</Text>
+              <Ionicons name="arrow-forward" size={14} color={colors.textSecondary} />
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
 
@@ -252,12 +399,7 @@ export default function TrainingModeScreen() {
             <Ionicons name="arrow-forward" size={22} color={colors.textPrimary} />
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            testID="finish-all-btn"
-            style={[styles.navBtn]}
-            onPress={() => setFinished(true)}
-            activeOpacity={0.6}
-          >
+          <TouchableOpacity testID="finish-all-btn" style={styles.navBtn} onPress={() => setFinished(true)} activeOpacity={0.6}>
             <Text style={[styles.navBtnText, { color: colors.success, fontWeight: '700' }]}>Finalizar</Text>
             <Ionicons name="flag" size={20} color={colors.success} />
           </TouchableOpacity>
@@ -289,18 +431,25 @@ const styles = StyleSheet.create({
   },
   videoBtnTitle: { fontSize: 14, fontWeight: '600' },
   videoBtnUrl: { fontSize: 12, marginTop: 2 },
-  // Sets
   setsCard: { borderRadius: 16, padding: 20, gap: 16 },
   setsTitle: { fontSize: 16, fontWeight: '600' },
   setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
   setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' },
   setNum: { fontSize: 15, fontWeight: '600' },
+  setActions: { flexDirection: 'row', gap: 10 },
   completeSetBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     borderRadius: 12, paddingVertical: 16,
   },
   completeSetText: { fontSize: 16, fontWeight: '600' },
-  // Bottom nav
+  skipSetBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4,
+    borderRadius: 12, paddingVertical: 16, paddingHorizontal: 16, borderWidth: 1.5,
+  },
+  skipSetText: { fontSize: 14, fontWeight: '600' },
+  skipExLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, paddingVertical: 4 },
+  skipExText: { fontSize: 13 },
+  allDoneBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingVertical: 14 },
   bottomNav: {
     position: 'absolute', bottom: 0, left: 0, right: 0,
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -310,19 +459,24 @@ const styles = StyleSheet.create({
   navBtnText: { fontSize: 15, fontWeight: '500' },
   exCounter: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
   exCounterText: { fontSize: 14, fontWeight: '600' },
-  // Finished
-  finishedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 32, gap: 16 },
+  finishedContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
   finishedIcon: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
-  finishedTitle: { fontSize: 24, fontWeight: '700' },
-  finishedSub: { fontSize: 16 },
+  finishedTitle: { fontSize: 22, fontWeight: '700', textAlign: 'center' },
+  finishedSub: { fontSize: 15, textAlign: 'center' },
+  summaryList: { width: '100%', gap: 8, marginTop: 8 },
+  summaryRow: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 },
+  summaryIcon: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  summaryName: { fontSize: 15, fontWeight: '600' },
+  summaryDots: { flexDirection: 'row', gap: 4, marginTop: 4 },
+  miniDot: { width: 8, height: 8, borderRadius: 4 },
+  summaryCount: { fontSize: 14, fontWeight: '600' },
   finishBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    borderRadius: 12, paddingVertical: 16, paddingHorizontal: 32, marginTop: 8,
+    borderRadius: 12, paddingVertical: 16, paddingHorizontal: 32, marginTop: 8, width: '100%',
   },
   finishBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   exitLink: { paddingVertical: 12 },
   exitLinkText: { fontSize: 15 },
-  // Empty
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
   emptyText: { fontSize: 16 },
   exitBtn: { borderRadius: 10, borderWidth: 1, paddingVertical: 12, paddingHorizontal: 24 },
