@@ -338,6 +338,9 @@ const styles = StyleSheet.create({
   exDetails: { fontSize: 13, marginTop: 3 },
   videoLink: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
   videoLinkText: { fontSize: 13, fontWeight: '600' },
+  completionRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
+  completionDot: { width: 10, height: 10, borderRadius: 5 },
+  completionLabel: { fontSize: 11, fontWeight: '600', marginLeft: 4 },
   notesBox: { borderRadius: 8, padding: 10, marginTop: 8 },
   notesText: { fontSize: 13, fontStyle: 'italic' },
   trainingBtn: {
