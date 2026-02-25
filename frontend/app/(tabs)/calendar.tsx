@@ -237,6 +237,19 @@ export default function CalendarScreen() {
                     <Text style={styles.trainingBtnText}>Modo Entrenamiento</Text>
                   </TouchableOpacity>
                 )}
+
+                {/* Edit button for trainers */}
+                {user?.role === 'trainer' && (
+                  <TouchableOpacity
+                    testID={`edit-workout-cal-${w.id}`}
+                    style={[styles.editBtn, { borderColor: colors.primary }]}
+                    onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: w.id } })}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="create-outline" size={18} color={colors.primary} />
+                    <Text style={[styles.editBtnText, { color: colors.primary }]}>Editar entrenamiento</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </TouchableOpacity>
