@@ -22,16 +22,27 @@ const PLYO_TESTS = [
   { key: 'dj', label: 'DJ', unit: 'cm' },
 ];
 
+const MAX_FORCE_TESTS = [
+  { key: 'hamstring', label: 'Isquiotibiales', unit: 'N' },
+  { key: 'calf', label: 'Gemelo', unit: 'N' },
+  { key: 'quadriceps', label: 'Cuadriceps', unit: 'N' },
+  { key: 'tibialis', label: 'Tibial', unit: 'N' },
+];
+
+type TestType = 'strength' | 'plyometrics' | 'max_force';
+
 export default function AddTestScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<string>('');
-  const [testType, setTestType] = useState<'strength' | 'plyometrics'>('strength');
+  const [testType, setTestType] = useState<TestType>('strength');
   const [selectedTest, setSelectedTest] = useState('');
   const [customName, setCustomName] = useState('');
   const [value, setValue] = useState('');
+  const [valueLeft, setValueLeft] = useState('');
+  const [valueRight, setValueRight] = useState('');
   const [unit, setUnit] = useState('kg');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
@@ -46,7 +57,15 @@ export default function AddTestScreen() {
     }
   }, []);
 
-  const currentTests = testType === 'strength' ? STRENGTH_TESTS : PLYO_TESTS;
+  const isBilateral = testType === 'max_force';
+  const currentTests = testType === 'strength' ? STRENGTH_TESTS : testType === 'plyometrics' ? PLYO_TESTS : MAX_FORCE_TESTS;
+
+  const handleSelectType = (type: TestType) => {
+    setTestType(type);
+    setSelectedTest('');
+    setUnit(type === 'strength' ? 'kg' : type === 'plyometrics' ? 'cm' : 'N');
+    setValue(''); setValueLeft(''); setValueRight('');
+  };
 
   const handleSelectTest = (key: string, u: string) => {
     setSelectedTest(key);
@@ -56,7 +75,7 @@ export default function AddTestScreen() {
   const handleSubmit = async () => {
     setError('');
     const athleteId = user?.role === 'athlete' ? user?.id : selectedAthlete;
-    if (!athleteId || !selectedTest || !value || !date) {
+    if (!athleteId || !selectedTest || !date) {
       setError('Completa todos los campos obligatorios');
       return;
     }
@@ -64,6 +83,22 @@ export default function AddTestScreen() {
       setError('Introduce el nombre del test personalizado');
       return;
     }
+    if (isBilateral) {
+      if (!valueLeft && !valueRight) {
+        setError('Introduce al menos un valor (izquierda o derecha)');
+        return;
+      }
+    } else if (!value) {
+      setError('Introduce el valor del test');
+      return;
+    }
+
+    const left = valueLeft ? parseFloat(valueLeft) : null;
+    const right = valueRight ? parseFloat(valueRight) : null;
+    const mainValue = isBilateral
+      ? Math.max(left || 0, right || 0)
+      : parseFloat(value);
+
     setSubmitting(true);
     try {
       await api.createTest({
@@ -71,10 +106,12 @@ export default function AddTestScreen() {
         test_type: testType,
         test_name: selectedTest,
         custom_name: selectedTest === 'custom' ? customName : '',
-        value: parseFloat(value),
+        value: mainValue,
         unit,
         date,
         notes,
+        value_left: left,
+        value_right: right,
       });
       router.back();
     } catch (e: any) {
@@ -127,30 +164,30 @@ export default function AddTestScreen() {
           {/* Test Type */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>TIPO DE TEST *</Text>
-            <View style={styles.chipRow}>
+            <View style={styles.typeRow}>
               <TouchableOpacity
-                style={[
-                  styles.typeChip,
-                  { borderColor: colors.border },
-                  testType === 'strength' && { backgroundColor: colors.primary, borderColor: colors.primary },
-                ]}
-                onPress={() => { setTestType('strength'); setSelectedTest(''); setUnit('kg'); }}
+                style={[styles.typeChip, { borderColor: colors.border }, testType === 'strength' && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                onPress={() => handleSelectType('strength')}
                 activeOpacity={0.7}
               >
-                <Ionicons name="barbell-outline" size={18} color={testType === 'strength' ? '#FFF' : colors.textPrimary} />
+                <Ionicons name="barbell-outline" size={16} color={testType === 'strength' ? '#FFF' : colors.textPrimary} />
                 <Text style={[styles.typeText, { color: testType === 'strength' ? '#FFF' : colors.textPrimary }]}>Fuerza</Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={[
-                  styles.typeChip,
-                  { borderColor: colors.border },
-                  testType === 'plyometrics' && { backgroundColor: colors.accent, borderColor: colors.accent },
-                ]}
-                onPress={() => { setTestType('plyometrics'); setSelectedTest(''); setUnit('cm'); }}
+                style={[styles.typeChip, { borderColor: colors.border }, testType === 'plyometrics' && { backgroundColor: colors.accent, borderColor: colors.accent }]}
+                onPress={() => handleSelectType('plyometrics')}
                 activeOpacity={0.7}
               >
-                <Ionicons name="flash-outline" size={18} color={testType === 'plyometrics' ? '#FFF' : colors.textPrimary} />
+                <Ionicons name="flash-outline" size={16} color={testType === 'plyometrics' ? '#FFF' : colors.textPrimary} />
                 <Text style={[styles.typeText, { color: testType === 'plyometrics' ? '#FFF' : colors.textPrimary }]}>Pliometria</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeChip, { borderColor: colors.border }, testType === 'max_force' && { backgroundColor: '#E65100', borderColor: '#E65100' }]}
+                onPress={() => handleSelectType('max_force')}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="fitness-outline" size={16} color={testType === 'max_force' ? '#FFF' : colors.textPrimary} />
+                <Text style={[styles.typeText, { color: testType === 'max_force' ? '#FFF' : colors.textPrimary }]}>F. Maxima</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -165,7 +202,7 @@ export default function AddTestScreen() {
                   style={[
                     styles.testOption,
                     { backgroundColor: colors.surfaceHighlight, borderColor: colors.border },
-                    selectedTest === t.key && { backgroundColor: colors.primary + '20', borderColor: colors.primary },
+                    selectedTest === t.key && { backgroundColor: (testType === 'max_force' ? '#E65100' : colors.primary) + '20', borderColor: testType === 'max_force' ? '#E65100' : colors.primary },
                   ]}
                   onPress={() => handleSelectTest(t.key, t.unit)}
                   activeOpacity={0.7}
@@ -173,7 +210,7 @@ export default function AddTestScreen() {
                   <Text style={[
                     styles.testOptionText,
                     { color: colors.textPrimary },
-                    selectedTest === t.key && { color: colors.primary, fontWeight: '700' },
+                    selectedTest === t.key && { color: testType === 'max_force' ? '#E65100' : colors.primary, fontWeight: '700' },
                   ]}>{t.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -203,31 +240,75 @@ export default function AddTestScreen() {
                 testID="custom-test-name-input"
                 style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
                 value={customName} onChangeText={setCustomName}
-                placeholder="Ej: Salto horizontal" placeholderTextColor={colors.textSecondary}
+                placeholder={isBilateral ? "Ej: Aductor" : "Ej: Salto horizontal"}
+                placeholderTextColor={colors.textSecondary}
               />
             </View>
           )}
 
-          <View style={styles.valueRow}>
-            <View style={[styles.inputGroup, { flex: 2 }]}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>VALOR *</Text>
-              <TextInput
-                testID="test-value-input"
-                style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                value={value} onChangeText={setValue} placeholder="0"
-                placeholderTextColor={colors.textSecondary} keyboardType="decimal-pad"
-              />
+          {/* Bilateral inputs for max_force */}
+          {isBilateral ? (
+            <View style={styles.inputGroup}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>VALORES ({unit}) *</Text>
+              <View style={styles.bilateralRow}>
+                <View style={styles.bilateralSide}>
+                  <View style={[styles.sideLabel, { backgroundColor: '#1565C0' + '20' }]}>
+                    <Text style={[styles.sideLabelText, { color: '#1565C0' }]}>IZQ</Text>
+                  </View>
+                  <TextInput
+                    testID="test-value-left"
+                    style={[styles.bilateralInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                    value={valueLeft} onChangeText={setValueLeft}
+                    placeholder="0" placeholderTextColor={colors.textSecondary}
+                    keyboardType="decimal-pad"
+                  />
+                  <Text style={[styles.bilateralUnit, { color: colors.textSecondary }]}>{unit}</Text>
+                </View>
+                <View style={[styles.bilateralDivider, { backgroundColor: colors.border }]} />
+                <View style={styles.bilateralSide}>
+                  <View style={[styles.sideLabel, { backgroundColor: '#C62828' + '20' }]}>
+                    <Text style={[styles.sideLabelText, { color: '#C62828' }]}>DER</Text>
+                  </View>
+                  <TextInput
+                    testID="test-value-right"
+                    style={[styles.bilateralInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                    value={valueRight} onChangeText={setValueRight}
+                    placeholder="0" placeholderTextColor={colors.textSecondary}
+                    keyboardType="decimal-pad"
+                  />
+                  <Text style={[styles.bilateralUnit, { color: colors.textSecondary }]}>{unit}</Text>
+                </View>
+              </View>
+              {valueLeft && valueRight && (
+                <View style={[styles.asymmetryBox, { backgroundColor: colors.surfaceHighlight }]}>
+                  <Text style={[styles.asymmetryText, { color: colors.textSecondary }]}>
+                    Asimetria: {Math.abs(((parseFloat(valueLeft) - parseFloat(valueRight)) / Math.max(parseFloat(valueLeft), parseFloat(valueRight))) * 100).toFixed(1)}%
+                  </Text>
+                </View>
+              )}
             </View>
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>UNIDAD</Text>
-              <TextInput
-                testID="test-unit-input"
-                style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                value={unit} onChangeText={setUnit} placeholder="kg/cm"
-                placeholderTextColor={colors.textSecondary}
-              />
+          ) : (
+            <View style={styles.valueRow}>
+              <View style={[styles.inputGroup, { flex: 2 }]}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>VALOR *</Text>
+                <TextInput
+                  testID="test-value-input"
+                  style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                  value={value} onChangeText={setValue} placeholder="0"
+                  placeholderTextColor={colors.textSecondary} keyboardType="decimal-pad"
+                />
+              </View>
+              <View style={[styles.inputGroup, { flex: 1 }]}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>UNIDAD</Text>
+                <TextInput
+                  testID="test-unit-input"
+                  style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                  value={unit} onChangeText={setUnit} placeholder="kg/cm"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
             </View>
-          </View>
+          )}
 
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA *</Text>
@@ -257,7 +338,7 @@ export default function AddTestScreen() {
 
           <TouchableOpacity
             testID="create-test-submit"
-            style={[styles.submitBtn, { backgroundColor: colors.primary }]}
+            style={[styles.submitBtn, { backgroundColor: testType === 'max_force' ? '#E65100' : colors.primary }]}
             onPress={handleSubmit} disabled={submitting} activeOpacity={0.7}
           >
             {submitting ? <ActivityIndicator color="#FFF" /> : (
@@ -283,11 +364,12 @@ const styles = StyleSheet.create({
   chipRow: { flexDirection: 'row', gap: 8 },
   chip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
   chipText: { fontSize: 14, fontWeight: '500' },
+  typeRow: { flexDirection: 'row', gap: 8 },
   typeChip: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 8, paddingVertical: 14, borderRadius: 10, borderWidth: 1,
+    gap: 4, paddingVertical: 12, borderRadius: 10, borderWidth: 1,
   },
-  typeText: { fontSize: 15, fontWeight: '600' },
+  typeText: { fontSize: 13, fontWeight: '600' },
   testGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   testOption: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
@@ -295,6 +377,15 @@ const styles = StyleSheet.create({
   },
   testOptionText: { fontSize: 14 },
   valueRow: { flexDirection: 'row', gap: 12 },
+  bilateralRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
+  bilateralSide: { flex: 1, alignItems: 'center', gap: 8 },
+  sideLabel: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6 },
+  sideLabelText: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  bilateralInput: { width: '90%', textAlign: 'center', borderRadius: 10, padding: 16, fontSize: 28, fontWeight: '700', borderWidth: 1 },
+  bilateralUnit: { fontSize: 13, fontWeight: '500' },
+  bilateralDivider: { width: 1, height: 60, marginHorizontal: 4 },
+  asymmetryBox: { borderRadius: 8, padding: 10, alignItems: 'center' },
+  asymmetryText: { fontSize: 13, fontWeight: '600' },
   errorBox: { borderRadius: 8, padding: 12 },
   errorText: { fontSize: 14, textAlign: 'center' },
   submitBtn: { borderRadius: 8, padding: 16, alignItems: 'center', marginTop: 8 },
