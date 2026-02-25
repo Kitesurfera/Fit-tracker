@@ -16,6 +16,10 @@ const TEST_LABELS: Record<string, string> = {
   cmj: 'CMJ',
   sj: 'SJ',
   dj: 'DJ',
+  hamstring: 'Isquiotibiales',
+  calf: 'Gemelo',
+  quadriceps: 'Cuadriceps',
+  tibialis: 'Tibial',
   custom: 'Personalizado',
 };
 
@@ -23,6 +27,7 @@ const CATEGORIES = [
   { key: 'all', label: 'Todos' },
   { key: 'strength', label: 'Fuerza' },
   { key: 'plyometrics', label: 'Pliometria' },
+  { key: 'max_force', label: 'F. Maxima' },
 ];
 
 export default function TestsScreen() {
