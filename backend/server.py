@@ -61,13 +61,15 @@ class WorkoutCreate(BaseModel):
 
 class TestCreate(BaseModel):
     athlete_id: str
-    test_type: str  # strength or plyometrics
-    test_name: str  # e.g. squat_rm, cmj, sj, dj, bench_rm, deadlift_rm, custom
+    test_type: str  # strength, plyometrics, or max_force
+    test_name: str  # e.g. squat_rm, cmj, sj, dj, bench_rm, deadlift_rm, hamstring, calf, quadriceps, tibialis, custom
     value: float
     unit: str
     date: str
     notes: Optional[str] = ""
     custom_name: Optional[str] = ""
+    value_left: Optional[float] = None
+    value_right: Optional[float] = None
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
