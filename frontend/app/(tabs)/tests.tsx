@@ -151,9 +151,17 @@ export default function TestsScreen() {
           renderItem={({ item }) => (
             <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.testHeader}>
-                <View style={[styles.typeBadge, { backgroundColor: item.test_type === 'strength' ? colors.primary + '20' : colors.accent + '20' }]}>
-                  <Text style={[styles.typeBadgeText, { color: item.test_type === 'strength' ? colors.primary : colors.accent }]}>
-                    {item.test_type === 'strength' ? 'FUERZA' : 'PLIO'}
+                <View style={[styles.typeBadge, {
+                  backgroundColor: item.test_type === 'strength' ? colors.primary + '20'
+                    : item.test_type === 'max_force' ? '#E65100' + '20'
+                    : colors.accent + '20'
+                }]}>
+                  <Text style={[styles.typeBadgeText, {
+                    color: item.test_type === 'strength' ? colors.primary
+                      : item.test_type === 'max_force' ? '#E65100'
+                      : colors.accent
+                  }]}>
+                    {item.test_type === 'strength' ? 'FUERZA' : item.test_type === 'max_force' ? 'F. MAX' : 'PLIO'}
                   </Text>
                 </View>
                 <TouchableOpacity onPress={() => deleteTest(item.id)} activeOpacity={0.7}>
@@ -163,10 +171,30 @@ export default function TestsScreen() {
               <Text style={[styles.testName, { color: colors.textPrimary }]}>
                 {item.test_name === 'custom' ? item.custom_name : (TEST_LABELS[item.test_name] || item.test_name)}
               </Text>
-              <View style={styles.testValueRow}>
-                <Text style={[styles.testValue, { color: colors.textPrimary }]}>{item.value}</Text>
-                <Text style={[styles.testUnit, { color: colors.textSecondary }]}>{item.unit}</Text>
-              </View>
+              {item.value_left != null || item.value_right != null ? (
+                <View style={styles.bilateralValues}>
+                  <View style={styles.bilateralSide}>
+                    <View style={[styles.sideBadge, { backgroundColor: '#1565C0' + '18' }]}>
+                      <Text style={[styles.sideBadgeText, { color: '#1565C0' }]}>IZQ</Text>
+                    </View>
+                    <Text style={[styles.testValue, { color: colors.textPrimary, fontSize: 26 }]}>{item.value_left ?? '-'}</Text>
+                    <Text style={[styles.testUnit, { color: colors.textSecondary }]}>{item.unit}</Text>
+                  </View>
+                  <View style={[styles.bilateralDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.bilateralSide}>
+                    <View style={[styles.sideBadge, { backgroundColor: '#C62828' + '18' }]}>
+                      <Text style={[styles.sideBadgeText, { color: '#C62828' }]}>DER</Text>
+                    </View>
+                    <Text style={[styles.testValue, { color: colors.textPrimary, fontSize: 26 }]}>{item.value_right ?? '-'}</Text>
+                    <Text style={[styles.testUnit, { color: colors.textSecondary }]}>{item.unit}</Text>
+                  </View>
+                </View>
+              ) : (
+                <View style={styles.testValueRow}>
+                  <Text style={[styles.testValue, { color: colors.textPrimary }]}>{item.value}</Text>
+                  <Text style={[styles.testUnit, { color: colors.textSecondary }]}>{item.unit}</Text>
+                </View>
+              )}
               <Text style={[styles.testDate, { color: colors.textSecondary }]}>{item.date}</Text>
               {item.notes ? <Text style={[styles.testNotes, { color: colors.textSecondary }]}>{item.notes}</Text> : null}
             </View>
