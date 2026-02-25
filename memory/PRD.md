@@ -31,6 +31,7 @@ App de seguimiento y planificación de fitness con dos tipos de usuario: **entre
 - [x] Analytics básico (resumen + progreso por test)
 - [x] Completar entrenamientos (flujo completo)
 - [x] Edición de entrenamientos por entrenador (editar, añadir, eliminar ejercicios)
+- [x] Saltar series/ejercicios en Modo Entrenamiento + reporte detallado para entrenador
 
 ## Backlog Priorizado
 ### P1 - Próximas
