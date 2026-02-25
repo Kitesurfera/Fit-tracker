@@ -14,6 +14,7 @@ export default function RootLayout() {
         <Stack.Screen name="athlete-detail" options={{ presentation: 'card' }} />
         <Stack.Screen name="add-athlete" options={{ presentation: 'modal' }} />
         <Stack.Screen name="training-mode" options={{ presentation: 'fullScreenModal', animation: 'slide_from_bottom' }} />
+        <Stack.Screen name="edit-workout" options={{ presentation: 'modal' }} />
       </Stack>
     </AuthProvider>
   );
