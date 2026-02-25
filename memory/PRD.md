@@ -33,6 +33,8 @@ App de seguimiento y planificación de fitness con dos tipos de usuario: **entre
 - [x] Edición de entrenamientos por entrenador (editar, añadir, eliminar ejercicios)
 - [x] Saltar series/ejercicios en Modo Entrenamiento + reporte detallado para entrenador
 - [x] Tests de Fuerza Máxima bilateral (isquio, gemelo, cuádriceps, tibial, personalizado) en Newtons con valores IZQ/DER y cálculo de asimetría
+- [x] Vista expandible de entrenamientos en perfil del deportista con datos de completion (series completadas/saltadas)
+- [x] Calendario del entrenador distingue entrenamientos por nombre de deportista
 
 ## Backlog Priorizado
 ### P1 - Próximas
