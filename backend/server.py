@@ -432,6 +432,8 @@ async def create_test(data: TestCreate, user=Depends(get_current_user)):
         "unit": data.unit,
         "date": data.date,
         "notes": data.notes or "",
+        "value_left": data.value_left,
+        "value_right": data.value_right,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.physical_tests.insert_one(test)
