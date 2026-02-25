@@ -323,6 +323,11 @@ const styles = StyleSheet.create({
     borderRadius: 10, paddingVertical: 14, marginTop: 12,
   },
   trainingBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  editBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    borderRadius: 10, paddingVertical: 12, marginTop: 10, borderWidth: 1.5,
+  },
+  editBtnText: { fontSize: 14, fontWeight: '600' },
   // Test card
   testCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, padding: 14, marginBottom: 10, gap: 12 },
   testName: { fontSize: 15, fontWeight: '600' },
