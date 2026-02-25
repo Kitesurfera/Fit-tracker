@@ -163,6 +163,13 @@ export default function AthleteDetailScreen() {
                   {item.completed && (
                     <Ionicons name="checkmark-circle" size={20} color={colors.success} />
                   )}
+                  <TouchableOpacity
+                    testID={`edit-workout-${item.id}`}
+                    onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: item.id } })}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="create-outline" size={18} color={colors.primary} />
+                  </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleDeleteWorkout(item.id)} activeOpacity={0.7}>
                     <Ionicons name="trash-outline" size={18} color={colors.error} />
                   </TouchableOpacity>
