@@ -35,6 +35,8 @@ App de seguimiento y planificación de fitness con dos tipos de usuario: **entre
 - [x] Tests de Fuerza Máxima bilateral (isquio, gemelo, cuádriceps, tibial, personalizado) en Newtons con valores IZQ/DER y cálculo de asimetría
 - [x] Vista expandible de entrenamientos en perfil del deportista con datos de completion (series completadas/saltadas)
 - [x] Calendario del entrenador distingue entrenamientos por nombre de deportista
+- [x] Porcentaje de realización basado en series completadas/totales en perfil del deportista
+- [x] Duplicar entrenamientos con selector de fecha para entrenador
 
 ## Backlog Priorizado
 ### P1 - Próximas
