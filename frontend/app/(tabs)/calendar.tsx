@@ -191,34 +191,56 @@ export default function CalendarScreen() {
             {/* Expanded exercises */}
             {expandedWorkout === w.id && (
               <View style={[styles.expandedSection, { borderTopColor: colors.border }]}>
-                {w.exercises?.map((ex: any, i: number) => (
-                  <View key={i} style={[styles.exRow, i > 0 && { borderTopColor: colors.border, borderTopWidth: 0.5 }]}>
-                    <View style={[styles.exBadge, { backgroundColor: colors.primary + '12' }]}>
-                      <Text style={[styles.exBadgeText, { color: colors.primary }]}>{i + 1}</Text>
+                {w.exercises?.map((ex: any, i: number) => {
+                  // Get completion data for this exercise if available
+                  const exResult = w.completion_data?.exercise_results?.find((r: any) => r.exercise_index === i);
+                  return (
+                    <View key={i} style={[styles.exRow, i > 0 && { borderTopColor: colors.border, borderTopWidth: 0.5 }]}>
+                      <View style={[styles.exBadge, { backgroundColor: colors.primary + '12' }]}>
+                        <Text style={[styles.exBadgeText, { color: colors.primary }]}>{i + 1}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.exName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                        <Text style={[styles.exDetails, { color: colors.textSecondary }]}>
+                          {[
+                            ex.sets && `${ex.sets} series`,
+                            ex.reps && `${ex.reps} reps`,
+                            ex.weight && `${ex.weight} kg`,
+                            ex.rest && `${ex.rest}s desc`,
+                          ].filter(Boolean).join(' · ') || 'Sin detalles'}
+                        </Text>
+                        {/* Show completion indicators */}
+                        {exResult && (
+                          <View style={styles.completionRow}>
+                            {exResult.set_details?.map((sd: any, si: number) => (
+                              <View key={si} style={[
+                                styles.completionDot,
+                                sd.status === 'completed' && { backgroundColor: colors.success },
+                                sd.status === 'skipped' && { backgroundColor: colors.error },
+                                sd.status === 'pending' && { backgroundColor: colors.border },
+                              ]} />
+                            ))}
+                            {exResult.skipped_sets > 0 && (
+                              <Text style={[styles.completionLabel, { color: colors.error }]}>
+                                {exResult.skipped_sets} saltada{exResult.skipped_sets > 1 ? 's' : ''}
+                              </Text>
+                            )}
+                          </View>
+                        )}
+                        {ex.video_url ? (
+                          <TouchableOpacity
+                            style={styles.videoLink}
+                            onPress={() => Linking.openURL(ex.video_url)}
+                            activeOpacity={0.6}
+                          >
+                            <Ionicons name="play-circle-outline" size={16} color={colors.primary} />
+                            <Text style={[styles.videoLinkText, { color: colors.primary }]}>Ver video</Text>
+                          </TouchableOpacity>
+                        ) : null}
+                      </View>
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.exName, { color: colors.textPrimary }]}>{ex.name}</Text>
-                      <Text style={[styles.exDetails, { color: colors.textSecondary }]}>
-                        {[
-                          ex.sets && `${ex.sets} series`,
-                          ex.reps && `${ex.reps} reps`,
-                          ex.weight && `${ex.weight} kg`,
-                          ex.rest && `${ex.rest}s desc`,
-                        ].filter(Boolean).join(' · ') || 'Sin detalles'}
-                      </Text>
-                      {ex.video_url ? (
-                        <TouchableOpacity
-                          style={styles.videoLink}
-                          onPress={() => Linking.openURL(ex.video_url)}
-                          activeOpacity={0.6}
-                        >
-                          <Ionicons name="play-circle-outline" size={16} color={colors.primary} />
-                          <Text style={[styles.videoLinkText, { color: colors.primary }]}>Ver video</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                    </View>
-                  </View>
-                ))}
+                  );
+                })}
                 {w.notes ? (
                   <View style={[styles.notesBox, { backgroundColor: colors.surfaceHighlight }]}>
                     <Text style={[styles.notesText, { color: colors.textSecondary }]}>{w.notes}</Text>
