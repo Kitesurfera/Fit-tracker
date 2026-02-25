@@ -189,6 +189,7 @@ export default function CalendarScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
                 <Text style={[styles.workoutMeta, { color: colors.textSecondary }]}>
+                  {user?.role === 'trainer' && athleteMap[w.athlete_id] ? `${athleteMap[w.athlete_id]} · ` : ''}
                   {w.exercises?.length || 0} ejercicios{w.completed ? ' · Completado' : ''}
                 </Text>
               </View>
