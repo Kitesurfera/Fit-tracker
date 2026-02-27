@@ -101,6 +101,7 @@ class WorkoutUpdate(BaseModel):
     notes: Optional[str] = None
     completed: Optional[bool] = None
     completion_data: Optional[dict] = None
+    observations: Optional[str] = None
 
 # --- Auth Helpers ---
 def hash_password(password: str) -> str:
