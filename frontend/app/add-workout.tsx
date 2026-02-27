@@ -332,6 +332,8 @@ export default function AddWorkoutScreen() {
                       )}
                     </View>
                   </View>
+                ))}
+              </View>
               <View style={styles.section}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS</Text>
                 <TextInput
