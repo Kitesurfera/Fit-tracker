@@ -300,6 +300,13 @@ export default function TrainingModeScreen() {
               <Ionicons name="open-outline" size={18} color={colors.primary} />
             </TouchableOpacity>
           ) : null}
+
+          {currentEx.exercise_notes ? (
+            <View style={[styles.exerciseNotesBox, { backgroundColor: colors.surfaceHighlight }]}>
+              <Ionicons name="chatbubble-outline" size={16} color={colors.textSecondary} />
+              <Text style={[styles.exerciseNotesText, { color: colors.textSecondary }]}>{currentEx.exercise_notes}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* Sets tracker */}
