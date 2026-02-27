@@ -7,6 +7,7 @@ Full-stack fitness tracking application for trainers ("entrenadores") and athlet
 - **Backend**: FastAPI + MongoDB (pymongo/motor) + JWT Auth
 - **Frontend**: React Native with Expo (SDK 54), Expo Router, TypeScript
 - **Database**: MongoDB
+- **Storage**: Emergent Object Storage (for exercise images)
 
 ## Architecture
 ```
@@ -28,6 +29,8 @@ Full-stack fitness tracking application for trainers ("entrenadores") and athlet
 ```
 
 ## Completed Features
+
+### Core (Before Lote 1)
 - JWT authentication (trainer + athlete roles)
 - Trainer: create/manage athletes
 - Workout CRUD (create, edit, delete, duplicate)
@@ -44,12 +47,12 @@ Full-stack fitness tracking application for trainers ("entrenadores") and athlet
 3. Enhanced athlete home screen (Hecho/Incompleto/Pendiente + % bar)
 4. Edit/delete physical tests (modal with bilateral support)
 
-## Pending / Upcoming Tasks
+### Lote 2 (Completed 2026-02-27)
+1. Rest timer/stopwatch in Training Mode (auto-starts after completing each set, countdown based on exercise rest time, skip button)
+2. Post-workout observations (TextInput on finish screen, saved with workout, visible to trainers on athlete-detail)
+3. Image upload for exercises (object storage integration, camera button on add/edit workout, upload/download API)
 
-### Lote 2 (P1)
-- Image upload for exercises (requires object storage integration)
-- Training Mode rest timer/stopwatch
-- Post-workout observations screen (summary + notes after finishing)
+## Pending / Upcoming Tasks
 
 ### Future (P2)
 - Advanced Analytics/Performance tab with graphs (progress, PRs, bilateral asymmetry)
@@ -63,6 +66,8 @@ Full-stack fitness tracking application for trainers ("entrenadores") and athlet
 - `GET/POST /api/tests`, `PUT/DELETE /api/tests/{id}`
 - `GET /api/tests/history`
 - `GET /api/analytics/summary`, `GET /api/analytics/progress`
+- `POST /api/upload` (image upload)
+- `GET /api/files/{path}` (image download with auth)
 
 ## Test Accounts
 - Trainer: trainer_lote1@test.com / test1234
