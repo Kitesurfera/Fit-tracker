@@ -21,6 +21,12 @@ export default function TrainingModeScreen() {
   // Track each set's status per exercise: setsStatus[exerciseIndex][setIndex] = 'completed'|'skipped'|'pending'
   const [setsStatus, setSetsStatus] = useState<Record<number, SetStatus[]>>({});
   const [finished, setFinished] = useState(false);
+  // Rest timer
+  const [restSeconds, setRestSeconds] = useState(0);
+  const [isResting, setIsResting] = useState(false);
+  const restIntervalRef = useRef<any>(null);
+  // Post-workout observations
+  const [observations, setObservations] = useState('');
 
   useEffect(() => {
     if (workoutId) {
