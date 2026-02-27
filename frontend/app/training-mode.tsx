@@ -43,6 +43,24 @@ export default function TrainingModeScreen() {
     }
   }, [workoutId]);
 
+  // Rest timer countdown - MUST be before any early returns to follow Rules of Hooks
+  useEffect(() => {
+    if (isResting && restSeconds > 0) {
+      restIntervalRef.current = setInterval(() => {
+        setRestSeconds(prev => {
+          if (prev <= 1) {
+            clearInterval(restIntervalRef.current);
+            setIsResting(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
+  }, [isResting]);
+
+  // Early return for loading state - AFTER all hooks
   if (loading || !workout) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -72,23 +90,6 @@ export default function TrainingModeScreen() {
       return updated;
     });
   };
-
-  // Rest timer countdown
-  useEffect(() => {
-    if (isResting && restSeconds > 0) {
-      restIntervalRef.current = setInterval(() => {
-        setRestSeconds(prev => {
-          if (prev <= 1) {
-            clearInterval(restIntervalRef.current);
-            setIsResting(false);
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
-  }, [isResting]);
 
   const skipRest = () => {
     if (restIntervalRef.current) clearInterval(restIntervalRef.current);
