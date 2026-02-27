@@ -321,7 +321,7 @@ export default function AddWorkoutScreen() {
 
                 <View style={[styles.csvCodeBlock, { backgroundColor: colors.surfaceHighlight }]}>
                   <Text style={[styles.csvCodeText, { color: colors.primary }]} selectable>
-                    {'dia,ejercicio,repeticiones,series,video\n2026-02-24,Sentadilla,8,4,https://youtube.com/watch?v=example1\n2026-02-24,Press banca,10,3,\n2026-02-24,Peso muerto,6,4,https://drive.google.com/file/example\n2026-02-25,Zancadas,12,3,\n2026-02-25,Remo con barra,10,4,'}
+                    {'dia,ejercicio,repeticiones,series,video,observaciones\n2026-02-24,Sentadilla,8,4,https://youtube.com/watch?v=example1,Bajar hasta paralelo\n2026-02-24,Press banca,10,3,,Agarre medio\n2026-02-24,Peso muerto,6,4,https://drive.google.com/file/example,\n2026-02-25,Zancadas,12,3,,Alternar piernas\n2026-02-25,Remo con barra,10,4,,'}
                   </Text>
                 </View>
 
