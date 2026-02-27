@@ -427,7 +427,7 @@ export default function TrainingModeScreen() {
                 {doneSets === totalSets ? 'Todas completadas' : `${doneSets} de ${totalSets} completadas`}
               </Text>
             </View>
-          )}
+          ) : null}
 
           {/* Skip entire exercise */}
           {nextPendingSet !== -1 && (
