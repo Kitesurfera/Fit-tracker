@@ -165,54 +165,90 @@ export default function HomeScreen() {
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Mis entrenamientos</Text>
         </View>
       }
-      renderItem={({ item }) => (
-        <View style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
-          <View style={styles.workoutTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{item.title}</Text>
-              <Text style={[styles.workoutDate, { color: colors.textSecondary }]}>{item.date}</Text>
-            </View>
-            {item.completed ? (
-              <View style={[styles.badge, { backgroundColor: colors.success + '15' }]}>
-                <Ionicons name="checkmark" size={14} color={colors.success} />
-                <Text style={[styles.badgeText, { color: colors.success }]}>Hecho</Text>
+      renderItem={({ item }) => {
+        const cd = item.completion_data;
+        const hasCD = cd?.exercise_results?.length > 0;
+        let cSets = 0, sSets = 0, tSets = 0;
+        if (hasCD) {
+          cd.exercise_results.forEach((r: any) => {
+            cSets += r.completed_sets || 0;
+            sSets += r.skipped_sets || 0;
+            tSets += r.total_sets || 0;
+          });
+        }
+        const isIncomplete = item.completed && hasCD && sSets > 0;
+        const isFullDone = item.completed && (!hasCD || sSets === 0);
+        const pct = tSets > 0 ? Math.round((cSets / tSets) * 100) : 0;
+
+        return (
+          <TouchableOpacity
+            testID={`workout-card-${item.id}`}
+            style={[styles.workoutCard, { backgroundColor: colors.surface }]}
+            onPress={() => !item.completed && router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
+            activeOpacity={item.completed ? 1 : 0.7}
+          >
+            <View style={styles.workoutTop}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{item.title}</Text>
+                <Text style={[styles.workoutDate, { color: colors.textSecondary }]}>{item.date}</Text>
               </View>
-            ) : (
-              <View style={[styles.badge, { backgroundColor: colors.warning + '15' }]}>
-                <Text style={[styles.badgeText, { color: colors.warning }]}>Pendiente</Text>
-              </View>
-            )}
-          </View>
-          {item.exercises?.length > 0 && (
-            <View style={[styles.exercisePreview, { borderTopColor: colors.border }]}>
-              {item.exercises.slice(0, 3).map((ex: any, i: number) => (
-                <Text key={i} style={[styles.exerciseText, { color: colors.textSecondary }]}>
-                  {ex.name}{ex.sets ? ` — ${ex.sets}×${ex.reps}` : ''}{ex.weight ? ` @ ${ex.weight}kg` : ''}
-                </Text>
-              ))}
-              {item.exercises.length > 3 && (
-                <Text style={[styles.exerciseMore, { color: colors.primary }]}>
-                  +{item.exercises.length - 3} ejercicios mas
-                </Text>
+              {isFullDone ? (
+                <View style={[styles.badge, { backgroundColor: colors.success + '15' }]}>
+                  <Ionicons name="checkmark-circle" size={14} color={colors.success} />
+                  <Text style={[styles.badgeText, { color: colors.success }]}>Hecho</Text>
+                </View>
+              ) : isIncomplete ? (
+                <View style={[styles.badge, { backgroundColor: colors.warning + '15' }]}>
+                  <Ionicons name="alert-circle" size={14} color={colors.warning} />
+                  <Text style={[styles.badgeText, { color: colors.warning }]}>Incompleto</Text>
+                </View>
+              ) : (
+                <View style={[styles.badge, { backgroundColor: colors.primary + '15' }]}>
+                  <Text style={[styles.badgeText, { color: colors.primary }]}>Por hacer</Text>
+                </View>
               )}
             </View>
-          )}
-          {!item.completed && (
-            <TouchableOpacity
-              testID={`complete-workout-${item.id}`}
-              style={[styles.completeBtn, { backgroundColor: colors.success }]}
-              onPress={async () => {
-                await api.updateWorkout(item.id, { completed: true });
-                loadData();
-              }}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="checkmark-circle-outline" size={16} color="#FFF" />
-              <Text style={styles.completeBtnText}>Marcar como completado</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
+            {hasCD && (
+              <View style={[styles.completionBar, { marginTop: 10 }]}>
+                <View style={[styles.completionBarBg, { backgroundColor: colors.surfaceHighlight }]}>
+                  <View style={[styles.completionBarFill, {
+                    width: `${pct}%`,
+                    backgroundColor: isIncomplete ? colors.warning : colors.success,
+                  }]} />
+                </View>
+                <Text style={[styles.completionPct, { color: isIncomplete ? colors.warning : colors.success }]}>
+                  {pct}% ({cSets}/{tSets} series)
+                </Text>
+              </View>
+            )}
+            {item.exercises?.length > 0 && (
+              <View style={[styles.exercisePreview, { borderTopColor: colors.border }]}>
+                {item.exercises.slice(0, 3).map((ex: any, i: number) => (
+                  <Text key={i} style={[styles.exerciseText, { color: colors.textSecondary }]}>
+                    {ex.name}{ex.sets ? ` — ${ex.sets}×${ex.reps}` : ''}{ex.weight ? ` @ ${ex.weight}kg` : ''}
+                  </Text>
+                ))}
+                {item.exercises.length > 3 && (
+                  <Text style={[styles.exerciseMore, { color: colors.primary }]}>
+                    +{item.exercises.length - 3} ejercicios mas
+                  </Text>
+                )}
+              </View>
+            )}
+            {!item.completed && (
+              <TouchableOpacity
+                testID={`start-training-${item.id}`}
+                style={[styles.completeBtn, { backgroundColor: colors.primary }]}
+                onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="play-circle-outline" size={16} color="#FFF" />
+                <Text style={styles.completeBtnText}>Iniciar entrenamiento</Text>
+              </TouchableOpacity>
+            )}
+          </TouchableOpacity>
+        );
+      }}
       ListEmptyComponent={
         <View style={styles.emptyState}>
           <Ionicons name="barbell-outline" size={44} color={colors.textSecondary} />
