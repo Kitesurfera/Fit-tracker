@@ -92,6 +92,8 @@ class TestUpdate(BaseModel):
     value: Optional[float] = None
     unit: Optional[str] = None
     notes: Optional[str] = None
+    value_left: Optional[float] = None
+    value_right: Optional[float] = None
 
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
