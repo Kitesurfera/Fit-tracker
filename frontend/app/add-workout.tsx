@@ -299,11 +299,39 @@ export default function AddWorkoutScreen() {
                         placeholderTextColor={colors.textSecondary}
                       />
                     </View>
+                    {/* Image upload */}
+                    <View style={[styles.videoUrlRow, { borderTopColor: colors.border }]}>
+                      {imagePreviews[i] || (ex as any).image_path ? (
+                        <View style={styles.imagePreviewRow}>
+                          <Image source={{ uri: imagePreviews[i] || '' }} style={styles.imageThumb} />
+                          <Text style={[styles.imageFileName, { color: colors.textSecondary }]} numberOfLines={1}>Imagen adjunta</Text>
+                          <TouchableOpacity onPress={() => {
+                            updateExercise(i, 'image_path', '');
+                            setImagePreviews(prev => { const n = {...prev}; delete n[i]; return n; });
+                          }}>
+                            <Ionicons name="close-circle" size={20} color={colors.error} />
+                          </TouchableOpacity>
+                        </View>
+                      ) : (
+                        <TouchableOpacity
+                          testID={`upload-image-${i}`}
+                          style={styles.imagePickBtn}
+                          onPress={() => pickExerciseImage(i)}
+                          disabled={imageUploading === i}
+                          activeOpacity={0.7}
+                        >
+                          {imageUploading === i ? (
+                            <ActivityIndicator size="small" color={colors.primary} />
+                          ) : (
+                            <Ionicons name="camera-outline" size={18} color={colors.primary} />
+                          )}
+                          <Text style={[styles.imagePickText, { color: colors.primary }]}>
+                            {imageUploading === i ? 'Subiendo...' : 'Subir imagen/dibujo'}
+                          </Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                   </View>
-                ))}
-              </View>
-
-              {/* Notes */}
               <View style={styles.section}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS</Text>
                 <TextInput
