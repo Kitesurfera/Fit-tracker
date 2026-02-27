@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator, RefreshControl
+  View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator,
+  RefreshControl, Alert, Modal, TextInput
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -40,6 +41,14 @@ export default function TestsScreen() {
   const [selectedAthlete, setSelectedAthlete] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  // Edit modal state
+  const [editTest, setEditTest] = useState<any>(null);
+  const [editValue, setEditValue] = useState('');
+  const [editLeft, setEditLeft] = useState('');
+  const [editRight, setEditRight] = useState('');
+  const [editUnit, setEditUnit] = useState('');
+  const [editNotes, setEditNotes] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const loadData = async () => {
     try {
@@ -64,14 +73,55 @@ export default function TestsScreen() {
 
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
-  const deleteTest = async (testId: string) => {
+  const deleteTest = (testId: string, testName: string) => {
+    Alert.alert('Eliminar test', `Eliminar "${testName}"?`, [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar', style: 'destructive', onPress: async () => {
+          try {
+            await api.deleteTest(testId);
+            setTests(prev => prev.filter(t => t.id !== testId));
+          } catch (e) { console.log(e); }
+        }
+      },
+    ]);
+  };
+
+  const openEditModal = (test: any) => {
+    setEditTest(test);
+    setEditValue(String(test.value ?? ''));
+    setEditLeft(String(test.value_left ?? ''));
+    setEditRight(String(test.value_right ?? ''));
+    setEditUnit(test.unit || '');
+    setEditNotes(test.notes || '');
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editTest) return;
+    setSaving(true);
     try {
-      await api.deleteTest(testId);
-      setTests(prev => prev.filter(t => t.id !== testId));
-    } catch (e) {
-      console.log(e);
+      const updateData: any = {
+        unit: editUnit,
+        notes: editNotes,
+      };
+      if (editTest.value_left != null || editTest.value_right != null) {
+        updateData.value = parseFloat(editValue) || 0;
+        updateData.value_left = parseFloat(editLeft) || 0;
+        updateData.value_right = parseFloat(editRight) || 0;
+      } else {
+        updateData.value = parseFloat(editValue) || 0;
+      }
+      const updated = await api.updateTest(editTest.id, updateData);
+      setTests(prev => prev.map(t => t.id === editTest.id ? { ...t, ...updated } : t));
+      setEditTest(null);
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'No se pudo actualizar');
+    } finally {
+      setSaving(false);
     }
   };
+
+  const isBilateral = editTest?.value_left != null || editTest?.value_right != null;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
