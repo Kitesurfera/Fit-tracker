@@ -263,6 +263,16 @@ export default function AddWorkoutScreen() {
                         keyboardType="url"
                       />
                     </View>
+                    {/* Exercise notes */}
+                    <View style={[styles.videoUrlRow, { borderTopColor: colors.border }]}>
+                      <Ionicons name="chatbubble-outline" size={16} color={colors.textSecondary} />
+                      <TextInput
+                        style={[styles.videoUrlInput, { color: colors.textPrimary }]}
+                        value={ex.exercise_notes} onChangeText={v => updateExercise(i, 'exercise_notes', v)}
+                        placeholder="Observaciones del ejercicio..."
+                        placeholderTextColor={colors.textSecondary}
+                      />
+                    </View>
                   </View>
                 ))}
               </View>
