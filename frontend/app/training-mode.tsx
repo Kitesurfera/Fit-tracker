@@ -515,6 +515,17 @@ const styles = StyleSheet.create({
   videoBtnUrl: { fontSize: 12, marginTop: 2 },
   exerciseNotesBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, width: '100%', borderRadius: 10, padding: 12 },
   exerciseNotesText: { flex: 1, fontSize: 14, fontStyle: 'italic', lineHeight: 20 },
+  // Rest timer styles
+  restTimerCard: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 12, padding: 16, marginTop: 14 },
+  restTimerContent: { flex: 1 },
+  restTimerLabel: { fontSize: 12, fontWeight: '600', textTransform: 'uppercase', letterSpacing: 0.5 },
+  restTimerValue: { fontSize: 32, fontWeight: '800', fontVariant: ['tabular-nums'] },
+  skipRestBtn: { borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
+  skipRestText: { fontSize: 14, fontWeight: '600' },
+  // Observations styles
+  observationsCard: { borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 16, gap: 10 },
+  observationsLabel: { fontSize: 16, fontWeight: '700' },
+  observationsInput: { borderRadius: 10, borderWidth: 1, padding: 14, fontSize: 15, minHeight: 80, textAlignVertical: 'top' },
   setsCard: { borderRadius: 16, padding: 20, gap: 16 },
   setsTitle: { fontSize: 16, fontWeight: '600' },
   setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
