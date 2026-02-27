@@ -80,6 +80,27 @@ export const api = {
   changePassword: (data: { current_password: string; new_password: string }) =>
     request('/api/profile/password', { method: 'PUT', body: JSON.stringify(data) }),
 
+  // File Upload
+  uploadFile: async (fileUri: string, fileName: string, fileType: string) => {
+    const token = await AsyncStorage.getItem('auth_token');
+    const formData = new FormData();
+    formData.append('file', { uri: fileUri, name: fileName, type: fileType } as any);
+    const res = await fetch(`${BACKEND_URL}/api/upload`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: 'Upload failed' }));
+      throw new Error(err.detail || 'Upload failed');
+    }
+    return res.json();
+  },
+  getFileUrl: async (storagePath: string) => {
+    const token = await AsyncStorage.getItem('auth_token');
+    return `${BACKEND_URL}/api/files/${storagePath}?auth=${token}`;
+  },
+
   // CSV Template URL
   getCSVTemplateURL: () => `${BACKEND_URL}/api/workouts/csv-template`,
 };
