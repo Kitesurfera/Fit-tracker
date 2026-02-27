@@ -416,7 +416,7 @@ export default function TrainingModeScreen() {
                 <Text style={[styles.skipSetText, { color: colors.error }]}>Saltar</Text>
               </TouchableOpacity>
             </View>
-          ) : (
+          ) : nextPendingSet === -1 ? (
             <View style={[styles.allDoneBadge, { backgroundColor: doneSets === totalSets ? colors.success + '12' : colors.warning + '12' }]}>
               <Ionicons
                 name={doneSets === totalSets ? 'checkmark-circle' : 'alert-circle'}
