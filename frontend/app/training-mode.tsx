@@ -438,6 +438,8 @@ const styles = StyleSheet.create({
   },
   videoBtnTitle: { fontSize: 14, fontWeight: '600' },
   videoBtnUrl: { fontSize: 12, marginTop: 2 },
+  exerciseNotesBox: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, width: '100%', borderRadius: 10, padding: 12 },
+  exerciseNotesText: { flex: 1, fontSize: 14, fontStyle: 'italic', lineHeight: 20 },
   setsCard: { borderRadius: 16, padding: 20, gap: 16 },
   setsTitle: { fontSize: 16, fontWeight: '600' },
   setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
