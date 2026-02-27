@@ -34,7 +34,7 @@ export default function AddWorkoutScreen() {
   }, []);
 
   const addExercise = () => {
-    setExercises([...exercises, { name: '', sets: '', reps: '', weight: '', rest: '', video_url: '' }]);
+    setExercises([...exercises, { name: '', sets: '', reps: '', weight: '', rest: '', video_url: '', exercise_notes: '' }]);
   };
 
   const updateExercise = (index: number, field: string, value: string) => {
