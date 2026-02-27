@@ -139,10 +139,17 @@ export default function EditWorkoutScreen() {
 
             {exercises.map((ex, i) => (
               <View key={i} style={[styles.exerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                {/* Exercise header with name and delete */}
+                {/* Exercise header with name, reorder, delete */}
                 <View style={styles.exerciseHeader}>
-                  <View style={[styles.exNumBadge, { backgroundColor: colors.primary + '15' }]}>
-                    <Text style={[styles.exNum, { color: colors.primary }]}>{i + 1}</Text>
+                  <View style={styles.reorderBtns}>
+                    <TouchableOpacity onPress={() => moveExercise(i, 'up')} disabled={i === 0}
+                      activeOpacity={0.6} style={[styles.reorderBtn, i === 0 && { opacity: 0.25 }]}>
+                      <Ionicons name="chevron-up" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => moveExercise(i, 'down')} disabled={i === exercises.length - 1}
+                      activeOpacity={0.6} style={[styles.reorderBtn, i === exercises.length - 1 && { opacity: 0.25 }]}>
+                      <Ionicons name="chevron-down" size={16} color={colors.textSecondary} />
+                    </TouchableOpacity>
                   </View>
                   <TextInput
                     style={[styles.exNameInput, { color: colors.textPrimary }]}
