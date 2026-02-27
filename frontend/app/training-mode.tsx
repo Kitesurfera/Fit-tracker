@@ -126,14 +126,11 @@ export default function TrainingModeScreen() {
 
   const skipSet = () => {
     if (nextPendingSet === -1) return;
+    if (isResting) skipRest();
     updateSetStatus(currentExIndex, nextPendingSet, 'skipped');
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
     if (remaining === 0) {
-      if (currentExIndex < exercises.length - 1) {
-        setTimeout(() => setCurrentExIndex(currentExIndex + 1), 400);
-      } else {
-        setTimeout(() => setFinished(true), 400);
-      }
+      autoAdvance(currentExIndex);
     }
   };
 
