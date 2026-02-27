@@ -308,6 +308,10 @@ const styles = StyleSheet.create({
   exercisePreview: { marginTop: 12, paddingTop: 12, borderTopWidth: 0.5, gap: 4 },
   exerciseText: { fontSize: 14 },
   exerciseMore: { fontSize: 13, fontWeight: '500', marginTop: 2 },
+  completionBar: { gap: 4 },
+  completionBarBg: { height: 4, borderRadius: 2, overflow: 'hidden' },
+  completionBarFill: { height: '100%', borderRadius: 2 },
+  completionPct: { fontSize: 12, fontWeight: '600' },
   completeBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
     marginTop: 14, borderRadius: 8, paddingVertical: 12,
