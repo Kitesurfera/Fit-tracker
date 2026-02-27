@@ -73,17 +73,54 @@ export default function TrainingModeScreen() {
     });
   };
 
+  // Rest timer countdown
+  useEffect(() => {
+    if (isResting && restSeconds > 0) {
+      restIntervalRef.current = setInterval(() => {
+        setRestSeconds(prev => {
+          if (prev <= 1) {
+            clearInterval(restIntervalRef.current);
+            setIsResting(false);
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }
+    return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
+  }, [isResting]);
+
+  const skipRest = () => {
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    setIsResting(false);
+    setRestSeconds(0);
+  };
+
+  const startRestTimer = () => {
+    const restTime = parseInt(currentEx?.rest) || 0;
+    if (restTime > 0) {
+      setRestSeconds(restTime);
+      setIsResting(true);
+    }
+  };
+
+  const autoAdvance = (exIdx: number) => {
+    if (exIdx < exercises.length - 1) {
+      setTimeout(() => setCurrentExIndex(exIdx + 1), 400);
+    } else {
+      setTimeout(() => setFinished(true), 400);
+    }
+  };
+
   const completeSet = () => {
     if (nextPendingSet === -1) return;
     updateSetStatus(currentExIndex, nextPendingSet, 'completed');
-    // If this was the last pending set, auto-advance
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
     if (remaining === 0) {
-      if (currentExIndex < exercises.length - 1) {
-        setTimeout(() => setCurrentExIndex(currentExIndex + 1), 400);
-      } else {
-        setTimeout(() => setFinished(true), 400);
-      }
+      autoAdvance(currentExIndex);
+    } else {
+      // Start rest timer between sets
+      startRestTimer();
     }
   };
 
