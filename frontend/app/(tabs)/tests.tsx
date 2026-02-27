@@ -264,6 +264,87 @@ export default function TestsScreen() {
           }
         />
       )}
+
+      {/* Edit Test Modal */}
+      <Modal visible={!!editTest} transparent animationType="fade" onRequestClose={() => setEditTest(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Editar test</Text>
+            <Text style={[styles.modalSub, { color: colors.textSecondary }]}>
+              {editTest?.test_name === 'custom' ? editTest?.custom_name : (TEST_LABELS[editTest?.test_name] || editTest?.test_name)}
+            </Text>
+
+            {isBilateral ? (
+              <View style={styles.modalRow}>
+                <View style={[styles.modalField, { flex: 1 }]}>
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>IZQ</Text>
+                  <TextInput
+                    testID="edit-test-left"
+                    style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                    value={editLeft} onChangeText={setEditLeft} keyboardType="numeric" placeholder="0"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+                <View style={[styles.modalField, { flex: 1 }]}>
+                  <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>DER</Text>
+                  <TextInput
+                    testID="edit-test-right"
+                    style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                    value={editRight} onChangeText={setEditRight} keyboardType="numeric" placeholder="0"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={styles.modalField}>
+                <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>VALOR</Text>
+                <TextInput
+                  testID="edit-test-value"
+                  style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                  value={editValue} onChangeText={setEditValue} keyboardType="numeric" placeholder="0"
+                  placeholderTextColor={colors.textSecondary}
+                />
+              </View>
+            )}
+
+            <View style={styles.modalField}>
+              <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>UNIDAD</Text>
+              <TextInput
+                testID="edit-test-unit"
+                style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                value={editUnit} onChangeText={setEditUnit} placeholder="kg, cm, N..."
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            <View style={styles.modalField}>
+              <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>NOTAS</Text>
+              <TextInput
+                testID="edit-test-notes"
+                style={[styles.modalInput, styles.modalTextArea, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                value={editNotes} onChangeText={setEditNotes} placeholder="Notas opcionales..."
+                placeholderTextColor={colors.textSecondary} multiline
+              />
+            </View>
+
+            <View style={styles.modalBtns}>
+              <TouchableOpacity
+                style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]}
+                onPress={() => setEditTest(null)} activeOpacity={0.7}>
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="save-edit-test-btn"
+                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+                onPress={handleSaveEdit} disabled={saving} activeOpacity={0.7}>
+                {saving ? <ActivityIndicator color="#FFF" size="small" /> : (
+                  <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Guardar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
