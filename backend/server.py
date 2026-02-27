@@ -587,6 +587,37 @@ async def analytics_progress(
         }
     return progress
 
+# --- File Upload/Download ---
+@api_router.post("/upload")
+async def upload_file(file: UploadFile = File(...), user=Depends(get_current_user)):
+    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
+    allowed = {"jpg", "jpeg", "png", "gif", "webp"}
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"Tipo de archivo no permitido. Permitidos: {', '.join(allowed)}")
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Archivo demasiado grande (max 5MB)")
+    file_id = str(uuid.uuid4())
+    path = f"{APP_NAME}/uploads/{user['id']}/{file_id}.{ext}"
+    result = put_object(path, data, file.content_type or "application/octet-stream")
+    return {"file_id": file_id, "storage_path": result["path"], "filename": file.filename}
+
+@api_router.get("/files/{path:path}")
+async def download_file(path: str, auth: str = Query(None), authorization: str = Header(None)):
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+    elif auth:
+        token = auth
+    if not token:
+        raise HTTPException(status_code=401, detail="No auth provided")
+    decode_token(token)
+    try:
+        data, content_type = get_object(path)
+        return Response(content=data, media_type=content_type)
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found")
+
 # Include router
 app.include_router(api_router)
 
