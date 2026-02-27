@@ -372,7 +372,28 @@ export default function TrainingModeScreen() {
             ))}
           </View>
 
-          {nextPendingSet !== -1 ? (
+          {/* Rest Timer */}
+          {isResting && (
+            <View style={[styles.restTimerCard, { backgroundColor: colors.primary + '10' }]}>
+              <Ionicons name="timer-outline" size={28} color={colors.primary} />
+              <View style={styles.restTimerContent}>
+                <Text style={[styles.restTimerLabel, { color: colors.textSecondary }]}>Descanso</Text>
+                <Text style={[styles.restTimerValue, { color: colors.primary }]}>
+                  {Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, '0')}
+                </Text>
+              </View>
+              <TouchableOpacity
+                testID="skip-rest-btn"
+                style={[styles.skipRestBtn, { borderColor: colors.primary }]}
+                onPress={skipRest}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.skipRestText, { color: colors.primary }]}>Saltar</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {nextPendingSet !== -1 && !isResting ? (
             <View style={styles.setActions}>
               <TouchableOpacity
                 testID="complete-set-btn"
