@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert, Image
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
