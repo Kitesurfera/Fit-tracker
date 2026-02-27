@@ -214,9 +214,16 @@ export default function TestsScreen() {
                     {item.test_type === 'strength' ? 'FUERZA' : item.test_type === 'max_force' ? 'F. MAX' : 'PLIO'}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => deleteTest(item.id)} activeOpacity={0.7}>
-                  <Ionicons name="trash-outline" size={18} color={colors.error} />
-                </TouchableOpacity>
+                <View style={styles.testActions}>
+                  <TouchableOpacity testID={`edit-test-${item.id}`} onPress={() => openEditModal(item)} activeOpacity={0.7}>
+                    <Ionicons name="create-outline" size={18} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity testID={`delete-test-${item.id}`}
+                    onPress={() => deleteTest(item.id, item.test_name === 'custom' ? item.custom_name : (TEST_LABELS[item.test_name] || item.test_name))}
+                    activeOpacity={0.7}>
+                    <Ionicons name="trash-outline" size={18} color={colors.error} />
+                  </TouchableOpacity>
+                </View>
               </View>
               <Text style={[styles.testName, { color: colors.textPrimary }]}>
                 {item.test_name === 'custom' ? item.custom_name : (TEST_LABELS[item.test_name] || item.test_name)}
