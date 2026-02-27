@@ -171,14 +171,15 @@ export default function TrainingModeScreen() {
 
   const handleFinish = async () => {
     const completionData = buildCompletionData();
-    const allCompleted = completionData.exercise_results.every(
-      (r: any) => r.skipped_sets === 0
-    );
     try {
-      await api.updateWorkout(workoutId!, {
+      const updateData: any = {
         completed: true,
         completion_data: completionData,
-      });
+      };
+      if (observations.trim()) {
+        updateData.observations = observations.trim();
+      }
+      await api.updateWorkout(workoutId!, updateData);
     } catch (e) { console.log(e); }
     router.back();
   };
