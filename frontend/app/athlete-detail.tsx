@@ -449,6 +449,7 @@ const styles = StyleSheet.create({
   videoLinkText: { fontSize: 13, fontWeight: '600' },
   exNotes: { fontSize: 13, fontStyle: 'italic', marginTop: 4 },
   notesBox: { borderRadius: 8, padding: 10, marginTop: 8 },
+  notesLabel: { fontSize: 12, fontWeight: '700', marginBottom: 4 },
   notesText: { fontSize: 13, fontStyle: 'italic' },
   testCard: { borderRadius: 12, padding: 14, marginBottom: 10, borderWidth: 1 },
   testValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 6 },
