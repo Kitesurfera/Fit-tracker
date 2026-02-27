@@ -22,7 +22,7 @@ export default function AddWorkoutScreen() {
   const [title, setTitle] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState('');
-  const [exercises, setExercises] = useState([{ name: '', sets: '', reps: '', weight: '', rest: '', video_url: '' }]);
+  const [exercises, setExercises] = useState([{ name: '', sets: '', reps: '', weight: '', rest: '', video_url: '', exercise_notes: '' }]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [mode, setMode] = useState<TabMode>('manual');
