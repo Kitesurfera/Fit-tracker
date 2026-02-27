@@ -240,6 +240,21 @@ export default function TrainingModeScreen() {
             })}
           </View>
 
+          {/* Post-workout observations */}
+          <View style={[styles.observationsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.observationsLabel, { color: colors.textPrimary }]}>Observaciones de la sesion</Text>
+            <TextInput
+              testID="workout-observations-input"
+              style={[styles.observationsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+              value={observations}
+              onChangeText={setObservations}
+              placeholder="Como te sentiste? Algo a destacar..."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              numberOfLines={3}
+            />
+          </View>
+
           <TouchableOpacity
             testID="finish-training-btn"
             style={[styles.finishBtn, { backgroundColor: colors.primary }]}
