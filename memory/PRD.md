@@ -1,54 +1,69 @@
-# Performance Pro - PRD
+# Performance Pro - Fitness Tracking App
 
-## Problema Original
-App de seguimiento y planificación de fitness con dos tipos de usuario: **entrenador** y **deportistas**.
+## Problem Statement
+Full-stack fitness tracking application for trainers ("entrenadores") and athletes ("deportistas"). Trainers manage athlete profiles, create/assign workouts, and view progress. Athletes view assigned workouts, track progress in a guided "Training Mode", and log physical test results.
 
-## Requisitos del Producto
-- **Autenticación**: Sistema JWT con roles (entrenador/deportista)
-- **Gestión de usuarios**: Entrenadores crean cuentas de deportistas
-- **Entrenamientos**: CRUD manual + importación CSV con soporte de video URLs
-- **Tests físicos**: RM en sentadilla, press banca, peso muerto, CMJ, SJ, DJ + personalizados
-- **Calendario interactivo**: Marcadores por día, vista expandible con ejercicios
-- **Modo Entrenamiento**: Guía paso a paso para deportistas
-- **UI/UX**: Estilo minimalista, selector de tema (Claro/Oscuro/Sistema), navegación por pestañas
+## Tech Stack
+- **Backend**: FastAPI + MongoDB (pymongo/motor) + JWT Auth
+- **Frontend**: React Native with Expo (SDK 54), Expo Router, TypeScript
+- **Database**: MongoDB
 
-## Arquitectura
-- **Backend**: FastAPI + MongoDB (motor async) + JWT
-- **Frontend**: Expo (React Native SDK 54) + Expo Router + TypeScript
-- **Estado**: React Hooks + AsyncStorage para persistencia
+## Architecture
+```
+/app
+├── backend/
+│   ├── server.py         # All API routes and models
+│   └── tests/            # Pytest test files
+└── frontend/
+    ├── src/api.ts        # API client
+    ├── src/context/      # Auth context
+    └── app/              # Expo Router pages
+        ├── (auth)/       # Login/Register
+        ├── (tabs)/       # Home, Calendar, Tests, Analytics, Settings
+        ├── add-workout.tsx
+        ├── edit-workout.tsx
+        ├── add-test.tsx
+        ├── athlete-detail.tsx
+        └── training-mode.tsx
+```
 
-## Funcionalidades Implementadas
-- [x] Autenticación JWT (login/registro)
-- [x] Gestión de deportistas (CRUD)
-- [x] Entrenamientos manuales con video URLs
-- [x] Importación CSV con columna de video
-- [x] Plantilla CSV descargable e inline
-- [x] Tests físicos (fuerza + pliometría)
-- [x] Calendario interactivo con marcadores y expansión
-- [x] Modo Entrenamiento guiado (series tracker, videos, navegación)
-- [x] Ajustes editables (perfil, contraseña, notificaciones, unidades, tema)
-- [x] Selector de tema 3 opciones
-- [x] Analytics básico (resumen + progreso por test)
-- [x] Completar entrenamientos (flujo completo)
-- [x] Edición de entrenamientos por entrenador (editar, añadir, eliminar ejercicios)
-- [x] Saltar series/ejercicios en Modo Entrenamiento + reporte detallado para entrenador
-- [x] Tests de Fuerza Máxima bilateral (isquio, gemelo, cuádriceps, tibial, personalizado) en Newtons con valores IZQ/DER y cálculo de asimetría
-- [x] Vista expandible de entrenamientos en perfil del deportista con datos de completion (series completadas/saltadas)
-- [x] Calendario del entrenador distingue entrenamientos por nombre de deportista
-- [x] Porcentaje de realización basado en series completadas/totales en perfil del deportista
-- [x] Duplicar entrenamientos con selector de fecha para entrenador
+## Completed Features
+- JWT authentication (trainer + athlete roles)
+- Trainer: create/manage athletes
+- Workout CRUD (create, edit, delete, duplicate)
+- CSV import/export for workouts
+- Interactive calendar with athlete names
+- Training Mode with set-by-set completion tracking
+- Bilateral physical tests (max force with left/right values)
+- Series-based completion percentage calculation
+- Workout duplication to new dates
 
-## Backlog Priorizado
-### P1 - Próximas
-- Analíticas avanzadas: gráficos de progreso temporal por test
-- Mejorar pestaña de Rendimiento con charts más visuales
+### Lote 1 (Completed 2026-02-27)
+1. Exercise observations (exercise_notes) in add/edit workout
+2. Exercise reordering (up/down arrows) in edit-workout
+3. Enhanced athlete home screen (Hecho/Incompleto/Pendiente + % bar)
+4. Edit/delete physical tests (modal with bilateral support)
 
-### P2 - Futuras
-- Notificaciones de récords personales (PR)
-- Registro de intensidad de entrenamientos (RPE)
-- Exportación de datos de progreso
-- Estadísticas semanales/mensuales
+## Pending / Upcoming Tasks
 
-## Credenciales de Test
-- Entrenador: trainer_test@test.com / test123
-- Deportista: athlete_test@test.com / test123
+### Lote 2 (P1)
+- Image upload for exercises (requires object storage integration)
+- Training Mode rest timer/stopwatch
+- Post-workout observations screen (summary + notes after finishing)
+
+### Future (P2)
+- Advanced Analytics/Performance tab with graphs (progress, PRs, bilateral asymmetry)
+- Backend refactoring (split server.py into routes/models/services)
+
+## Key API Endpoints
+- `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/auth/me`
+- `GET/POST /api/athletes`, `GET/DELETE /api/athletes/{id}`
+- `GET/POST /api/workouts`, `GET/PUT/DELETE /api/workouts/{id}`
+- `POST /api/workouts/csv`, `GET /api/workouts/csv-template`
+- `GET/POST /api/tests`, `PUT/DELETE /api/tests/{id}`
+- `GET /api/tests/history`
+- `GET /api/analytics/summary`, `GET /api/analytics/progress`
+
+## Test Accounts
+- Trainer: trainer_lote1@test.com / test1234
+- Athlete: athlete_lote1@test.com / test1234
