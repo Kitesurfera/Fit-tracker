@@ -515,4 +515,10 @@ const styles = StyleSheet.create({
   errorText: { fontSize: 14, textAlign: 'center' },
   submitBtn: { borderRadius: 10, padding: 16, alignItems: 'center' },
   submitText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  // Image upload styles
+  imagePreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  imageThumb: { width: 40, height: 40, borderRadius: 6 },
+  imageFileName: { flex: 1, fontSize: 13 },
+  imagePickBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
+  imagePickText: { fontSize: 14, fontWeight: '500' },
 });
