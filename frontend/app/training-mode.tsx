@@ -135,23 +135,21 @@ export default function TrainingModeScreen() {
   };
 
   const skipExercise = () => {
-    // Mark all remaining pending sets as skipped
+    if (isResting) skipRest();
     setSetsStatus(prev => {
       const updated = { ...prev };
       updated[currentExIndex] = (prev[currentExIndex] || []).map(s => s === 'pending' ? 'skipped' : s);
       return updated;
     });
-    if (currentExIndex < exercises.length - 1) {
-      setTimeout(() => setCurrentExIndex(currentExIndex + 1), 300);
-    } else {
-      setTimeout(() => setFinished(true), 300);
-    }
+    autoAdvance(currentExIndex);
   };
 
   const nextExercise = () => {
+    if (isResting) skipRest();
     if (currentExIndex < exercises.length - 1) setCurrentExIndex(currentExIndex + 1);
   };
   const prevExercise = () => {
+    if (isResting) skipRest();
     if (currentExIndex > 0) setCurrentExIndex(currentExIndex - 1);
   };
 
