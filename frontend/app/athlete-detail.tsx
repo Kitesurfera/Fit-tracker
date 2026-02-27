@@ -243,6 +243,12 @@ export default function AthleteDetailScreen() {
                 <Text style={[styles.notesText, { color: colors.textSecondary }]}>{item.notes}</Text>
               </View>
             ) : null}
+            {item.observations ? (
+              <View style={[styles.notesBox, { backgroundColor: colors.warning + '10' }]}>
+                <Text style={[styles.notesLabel, { color: colors.warning }]}>Observaciones del deportista:</Text>
+                <Text style={[styles.notesText, { color: colors.textSecondary }]}>{item.observations}</Text>
+              </View>
+            ) : null}
           </View>
         )}
       </TouchableOpacity>
