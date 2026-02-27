@@ -282,6 +282,8 @@ export default function EditWorkoutScreen() {
                   )}
                 </View>
               </View>
+            ))}
+          </View>
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS</Text>
             <TextInput
