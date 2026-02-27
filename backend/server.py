@@ -327,7 +327,7 @@ async def upload_csv_workouts(athlete_id: str, file: UploadFile = File(...), tra
         if not exercise_name:
             continue
             
-        exercise = {"name": exercise_name, "sets": sets, "reps": reps, "weight": "", "rest": "", "video_url": row.get('video', '')}
+        exercise = {"name": exercise_name, "sets": sets, "reps": reps, "weight": "", "rest": "", "video_url": row.get('video', ''), "exercise_notes": row.get('observaciones', '')}
         
         if date not in workouts_by_date:
             workouts_by_date[date] = []
@@ -355,12 +355,12 @@ async def upload_csv_workouts(athlete_id: str, file: UploadFile = File(...), tra
 async def download_csv_template():
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(['dia', 'ejercicio', 'repeticiones', 'series', 'video'])
-    writer.writerow(['2026-02-24', 'Sentadilla', '8', '4', 'https://youtube.com/watch?v=example1'])
-    writer.writerow(['2026-02-24', 'Press banca', '10', '3', ''])
-    writer.writerow(['2026-02-24', 'Peso muerto', '6', '4', 'https://drive.google.com/file/example'])
-    writer.writerow(['2026-02-25', 'Zancadas', '12', '3', ''])
-    writer.writerow(['2026-02-25', 'Remo con barra', '10', '4', ''])
+    writer.writerow(['dia', 'ejercicio', 'repeticiones', 'series', 'video', 'observaciones'])
+    writer.writerow(['2026-02-24', 'Sentadilla', '8', '4', 'https://youtube.com/watch?v=example1', 'Bajar hasta paralelo'])
+    writer.writerow(['2026-02-24', 'Press banca', '10', '3', '', 'Agarre medio'])
+    writer.writerow(['2026-02-24', 'Peso muerto', '6', '4', 'https://drive.google.com/file/example', ''])
+    writer.writerow(['2026-02-25', 'Zancadas', '12', '3', '', 'Alternar piernas'])
+    writer.writerow(['2026-02-25', 'Remo con barra', '10', '4', '', ''])
     output.seek(0)
     return StreamingResponse(
         iter([output.getvalue()]),
