@@ -225,6 +225,9 @@ export default function AthleteDetailScreen() {
                         )}
                       </View>
                     )}
+                    {ex.exercise_notes ? (
+                      <Text style={[styles.exNotes, { color: colors.textSecondary }]}>{ex.exercise_notes}</Text>
+                    ) : null}
                     {ex.video_url ? (
                       <TouchableOpacity style={styles.videoLink} onPress={() => Linking.openURL(ex.video_url)} activeOpacity={0.6}>
                         <Ionicons name="play-circle-outline" size={16} color={colors.primary} />
