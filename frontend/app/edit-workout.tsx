@@ -35,6 +35,7 @@ export default function EditWorkoutScreen() {
             weight: ex.weight || '',
             rest: ex.rest || '',
             video_url: ex.video_url || '',
+            exercise_notes: ex.exercise_notes || '',
           }))
         );
       }).catch(() => setError('No se pudo cargar el entrenamiento'))
@@ -49,7 +50,15 @@ export default function EditWorkoutScreen() {
   };
 
   const addExercise = () => {
-    setExercises([...exercises, { name: '', sets: '', reps: '', weight: '', rest: '', video_url: '' }]);
+    setExercises([...exercises, { name: '', sets: '', reps: '', weight: '', rest: '', video_url: '', exercise_notes: '' }]);
+  };
+
+  const moveExercise = (index: number, direction: 'up' | 'down') => {
+    const newIndex = direction === 'up' ? index - 1 : index + 1;
+    if (newIndex < 0 || newIndex >= exercises.length) return;
+    const updated = [...exercises];
+    [updated[index], updated[newIndex]] = [updated[newIndex], updated[index]];
+    setExercises(updated);
   };
 
   const removeExercise = (index: number) => {
