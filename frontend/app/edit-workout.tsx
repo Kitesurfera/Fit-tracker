@@ -281,6 +281,8 @@ const styles = StyleSheet.create({
   addExText: { fontSize: 13, fontWeight: '600' },
   exerciseCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   exerciseHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
+  reorderBtns: { gap: 2 },
+  reorderBtn: { padding: 2 },
   exNumBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   exNum: { fontSize: 13, fontWeight: '700' },
   exNameInput: { flex: 1, fontSize: 16, fontWeight: '500' },
