@@ -378,4 +378,18 @@ const styles = StyleSheet.create({
   testNotes: { fontSize: 13, marginTop: 4, fontStyle: 'italic' },
   emptyState: { alignItems: 'center', paddingTop: 48, gap: 12 },
   emptyText: { fontSize: 16, fontWeight: '500' },
+  testActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  // Modal styles
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalCard: { width: '100%', borderRadius: 16, padding: 24, gap: 14 },
+  modalTitle: { fontSize: 18, fontWeight: '700' },
+  modalSub: { fontSize: 14 },
+  modalField: { gap: 6 },
+  modalRow: { flexDirection: 'row', gap: 10 },
+  modalLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  modalInput: { borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1 },
+  modalTextArea: { minHeight: 60, textAlignVertical: 'top' },
+  modalBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
+  modalBtn: { flex: 1, borderRadius: 10, padding: 14, alignItems: 'center' },
+  modalBtnText: { fontSize: 15, fontWeight: '600' },
 });
