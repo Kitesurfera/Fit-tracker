@@ -102,7 +102,7 @@
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
 
-user_problem_statement: "Test the fitness tracking API at https://training-mode-test.preview.emergentagent.com - This is a fitness tracking app with JWT auth, trainers and athletes. Comprehensive testing of all API endpoints including auth flow, athlete management, workouts with video URLs, physical tests, analytics, and profile/settings."
+user_problem_statement: "Test the fitness tracking API at https://workout-trainer-app.preview.emergentagent.com - This is a fitness tracking app with JWT auth, trainers and athletes. Comprehensive testing of all API endpoints including auth flow, athlete management, workouts with video URLs, physical tests, analytics, and profile/settings."
 
 backend:
   - task: "Authentication Flow - Registration"
