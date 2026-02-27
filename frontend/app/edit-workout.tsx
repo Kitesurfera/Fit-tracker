@@ -70,6 +70,31 @@ export default function EditWorkoutScreen() {
     ]);
   };
 
+  const [imageUploading, setImageUploading] = useState<number | null>(null);
+  const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
+
+  const pickExerciseImage = async (exIndex: number) => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.7,
+      });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      setImageUploading(exIndex);
+      setImagePreviews(prev => ({ ...prev, [exIndex]: asset.uri }));
+      const fileName = asset.uri.split('/').pop() || 'image.jpg';
+      const fileType = asset.mimeType || 'image/jpeg';
+      const uploaded = await api.uploadFile(asset.uri, fileName, fileType);
+      updateExercise(exIndex, 'image_path', uploaded.storage_path);
+    } catch (e: any) {
+      Alert.alert('Error', e.message || 'No se pudo subir la imagen');
+    } finally {
+      setImageUploading(null);
+    }
+  };
+
   const handleSave = async () => {
     setError('');
     if (!title.trim()) { setError('El titulo es obligatorio'); return; }
