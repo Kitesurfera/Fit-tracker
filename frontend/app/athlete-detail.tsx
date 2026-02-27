@@ -78,6 +78,7 @@ export default function AthleteDetailScreen() {
         exercises: duplicateModal.exercises.map((ex: any) => ({
           name: ex.name, sets: ex.sets, reps: ex.reps,
           weight: ex.weight || '', rest: ex.rest || '', video_url: ex.video_url || '',
+          exercise_notes: ex.exercise_notes || '',
         })),
         notes: duplicateModal.notes || '',
       });
