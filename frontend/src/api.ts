@@ -38,22 +38,32 @@ export const api = {
   updateWorkout: (id: string, data: any) => request(`/api/workouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteWorkout: (id: string) => request(`/api/workouts/${id}`, { method: 'DELETE' }),
   uploadCSV: async (athleteId: string, fileUri: string, fileName: string) => {
-    const token = await AsyncStorage.getItem('auth_token');
-    const formData = new FormData();
-    const fileResponse = await fetch(fileUri);
-    const blob = await fileResponse.blob();
-    formData.append('file', blob, fileName);
-    const res = await fetch(`${BACKEND_URL}/api/workouts/csv?athlete_id=${athleteId}`, {
-      method: 'POST',
-      headers: { 'Authorization': `Bearer ${token}` },
-      body: formData,
-    });
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Upload failed' }));
-      throw new Error(err.detail || 'Upload failed');
-    }
-    return res.json();
-  },
+  const token = await AsyncStorage.getItem('auth_token');
+  const formData = new FormData();
+
+  // 1. Convertimos la dirección (URI) en un archivo real que el navegador entienda
+  const response = await fetch(fileUri);
+  const blob = await response.blob();
+  
+  // 2. Metemos el archivo real en la caja con la etiqueta 'file'
+  formData.append('file', blob, fileName);
+
+  // 3. Hacemos el envío SIN forzar el Content-Type (importante)
+  const res = await fetch(`${BACKEND_URL}/api/workouts/csv?athlete_id=${athleteId}`, {
+    method: 'POST',
+    headers: { 
+      'Authorization': `Bearer ${token}`
+      // NOTA: NO pongas 'Content-Type' aquí, el navegador lo pondrá solo
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Error al subir el archivo' }));
+    throw new Error(err.detail || 'Error al subir el archivo');
+  }
+  return res.json();
+},
 
   // Tests
   getTests: (params?: { athlete_id?: string; test_type?: string; test_name?: string }) => {
