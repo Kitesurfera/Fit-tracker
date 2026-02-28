@@ -100,27 +100,49 @@ export default function HomeScreen() {
           </Text>
         </View>
       }
-      renderItem={({ item }) => (
-        <TouchableOpacity
-          testID={`athlete-card-${item.id}`}
-          style={[styles.card, { backgroundColor: colors.surface }]}
-          onPress={() => router.push({ pathname: '/athlete-detail', params: { id: item.id, name: item.name } })}
-          activeOpacity={0.7}
-        >
-          <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
-            <Text style={[styles.avatarText, { color: colors.primary }]}>
-              {item.name?.charAt(0)?.toUpperCase()}
-            </Text>
-          </View>
-          <View style={styles.cardContent}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
-            <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
-              {[item.sport, item.position].filter(Boolean).join(' · ') || 'Sin deporte asignado'}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
-        </TouchableOpacity>
-      )}
+renderItem={({ item }) => {
+  // Buscamos si este deportista ha hecho algo hoy
+  const athleteWorkoutToday = workouts.find(w => w.athlete_id === item.id);
+  
+  return (
+    <TouchableOpacity
+      style={[styles.card, { backgroundColor: colors.surface }]}
+      onPress={() => router.push({ pathname: '/athlete-detail', params: { id: item.id, name: item.name } })}
+    >
+      <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
+        <Text style={[styles.avatarText, { color: colors.primary }]}>
+          {item.name?.charAt(0)?.toUpperCase()}
+        </Text>
+      </View>
+      
+      <View style={styles.cardContent}>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
+        <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
+          {item.sport || 'Kitesurf'} {item.level ? `· ${item.level}` : ''}
+        </Text>
+        
+        {/* Indicador de actividad de hoy */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 }}>
+          <View style={{ 
+            width: 8, height: 8, borderRadius: 4, 
+            backgroundColor: athleteWorkoutToday ? colors.success : colors.textSecondary + '40' 
+          }} />
+          <Text style={{ fontSize: 11, color: colors.textSecondary }}>
+            {athleteWorkoutToday ? 'Entreno completado hoy' : 'Sin actividad hoy'}
+          </Text>
+        </View>
+      </View>
+
+      {/* Botón rápido de acción para Andre */}
+      <TouchableOpacity 
+        style={{ padding: 10 }}
+        onPress={() => router.push({ pathname: '/add-workout', params: { athleteId: item.id } })}
+      >
+        <Ionicons name="add-circle-outline" size={24} color={colors.primary} />
+      </TouchableOpacity>
+    </TouchableOpacity>
+  );
+}}
       ListEmptyComponent={
         <View style={styles.emptyState}>
           <Ionicons name="people-outline" size={44} color={colors.textSecondary} />
