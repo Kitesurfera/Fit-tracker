@@ -40,7 +40,9 @@ export const api = {
   uploadCSV: async (athleteId: string, fileUri: string, fileName: string) => {
     const token = await AsyncStorage.getItem('auth_token');
     const formData = new FormData();
-    formData.append('file', { uri: fileUri, name: fileName, type: 'text/csv' } as any);
+    const fileResponse = await fetch(fileUri);
+    const blob = await fileResponse.blob();
+    formData.append('file', blob, fileName);
     const res = await fetch(`${BACKEND_URL}/api/workouts/csv?athlete_id=${athleteId}`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
@@ -84,7 +86,9 @@ export const api = {
   uploadFile: async (fileUri: string, fileName: string, fileType: string) => {
     const token = await AsyncStorage.getItem('auth_token');
     const formData = new FormData();
-    formData.append('file', { uri: fileUri, name: fileName, type: fileType } as any);
+    const fileResponse = await fetch(fileUri);
+    const blob = await fileResponse.blob();
+    formData.append('file', blob, fileName);
     const res = await fetch(`${BACKEND_URL}/api/upload`, {
       method: 'POST',
       headers: { 'Authorization': `Bearer ${token}` },
