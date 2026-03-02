@@ -30,6 +30,7 @@ export default function EditWorkoutScreen() {
         setDate(w.date || '');
         setExercises(
           (w.exercises || []).map((ex: any) => ({
+            _key: Math.random().toString(),
             name: ex.name || '',
             sets: ex.sets || '',
             reps: ex.reps || '',
@@ -37,24 +38,13 @@ export default function EditWorkoutScreen() {
             rest: ex.rest || '',
             video_url: ex.video_url || '',
             exercise_notes: ex.exercise_notes || '',
+            image_path: ex.image_path || '',
           }))
         );
       }).catch(() => setError('No se pudo cargar el entrenamiento'))
         .finally(() => setLoading(false));
     }
   }, [workoutId]);
-  setExercises(
-          (w.exercises || []).map((ex: any) => ({
-            _key: Math.random().toString(), // <-- ¡LA MAGIA ESTÁ AQUÍ!
-            name: ex.name || '',
-            sets: ex.sets || '',
-            reps: ex.reps || '',
-            weight: ex.weight || '',
-            rest: ex.rest || '',
-            video_url: ex.video_url || '',
-            exercise_notes: ex.exercise_notes || '',
-          }))
-        );
 
   const updateExercise = (index: number, field: string, value: string) => {
     const updated = [...exercises];
@@ -64,8 +54,8 @@ export default function EditWorkoutScreen() {
 
   const addExercise = () => {
     setExercises([...exercises, { 
-      _key: Math.random().toString(), // <-- Y AQUÍ
-      name: '', sets: '', reps: '', weight: '', rest: '', video_url: '', exercise_notes: '' 
+      _key: Math.random().toString(),
+      name: '', sets: '', reps: '', weight: '', rest: '', video_url: '', exercise_notes: '', image_path: '' 
     }]);
   };
 
@@ -79,10 +69,19 @@ export default function EditWorkoutScreen() {
 
   const removeExercise = (index: number) => {
     if (exercises.length <= 1) return;
-    Alert.alert('Eliminar ejercicio', `Eliminar "${exercises[index].name || 'ejercicio'}"?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Eliminar', style: 'destructive', onPress: () => setExercises(exercises.filter((_, i) => i !== index)) },
-    ]);
+    
+    // Arreglo web para la confirmación de eliminación
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(`¿Eliminar "${exercises[index].name || 'ejercicio'}"?`);
+      if (confirm) {
+        setExercises(exercises.filter((_, i) => i !== index));
+      }
+    } else {
+      Alert.alert('Eliminar ejercicio', `Eliminar "${exercises[index].name || 'ejercicio'}"?`, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar', style: 'destructive', onPress: () => setExercises(exercises.filter((_, i) => i !== index)) },
+      ]);
+    }
   };
 
   const [imageUploading, setImageUploading] = useState<number | null>(null);
@@ -104,7 +103,11 @@ export default function EditWorkoutScreen() {
       const uploaded = await api.uploadFile(asset.uri, fileName, fileType);
       updateExercise(exIndex, 'image_path', uploaded.storage_path);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo subir la imagen');
+      if (Platform.OS === 'web') {
+          window.alert(e.message || 'No se pudo subir la imagen');
+      } else {
+          Alert.alert('Error', e.message || 'No se pudo subir la imagen');
+      }
     } finally {
       setImageUploading(null);
     }
@@ -112,35 +115,27 @@ export default function EditWorkoutScreen() {
 
   const handleSave = async () => {
     setError('');
-    // ... dentro de handleSave ...
-if (!title.trim()) { setError('El titulo es obligatorio'); return; }
+    if (!title.trim()) { setError('El titulo es obligatorio'); return; }
+    
+    // Limpiamos la etiqueta _key antes de enviar al backend
+    const cleanExercises = exercises
+      .filter(e => e.name.trim())
+      .map(ex => ({
+        name: ex.name,
+        sets: ex.sets,
+        reps: ex.reps,
+        weight: ex.weight,
+        rest: ex.rest,
+        video_url: ex.video_url,
+        exercise_notes: ex.exercise_notes,
+        image_path: ex.image_path
+      }));
 
-// 1. Filtramos los vacíos y LIMPIAMOS la etiqueta _key antes de enviar
-const cleanExercises = exercises
-  .filter(e => e.name.trim())
-  .map(ex => ({
-    // Copiamos solo los datos que el servidor espera
-    name: ex.name,
-    sets: ex.sets,
-    reps: ex.reps,
-    weight: ex.weight,
-    rest: ex.rest,
-    video_url: ex.video_url,
-    exercise_notes: ex.exercise_notes
-    // ¡Fíjate que aquí NO incluimos el _key!
-  }));
-
-if (cleanExercises.length === 0) { setError('Agrega al menos un ejercicio'); return; }
-setSaving(true);
-try {
-  // Enviamos la lista limpia
-  await api.updateWorkout(workoutId!, { 
-    title: title.trim(), 
-    notes: notes.trim(), 
-    exercises: cleanExercises 
-  });
-  router.back();
-// ... resto del try/catch igual ...
+    if (cleanExercises.length === 0) { setError('Agrega al menos un ejercicio'); return; }
+    setSaving(true);
+    try {
+      await api.updateWorkout(workoutId!, { title: title.trim(), notes: notes.trim(), exercises: cleanExercises });
+      router.back();
     } catch (e: any) {
       setError(e.message || 'Error al guardar');
     } finally {
@@ -196,7 +191,7 @@ try {
               <Text style={[styles.label, { color: colors.textSecondary }]}>EJERCICIOS ({exercises.length})</Text>
               <TouchableOpacity onPress={addExercise} testID="edit-add-exercise-btn" activeOpacity={0.7} style={styles.addExBtn}>
                 <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-                <Text style={[styles.addExText, { color: colors.primary }]}>Anadir</Text>
+                <Text style={[styles.addExText, { color: colors.primary }]}>Añadir</Text>
               </TouchableOpacity>
             </View>
 
@@ -325,75 +320,4 @@ try {
             <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS</Text>
             <TextInput
               testID="edit-workout-notes"
-              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-              value={notes} onChangeText={setNotes} placeholder="Observaciones opcionales..."
-              placeholderTextColor={colors.textSecondary} multiline numberOfLines={3}
-            />
-          </View>
-
-          {error ? (
-            <View style={[styles.errorBox, { backgroundColor: colors.error + '12' }]}>
-              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
-            </View>
-          ) : null}
-
-          {/* Save button */}
-          <TouchableOpacity
-            testID="edit-workout-save"
-            style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-            onPress={handleSave} disabled={saving} activeOpacity={0.7}
-          >
-            {saving ? <ActivityIndicator color="#FFF" /> : (
-              <Text style={styles.submitText}>Guardar cambios</Text>
-            )}
-          </TouchableOpacity>
-        </ScrollView>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5,
-  },
-  headerBtn: { minWidth: 60 },
-  headerTitle: { fontSize: 17, fontWeight: '600' },
-  saveText: { fontSize: 16, fontWeight: '600', textAlign: 'right' },
-  form: { padding: 20, gap: 20, paddingBottom: 48 },
-  dateBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  dateText: { fontSize: 14, fontWeight: '500' },
-  section: { gap: 10 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
-  input: { borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1 },
-  textArea: { minHeight: 72, textAlignVertical: 'top' },
-  addExBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  addExText: { fontSize: 13, fontWeight: '600' },
-  exerciseCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
-  exerciseHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
-  reorderBtns: { gap: 2 },
-  reorderBtn: { padding: 2 },
-  exNumBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  exNum: { fontSize: 13, fontWeight: '700' },
-  exNameInput: { flex: 1, fontSize: 16, fontWeight: '500' },
-  removeExBtn: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
-  exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5 },
-  exDetail: { flex: 1, alignItems: 'center', padding: 8, gap: 4 },
-  exDetailLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' },
-  exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 8, fontSize: 16, fontWeight: '600' },
-  exDivider: { width: 0.5 },
-  videoUrlRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 0.5 },
-  videoUrlInput: { flex: 1, fontSize: 14 },
-  errorBox: { borderRadius: 10, padding: 12 },
-  errorText: { fontSize: 14, textAlign: 'center' },
-  submitBtn: { borderRadius: 10, padding: 16, alignItems: 'center' },
-  submitText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-  imagePreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  imageThumb: { width: 40, height: 40, borderRadius: 6 },
-  imageFileName: { flex: 1, fontSize: 13 },
-  imagePickBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  imagePickText: { fontSize: 14, fontWeight: '500' },
-});
+              style={[styles.input, styles.textArea, { backgroundColor
