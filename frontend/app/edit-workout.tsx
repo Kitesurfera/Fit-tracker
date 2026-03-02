@@ -112,13 +112,35 @@ export default function EditWorkoutScreen() {
 
   const handleSave = async () => {
     setError('');
-    if (!title.trim()) { setError('El titulo es obligatorio'); return; }
-    const validExercises = exercises.filter(e => e.name.trim());
-    if (validExercises.length === 0) { setError('Agrega al menos un ejercicio'); return; }
-    setSaving(true);
-    try {
-      await api.updateWorkout(workoutId!, { title: title.trim(), notes: notes.trim(), exercises: validExercises });
-      router.back();
+    // ... dentro de handleSave ...
+if (!title.trim()) { setError('El titulo es obligatorio'); return; }
+
+// 1. Filtramos los vacíos y LIMPIAMOS la etiqueta _key antes de enviar
+const cleanExercises = exercises
+  .filter(e => e.name.trim())
+  .map(ex => ({
+    // Copiamos solo los datos que el servidor espera
+    name: ex.name,
+    sets: ex.sets,
+    reps: ex.reps,
+    weight: ex.weight,
+    rest: ex.rest,
+    video_url: ex.video_url,
+    exercise_notes: ex.exercise_notes
+    // ¡Fíjate que aquí NO incluimos el _key!
+  }));
+
+if (cleanExercises.length === 0) { setError('Agrega al menos un ejercicio'); return; }
+setSaving(true);
+try {
+  // Enviamos la lista limpia
+  await api.updateWorkout(workoutId!, { 
+    title: title.trim(), 
+    notes: notes.trim(), 
+    exercises: cleanExercises 
+  });
+  router.back();
+// ... resto del try/catch igual ...
     } catch (e: any) {
       setError(e.message || 'Error al guardar');
     } finally {
