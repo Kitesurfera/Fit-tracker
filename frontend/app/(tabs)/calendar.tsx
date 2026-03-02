@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking
+  ActivityIndicator, Linking, RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -42,6 +42,7 @@ export default function CalendarScreen() {
   const [allWorkoutDates, setAllWorkoutDates] = useState<Set<string>>(new Set());
   const [allTestDates, setAllTestDates] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false); // Estado para el Pull-to-Refresh
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
   const [allWorkouts, setAllWorkouts] = useState<any[]>([]);
   const [allTests, setAllTests] = useState<any[]>([]);
@@ -68,6 +69,7 @@ export default function CalendarScreen() {
       console.log('Calendar load error:', e);
     } finally {
       setLoading(false);
+      setRefreshing(false); // Detenemos la animación de refresco al terminar
     }
   };
 
@@ -80,6 +82,12 @@ export default function CalendarScreen() {
   };
 
   useEffect(() => { loadAll(); }, []);
+
+  // Función que se ejecuta al deslizar hacia abajo
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadAll();
+  };
 
   const selectDate = (day: number) => {
     const date = formatDate(currentYear, currentMonth, day);
@@ -114,7 +122,16 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView 
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh} 
+            tintColor={colors.primary} 
+          />
+        }
+      >
         <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Calendario</Text>
 
         {/* Calendar grid */}
