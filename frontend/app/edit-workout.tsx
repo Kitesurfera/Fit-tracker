@@ -320,4 +320,8 @@ export default function EditWorkoutScreen() {
             <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS</Text>
             <TextInput
               testID="edit-workout-notes"
-              style={[styles.input, styles.textArea, { backgroundColor
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
+              value={notes} onChangeText={setNotes} placeholder="Observaciones opcionales..."
+              placeholderTextColor={colors.textSecondary} multiline numberOfLines={3}
+            />
+          </View>
