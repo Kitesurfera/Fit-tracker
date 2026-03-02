@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator,
-  RefreshControl, Alert, Modal, TextInput
+  RefreshControl, Alert, Modal, TextInput, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -74,17 +74,26 @@ export default function TestsScreen() {
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
   const deleteTest = (testId: string, testName: string) => {
-    Alert.alert('Eliminar test', `Eliminar "${testName}"?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      {
-        text: 'Eliminar', style: 'destructive', onPress: async () => {
-          try {
-            await api.deleteTest(testId);
-            setTests(prev => prev.filter(t => t.id !== testId));
-          } catch (e) { console.log(e); }
-        }
-      },
-    ]);
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(`¿Eliminar "${testName}"?`);
+      if (confirm) {
+        api.deleteTest(testId)
+          .then(() => setTests(prev => prev.filter(t => t.id !== testId)))
+          .catch(e => console.log(e));
+      }
+    } else {
+      Alert.alert('Eliminar test', `Eliminar "${testName}"?`, [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar', style: 'destructive', onPress: async () => {
+            try {
+              await api.deleteTest(testId);
+              setTests(prev => prev.filter(t => t.id !== testId));
+            } catch (e) { console.log(e); }
+          }
+        },
+      ]);
+    }
   };
 
   const openEditModal = (test: any) => {
@@ -115,7 +124,11 @@ export default function TestsScreen() {
       setTests(prev => prev.map(t => t.id === editTest.id ? { ...t, ...updated } : t));
       setEditTest(null);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo actualizar');
+      if (Platform.OS === 'web') {
+          window.alert(e.message || 'No se pudo actualizar');
+      } else {
+          Alert.alert('Error', e.message || 'No se pudo actualizar');
+      }
     } finally {
       setSaving(false);
     }
