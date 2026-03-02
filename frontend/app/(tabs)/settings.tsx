@@ -85,13 +85,26 @@ export default function SettingsScreen() {
     finally { setChangingPassword(false); }
   };
 
-  const handleLogout = () => {
-    Alert.alert('Cerrar sesion', 'Estas seguro de que quieres salir?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Salir', style: 'destructive', onPress: async () => { await logout(); router.replace('/'); } },
-    ]);
+  const handleLogout = async () => {
+    // Si estamos en la web (Vercel)
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm('¿Estás seguro de que quieres salir?');
+      if (confirm) {
+        await logout();
+        router.replace('/');
+      }
+    } 
+    // Si algún día descargáis la app como nativa en el móvil
+    else {
+      Alert.alert('Cerrar sesión', '¿Estás seguro de que quieres salir?', [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Salir', style: 'destructive', onPress: async () => { 
+          await logout(); 
+          router.replace('/'); 
+        }},
+      ]);
+    }
   };
-
   // --- Notification toggle using simple TouchableOpacity instead of Switch ---
   const ToggleRow = ({ icon, label, value, onToggle, disabled }: any) => (
     <TouchableOpacity
