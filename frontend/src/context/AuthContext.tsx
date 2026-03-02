@@ -88,7 +88,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // 1. Limpiamos la memoria del móvil (si aplica)
     await AsyncStorage.removeItem('auth_token');
+    
+    // 2. Limpiamos la memoria del navegador web por si acaso
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('auth_token');
+    }
+    
+    // 3. Reseteamos los estados visuales
     setToken(null);
     setUser(null);
   };
