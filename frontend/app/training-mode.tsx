@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Linking, TextInput
@@ -18,13 +18,14 @@ export default function TrainingModeScreen() {
   const [workout, setWorkout] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [currentExIndex, setCurrentExIndex] = useState(0);
-  // Track each set's status per exercise: setsStatus[exerciseIndex][setIndex] = 'completed'|'skipped'|'pending'
   const [setsStatus, setSetsStatus] = useState<Record<number, SetStatus[]>>({});
   const [finished, setFinished] = useState(false);
+  
   // Rest timer
   const [restSeconds, setRestSeconds] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const restIntervalRef = useRef<any>(null);
+  
   // Post-workout observations
   const [observations, setObservations] = useState('');
 
@@ -32,7 +33,6 @@ export default function TrainingModeScreen() {
     if (workoutId) {
       api.getWorkout(workoutId).then((w) => {
         setWorkout(w);
-        // Initialize sets status
         const initial: Record<number, SetStatus[]> = {};
         (w.exercises || []).forEach((ex: any, i: number) => {
           const total = parseInt(ex.sets) || 1;
@@ -43,7 +43,6 @@ export default function TrainingModeScreen() {
     }
   }, [workoutId]);
 
-  // Rest timer countdown - MUST be before any early returns to follow Rules of Hooks
   useEffect(() => {
     if (isResting && restSeconds > 0) {
       restIntervalRef.current = setInterval(() => {
@@ -60,7 +59,6 @@ export default function TrainingModeScreen() {
     return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
   }, [isResting]);
 
-  // Early return for loading state - AFTER all hooks
   if (loading || !workout) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -77,7 +75,6 @@ export default function TrainingModeScreen() {
   const skippedSets = currentSets.filter(s => s === 'skipped').length;
   const nextPendingSet = currentSets.findIndex(s => s === 'pending');
 
-  // Calculate progress
   const totalAllSets = exercises.reduce((sum: number, ex: any) => sum + (parseInt(ex.sets) || 1), 0);
   const doneAllSets = Object.values(setsStatus).flat().filter(s => s !== 'pending').length;
   const progress = totalAllSets > 0 ? (doneAllSets / totalAllSets) * 100 : 0;
@@ -120,7 +117,6 @@ export default function TrainingModeScreen() {
     if (remaining === 0) {
       autoAdvance(currentExIndex);
     } else {
-      // Start rest timer between sets
       startRestTimer();
     }
   };
@@ -149,6 +145,7 @@ export default function TrainingModeScreen() {
     if (isResting) skipRest();
     if (currentExIndex < exercises.length - 1) setCurrentExIndex(currentExIndex + 1);
   };
+  
   const prevExercise = () => {
     if (isResting) skipRest();
     if (currentExIndex > 0) setCurrentExIndex(currentExIndex - 1);
@@ -180,14 +177,24 @@ export default function TrainingModeScreen() {
       if (observations.trim()) {
         updateData.observations = observations.trim();
       }
+      // Aquí estaba el error en tu versión: no pasaba los ejercicios limpios de vuelta
+      const cleanExercises = exercises.map((ex: any) => ({
+        name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight, 
+        rest: ex.rest, video_url: ex.video_url, exercise_notes: ex.exercise_notes, image_path: ex.image_path
+      }));
+      updateData.exercises = cleanExercises;
+      updateData.title = workout.title;
+
       await api.updateWorkout(workoutId!, updateData);
-    } catch (e) { console.log(e); }
-    router.back();
+      router.back();
+    } catch (e) { 
+      console.log(e); 
+      alert("Hubo un error al guardar. Asegúrate de tener conexión.");
+    }
   };
 
   const handleExit = () => router.back();
 
-  // Build finish summary
   if (finished) {
     const completionData = buildCompletionData();
     const totalCompleted = completionData.exercise_results.reduce((s: number, r: any) => s + r.completed_sets, 0);
@@ -196,7 +203,7 @@ export default function TrainingModeScreen() {
 
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <ScrollView contentContainerStyle={styles.finishedContainer}>
+        <ScrollView contentContainerStyle={styles.finishedContainer} keyboardShouldPersistTaps="handled">
           <View style={[styles.finishedIcon, { backgroundColor: hasSkips ? colors.warning + '15' : colors.success + '15' }]}>
             <Ionicons name={hasSkips ? 'alert-circle' : 'checkmark-circle'} size={64} color={hasSkips ? colors.warning : colors.success} />
           </View>
@@ -207,7 +214,6 @@ export default function TrainingModeScreen() {
             {totalCompleted} series completadas · {totalSkipped} series saltadas
           </Text>
 
-          {/* Per-exercise summary */}
           <View style={styles.summaryList}>
             {completionData.exercise_results.map((r: any, i: number) => {
               const allDone = r.skipped_sets === 0;
@@ -242,15 +248,14 @@ export default function TrainingModeScreen() {
             })}
           </View>
 
-          {/* Post-workout observations */}
           <View style={[styles.observationsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.observationsLabel, { color: colors.textPrimary }]}>Observaciones de la sesion</Text>
+            <Text style={[styles.observationsLabel, { color: colors.textPrimary }]}>Observaciones de la sesión</Text>
             <TextInput
               testID="workout-observations-input"
               style={[styles.observationsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
               value={observations}
               onChangeText={setObservations}
-              placeholder="Como te sentiste? Algo a destacar..."
+              placeholder="¿Cómo te sentiste? Algo a destacar..."
               placeholderTextColor={colors.textSecondary}
               multiline
               numberOfLines={3}
@@ -287,9 +292,9 @@ export default function TrainingModeScreen() {
     );
   }
 
+  // --- AQUI ESTÁ LA PARTE QUE HABÍAS PERDIDO: LA INTERFAZ DE ENTRENAMIENTO ---
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Top bar */}
       <View style={styles.topBar}>
         <TouchableOpacity onPress={handleExit} testID="exit-training" activeOpacity={0.6}>
           <Ionicons name="close" size={26} color={colors.textPrimary} />
@@ -300,13 +305,11 @@ export default function TrainingModeScreen() {
         </Text>
       </View>
 
-      {/* Progress bar */}
       <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}>
         <View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.min(progress, 100)}%` }]} />
       </View>
 
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Exercise card */}
         <View style={[styles.exerciseCard, { backgroundColor: colors.surface }]}>
           <View style={[styles.exNumber, { backgroundColor: colors.primary + '12' }]}>
             <Text style={[styles.exNumberText, { color: colors.primary }]}>{currentExIndex + 1}</Text>
@@ -364,7 +367,6 @@ export default function TrainingModeScreen() {
           ) : null}
         </View>
 
-        {/* Sets tracker */}
         <View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
           <Text style={[styles.setsTitle, { color: colors.textPrimary }]}>Series</Text>
           <View style={styles.setsGrid}>
@@ -389,7 +391,6 @@ export default function TrainingModeScreen() {
             ))}
           </View>
 
-          {/* Rest Timer */}
           {isResting && (
             <View style={[styles.restTimerCard, { backgroundColor: colors.primary + '10' }]}>
               <Ionicons name="timer-outline" size={28} color={colors.primary} />
@@ -446,7 +447,6 @@ export default function TrainingModeScreen() {
             </View>
           ) : null}
 
-          {/* Skip entire exercise */}
           {nextPendingSet !== -1 && (
             <TouchableOpacity
               testID="skip-exercise-btn"
@@ -461,7 +461,6 @@ export default function TrainingModeScreen() {
         </View>
       </ScrollView>
 
-      {/* Bottom navigation */}
       <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         <TouchableOpacity
           testID="prev-exercise-btn"
