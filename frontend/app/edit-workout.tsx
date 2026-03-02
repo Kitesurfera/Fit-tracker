@@ -43,6 +43,18 @@ export default function EditWorkoutScreen() {
         .finally(() => setLoading(false));
     }
   }, [workoutId]);
+  setExercises(
+          (w.exercises || []).map((ex: any) => ({
+            _key: Math.random().toString(), // <-- ¡LA MAGIA ESTÁ AQUÍ!
+            name: ex.name || '',
+            sets: ex.sets || '',
+            reps: ex.reps || '',
+            weight: ex.weight || '',
+            rest: ex.rest || '',
+            video_url: ex.video_url || '',
+            exercise_notes: ex.exercise_notes || '',
+          }))
+        );
 
   const updateExercise = (index: number, field: string, value: string) => {
     const updated = [...exercises];
@@ -51,7 +63,10 @@ export default function EditWorkoutScreen() {
   };
 
   const addExercise = () => {
-    setExercises([...exercises, { name: '', sets: '', reps: '', weight: '', rest: '', video_url: '', exercise_notes: '' }]);
+    setExercises([...exercises, { 
+      _key: Math.random().toString(), // <-- Y AQUÍ
+      name: '', sets: '', reps: '', weight: '', rest: '', video_url: '', exercise_notes: '' 
+    }]);
   };
 
   const moveExercise = (index: number, direction: 'up' | 'down') => {
@@ -164,7 +179,7 @@ export default function EditWorkoutScreen() {
             </View>
 
             {exercises.map((ex, i) => (
-              <View key={i} style={[styles.exerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View key={ex._key || i} style={[styles.exerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                 {/* Exercise header with name, reorder, delete */}
                 <View style={styles.exerciseHeader}>
                   <View style={styles.reorderBtns}>
