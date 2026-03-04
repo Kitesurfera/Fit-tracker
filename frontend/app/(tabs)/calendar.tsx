@@ -42,16 +42,18 @@ export default function CalendarScreen() {
   const [allWorkoutDates, setAllWorkoutDates] = useState<Set<string>>(new Set());
   const [allTestDates, setAllTestDates] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false); // Estado para el Pull-to-Refresh
+  const [refreshing, setRefreshing] = useState(false);
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
   const [allWorkouts, setAllWorkouts] = useState<any[]>([]);
   const [allTests, setAllTests] = useState<any[]>([]);
   const [athleteMap, setAthleteMap] = useState<Record<string, string>>({});
 
+  const tObj = new Date();
+  const todayYMD = `${tObj.getFullYear()}-${String(tObj.getMonth() + 1).padStart(2, '0')}-${String(tObj.getDate()).padStart(2, '0')}`;
+
   const loadAll = async () => {
     try {
       const [wk, ts] = await Promise.all([api.getWorkouts(), api.getTests()]);
-      // Load athlete names for trainers
       if (user?.role === 'trainer') {
         try {
           const athletes = await api.getAthletes();
@@ -69,7 +71,7 @@ export default function CalendarScreen() {
       console.log('Calendar load error:', e);
     } finally {
       setLoading(false);
-      setRefreshing(false); // Detenemos la animación de refresco al terminar
+      setRefreshing(false);
     }
   };
 
@@ -83,7 +85,6 @@ export default function CalendarScreen() {
 
   useEffect(() => { loadAll(); }, []);
 
-  // Función que se ejecuta al deslizar hacia abajo
   const onRefresh = () => {
     setRefreshing(true);
     loadAll();
@@ -192,118 +193,134 @@ export default function CalendarScreen() {
         <Text style={[styles.dayLabel, { color: colors.textPrimary }]}>{selectedDayName}</Text>
 
         {/* Workouts */}
-        {workouts.length > 0 && workouts.map((w) => (
-          <TouchableOpacity
-            key={w.id}
-            testID={`cal-workout-${w.id}`}
-            style={[styles.workoutCard, { backgroundColor: colors.surface }]}
-            onPress={() => toggleWorkout(w.id)}
-            activeOpacity={0.7}
-          >
-            {/* Summary row - always visible */}
-            <View style={styles.workoutSummary}>
-              <View style={[styles.workoutDot, { backgroundColor: colors.primary }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
-                <Text style={[styles.workoutMeta, { color: colors.textSecondary }]}>
-                  {user?.role === 'trainer' && athleteMap[w.athlete_id] ? `${athleteMap[w.athlete_id]} · ` : ''}
-                  {w.exercises?.length || 0} ejercicios{w.completed ? ' · Completado' : ''}
-                </Text>
-              </View>
-              <View style={styles.expandRow}>
-                {w.completed && <Ionicons name="checkmark-circle" size={18} color={colors.success} />}
-                <Ionicons name={expandedWorkout === w.id ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
-              </View>
-            </View>
+        {workouts.length > 0 && workouts.map((w) => {
+          // Lógica de "No realizado"
+          const isMissed = !w.completed && w.date < todayYMD;
 
-            {/* Expanded exercises */}
-            {expandedWorkout === w.id && (
-              <View style={[styles.expandedSection, { borderTopColor: colors.border }]}>
-                {w.exercises?.map((ex: any, i: number) => {
-                  // Get completion data for this exercise if available
-                  const exResult = w.completion_data?.exercise_results?.find((r: any) => r.exercise_index === i);
-                  return (
-                    <View key={i} style={[styles.exRow, i > 0 && { borderTopColor: colors.border, borderTopWidth: 0.5 }]}>
-                      <View style={[styles.exBadge, { backgroundColor: colors.primary + '12' }]}>
-                        <Text style={[styles.exBadgeText, { color: colors.primary }]}>{i + 1}</Text>
+          return (
+            <TouchableOpacity
+              key={w.id}
+              testID={`cal-workout-${w.id}`}
+              style={[styles.workoutCard, { backgroundColor: colors.surface }]}
+              onPress={() => toggleWorkout(w.id)}
+              activeOpacity={0.7}
+            >
+              {/* Summary row - always visible */}
+              <View style={styles.workoutSummary}>
+                {/* Cambiamos el color del puntito a rojo si está no realizado */}
+                <View style={[styles.workoutDot, { backgroundColor: isMissed ? colors.error : colors.primary }]} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
+                  <Text style={[styles.workoutMeta, { color: colors.textSecondary }]}>
+                    {user?.role === 'trainer' && athleteMap[w.athlete_id] ? `${athleteMap[w.athlete_id]} · ` : ''}
+                    {w.exercises?.length || 0} ejercicios{w.completed ? ' · Completado' : isMissed ? ' · No realizado' : ''}
+                  </Text>
+                </View>
+                <View style={styles.expandRow}>
+                  {w.completed && <Ionicons name="checkmark-circle" size={18} color={colors.success} />}
+                  {isMissed && <Ionicons name="close-circle" size={18} color={colors.error} />}
+                  <Ionicons name={expandedWorkout === w.id ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
+                </View>
+              </View>
+
+              {/* Expanded exercises */}
+              {expandedWorkout === w.id && (
+                <View style={[styles.expandedSection, { borderTopColor: colors.border }]}>
+                  {w.exercises?.map((ex: any, i: number) => {
+                    const exResult = w.completion_data?.exercise_results?.find((r: any) => r.exercise_index === i);
+                    return (
+                      <View key={i} style={[styles.exRow, i > 0 && { borderTopColor: colors.border, borderTopWidth: 0.5 }]}>
+                        <View style={[styles.exBadge, { backgroundColor: colors.primary + '12' }]}>
+                          <Text style={[styles.exBadgeText, { color: colors.primary }]}>{i + 1}</Text>
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.exName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                          <Text style={[styles.exDetails, { color: colors.textSecondary }]}>
+                            {[
+                              ex.sets && `${ex.sets} series`,
+                              ex.reps && `${ex.reps} reps`,
+                              ex.weight && `${ex.weight} kg`,
+                              ex.rest && `${ex.rest}s desc`,
+                            ].filter(Boolean).join(' · ') || 'Sin detalles'}
+                          </Text>
+                          {exResult && (
+                            <View style={styles.completionRow}>
+                              {exResult.set_details?.map((sd: any, si: number) => (
+                                <View key={si} style={[
+                                  styles.completionDot,
+                                  sd.status === 'completed' && { backgroundColor: colors.success },
+                                  sd.status === 'skipped' && { backgroundColor: colors.error },
+                                  sd.status === 'pending' && { backgroundColor: colors.border },
+                                ]} />
+                              ))}
+                              {exResult.skipped_sets > 0 && (
+                                <Text style={[styles.completionLabel, { color: colors.error }]}>
+                                  {exResult.skipped_sets} saltada{exResult.skipped_sets > 1 ? 's' : ''}
+                                </Text>
+                              )}
+                            </View>
+                          )}
+                          {ex.video_url ? (
+                            <TouchableOpacity
+                              style={styles.videoLink}
+                              onPress={() => Linking.openURL(ex.video_url)}
+                              activeOpacity={0.6}
+                            >
+                              <Ionicons name="play-circle-outline" size={16} color={colors.primary} />
+                              <Text style={[styles.videoLinkText, { color: colors.primary }]}>Ver video</Text>
+                            </TouchableOpacity>
+                          ) : null}
+                        </View>
                       </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.exName, { color: colors.textPrimary }]}>{ex.name}</Text>
-                        <Text style={[styles.exDetails, { color: colors.textSecondary }]}>
-                          {[
-                            ex.sets && `${ex.sets} series`,
-                            ex.reps && `${ex.reps} reps`,
-                            ex.weight && `${ex.weight} kg`,
-                            ex.rest && `${ex.rest}s desc`,
-                          ].filter(Boolean).join(' · ') || 'Sin detalles'}
-                        </Text>
-                        {/* Show completion indicators */}
-                        {exResult && (
-                          <View style={styles.completionRow}>
-                            {exResult.set_details?.map((sd: any, si: number) => (
-                              <View key={si} style={[
-                                styles.completionDot,
-                                sd.status === 'completed' && { backgroundColor: colors.success },
-                                sd.status === 'skipped' && { backgroundColor: colors.error },
-                                sd.status === 'pending' && { backgroundColor: colors.border },
-                              ]} />
-                            ))}
-                            {exResult.skipped_sets > 0 && (
-                              <Text style={[styles.completionLabel, { color: colors.error }]}>
-                                {exResult.skipped_sets} saltada{exResult.skipped_sets > 1 ? 's' : ''}
-                              </Text>
-                            )}
-                          </View>
-                        )}
-                        {ex.video_url ? (
-                          <TouchableOpacity
-                            style={styles.videoLink}
-                            onPress={() => Linking.openURL(ex.video_url)}
-                            activeOpacity={0.6}
-                          >
-                            <Ionicons name="play-circle-outline" size={16} color={colors.primary} />
-                            <Text style={[styles.videoLinkText, { color: colors.primary }]}>Ver video</Text>
-                          </TouchableOpacity>
-                        ) : null}
-                      </View>
+                    );
+                  })}
+                  {w.notes ? (
+                    <View style={[styles.notesBox, { backgroundColor: colors.surfaceHighlight }]}>
+                      <Text style={[styles.notesText, { color: colors.textSecondary }]}>{w.notes}</Text>
                     </View>
-                  );
-                })}
-                {w.notes ? (
-                  <View style={[styles.notesBox, { backgroundColor: colors.surfaceHighlight }]}>
-                    <Text style={[styles.notesText, { color: colors.textSecondary }]}>{w.notes}</Text>
-                  </View>
-                ) : null}
+                  ) : null}
 
-                {/* Training mode button for athletes */}
-                {user?.role === 'athlete' && !w.completed && (
-                  <TouchableOpacity
-                    testID={`start-training-${w.id}`}
-                    style={[styles.trainingBtn, { backgroundColor: colors.primary }]}
-                    onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: w.id } })}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="play" size={18} color="#FFF" />
-                    <Text style={styles.trainingBtnText}>Modo Entrenamiento</Text>
-                  </TouchableOpacity>
-                )}
+                  {/* Training mode button for athletes */}
+                  {user?.role === 'athlete' && !w.completed && !isMissed && (
+                    <TouchableOpacity
+                      testID={`start-training-${w.id}`}
+                      style={[styles.trainingBtn, { backgroundColor: colors.primary }]}
+                      onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: w.id } })}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="play" size={18} color="#FFF" />
+                      <Text style={styles.trainingBtnText}>Modo Entrenamiento</Text>
+                    </TouchableOpacity>
+                  )}
+                  {user?.role === 'athlete' && isMissed && (
+                    <TouchableOpacity
+                      testID={`start-training-late-${w.id}`}
+                      style={[styles.trainingBtn, { backgroundColor: colors.error + '15', borderWidth: 1, borderColor: colors.error }]}
+                      onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: w.id } })}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="play" size={18} color={colors.error} />
+                      <Text style={[styles.trainingBtnText, { color: colors.error }]}>Recuperar entrenamiento</Text>
+                    </TouchableOpacity>
+                  )}
 
-                {/* Edit button for trainers */}
-                {user?.role === 'trainer' && (
-                  <TouchableOpacity
-                    testID={`edit-workout-cal-${w.id}`}
-                    style={[styles.editBtn, { borderColor: colors.primary }]}
-                    onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: w.id } })}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="create-outline" size={18} color={colors.primary} />
-                    <Text style={[styles.editBtnText, { color: colors.primary }]}>Editar entrenamiento</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
-          </TouchableOpacity>
-        ))}
+                  {/* Edit button for trainers */}
+                  {user?.role === 'trainer' && (
+                    <TouchableOpacity
+                      testID={`edit-workout-cal-${w.id}`}
+                      style={[styles.editBtn, { borderColor: colors.primary }]}
+                      onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: w.id } })}
+                      activeOpacity={0.7}
+                    >
+                      <Ionicons name="create-outline" size={18} color={colors.primary} />
+                      <Text style={[styles.editBtnText, { color: colors.primary }]}>Editar entrenamiento</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        })}
 
         {/* Tests */}
         {tests.length > 0 && tests.map((t) => (
@@ -350,14 +367,12 @@ const styles = StyleSheet.create({
   dotRow: { flexDirection: 'row', gap: 3, position: 'absolute', bottom: 3 },
   dot: { width: 4, height: 4, borderRadius: 2 },
   dayLabel: { fontSize: 16, fontWeight: '600', textTransform: 'capitalize', marginBottom: 14 },
-  // Workout card
   workoutCard: { borderRadius: 14, marginBottom: 10, overflow: 'hidden' },
   workoutSummary: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
   workoutDot: { width: 8, height: 8, borderRadius: 4 },
   workoutTitle: { fontSize: 16, fontWeight: '600' },
   workoutMeta: { fontSize: 13, marginTop: 2 },
   expandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  // Expanded
   expandedSection: { borderTopWidth: 0.5, paddingHorizontal: 14, paddingBottom: 14 },
   exRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12, gap: 10 },
   exBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginTop: 2 },
@@ -381,7 +396,6 @@ const styles = StyleSheet.create({
     borderRadius: 10, paddingVertical: 12, marginTop: 10, borderWidth: 1.5,
   },
   editBtnText: { fontSize: 14, fontWeight: '600' },
-  // Test card
   testCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, padding: 14, marginBottom: 10, gap: 12 },
   testName: { fontSize: 15, fontWeight: '600' },
   testValue: { fontSize: 14, fontWeight: '700', marginTop: 2 },
