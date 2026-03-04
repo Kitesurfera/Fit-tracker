@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
-  ActivityIndicator, Alert, RefreshControl, Linking, TextInput, Modal
+  ActivityIndicator, Alert, Linking, TextInput, Modal, ScrollView
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +22,6 @@ export default function AthleteDetailScreen() {
   const [athlete, setAthlete] = useState<any>(null);
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [tests, setTests] = useState<any[]>([]);
-  // AÑADIMOS LA TERCERA PESTAÑA
   const [activeTab, setActiveTab] = useState<'workouts' | 'tests' | 'progression'>('workouts');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -52,7 +51,7 @@ export default function AthleteDetailScreen() {
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
   const handleDeleteAthlete = () => {
-    Alert.alert('Eliminar deportista', `Estas seguro de eliminar a ${params.name}?`, [
+    Alert.alert('Eliminar deportista', `¿Estás seguro de eliminar a ${params.name}?`, [
       { text: 'Cancelar', style: 'cancel' },
       { text: 'Eliminar', style: 'destructive', onPress: async () => {
         try { await api.deleteAthlete(params.id!); router.back(); } catch (e) { console.log(e); }
@@ -61,13 +60,19 @@ export default function AthleteDetailScreen() {
   };
 
   const handleDeleteWorkout = async (wId: string) => {
-    try { await api.deleteWorkout(wId); setWorkouts(prev => prev.filter(w => w.id !== wId)); }
-    catch (e) { console.log(e); }
+    Alert.alert('Eliminar entreno', '¿Seguro que quieres borrarlo?', [
+      { text: 'Cancelar', style: 'cancel' },
+      { text: 'Borrar', style: 'destructive', onPress: async () => {
+        try { await api.deleteWorkout(wId); setWorkouts(prev => prev.filter(w => w.id !== wId)); }
+        catch (e) { console.log(e); }
+      }}
+    ]);
   };
 
   const openDuplicateModal = (workout: any) => {
     setDuplicateModal(workout);
-    setDuplicateDate(new Date().toISOString().split('T')[0]);
+    // Sugerimos el día de hoy por defecto
+    setDuplicateDate(todayYMD);
   };
 
   const handleDuplicate = async () => {
@@ -77,7 +82,7 @@ export default function AthleteDetailScreen() {
       const newWorkout = await api.createWorkout({
         athlete_id: params.id!,
         date: duplicateDate,
-        title: duplicateModal.title,
+        title: duplicateModal.title + ' (Copia)',
         exercises: duplicateModal.exercises.map((ex: any) => ({
           name: ex.name, sets: ex.sets, reps: ex.reps,
           weight: ex.weight || '', rest: ex.rest || '', video_url: ex.video_url || '',
@@ -85,8 +90,10 @@ export default function AthleteDetailScreen() {
         })),
         notes: duplicateModal.notes || '',
       });
-      setWorkouts(prev => [newWorkout, ...prev]);
+      // Añadimos el nuevo entreno al principio de la lista
+      setWorkouts(prev => [newWorkout, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       setDuplicateModal(null);
+      Alert.alert('¡Duplicado!', 'Entrenamiento copiado con éxito.');
     } catch (e: any) {
       Alert.alert('Error', e.message || 'No se pudo duplicar');
     } finally { setDuplicating(false); }
@@ -117,19 +124,14 @@ export default function AthleteDetailScreen() {
     return { totalSets, completedSets, pct };
   };
 
-  // LOGICA PARA LA PESTAÑA PROGRESIÓN
   const getProgressionData = () => {
     const history: Record<string, any[]> = {};
 
     workouts.filter(w => w.completed && w.completion_data).forEach(w => {
       w.completion_data.exercise_results.forEach((r: any) => {
-        // Solo guardamos si el ejercicio se hizo (completed_sets > 0)
         if (r.completed_sets > 0) {
           if (!history[r.name]) history[r.name] = [];
-          
-          // Buscamos el objetivo original por si no se rellenaron las nuevas casillas
           const originalEx = w.exercises?.[r.exercise_index];
-          
           history[r.name].push({
             date: w.date,
             weight: r.logged_weight || originalEx?.weight || '-',
@@ -141,7 +143,6 @@ export default function AthleteDetailScreen() {
       });
     });
 
-    // Lo convertimos en array y ordenamos por fecha (el más reciente primero)
     return Object.keys(history).map(name => ({
       name,
       history: history[name].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -207,14 +208,14 @@ export default function AthleteDetailScreen() {
             {item.completed && !hasCompletionData && (
               <Ionicons name="checkmark-circle" size={20} color={colors.success} />
             )}
-            <TouchableOpacity onPress={() => openDuplicateModal(item)} activeOpacity={0.7}>
-              <Ionicons name="copy-outline" size={18} color={colors.textSecondary} />
+            <TouchableOpacity onPress={() => openDuplicateModal(item)} activeOpacity={0.7} style={{ padding: 4 }}>
+              <Ionicons name="copy-outline" size={20} color={colors.primary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: item.id } })} activeOpacity={0.7}>
-              <Ionicons name="create-outline" size={18} color={colors.primary} />
+            <TouchableOpacity onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: item.id } })} activeOpacity={0.7} style={{ padding: 4 }}>
+              <Ionicons name="create-outline" size={20} color={colors.primary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDeleteWorkout(item.id)} activeOpacity={0.7}>
-              <Ionicons name="trash-outline" size={18} color={colors.error} />
+            <TouchableOpacity onPress={() => handleDeleteWorkout(item.id)} activeOpacity={0.7} style={{ padding: 4 }}>
+              <Ionicons name="trash-outline" size={20} color={colors.error} />
             </TouchableOpacity>
             <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
           </View>
@@ -241,7 +242,6 @@ export default function AthleteDetailScreen() {
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.exName, { color: colors.textPrimary }]}>{ex.name}</Text>
                     
-                    {/* MOSTRAMOS LOS LOGS REALES SI EXISTEN, SI NO, LOS OBJETIVOS */}
                     {exResult && (exResult.logged_weight || exResult.logged_reps) ? (
                       <View style={[styles.realDataBox, { backgroundColor: colors.success + '10', borderColor: colors.success + '40' }]}>
                         <Text style={[styles.realDataTitle, { color: colors.success }]}>Completado con:</Text>
@@ -302,7 +302,6 @@ export default function AthleteDetailScreen() {
     </View>
   );
 
-  // RENDERIZADOR DE LA PESTAÑA PROGRESIÓN
   const renderProgressionItem = ({ item }: { item: any }) => (
     <View style={[styles.progressionCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={[styles.progressionHeader, { backgroundColor: colors.success + '15' }]}>
@@ -329,21 +328,32 @@ export default function AthleteDetailScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      
+      {/* CABECERA CON BOTÓN DE RECARGA */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} testID="back-athlete-detail" activeOpacity={0.7}>
+        <TouchableOpacity onPress={() => router.back()} testID="back-athlete-detail" activeOpacity={0.7} style={{ padding: 4 }}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{params.name}</Text>
-        <TouchableOpacity onPress={handleDeleteAthlete} testID="delete-athlete-btn" activeOpacity={0.7}>
-          <Ionicons name="trash-outline" size={22} color={colors.error} />
-        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+          <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={{ padding: 4 }}>
+            {refreshing ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="sync-outline" size={22} color={colors.primary} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleDeleteAthlete} testID="delete-athlete-btn" activeOpacity={0.7} style={{ padding: 4 }}>
+            <Ionicons name="trash-outline" size={22} color={colors.error} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <FlatList
         testID="athlete-detail-list"
         data={data}
         keyExtractor={(item, index) => item.id || `prog-${index}`}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        // ELIMINADO REFRESHCONTROL
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <View style={{ marginBottom: 16 }}>
@@ -379,15 +389,17 @@ export default function AthleteDetailScreen() {
             </View>
 
             <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
-              <TouchableOpacity style={[styles.tab, activeTab === 'workouts' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]} onPress={() => setActiveTab('workouts')} activeOpacity={0.7}>
-                <Text style={[styles.tabText, { color: activeTab === 'workouts' ? colors.primary : colors.textSecondary }]}>Entrenos</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.tab, activeTab === 'tests' && { borderBottomColor: colors.accent, borderBottomWidth: 2 }]} onPress={() => setActiveTab('tests')} activeOpacity={0.7}>
-                <Text style={[styles.tabText, { color: activeTab === 'tests' ? colors.accent : colors.textSecondary }]}>Tests</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.tab, activeTab === 'progression' && { borderBottomColor: colors.success, borderBottomWidth: 2 }]} onPress={() => setActiveTab('progression')} activeOpacity={0.7}>
-                <Text style={[styles.tabText, { color: activeTab === 'progression' ? colors.success : colors.textSecondary }]}>Progresión</Text>
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', width: '100%' }}>
+                <TouchableOpacity style={[styles.tab, activeTab === 'workouts' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]} onPress={() => setActiveTab('workouts')} activeOpacity={0.7}>
+                  <Text style={[styles.tabText, { color: activeTab === 'workouts' ? colors.primary : colors.textSecondary }]}>Entrenos</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.tab, activeTab === 'tests' && { borderBottomColor: colors.accent, borderBottomWidth: 2 }]} onPress={() => setActiveTab('tests')} activeOpacity={0.7}>
+                  <Text style={[styles.tabText, { color: activeTab === 'tests' ? colors.accent : colors.textSecondary }]}>Tests</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.tab, activeTab === 'progression' && { borderBottomColor: colors.success, borderBottomWidth: 2 }]} onPress={() => setActiveTab('progression')} activeOpacity={0.7}>
+                  <Text style={[styles.tabText, { color: activeTab === 'progression' ? colors.success : colors.textSecondary }]}>Progresión</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         }
@@ -402,27 +414,61 @@ export default function AthleteDetailScreen() {
         }
       />
 
-      {/* Fab Buttons se ocultan en Progresión */}
       {activeTab !== 'progression' && (
         <View style={styles.fabRow}>
-          <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={() => router.push('/add-workout')} activeOpacity={0.7}>
+          <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={() => router.push({ pathname: '/add-workout', params: { athleteId: params.id } })} activeOpacity={0.7}>
             <Ionicons name="barbell-outline" size={22} color="#FFF" />
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.fab, { backgroundColor: colors.accent }]} onPress={() => router.push('/add-test')} activeOpacity={0.7}>
+          <TouchableOpacity style={[styles.fab, { backgroundColor: colors.accent }]} onPress={() => router.push({ pathname: '/add-test', params: { athleteId: params.id } })} activeOpacity={0.7}>
             <Ionicons name="analytics-outline" size={22} color="#FFF" />
           </TouchableOpacity>
         </View>
       )}
 
-      {/* Modal omitido aquí por espacio, pero mantenlo igual que en tu archivo original si quieres, aunque aquí está simplificado */}
+      {/* EL MODAL QUE FALTABA PARA DUPLICAR ENTRENAMIENTOS */}
+      <Modal visible={!!duplicateModal} transparent animationType="fade" onRequestClose={() => setDuplicateModal(null)}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Duplicar Entrenamiento</Text>
+            <Text style={[styles.modalSub, { color: colors.textSecondary }]}>
+              Elige la fecha para el nuevo entrenamiento. Se copiarán todos los ejercicios, series y repeticiones.
+            </Text>
+
+            <View style={styles.modalField}>
+              <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>FECHA (YYYY-MM-DD)</Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                value={duplicateDate}
+                onChangeText={setDuplicateDate}
+                placeholder="2024-10-15"
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+
+            <View style={styles.modalBtns}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setDuplicateModal(null)} activeOpacity={0.7}>
+                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleDuplicate} disabled={duplicating} activeOpacity={0.7}>
+                {duplicating ? (
+                  <ActivityIndicator color="#FFF" size="small" />
+                ) : (
+                  <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Duplicar</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 },
-  headerTitle: { fontSize: 18, fontWeight: '600' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16, paddingBottom: 8 },
+  headerTitle: { fontSize: 20, fontWeight: '700' },
   profileCard: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, borderRadius: 12, padding: 16, borderWidth: 1 },
   avatar: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
   avatarText: { fontSize: 24, fontWeight: '700' },
@@ -443,7 +489,7 @@ const styles = StyleSheet.create({
   workoutSummary: { flexDirection: 'row', alignItems: 'center', padding: 14 },
   cardTitle: { fontSize: 16, fontWeight: '600' },
   cardSub: { fontSize: 13, marginTop: 4 },
-  cardActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  cardActions: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   completionSummary: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, alignSelf: 'flex-start' },
   completionSummaryText: { fontSize: 12, fontWeight: '600' },
   expandedSection: { borderTopWidth: 0.5, paddingHorizontal: 14, paddingBottom: 14 },
@@ -464,7 +510,6 @@ const styles = StyleSheet.create({
   bilateralVal: { fontSize: 16, fontWeight: '700' },
   bilateralSep: { fontSize: 16 },
   
-  // ESTILOS DE PROGRESIÓN
   progressionCard: { borderRadius: 12, marginBottom: 12, borderWidth: 1, overflow: 'hidden' },
   progressionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   progressionTitle: { fontSize: 15, fontWeight: '700', textTransform: 'uppercase' },
@@ -478,5 +523,17 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingTop: 48, gap: 10 },
   emptyText: { fontSize: 15 },
   fabRow: { position: 'absolute', bottom: 24, right: 16, flexDirection: 'row', gap: 12 },
-  fab: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center' },
+  fab: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
+  
+  // ESTILOS DEL MODAL DE DUPLICAR
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  modalCard: { width: '100%', borderRadius: 16, padding: 24, gap: 14 },
+  modalTitle: { fontSize: 18, fontWeight: '700' },
+  modalSub: { fontSize: 14, lineHeight: 20 },
+  modalField: { gap: 6 },
+  modalLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  modalInput: { borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1 },
+  modalBtns: { flexDirection: 'row', gap: 10, marginTop: 8 },
+  modalBtn: { flex: 1, borderRadius: 10, padding: 14, alignItems: 'center' },
+  modalBtnText: { fontSize: 15, fontWeight: '600' },
 });
