@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator,
-  RefreshControl, Alert, Modal, TextInput, Platform, ScrollView
+  Alert, Modal, TextInput, Platform, ScrollView
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -149,16 +149,25 @@ export default function TestsScreen() {
           testID="tests-list"
           data={tests}
           keyExtractor={(item) => item.id}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+          // ELIMINADO REFRESHCONTROL
           contentContainerStyle={styles.listContent}
-          // INYECTAMOS LA CABECERA DIRECTAMENTE EN LUGAR DE USAR UNA FUNCIÓN
           ListHeaderComponent={
             <View style={{ marginBottom: 16 }}>
+              {/* NUEVA CABECERA CON BOTONES */}
               <View style={styles.headerRow}>
                 <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Tests Físicos</Text>
-                <TouchableOpacity testID="add-test-btn" style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => router.push('/add-test')} activeOpacity={0.7}>
-                  <Ionicons name="add" size={22} color="#FFF" />
-                </TouchableOpacity>
+                <View style={styles.headerActions}>
+                  <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
+                    {refreshing ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Ionicons name="sync-outline" size={24} color={colors.primary} />
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity testID="add-test-btn" style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => router.push('/add-test')} activeOpacity={0.7}>
+                    <Ionicons name="add" size={22} color="#FFF" />
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.filterRow}>
@@ -359,9 +368,13 @@ export default function TestsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  // ESTILOS DE CABECERA ACTUALIZADOS
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16 },
   screenTitle: { fontSize: 24, fontWeight: '700' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  refreshBtn: { padding: 4 },
   addBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  
   filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 16 },
   filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   filterText: { fontSize: 13, fontWeight: '600' },
