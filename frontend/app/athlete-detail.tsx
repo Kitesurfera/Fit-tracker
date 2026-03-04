@@ -26,12 +26,10 @@ export default function AthleteDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
-  // Duplicate modal state
   const [duplicateModal, setDuplicateModal] = useState<any>(null);
   const [duplicateDate, setDuplicateDate] = useState('');
   const [duplicating, setDuplicating] = useState(false);
 
-  // Fecha de hoy para comparar entrenos atrasados
   const tObj = new Date();
   const todayYMD = `${tObj.getFullYear()}-${String(tObj.getMonth() + 1).padStart(2, '0')}-${String(tObj.getDate()).padStart(2, '0')}`;
 
@@ -93,7 +91,6 @@ export default function AthleteDetailScreen() {
     } finally { setDuplicating(false); }
   };
 
-  // Calculate completion stats based on sets
   const calcCompletionStats = () => {
     let totalSets = 0, completedSets = 0;
     workouts.forEach(w => {
@@ -104,14 +101,12 @@ export default function AthleteDetailScreen() {
           completedSets += r.completed_sets || 0;
         });
       } else if (w.completed) {
-        // Workouts completed without detailed data: count all exercise sets as completed
         (w.exercises || []).forEach((ex: any) => {
           const s = parseInt(ex.sets) || 0;
           totalSets += s;
           completedSets += s;
         });
       } else {
-        // Pending workouts: add to total but not completed
         (w.exercises || []).forEach((ex: any) => {
           totalSets += parseInt(ex.sets) || 0;
         });
@@ -129,14 +124,12 @@ export default function AthleteDetailScreen() {
     );
   }
 
-  const { totalSets, completedSets, pct } = calcCompletionStats();
+  const { pct } = calcCompletionStats();
 
   const renderWorkoutItem = ({ item }: { item: any }) => {
     const isExpanded = expandedWorkout === item.id;
     const cd = item.completion_data;
     const hasCompletionData = cd?.exercise_results?.length > 0;
-    
-    // Nueva lógica de "No realizado"
     const isMissed = !item.completed && item.date < todayYMD;
 
     let cSets = 0, sSets = 0, tSets = 0;
@@ -161,7 +154,6 @@ export default function AthleteDetailScreen() {
             <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
               {item.date} · {item.exercises?.length || 0} ejercicios
             </Text>
-            {/* Etiqueta de Completado/Incompleto */}
             {item.completed && hasCompletionData && (
               <View style={[styles.completionSummary, { backgroundColor: sSets > 0 ? colors.warning + '12' : colors.success + '12' }]}>
                 <Ionicons name={sSets > 0 ? 'alert-circle' : 'checkmark-circle'} size={14}
@@ -171,7 +163,6 @@ export default function AthleteDetailScreen() {
                 </Text>
               </View>
             )}
-            {/* Etiqueta de No realizado */}
             {isMissed && (
               <View style={[styles.completionSummary, { backgroundColor: colors.error + '12' }]}>
                 <Ionicons name="close-circle" size={14} color={colors.error} />
@@ -185,13 +176,10 @@ export default function AthleteDetailScreen() {
             {item.completed && !hasCompletionData && (
               <Ionicons name="checkmark-circle" size={20} color={colors.success} />
             )}
-            <TouchableOpacity testID={`dup-workout-${item.id}`}
-              onPress={() => openDuplicateModal(item)} activeOpacity={0.7}>
+            <TouchableOpacity testID={`dup-workout-${item.id}`} onPress={() => openDuplicateModal(item)} activeOpacity={0.7}>
               <Ionicons name="copy-outline" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity testID={`edit-workout-${item.id}`}
-              onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: item.id } })}
-              activeOpacity={0.7}>
+            <TouchableOpacity testID={`edit-workout-${item.id}`} onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: item.id } })} activeOpacity={0.7}>
               <Ionicons name="create-outline" size={18} color={colors.primary} />
             </TouchableOpacity>
             <TouchableOpacity onPress={() => handleDeleteWorkout(item.id)} activeOpacity={0.7}>
@@ -298,6 +286,7 @@ export default function AthleteDetailScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      {/* CABECERA FIJA: Botón atrás y Título */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} testID="back-athlete-detail" activeOpacity={0.7}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
@@ -308,61 +297,63 @@ export default function AthleteDetailScreen() {
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={[styles.avatar, { backgroundColor: colors.primary + '20' }]}>
-          <Text style={[styles.avatarText, { color: colors.primary }]}>{athlete?.name?.charAt(0)?.toUpperCase()}</Text>
-        </View>
-        <View style={styles.profileInfo}>
-          <Text style={[styles.profileName, { color: colors.textPrimary }]}>{athlete?.name}</Text>
-          <Text style={[styles.profileSub, { color: colors.textSecondary }]}>{athlete?.email}</Text>
-          <Text style={[styles.profileSub, { color: colors.textSecondary }]}>
-            {athlete?.sport || 'Sin deporte'} {athlete?.position ? `· ${athlete.position}` : ''}
-          </Text>
-        </View>
-      </View>
-
-      {/* Stats with completion percentage */}
-      <View style={styles.statsRow}>
-        <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.statValue, { color: colors.textPrimary }]}>{workouts.length}</Text>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Entrenos</Text>
-        </View>
-        <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.statValue, { color: pct >= 75 ? colors.success : pct >= 40 ? colors.warning : colors.error }]}>{pct}%</Text>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Realizado</Text>
-          {/* Mini progress bar */}
-          <View style={[styles.miniProgressBg, { backgroundColor: colors.surfaceHighlight }]}>
-            <View style={[styles.miniProgressFill, {
-              width: `${pct}%`,
-              backgroundColor: pct >= 75 ? colors.success : pct >= 40 ? colors.warning : colors.error,
-            }]} />
-          </View>
-        </View>
-        <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={[styles.statValue, { color: colors.textPrimary }]}>{tests.length}</Text>
-          <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Tests</Text>
-        </View>
-      </View>
-
-      <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'workouts' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
-          onPress={() => setActiveTab('workouts')} activeOpacity={0.7}>
-          <Text style={[styles.tabText, { color: activeTab === 'workouts' ? colors.primary : colors.textSecondary }]}>Entrenamientos</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'tests' && { borderBottomColor: colors.accent, borderBottomWidth: 2 }]}
-          onPress={() => setActiveTab('tests')} activeOpacity={0.7}>
-          <Text style={[styles.tabText, { color: activeTab === 'tests' ? colors.accent : colors.textSecondary }]}>Tests</Text>
-        </TouchableOpacity>
-      </View>
-
+      {/* TODO EL CONTENIDO ES AHORA DESLIZABLE Y ACTUALIZABLE */}
       <FlatList
         testID="athlete-detail-list"
         data={data}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
         contentContainerStyle={styles.listContent}
+        ListHeaderComponent={
+          <View style={{ marginBottom: 16 }}>
+            <View style={[styles.profileCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.avatar, { backgroundColor: colors.primary + '20' }]}>
+                <Text style={[styles.avatarText, { color: colors.primary }]}>{athlete?.name?.charAt(0)?.toUpperCase()}</Text>
+              </View>
+              <View style={styles.profileInfo}>
+                <Text style={[styles.profileName, { color: colors.textPrimary }]}>{athlete?.name}</Text>
+                <Text style={[styles.profileSub, { color: colors.textSecondary }]}>{athlete?.email}</Text>
+                <Text style={[styles.profileSub, { color: colors.textSecondary }]}>
+                  {athlete?.sport || 'Sin deporte'} {athlete?.position ? `· ${athlete.position}` : ''}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.statsRow}>
+              <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.statValue, { color: colors.textPrimary }]}>{workouts.length}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Entrenos</Text>
+              </View>
+              <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.statValue, { color: pct >= 75 ? colors.success : pct >= 40 ? colors.warning : colors.error }]}>{pct}%</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Realizado</Text>
+                <View style={[styles.miniProgressBg, { backgroundColor: colors.surfaceHighlight }]}>
+                  <View style={[styles.miniProgressFill, {
+                    width: `${pct}%`,
+                    backgroundColor: pct >= 75 ? colors.success : pct >= 40 ? colors.warning : colors.error,
+                  }]} />
+                </View>
+              </View>
+              <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.statValue, { color: colors.textPrimary }]}>{tests.length}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Tests</Text>
+              </View>
+            </View>
+
+            <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'workouts' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
+                onPress={() => setActiveTab('workouts')} activeOpacity={0.7}>
+                <Text style={[styles.tabText, { color: activeTab === 'workouts' ? colors.primary : colors.textSecondary }]}>Entrenamientos</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tab, activeTab === 'tests' && { borderBottomColor: colors.accent, borderBottomWidth: 2 }]}
+                onPress={() => setActiveTab('tests')} activeOpacity={0.7}>
+                <Text style={[styles.tabText, { color: activeTab === 'tests' ? colors.accent : colors.textSecondary }]}>Tests</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        }
         renderItem={activeTab === 'workouts' ? renderWorkoutItem : renderTestItem}
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -373,17 +364,14 @@ export default function AthleteDetailScreen() {
       />
 
       <View style={styles.fabRow}>
-        <TouchableOpacity testID="fab-add-workout" style={[styles.fab, { backgroundColor: colors.primary }]}
-          onPress={() => router.push('/add-workout')} activeOpacity={0.7}>
+        <TouchableOpacity testID="fab-add-workout" style={[styles.fab, { backgroundColor: colors.primary }]} onPress={() => router.push('/add-workout')} activeOpacity={0.7}>
           <Ionicons name="barbell-outline" size={22} color="#FFF" />
         </TouchableOpacity>
-        <TouchableOpacity testID="fab-add-test" style={[styles.fab, { backgroundColor: colors.accent }]}
-          onPress={() => router.push('/add-test')} activeOpacity={0.7}>
+        <TouchableOpacity testID="fab-add-test" style={[styles.fab, { backgroundColor: colors.accent }]} onPress={() => router.push('/add-test')} activeOpacity={0.7}>
           <Ionicons name="analytics-outline" size={22} color="#FFF" />
         </TouchableOpacity>
       </View>
 
-      {/* Duplicate Workout Modal */}
       <Modal visible={!!duplicateModal} transparent animationType="fade" onRequestClose={() => setDuplicateModal(null)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
@@ -391,7 +379,6 @@ export default function AthleteDetailScreen() {
             <Text style={[styles.modalSub, { color: colors.textSecondary }]}>
               {duplicateModal?.title} · {duplicateModal?.exercises?.length || 0} ejercicios
             </Text>
-
             <View style={styles.modalField}>
               <Text style={[styles.modalLabel, { color: colors.textSecondary }]}>NUEVA FECHA</Text>
               <TextInput
@@ -403,20 +390,12 @@ export default function AthleteDetailScreen() {
                 placeholderTextColor={colors.textSecondary}
               />
             </View>
-
             <View style={styles.modalBtns}>
-              <TouchableOpacity
-                style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]}
-                onPress={() => setDuplicateModal(null)} activeOpacity={0.7}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setDuplicateModal(null)} activeOpacity={0.7}>
                 <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity
-                testID="confirm-duplicate-btn"
-                style={[styles.modalBtn, { backgroundColor: colors.primary }]}
-                onPress={handleDuplicate} disabled={duplicating} activeOpacity={0.7}>
-                {duplicating ? <ActivityIndicator color="#FFF" size="small" /> : (
-                  <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Duplicar</Text>
-                )}
+              <TouchableOpacity testID="confirm-duplicate-btn" style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleDuplicate} disabled={duplicating} activeOpacity={0.7}>
+                {duplicating ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Duplicar</Text>}
               </TouchableOpacity>
             </View>
           </View>
@@ -430,19 +409,19 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 8, paddingBottom: 8 },
   headerTitle: { fontSize: 18, fontWeight: '600' },
-  profileCard: { flexDirection: 'row', alignItems: 'center', margin: 16, borderRadius: 12, padding: 16, borderWidth: 1 },
+  profileCard: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, borderRadius: 12, padding: 16, borderWidth: 1 },
   avatar: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
   avatarText: { fontSize: 24, fontWeight: '700' },
   profileInfo: { marginLeft: 14, flex: 1 },
   profileName: { fontSize: 18, fontWeight: '600' },
   profileSub: { fontSize: 13, marginTop: 2 },
-  statsRow: { flexDirection: 'row', paddingHorizontal: 16, gap: 10, marginBottom: 16 },
+  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
   statBox: { flex: 1, borderRadius: 10, padding: 14, borderWidth: 1, alignItems: 'center' },
   statValue: { fontSize: 22, fontWeight: '700' },
   statLabel: { fontSize: 11, fontWeight: '500', marginTop: 2 },
   miniProgressBg: { width: '80%', height: 4, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
   miniProgressFill: { height: '100%', borderRadius: 2 },
-  tabs: { flexDirection: 'row', borderBottomWidth: 0.5, marginHorizontal: 16 },
+  tabs: { flexDirection: 'row', borderBottomWidth: 0.5 },
   tab: { flex: 1, alignItems: 'center', paddingVertical: 12 },
   tabText: { fontSize: 15, fontWeight: '600' },
   listContent: { padding: 16, paddingBottom: 100 },
@@ -479,7 +458,6 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 15 },
   fabRow: { position: 'absolute', bottom: 24, right: 16, flexDirection: 'row', gap: 12 },
   fab: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center' },
-  // Modal
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalCard: { width: '100%', borderRadius: 16, padding: 24, gap: 16 },
   modalTitle: { fontSize: 18, fontWeight: '700' },
