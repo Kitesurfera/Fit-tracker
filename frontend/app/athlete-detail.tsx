@@ -22,7 +22,8 @@ export default function AthleteDetailScreen() {
   const [athlete, setAthlete] = useState<any>(null);
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [tests, setTests] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'workouts' | 'tests' | 'progression'>('workouts');
+  // NUEVA PESTAÑA DASHBOARD POR DEFECTO
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'workouts' | 'tests' | 'progression'>('dashboard');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
@@ -50,7 +51,6 @@ export default function AthleteDetailScreen() {
   useEffect(() => { loadData(); }, []);
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
-  // CORREGIDO PARA WEB: Borrar Deportista
   const handleDeleteAthlete = () => {
     if (Platform.OS === 'web') {
       const confirm = window.confirm(`¿Estás seguro de eliminar a ${params.name}?`);
@@ -67,7 +67,6 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  // CORREGIDO PARA WEB: Borrar Entrenamiento
   const handleDeleteWorkout = async (wId: string) => {
     if (Platform.OS === 'web') {
       const confirm = window.confirm('¿Seguro que quieres borrar este entrenamiento?');
@@ -151,7 +150,6 @@ export default function AthleteDetailScreen() {
 
   const getProgressionData = () => {
     const history: Record<string, any[]> = {};
-
     workouts.filter(w => w.completed && w.completion_data).forEach(w => {
       w.completion_data.exercise_results.forEach((r: any) => {
         if (r.completed_sets > 0) {
@@ -167,7 +165,6 @@ export default function AthleteDetailScreen() {
         }
       });
     });
-
     return Object.keys(history).map(name => ({
       name,
       history: history[name].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -184,6 +181,63 @@ export default function AthleteDetailScreen() {
 
   const { pct } = calcCompletionStats();
   const progressionData = getProgressionData();
+
+  // NUEVO: RENDERIZADOR DEL DASHBOARD DE RESUMEN
+  const renderDashboardItem = () => {
+    const recentObs = workouts.filter(w => w.observations).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+    const latestWellness = workouts.filter(w => w.completion_data?.rpe || w.completion_data?.sleep).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+
+    return (
+      <View style={styles.dashboardContainer}>
+        {latestWellness && (
+          <View style={[styles.obsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.obsCardTitle, { color: colors.textPrimary, marginBottom: 12 }]}>Último estado reportado</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {latestWellness.completion_data?.rpe ? (
+                <View style={[styles.wellnessBadge, { backgroundColor: latestWellness.completion_data.rpe > 7 ? colors.error + '20' : latestWellness.completion_data.rpe > 4 ? colors.warning + '20' : colors.success + '20' }]}>
+                  <Text style={[styles.wellnessBadgeText, { color: latestWellness.completion_data.rpe > 7 ? colors.error : latestWellness.completion_data.rpe > 4 ? colors.warning : colors.success }]}>
+                    Esfuerzo (RPE): {latestWellness.completion_data.rpe}/10
+                  </Text>
+                </View>
+              ) : null}
+              {latestWellness.completion_data?.sleep ? (
+                <View style={[styles.wellnessBadge, { backgroundColor: latestWellness.completion_data.sleep === 'mal' ? colors.error + '20' : latestWellness.completion_data.sleep === 'regular' ? colors.warning + '20' : colors.success + '20' }]}>
+                  <Text style={[styles.wellnessBadgeText, { color: latestWellness.completion_data.sleep === 'mal' ? colors.error : latestWellness.completion_data.sleep === 'regular' ? colors.warning : colors.success }]}>
+                    Descanso: {latestWellness.completion_data.sleep.charAt(0).toUpperCase() + latestWellness.completion_data.sleep.slice(1)}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <Text style={[styles.obsDate, { color: colors.textSecondary, marginTop: 8 }]}>Hace referencia al entreno del {latestWellness.date}</Text>
+          </View>
+        )}
+
+        <View style={styles.sectionHeaderLine}>
+          <Ionicons name="chatbubbles-outline" size={20} color={colors.primary} />
+          <Text style={[styles.dashboardSectionTitle, { color: colors.textPrimary }]}>Feedback Reciente</Text>
+        </View>
+
+        {recentObs.length > 0 ? (
+          recentObs.map(w => (
+            <View key={w.id} style={[styles.obsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={styles.obsHeader}>
+                <Text style={[styles.obsWorkoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
+                <Text style={[styles.obsDate, { color: colors.textSecondary }]}>{w.date}</Text>
+              </View>
+              <View style={[styles.obsTextContainer, { backgroundColor: colors.surfaceHighlight }]}>
+                <Text style={[styles.obsText, { color: colors.textPrimary }]}>"{w.observations}"</Text>
+              </View>
+            </View>
+          ))
+        ) : (
+          <View style={styles.emptyState}>
+            <Ionicons name="document-text-outline" size={40} color={colors.textSecondary} />
+            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No hay observaciones recientes.</Text>
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const renderWorkoutItem = ({ item }: { item: any }) => {
     const isExpanded = expandedWorkout === item.id;
@@ -248,6 +302,23 @@ export default function AthleteDetailScreen() {
 
         {isExpanded && (
           <View style={[styles.expandedSection, { borderTopColor: colors.border }]}>
+            
+            {/* MOSTRAMOS RPE Y SUEÑO SI EXISTEN EN ESTE ENTRENO */}
+            {(cd?.rpe || cd?.sleep) && (
+              <View style={styles.expandedWellnessRow}>
+                {cd.rpe && <Text style={[styles.exDetails, { color: colors.textSecondary, fontWeight: '600' }]}>RPE: {cd.rpe}/10</Text>}
+                {cd.sleep && <Text style={[styles.exDetails, { color: colors.textSecondary, fontWeight: '600', textTransform: 'capitalize' }]}>Descanso: {cd.sleep}</Text>}
+              </View>
+            )}
+
+            {/* MOSTRAMOS OBSERVACIONES SI EXISTEN */}
+            {item.observations && (
+              <View style={[styles.expandedObsBox, { backgroundColor: colors.surfaceHighlight }]}>
+                <Text style={[styles.expandedObsTitle, { color: colors.textPrimary }]}>Nota del deportista:</Text>
+                <Text style={[styles.expandedObsText, { color: colors.textSecondary }]}>"{item.observations}"</Text>
+              </View>
+            )}
+
             {item.exercises?.map((ex: any, i: number) => {
               const exResult = cd?.exercise_results?.find((r: any) => r.exercise_index === i);
               const allDone = exResult && exResult.skipped_sets === 0;
@@ -349,7 +420,8 @@ export default function AthleteDetailScreen() {
     </View>
   );
 
-  const data = activeTab === 'workouts' ? workouts : activeTab === 'tests' ? tests : progressionData;
+  // Seleccionamos los datos según la pestaña
+  const data = activeTab === 'dashboard' ? [1] : activeTab === 'workouts' ? workouts : activeTab === 'tests' ? tests : progressionData;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -376,7 +448,7 @@ export default function AthleteDetailScreen() {
       <FlatList
         testID="athlete-detail-list"
         data={data}
-        keyExtractor={(item, index) => item.id || `prog-${index}`}
+        keyExtractor={(item, index) => item.id || `item-${index}`}
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <View style={{ marginBottom: 16 }}>
@@ -411,8 +483,12 @@ export default function AthleteDetailScreen() {
               </View>
             </View>
 
-            <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
-              <View style={{ flexDirection: 'row', width: '100%' }}>
+            {/* PESTAÑAS DESPLAZABLES PARA QUE QUEPAN LAS 4 */}
+            <View style={[styles.tabsWrapper, { borderBottomColor: colors.border }]}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row' }}>
+                <TouchableOpacity style={[styles.tab, activeTab === 'dashboard' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]} onPress={() => setActiveTab('dashboard')} activeOpacity={0.7}>
+                  <Text style={[styles.tabText, { color: activeTab === 'dashboard' ? colors.primary : colors.textSecondary }]}>Resumen</Text>
+                </TouchableOpacity>
                 <TouchableOpacity style={[styles.tab, activeTab === 'workouts' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]} onPress={() => setActiveTab('workouts')} activeOpacity={0.7}>
                   <Text style={[styles.tabText, { color: activeTab === 'workouts' ? colors.primary : colors.textSecondary }]}>Entrenos</Text>
                 </TouchableOpacity>
@@ -422,22 +498,29 @@ export default function AthleteDetailScreen() {
                 <TouchableOpacity style={[styles.tab, activeTab === 'progression' && { borderBottomColor: colors.success, borderBottomWidth: 2 }]} onPress={() => setActiveTab('progression')} activeOpacity={0.7}>
                   <Text style={[styles.tabText, { color: activeTab === 'progression' ? colors.success : colors.textSecondary }]}>Progresión</Text>
                 </TouchableOpacity>
-              </View>
+              </ScrollView>
             </View>
           </View>
         }
-        renderItem={activeTab === 'workouts' ? renderWorkoutItem : activeTab === 'tests' ? renderTestItem : renderProgressionItem}
+        renderItem={
+          activeTab === 'dashboard' ? renderDashboardItem 
+          : activeTab === 'workouts' ? renderWorkoutItem 
+          : activeTab === 'tests' ? renderTestItem 
+          : renderProgressionItem
+        }
         ListEmptyComponent={
-          <View style={styles.emptyState}>
-            <Ionicons name={activeTab === 'workouts' ? 'barbell-outline' : activeTab === 'tests' ? 'analytics-outline' : 'trending-up-outline'} size={40} color={colors.textSecondary} />
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-              {activeTab === 'workouts' ? 'Sin entrenamientos' : activeTab === 'tests' ? 'Sin tests' : 'Sin datos de progresión aún'}
-            </Text>
-          </View>
+          activeTab !== 'dashboard' ? (
+            <View style={styles.emptyState}>
+              <Ionicons name={activeTab === 'workouts' ? 'barbell-outline' : activeTab === 'tests' ? 'analytics-outline' : 'trending-up-outline'} size={40} color={colors.textSecondary} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                {activeTab === 'workouts' ? 'Sin entrenamientos' : activeTab === 'tests' ? 'Sin tests' : 'Sin datos de progresión aún'}
+              </Text>
+            </View>
+          ) : null
         }
       />
 
-      {activeTab !== 'progression' && (
+      {(activeTab === 'workouts' || activeTab === 'dashboard') && (
         <View style={styles.fabRow}>
           <TouchableOpacity style={[styles.fab, { backgroundColor: colors.primary }]} onPress={() => router.push({ pathname: '/add-workout', params: { athleteId: params.id } })} activeOpacity={0.7}>
             <Ionicons name="barbell-outline" size={22} color="#FFF" />
@@ -503,10 +586,25 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 11, fontWeight: '500', marginTop: 2 },
   miniProgressBg: { width: '80%', height: 4, borderRadius: 2, marginTop: 6, overflow: 'hidden' },
   miniProgressFill: { height: '100%', borderRadius: 2 },
-  tabs: { flexDirection: 'row', borderBottomWidth: 0.5 },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: 12 },
+  tabsWrapper: { borderBottomWidth: 0.5 },
+  tab: { paddingHorizontal: 20, alignItems: 'center', paddingVertical: 12 },
   tabText: { fontSize: 14, fontWeight: '600' },
   listContent: { padding: 16, paddingBottom: 100 },
+  
+  // DASHBOARD STYLES
+  dashboardContainer: { gap: 16 },
+  sectionHeaderLine: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 10, marginBottom: 4 },
+  dashboardSectionTitle: { fontSize: 16, fontWeight: '700' },
+  obsCard: { borderRadius: 12, borderWidth: 1, padding: 16 },
+  obsCardTitle: { fontSize: 14, fontWeight: '700' },
+  wellnessBadge: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
+  wellnessBadgeText: { fontSize: 12, fontWeight: '700' },
+  obsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  obsWorkoutTitle: { fontSize: 15, fontWeight: '600', flex: 1 },
+  obsDate: { fontSize: 12 },
+  obsTextContainer: { padding: 12, borderRadius: 8 },
+  obsText: { fontSize: 14, fontStyle: 'italic', lineHeight: 20 },
+
   workoutCard: { borderRadius: 12, marginBottom: 10, borderWidth: 1, overflow: 'hidden' },
   workoutSummary: { flexDirection: 'row', alignItems: 'center', padding: 14 },
   cardTitle: { fontSize: 16, fontWeight: '600' },
@@ -515,6 +613,10 @@ const styles = StyleSheet.create({
   completionSummary: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, alignSelf: 'flex-start' },
   completionSummaryText: { fontSize: 12, fontWeight: '600' },
   expandedSection: { borderTopWidth: 0.5, paddingHorizontal: 14, paddingBottom: 14 },
+  expandedWellnessRow: { flexDirection: 'row', gap: 12, paddingTop: 12, paddingBottom: 4 },
+  expandedObsBox: { padding: 10, borderRadius: 8, marginTop: 8, marginBottom: 8 },
+  expandedObsTitle: { fontSize: 12, fontWeight: '700', marginBottom: 4 },
+  expandedObsText: { fontSize: 13, fontStyle: 'italic' },
   exRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12, gap: 10 },
   exBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginTop: 2 },
   exBadgeText: { fontSize: 12, fontWeight: '700' },
