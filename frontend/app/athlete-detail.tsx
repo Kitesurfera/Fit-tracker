@@ -31,6 +31,10 @@ export default function AthleteDetailScreen() {
   const [duplicateDate, setDuplicateDate] = useState('');
   const [duplicating, setDuplicating] = useState(false);
 
+  // Fecha de hoy para comparar entrenos atrasados
+  const tObj = new Date();
+  const todayYMD = `${tObj.getFullYear()}-${String(tObj.getMonth() + 1).padStart(2, '0')}-${String(tObj.getDate()).padStart(2, '0')}`;
+
   const loadData = async () => {
     try {
       const [ath, wk, ts] = await Promise.all([
@@ -131,6 +135,9 @@ export default function AthleteDetailScreen() {
     const isExpanded = expandedWorkout === item.id;
     const cd = item.completion_data;
     const hasCompletionData = cd?.exercise_results?.length > 0;
+    
+    // Nueva lógica de "No realizado"
+    const isMissed = !item.completed && item.date < todayYMD;
 
     let cSets = 0, sSets = 0, tSets = 0;
     if (hasCompletionData) {
@@ -154,12 +161,22 @@ export default function AthleteDetailScreen() {
             <Text style={[styles.cardSub, { color: colors.textSecondary }]}>
               {item.date} · {item.exercises?.length || 0} ejercicios
             </Text>
+            {/* Etiqueta de Completado/Incompleto */}
             {item.completed && hasCompletionData && (
               <View style={[styles.completionSummary, { backgroundColor: sSets > 0 ? colors.warning + '12' : colors.success + '12' }]}>
                 <Ionicons name={sSets > 0 ? 'alert-circle' : 'checkmark-circle'} size={14}
                   color={sSets > 0 ? colors.warning : colors.success} />
                 <Text style={[styles.completionSummaryText, { color: sSets > 0 ? colors.warning : colors.success }]}>
                   {cSets}/{tSets} series{sSets > 0 ? ` · ${sSets} saltada${sSets > 1 ? 's' : ''}` : ''}
+                </Text>
+              </View>
+            )}
+            {/* Etiqueta de No realizado */}
+            {isMissed && (
+              <View style={[styles.completionSummary, { backgroundColor: colors.error + '12' }]}>
+                <Ionicons name="close-circle" size={14} color={colors.error} />
+                <Text style={[styles.completionSummaryText, { color: colors.error }]}>
+                  No realizado
                 </Text>
               </View>
             )}
