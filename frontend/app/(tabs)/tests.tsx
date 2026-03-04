@@ -1,8 +1,8 @@
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator,
   RefreshControl, Alert, Modal, TextInput, Platform, ScrollView
 } from 'react-native';
-
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,12 +35,14 @@ export default function TestsScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
+  
   const [tests, setTests] = useState<any[]>([]);
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedAthlete, setSelectedAthlete] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
   const [editTest, setEditTest] = useState<any>(null);
   const [editValue, setEditValue] = useState('');
   const [editLeft, setEditLeft] = useState('');
@@ -54,12 +56,16 @@ export default function TestsScreen() {
       const params: any = {};
       if (selectedCategory !== 'all') params.test_type = selectedCategory;
       if (selectedAthlete) params.athlete_id = selectedAthlete;
+      
       const [ts, ath] = await Promise.all([
-        api.getTests(params),
-        user?.role === 'trainer' ? api.getAthletes() : Promise.resolve([]),
+        api.getTests(params).catch(() => []), // Seguro contra fallos de red
+        user?.role === 'trainer' ? api.getAthletes().catch(() => []) : Promise.resolve([]),
       ]);
-      setTests(ts);
-      setAthletes(ath);
+      
+      // Nos aseguramos 100% de que siempre sean arrays (evita la pantalla blanca)
+      setTests(Array.isArray(ts) ? ts : []);
+      setAthletes(Array.isArray(ath) ? ath : []);
+      
     } catch (e) {
       console.log(e);
     } finally {
@@ -108,10 +114,7 @@ export default function TestsScreen() {
     if (!editTest) return;
     setSaving(true);
     try {
-      const updateData: any = {
-        unit: editUnit,
-        notes: editNotes,
-      };
+      const updateData: any = { unit: editUnit, notes: editNotes };
       if (editTest.value_left != null || editTest.value_right != null) {
         updateData.value = parseFloat(editValue) || 0;
         updateData.value_left = parseFloat(editLeft) || 0;
@@ -135,79 +138,8 @@ export default function TestsScreen() {
 
   const isBilateral = editTest?.value_left != null || editTest?.value_right != null;
 
-  // --- COMPONENTES DE CABECERA SEPARADOS ---
-  const renderHeader = () => (
-    <View style={{ marginBottom: 16 }}>
-      <View style={styles.headerRow}>
-        <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Tests Fisicos</Text>
-        <TouchableOpacity
-          testID="add-test-btn"
-          style={[styles.addBtn, { backgroundColor: colors.primary }]}
-          onPress={() => router.push('/add-test')}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="add" size={22} color="#FFF" />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.filterRow}>
-        {CATEGORIES.map(cat => (
-          <TouchableOpacity
-            key={cat.key}
-            style={[
-              styles.filterChip,
-              { borderColor: colors.border },
-              selectedCategory === cat.key && { backgroundColor: colors.primary, borderColor: colors.primary },
-            ]}
-            onPress={() => setSelectedCategory(cat.key)}
-            activeOpacity={0.7}
-          >
-            <Text style={[
-              styles.filterText,
-              { color: colors.textSecondary },
-              selectedCategory === cat.key && { color: '#FFF' },
-            ]}>
-              {cat.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {/* El filtro de deportistas ahora vive dentro del ListHeaderComponent */}
-      {user?.role === 'trainer' && athletes.length > 0 && (
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.athleteFilter}
-        >
-          {[{ id: null, name: 'Todos' }, ...athletes].map((item, index) => (
-            <TouchableOpacity
-              key={item.id || `all-${index}`}
-              style={[
-                styles.athleteChip,
-                { backgroundColor: colors.surfaceHighlight },
-                selectedAthlete === item.id && { backgroundColor: colors.primary },
-              ]}
-              onPress={() => setSelectedAthlete(item.id)}
-              activeOpacity={0.7}
-            >
-              <Text style={[
-                styles.athleteChipText,
-                { color: colors.textPrimary },
-                selectedAthlete === item.id && { color: '#FFF' },
-              ]}>
-                {item.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
-    </View>
-  );
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      
       {loading ? (
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <ActivityIndicator color={colors.primary} size="large" />
@@ -219,8 +151,61 @@ export default function TestsScreen() {
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           contentContainerStyle={styles.listContent}
-          // AQUÍ INYECTAMOS LA CABECERA COMPLETA
-          ListHeaderComponent={renderHeader}
+          // INYECTAMOS LA CABECERA DIRECTAMENTE EN LUGAR DE USAR UNA FUNCIÓN
+          ListHeaderComponent={
+            <View style={{ marginBottom: 16 }}>
+              <View style={styles.headerRow}>
+                <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Tests Físicos</Text>
+                <TouchableOpacity testID="add-test-btn" style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => router.push('/add-test')} activeOpacity={0.7}>
+                  <Ionicons name="add" size={22} color="#FFF" />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.filterRow}>
+                {CATEGORIES.map(cat => (
+                  <TouchableOpacity
+                    key={cat.key}
+                    style={[
+                      styles.filterChip,
+                      { borderColor: colors.border },
+                      selectedCategory === cat.key && { backgroundColor: colors.primary, borderColor: colors.primary },
+                    ]}
+                    onPress={() => setSelectedCategory(cat.key)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[
+                      styles.filterText,
+                      { color: colors.textSecondary },
+                      selectedCategory === cat.key && { color: '#FFF' },
+                    ]}>{cat.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {user?.role === 'trainer' && Array.isArray(athletes) && athletes.length > 0 && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.athleteFilter}>
+                  {[{ id: null, name: 'Todos' }, ...athletes].map((item, index) => (
+                    <TouchableOpacity
+                      key={item.id || `all-${index}`}
+                      style={[
+                        styles.athleteChip,
+                        { backgroundColor: colors.surfaceHighlight },
+                        selectedAthlete === item.id && { backgroundColor: colors.primary },
+                      ]}
+                      onPress={() => setSelectedAthlete(item.id)}
+                      activeOpacity={0.7}
+                    >
+                      <Text style={[
+                        styles.athleteChipText,
+                        { color: colors.textPrimary },
+                        selectedAthlete === item.id && { color: '#FFF' },
+                      ]}>{item.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              )}
+            </View>
+          }
           renderItem={({ item }) => (
             <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.testHeader}>
@@ -380,11 +365,11 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 16 },
   filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   filterText: { fontSize: 13, fontWeight: '600' },
-  athleteFilter: { paddingHorizontal: 16, paddingTop: 12, gap: 8, paddingBottom: 4 }, // Añadido un pequeño paddingBottom
+  athleteFilter: { paddingHorizontal: 16, paddingTop: 12, gap: 8, paddingBottom: 4 },
   athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
   athleteChipText: { fontSize: 13, fontWeight: '500' },
-  listContent: { paddingBottom: 32 }, // Quitamos el padding horizontal de aquí para que la cabecera toque los bordes
-  testCard: { borderRadius: 12, padding: 16, marginHorizontal: 16, marginBottom: 12, borderWidth: 1 }, // Movido el margen aquí
+  listContent: { paddingBottom: 32 },
+  testCard: { borderRadius: 12, padding: 16, marginHorizontal: 16, marginBottom: 12, borderWidth: 1 },
   testHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   typeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   typeBadgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
