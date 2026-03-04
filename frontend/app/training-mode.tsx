@@ -21,8 +21,12 @@ export default function TrainingModeScreen() {
   const [setsStatus, setSetsStatus] = useState<Record<number, SetStatus[]>>({});
   const [finished, setFinished] = useState(false);
   
-  // Registro de cargas y reps reales
+  // Registro de cargas, reps reales
   const [logs, setLogs] = useState<Record<number, {weight: string, reps: string}>>({});
+  
+  // NUEVO: Registro de Bienestar (Wellness)
+  const [rpe, setRpe] = useState<number | null>(null);
+  const [sleep, setSleep] = useState<'bien' | 'regular' | 'mal' | null>(null);
   
   const [restSeconds, setRestSeconds] = useState(0);
   const [isResting, setIsResting] = useState(false);
@@ -152,6 +156,9 @@ export default function TrainingModeScreen() {
 
   const buildCompletionData = () => {
     return {
+      // AQUÍ GUARDAMOS EL RPE Y EL SUEÑO EN LA CAJA FUERTE DEL BACKEND
+      rpe: rpe,
+      sleep: sleep,
       exercise_results: exercises.map((ex: any, i: number) => {
         const sets = setsStatus[i] || [];
         return {
@@ -161,7 +168,6 @@ export default function TrainingModeScreen() {
           completed_sets: sets.filter(s => s === 'completed').length,
           skipped_sets: sets.filter(s => s === 'skipped').length,
           set_details: sets.map((status, si) => ({ set: si + 1, status })),
-          // Añadimos los datos reales anotados
           logged_weight: logs[i]?.weight || '',
           logged_reps: logs[i]?.reps || ''
         };
@@ -198,7 +204,6 @@ export default function TrainingModeScreen() {
 
   if (finished) {
     const completionData = buildCompletionData();
-    const totalCompleted = completionData.exercise_results.reduce((s: number, r: any) => s + r.completed_sets, 0);
     const totalSkipped = completionData.exercise_results.reduce((s: number, r: any) => s + r.skipped_sets, 0);
     const hasSkips = totalSkipped > 0;
 
@@ -209,10 +214,62 @@ export default function TrainingModeScreen() {
             <Ionicons name={hasSkips ? 'alert-circle' : 'checkmark-circle'} size={64} color={hasSkips ? colors.warning : colors.success} />
           </View>
           <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>
-            {hasSkips ? 'Entrenamiento finalizado' : 'Entrenamiento completado!'}
+            {hasSkips ? 'Entrenamiento finalizado' : '¡Entrenamiento completado!'}
           </Text>
-          <Text style={[styles.finishedSub, { color: colors.textSecondary }]}>
-            Anota tus marcas reales para registrar el progreso
+
+          {/* NUEVO: SECCIÓN DE BIENESTAR (RPE Y SUEÑO) */}
+          <View style={[styles.wellnessCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={[styles.wellnessTitle, { color: colors.textPrimary }]}>¿Cómo de duro ha sido? (RPE)</Text>
+            <View style={styles.rpeGrid}>
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
+                const isSelected = rpe === num;
+                // Colores dinámicos según el esfuerzo
+                let rpeColor = colors.success; 
+                if (num > 4) rpeColor = colors.warning;
+                if (num > 7) rpeColor = colors.error;
+
+                return (
+                  <TouchableOpacity
+                    key={num}
+                    style={[
+                      styles.rpeBtn, 
+                      { borderColor: colors.border },
+                      isSelected && { backgroundColor: rpeColor, borderColor: rpeColor }
+                    ]}
+                    onPress={() => setRpe(num)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.rpeText, { color: colors.textPrimary }, isSelected && { color: '#FFF' }]}>{num}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 20 }]}>¿Cómo has descansado hoy?</Text>
+            <View style={styles.sleepGrid}>
+              <TouchableOpacity 
+                style={[styles.sleepBtn, { borderColor: colors.border }, sleep === 'bien' && { backgroundColor: colors.success, borderColor: colors.success }]}
+                onPress={() => setSleep('bien')}
+              >
+                <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === 'bien' && { color: '#FFF' }]}>Bien</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.sleepBtn, { borderColor: colors.border }, sleep === 'regular' && { backgroundColor: colors.warning, borderColor: colors.warning }]}
+                onPress={() => setSleep('regular')}
+              >
+                <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === 'regular' && { color: '#FFF' }]}>Regular</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.sleepBtn, { borderColor: colors.border }, sleep === 'mal' && { backgroundColor: colors.error, borderColor: colors.error }]}
+                onPress={() => setSleep('mal')}
+              >
+                <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === 'mal' && { color: '#FFF' }]}>Mal</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <Text style={[styles.finishedSub, { color: colors.textSecondary, marginTop: 10 }]}>
+            Anota tus marcas reales de hoy
           </Text>
 
           <View style={styles.summaryList}>
@@ -243,7 +300,6 @@ export default function TrainingModeScreen() {
                     </View>
                   </View>
                   
-                  {/* Nuevas casillas de registro de carga y repeticiones */}
                   {!allSkipped && (
                     <View style={styles.logRow}>
                       <View style={styles.logInputWrapper}>
@@ -281,7 +337,7 @@ export default function TrainingModeScreen() {
               testID="workout-observations-input"
               style={[styles.observationsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
               value={observations} onChangeText={setObservations}
-              placeholder="¿Cómo te sentiste? Algo a destacar..."
+              placeholder="¿Algo a destacar de hoy?"
               placeholderTextColor={colors.textSecondary}
               multiline numberOfLines={3}
             />
@@ -486,9 +542,6 @@ const styles = StyleSheet.create({
   restTimerValue: { fontSize: 32, fontWeight: '800', fontVariant: ['tabular-nums'] },
   skipRestBtn: { borderWidth: 1.5, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   skipRestText: { fontSize: 14, fontWeight: '600' },
-  observationsCard: { borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 16, gap: 10 },
-  observationsLabel: { fontSize: 16, fontWeight: '700' },
-  observationsInput: { borderRadius: 10, borderWidth: 1, padding: 14, fontSize: 15, minHeight: 80, textAlignVertical: 'top' },
   setsCard: { borderRadius: 16, padding: 20, gap: 16 },
   setsTitle: { fontSize: 16, fontWeight: '600' },
   setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' },
@@ -505,13 +558,24 @@ const styles = StyleSheet.create({
   bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 28, borderTopWidth: 0.5 },
   navBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 },
   navBtnText: { fontSize: 15, fontWeight: '500' },
-  exCounter: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 },
-  exCounterText: { fontSize: 14, fontWeight: '600' },
-  finishedContainer: { flexGrow: 1, justifyContent: 'center', alignItems: 'center', padding: 24, gap: 12 },
-  finishedIcon: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
+  
+  // ESTILOS DE LA PANTALLA FINAL
+  finishedContainer: { flexGrow: 1, padding: 24, gap: 12, alignItems: 'center' },
+  finishedIcon: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
   finishedTitle: { fontSize: 22, fontWeight: '700', textAlign: 'center' },
-  finishedSub: { fontSize: 15, textAlign: 'center' },
-  summaryList: { width: '100%', gap: 8, marginTop: 8 },
+  finishedSub: { fontSize: 15, textAlign: 'center', alignSelf: 'flex-start' },
+  
+  // ESTILOS DEL RPE Y BIENESTAR
+  wellnessCard: { width: '100%', borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 10 },
+  wellnessTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
+  rpeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
+  rpeBtn: { width: 40, height: 40, borderRadius: 8, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  rpeText: { fontSize: 16, fontWeight: '700' },
+  sleepGrid: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
+  sleepBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
+  sleepText: { fontSize: 14, fontWeight: '600' },
+  
+  summaryList: { width: '100%', gap: 8 },
   summaryRow: { flexDirection: 'column', gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 },
   summaryIcon: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   summaryName: { fontSize: 15, fontWeight: '600' },
@@ -521,7 +585,12 @@ const styles = StyleSheet.create({
   logInputWrapper: { flex: 1, gap: 4 },
   logInputLabel: { fontSize: 12, fontWeight: '600', marginLeft: 2 },
   logInput: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14 },
-  finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16, paddingHorizontal: 32, marginTop: 8, width: '100%' },
+  
+  observationsCard: { width: '100%', borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 8, gap: 10 },
+  observationsLabel: { fontSize: 16, fontWeight: '700' },
+  observationsInput: { borderRadius: 10, borderWidth: 1, padding: 14, fontSize: 15, minHeight: 80, textAlignVertical: 'top' },
+  
+  finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16, marginTop: 8, width: '100%' },
   finishBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
   exitLink: { paddingVertical: 12 },
   exitLinkText: { fontSize: 15 },
