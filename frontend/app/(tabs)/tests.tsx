@@ -41,7 +41,6 @@ export default function TestsScreen() {
   const [selectedAthlete, setSelectedAthlete] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  // Edit modal state
   const [editTest, setEditTest] = useState<any>(null);
   const [editValue, setEditValue] = useState('');
   const [editLeft, setEditLeft] = useState('');
@@ -136,8 +135,9 @@ export default function TestsScreen() {
 
   const isBilateral = editTest?.value_left != null || editTest?.value_right != null;
 
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+  // --- COMPONENTES DE CABECERA SEPARADOS ---
+  const renderHeader = () => (
+    <View style={{ marginBottom: 16 }}>
       <View style={styles.headerRow}>
         <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Tests Fisicos</Text>
         <TouchableOpacity
@@ -173,15 +173,16 @@ export default function TestsScreen() {
         ))}
       </View>
 
+      {/* El filtro de deportistas ahora vive dentro del ListHeaderComponent */}
       {user?.role === 'trainer' && athletes.length > 0 && (
-        <FlatList
-          data={[{ id: null, name: 'Todos' }, ...athletes]}
-          horizontal
+        <ScrollView 
+          horizontal 
           showsHorizontalScrollIndicator={false}
-          keyExtractor={(item) => item.id || 'all'}
           contentContainerStyle={styles.athleteFilter}
-          renderItem={({ item }) => (
+        >
+          {[{ id: null, name: 'Todos' }, ...athletes].map((item, index) => (
             <TouchableOpacity
+              key={item.id || `all-${index}`}
               style={[
                 styles.athleteChip,
                 { backgroundColor: colors.surfaceHighlight },
@@ -198,12 +199,19 @@ export default function TestsScreen() {
                 {item.name}
               </Text>
             </TouchableOpacity>
-          )}
-        />
+          ))}
+        </ScrollView>
       )}
+    </View>
+  );
 
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      
       {loading ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: 32 }} />
+        <View style={{ flex: 1, justifyContent: 'center' }}>
+          <ActivityIndicator color={colors.primary} size="large" />
+        </View>
       ) : (
         <FlatList
           testID="tests-list"
@@ -211,6 +219,8 @@ export default function TestsScreen() {
           keyExtractor={(item) => item.id}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
           contentContainerStyle={styles.listContent}
+          // AQUÍ INYECTAMOS LA CABECERA COMPLETA
+          ListHeaderComponent={renderHeader}
           renderItem={({ item }) => (
             <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={styles.testHeader}>
@@ -370,11 +380,11 @@ const styles = StyleSheet.create({
   filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 16 },
   filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
   filterText: { fontSize: 13, fontWeight: '600' },
-  athleteFilter: { paddingHorizontal: 16, paddingTop: 12, gap: 8 },
+  athleteFilter: { paddingHorizontal: 16, paddingTop: 12, gap: 8, paddingBottom: 4 }, // Añadido un pequeño paddingBottom
   athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
   athleteChipText: { fontSize: 13, fontWeight: '500' },
-  listContent: { padding: 16, paddingBottom: 32 },
-  testCard: { borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1 },
+  listContent: { paddingBottom: 32 }, // Quitamos el padding horizontal de aquí para que la cabecera toque los bordes
+  testCard: { borderRadius: 12, padding: 16, marginHorizontal: 16, marginBottom: 12, borderWidth: 1 }, // Movido el margen aquí
   testHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
   typeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
   typeBadgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
@@ -392,7 +402,6 @@ const styles = StyleSheet.create({
   emptyState: { alignItems: 'center', paddingTop: 48, gap: 12 },
   emptyText: { fontSize: 16, fontWeight: '500' },
   testActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  // Modal styles
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalCard: { width: '100%', borderRadius: 16, padding: 24, gap: 14 },
   modalTitle: { fontSize: 18, fontWeight: '700' },
