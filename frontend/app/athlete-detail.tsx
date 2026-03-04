@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
-  ActivityIndicator, Alert, Linking, TextInput, Modal, ScrollView
+  ActivityIndicator, Alert, Linking, TextInput, Modal, ScrollView, Platform
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -50,28 +50,46 @@ export default function AthleteDetailScreen() {
   useEffect(() => { loadData(); }, []);
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
+  // CORREGIDO PARA WEB: Borrar Deportista
   const handleDeleteAthlete = () => {
-    Alert.alert('Eliminar deportista', `¿Estás seguro de eliminar a ${params.name}?`, [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Eliminar', style: 'destructive', onPress: async () => {
-        try { await api.deleteAthlete(params.id!); router.back(); } catch (e) { console.log(e); }
-      }},
-    ]);
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm(`¿Estás seguro de eliminar a ${params.name}?`);
+      if (confirm) {
+        api.deleteAthlete(params.id!).then(() => router.back()).catch(e => console.log(e));
+      }
+    } else {
+      Alert.alert('Eliminar deportista', `¿Estás seguro de eliminar a ${params.name}?`, [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Eliminar', style: 'destructive', onPress: async () => {
+          try { await api.deleteAthlete(params.id!); router.back(); } catch (e) { console.log(e); }
+        }},
+      ]);
+    }
   };
 
+  // CORREGIDO PARA WEB: Borrar Entrenamiento
   const handleDeleteWorkout = async (wId: string) => {
-    Alert.alert('Eliminar entreno', '¿Seguro que quieres borrarlo?', [
-      { text: 'Cancelar', style: 'cancel' },
-      { text: 'Borrar', style: 'destructive', onPress: async () => {
-        try { await api.deleteWorkout(wId); setWorkouts(prev => prev.filter(w => w.id !== wId)); }
-        catch (e) { console.log(e); }
-      }}
-    ]);
+    if (Platform.OS === 'web') {
+      const confirm = window.confirm('¿Seguro que quieres borrar este entrenamiento?');
+      if (confirm) {
+        try { 
+          await api.deleteWorkout(wId); 
+          setWorkouts(prev => prev.filter(w => w.id !== wId)); 
+        } catch (e) { console.log(e); }
+      }
+    } else {
+      Alert.alert('Eliminar entreno', '¿Seguro que quieres borrarlo?', [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Borrar', style: 'destructive', onPress: async () => {
+          try { await api.deleteWorkout(wId); setWorkouts(prev => prev.filter(w => w.id !== wId)); }
+          catch (e) { console.log(e); }
+        }}
+      ]);
+    }
   };
 
   const openDuplicateModal = (workout: any) => {
     setDuplicateModal(workout);
-    // Sugerimos el día de hoy por defecto
     setDuplicateDate(todayYMD);
   };
 
@@ -90,12 +108,19 @@ export default function AthleteDetailScreen() {
         })),
         notes: duplicateModal.notes || '',
       });
-      // Añadimos el nuevo entreno al principio de la lista
       setWorkouts(prev => [newWorkout, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
       setDuplicateModal(null);
-      Alert.alert('¡Duplicado!', 'Entrenamiento copiado con éxito.');
+      if (Platform.OS === 'web') {
+        window.alert('Entrenamiento copiado con éxito.');
+      } else {
+        Alert.alert('¡Duplicado!', 'Entrenamiento copiado con éxito.');
+      }
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo duplicar');
+      if (Platform.OS === 'web') {
+        window.alert(e.message || 'No se pudo duplicar');
+      } else {
+        Alert.alert('Error', e.message || 'No se pudo duplicar');
+      }
     } finally { setDuplicating(false); }
   };
 
@@ -329,7 +354,6 @@ export default function AthleteDetailScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       
-      {/* CABECERA CON BOTÓN DE RECARGA */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} testID="back-athlete-detail" activeOpacity={0.7} style={{ padding: 4 }}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
@@ -353,7 +377,6 @@ export default function AthleteDetailScreen() {
         testID="athlete-detail-list"
         data={data}
         keyExtractor={(item, index) => item.id || `prog-${index}`}
-        // ELIMINADO REFRESHCONTROL
         contentContainerStyle={styles.listContent}
         ListHeaderComponent={
           <View style={{ marginBottom: 16 }}>
@@ -425,7 +448,6 @@ export default function AthleteDetailScreen() {
         </View>
       )}
 
-      {/* EL MODAL QUE FALTABA PARA DUPLICAR ENTRENAMIENTOS */}
       <Modal visible={!!duplicateModal} transparent animationType="fade" onRequestClose={() => setDuplicateModal(null)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
@@ -525,7 +547,6 @@ const styles = StyleSheet.create({
   fabRow: { position: 'absolute', bottom: 24, right: 16, flexDirection: 'row', gap: 12 },
   fab: { width: 52, height: 52, borderRadius: 26, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
   
-  // ESTILOS DEL MODAL DE DUPLICAR
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalCard: { width: '100%', borderRadius: 16, padding: 24, gap: 14 },
   modalTitle: { fontSize: 18, fontWeight: '700' },
