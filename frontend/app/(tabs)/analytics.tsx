@@ -91,8 +91,12 @@ export default function AnalyticsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       
-      {/* BLOQUE SUPERIOR FIJO (No se encoge) */}
-      <View style={{ flexShrink: 0 }}>
+      {/* TODO ESTÁ AHORA DENTRO DEL SCROLLVIEW PARA QUE FUNCIONE EL ARRASTRE */}
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      >
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Rendimiento</Text>
         </View>
@@ -103,7 +107,6 @@ export default function AnalyticsScreen() {
               horizontal 
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.athleteFilter}
-              style={{ flexGrow: 0 }}
             >
               {[{ id: null, name: 'Todos' }, ...athletes].map((item, index) => (
                 <TouchableOpacity
@@ -143,93 +146,89 @@ export default function AnalyticsScreen() {
             <Text style={[styles.tabText, { color: activeTab === 'progress' ? colors.success : colors.textSecondary }]}>Progreso</Text>
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* BLOQUE DE CONTENIDO DESPLAZABLE */}
-      <ScrollView 
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-      >
-        {activeTab === 'summary' ? (
-          <View>
-            <View style={styles.statsGrid}>
-              <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
-                <Ionicons name="flash-outline" size={24} color={colors.primary} />
-                <Text style={[styles.statValue, { color: colors.textPrimary }]}>{summary?.total_workouts || 0}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Entrenos totales</Text>
+        {/* CONTENIDO PRINCIPAL */}
+        <View style={styles.innerContent}>
+          {activeTab === 'summary' ? (
+            <View>
+              <View style={styles.statsGrid}>
+                <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+                  <Ionicons name="flash-outline" size={24} color={colors.primary} />
+                  <Text style={[styles.statValue, { color: colors.textPrimary }]}>{summary?.total_workouts || 0}</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Entrenos totales</Text>
+                </View>
+                <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
+                  <Ionicons name="checkmark-done-outline" size={24} color={colors.success} />
+                  <Text style={[styles.statValue, { color: colors.success }]}>{summary?.completion_rate || 0}%</Text>
+                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Efectividad</Text>
+                </View>
               </View>
-              <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
-                <Ionicons name="checkmark-done-outline" size={24} color={colors.success} />
-                <Text style={[styles.statValue, { color: colors.success }]}>{summary?.completion_rate || 0}%</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Efectividad</Text>
-              </View>
-            </View>
 
-            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Últimos Tests</Text>
-            {Object.keys(summary?.latest_tests || {}).length > 0 ? (
-              Object.values(summary.latest_tests).map((t: any, i) => (
-                <View key={i} style={[styles.itemRow, { backgroundColor: colors.surface }]}>
-                  <Text style={[styles.itemName, { color: colors.textPrimary }]}>{TEST_LABELS[t.test_name] || t.test_name}</Text>
-                  <Text style={[styles.itemValue, { color: colors.primary }]}>{t.value} {t.unit}</Text>
-                </View>
-              ))
-            ) : (
-              <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10 }}>No hay tests registrados</Text>
-            )}
-          </View>
-        ) : (
-          <View>
-            <View style={styles.sectionHeader}>
-              <Ionicons name="trophy-outline" size={20} color={colors.primary} />
-              <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>RMs (Tests Físicos)</Text>
-            </View>
-            
-            <View style={styles.horizontalScroll}>
-              {testHistory.filter(t => t.test_type === 'strength').slice(0, 4).map((t, i) => (
-                <View key={i} style={[styles.rmCard, { backgroundColor: colors.surface, borderColor: colors.primary + '30' }]}>
-                  <Text style={[styles.rmLabel, { color: colors.textSecondary }]}>{TEST_LABELS[t.test_name] || t.test_name}</Text>
-                  <Text style={[styles.rmValue, { color: colors.primary }]}>{t.value}<Text style={styles.rmUnit}>{t.unit}</Text></Text>
-                  <Text style={[styles.rmDate, { color: colors.textSecondary }]}>{t.date}</Text>
-                </View>
-              ))}
-              {testHistory.filter(t => t.test_type === 'strength').length === 0 && (
-                 <Text style={{ color: colors.textSecondary, fontStyle: 'italic' }}>Sin datos de RM</Text>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Últimos Tests</Text>
+              {Object.keys(summary?.latest_tests || {}).length > 0 ? (
+                Object.values(summary.latest_tests).map((t: any, i) => (
+                  <View key={i} style={[styles.itemRow, { backgroundColor: colors.surface }]}>
+                    <Text style={[styles.itemName, { color: colors.textPrimary }]}>{TEST_LABELS[t.test_name] || t.test_name}</Text>
+                    <Text style={[styles.itemValue, { color: colors.primary }]}>{t.value} {t.unit}</Text>
+                  </View>
+                ))
+              ) : (
+                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10 }}>No hay tests registrados</Text>
               )}
             </View>
-
-            <View style={[styles.sectionHeader, { marginTop: 20 }]}>
-              <Ionicons name="trending-up-outline" size={20} color={colors.success} />
-              <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>Cargas en Entrenamientos</Text>
-            </View>
-
-            {workoutProgression.length > 0 ? (
-              workoutProgression.map((item, i) => (
-                <View key={i} style={[styles.progCard, { backgroundColor: colors.surface }]}>
-                  <Text style={[styles.progName, { color: colors.textPrimary }]}>{item.name}</Text>
-                  <View style={styles.progHistory}>
-                    {item.data.map((h, idx) => (
-                      <View key={idx} style={[styles.progRow, idx > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
-                        <Text style={[styles.progDate, { color: colors.textSecondary }]}>{h.date}</Text>
-                        <View style={styles.progStats}>
-                          <Text style={[styles.progWeight, { color: colors.textPrimary }]}>{h.weight} kg</Text>
-                          <Text style={[styles.progReps, { color: colors.textSecondary }]}>x {h.reps} rep</Text>
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                </View>
-              ))
-            ) : (
-              <View style={styles.emptyState}>
-                <Ionicons name="barbell-outline" size={40} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                  {selectedAthlete ? 'Este deportista no tiene registros de carga aún' : 'No hay registros de progresión de cargas'}
-                </Text>
+          ) : (
+            <View>
+              <View style={styles.sectionHeader}>
+                <Ionicons name="trophy-outline" size={20} color={colors.primary} />
+                <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>RMs (Tests Físicos)</Text>
               </View>
-            )}
-          </View>
-        )}
+              
+              <View style={styles.horizontalScroll}>
+                {testHistory.filter(t => t.test_type === 'strength').slice(0, 4).map((t, i) => (
+                  <View key={i} style={[styles.rmCard, { backgroundColor: colors.surface, borderColor: colors.primary + '30' }]}>
+                    <Text style={[styles.rmLabel, { color: colors.textSecondary }]}>{TEST_LABELS[t.test_name] || t.test_name}</Text>
+                    <Text style={[styles.rmValue, { color: colors.primary }]}>{t.value}<Text style={styles.rmUnit}>{t.unit}</Text></Text>
+                    <Text style={[styles.rmDate, { color: colors.textSecondary }]}>{t.date}</Text>
+                  </View>
+                ))}
+                {testHistory.filter(t => t.test_type === 'strength').length === 0 && (
+                   <Text style={{ color: colors.textSecondary, fontStyle: 'italic' }}>Sin datos de RM</Text>
+                )}
+              </View>
+
+              <View style={[styles.sectionHeader, { marginTop: 20 }]}>
+                <Ionicons name="trending-up-outline" size={20} color={colors.success} />
+                <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>Cargas en Entrenamientos</Text>
+              </View>
+
+              {workoutProgression.length > 0 ? (
+                workoutProgression.map((item, i) => (
+                  <View key={i} style={[styles.progCard, { backgroundColor: colors.surface }]}>
+                    <Text style={[styles.progName, { color: colors.textPrimary }]}>{item.name}</Text>
+                    <View style={styles.progHistory}>
+                      {item.data.map((h, idx) => (
+                        <View key={idx} style={[styles.progRow, idx > 0 && { borderTopWidth: 1, borderTopColor: colors.border }]}>
+                          <Text style={[styles.progDate, { color: colors.textSecondary }]}>{h.date}</Text>
+                          <View style={styles.progStats}>
+                            <Text style={[styles.progWeight, { color: colors.textPrimary }]}>{h.weight} kg</Text>
+                            <Text style={[styles.progReps, { color: colors.textSecondary }]}>x {h.reps} rep</Text>
+                          </View>
+                        </View>
+                      ))}
+                    </View>
+                  </View>
+                ))
+              ) : (
+                <View style={styles.emptyState}>
+                  <Ionicons name="barbell-outline" size={40} color={colors.textSecondary} />
+                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                    {selectedAthlete ? 'Este deportista no tiene registros de carga aún' : 'No hay registros de progresión de cargas'}
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -237,17 +236,17 @@ export default function AnalyticsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  scrollContent: { paddingBottom: 40 }, // Único padding general inferior
   header: { paddingHorizontal: 20, paddingTop: 15, paddingBottom: 10 },
   headerTitle: { fontSize: 28, fontWeight: '800' },
-  // Estilos de la protección anti-encogimiento
-  athleteFilterContainer: { flexShrink: 0, flexGrow: 0 },
-  athleteFilter: { paddingHorizontal: 20, paddingBottom: 15, gap: 8 },
+  athleteFilterContainer: { paddingBottom: 15 },
+  athleteFilter: { paddingHorizontal: 20, gap: 8 },
   athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
   athleteChipText: { fontSize: 13, fontWeight: '500' },
   tabs: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 10, borderBottomWidth: 1 },
   tab: { paddingVertical: 12, marginRight: 25 },
   tabText: { fontSize: 16, fontWeight: '600' },
-  scrollContent: { padding: 20, paddingBottom: 40 },
+  innerContent: { paddingHorizontal: 20, paddingTop: 10 }, // Padding para el contenido de las pestañas
   statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 25 },
   statCard: { flex: 1, padding: 20, borderRadius: 18, alignItems: 'center', gap: 8, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   statValue: { fontSize: 24, fontWeight: '800' },
