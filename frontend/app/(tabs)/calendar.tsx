@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, RefreshControl
+  ActivityIndicator, Linking
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -123,17 +123,20 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView 
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
-            onRefresh={onRefresh} 
-            tintColor={colors.primary} 
-          />
-        }
-      >
-        <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Calendario</Text>
+      {/* SCROLLVIEW LIMPIO, SIN REFRESHCONTROL */}
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        
+        {/* CABECERA CON BOTÓN DE SINCRONIZACIÓN */}
+        <View style={styles.headerRow}>
+          <Text style={[styles.screenTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Calendario</Text>
+          <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
+            {refreshing ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="sync-outline" size={24} color={colors.primary} />
+            )}
+          </TouchableOpacity>
+        </View>
 
         {/* Calendar grid */}
         <View style={[styles.calendarCard, { backgroundColor: colors.surface }]}>
@@ -194,7 +197,6 @@ export default function CalendarScreen() {
 
         {/* Workouts */}
         {workouts.length > 0 && workouts.map((w) => {
-          // Lógica de "No realizado"
           const isMissed = !w.completed && w.date < todayYMD;
 
           return (
@@ -205,9 +207,7 @@ export default function CalendarScreen() {
               onPress={() => toggleWorkout(w.id)}
               activeOpacity={0.7}
             >
-              {/* Summary row - always visible */}
               <View style={styles.workoutSummary}>
-                {/* Cambiamos el color del puntito a rojo si está no realizado */}
                 <View style={[styles.workoutDot, { backgroundColor: isMissed ? colors.error : colors.primary }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
@@ -223,7 +223,6 @@ export default function CalendarScreen() {
                 </View>
               </View>
 
-              {/* Expanded exercises */}
               {expandedWorkout === w.id && (
                 <View style={[styles.expandedSection, { borderTopColor: colors.border }]}>
                   {w.exercises?.map((ex: any, i: number) => {
@@ -280,7 +279,6 @@ export default function CalendarScreen() {
                     </View>
                   ) : null}
 
-                  {/* Training mode button for athletes */}
                   {user?.role === 'athlete' && !w.completed && !isMissed && (
                     <TouchableOpacity
                       testID={`start-training-${w.id}`}
@@ -304,7 +302,6 @@ export default function CalendarScreen() {
                     </TouchableOpacity>
                   )}
 
-                  {/* Edit button for trainers */}
                   {user?.role === 'trainer' && (
                     <TouchableOpacity
                       testID={`edit-workout-cal-${w.id}`}
@@ -354,7 +351,12 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { padding: 20, paddingBottom: 32 },
-  screenTitle: { fontSize: 24, fontWeight: '700', marginBottom: 16 },
+  
+  // NUEVOS ESTILOS DE LA CABECERA
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  refreshBtn: { padding: 4 },
+  screenTitle: { fontSize: 24, fontWeight: '700' },
+  
   calendarCard: { borderRadius: 14, padding: 16, marginBottom: 20 },
   monthNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
   navBtn: { padding: 6 },
