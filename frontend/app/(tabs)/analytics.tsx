@@ -22,7 +22,7 @@ export default function AnalyticsScreen() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'summary' | 'progress'>('summary');
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false); // Lo mantenemos para el botón
+  const [refreshing, setRefreshing] = useState(false);
   
   const [summary, setSummary] = useState<any>(null);
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
@@ -56,7 +56,6 @@ export default function AnalyticsScreen() {
 
   useEffect(() => { loadData(); }, [selectedAthlete]);
   
-  // Función para el botón manual
   const onRefresh = () => { 
     setRefreshing(true); 
     loadData(); 
@@ -82,6 +81,20 @@ export default function AnalyticsScreen() {
     })).sort((a, b) => a.name.localeCompare(b.name));
   };
 
+  // NUEVO: Extraemos los datos de bienestar de los últimos entrenamientos
+  const getWellnessData = () => {
+    return workoutHistory
+      .filter(w => w.completion_data?.rpe || w.completion_data?.sleep)
+      .slice(0, 5) // Mostramos los últimos 5 registros
+      .map(w => ({
+        id: w.id,
+        date: w.date,
+        title: w.title,
+        rpe: w.completion_data.rpe,
+        sleep: w.completion_data.sleep
+      }));
+  };
+
   if (loading) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -91,16 +104,12 @@ export default function AnalyticsScreen() {
   }
 
   const workoutProgression = getWorkoutProgression();
+  const wellnessData = getWellnessData();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       
-      {/* ScrollView normal, SIN RefreshControl fantasma */}
-      <ScrollView 
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-      >
-        {/* NUEVA CABECERA CON BOTÓN DE RECARGA */}
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Rendimiento</Text>
           <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
@@ -114,11 +123,7 @@ export default function AnalyticsScreen() {
 
         {user?.role === 'trainer' && Array.isArray(athletes) && athletes.length > 0 && (
           <View style={styles.athleteFilterContainer}>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.athleteFilter}
-            >
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.athleteFilter}>
               {[{ id: null, name: 'Todos' }, ...athletes].map((item, index) => (
                 <TouchableOpacity
                   key={item.id || `all-${index}`}
@@ -134,9 +139,7 @@ export default function AnalyticsScreen() {
                     styles.athleteChipText,
                     { color: colors.textPrimary },
                     selectedAthlete === item.id && { color: '#FFF' },
-                  ]}>
-                    {item.name}
-                  </Text>
+                  ]}>{item.name}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -158,7 +161,6 @@ export default function AnalyticsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* CONTENIDO PRINCIPAL */}
         <View style={styles.innerContent}>
           {activeTab === 'summary' ? (
             <View>
@@ -189,12 +191,54 @@ export default function AnalyticsScreen() {
             </View>
           ) : (
             <View>
+              {/* NUEVA SECCIÓN: SEMÁFORO DE FATIGA */}
+              {wellnessData.length > 0 && (
+                <View style={{ marginBottom: 24 }}>
+                  <View style={styles.sectionHeader}>
+                    <Ionicons name="battery-half-outline" size={20} color={colors.accent} />
+                    <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>Fatiga y Descanso</Text>
+                  </View>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.horizontalScroll}>
+                    {wellnessData.map((w, i) => {
+                      let rpeColor = colors.success;
+                      if (w.rpe > 4) rpeColor = colors.warning;
+                      if (w.rpe > 7) rpeColor = colors.error;
+
+                      let sleepColor = colors.success;
+                      let sleepIcon = 'happy-outline';
+                      if (w.sleep === 'regular') { sleepColor = colors.warning; sleepIcon = 'meh-outline'; }
+                      if (w.sleep === 'mal') { sleepColor = colors.error; sleepIcon = 'sad-outline'; }
+
+                      return (
+                        <View key={i} style={[styles.wellnessCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                          <Text style={[styles.wellDate, { color: colors.textSecondary }]}>{w.date}</Text>
+                          <Text style={[styles.wellTitle, { color: colors.textPrimary }]} numberOfLines={1}>{w.title}</Text>
+                          <View style={styles.wellMetrics}>
+                            {w.rpe ? (
+                              <View style={[styles.wellBadge, { backgroundColor: rpeColor + '15' }]}>
+                                <Text style={[styles.wellLabel, { color: rpeColor }]}>RPE: {w.rpe}/10</Text>
+                              </View>
+                            ) : null}
+                            {w.sleep ? (
+                              <View style={[styles.wellBadge, { backgroundColor: sleepColor + '15', flexDirection: 'row', alignItems: 'center', gap: 4 }]}>
+                                <Ionicons name={sleepIcon as any} size={14} color={sleepColor} />
+                                <Text style={[styles.wellLabel, { color: sleepColor, textTransform: 'capitalize' }]}>{w.sleep}</Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        </View>
+                      )
+                    })}
+                  </ScrollView>
+                </View>
+              )}
+
               <View style={styles.sectionHeader}>
                 <Ionicons name="trophy-outline" size={20} color={colors.primary} />
                 <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>RMs (Tests Físicos)</Text>
               </View>
               
-              <View style={styles.horizontalScroll}>
+              <View style={[styles.horizontalScroll, { marginBottom: 24 }]}>
                 {testHistory.filter(t => t.test_type === 'strength').slice(0, 4).map((t, i) => (
                   <View key={i} style={[styles.rmCard, { backgroundColor: colors.surface, borderColor: colors.primary + '30' }]}>
                     <Text style={[styles.rmLabel, { color: colors.textSecondary }]}>{TEST_LABELS[t.test_name] || t.test_name}</Text>
@@ -207,7 +251,7 @@ export default function AnalyticsScreen() {
                 )}
               </View>
 
-              <View style={[styles.sectionHeader, { marginTop: 20 }]}>
+              <View style={[styles.sectionHeader, { marginTop: 10 }]}>
                 <Ionicons name="trending-up-outline" size={20} color={colors.success} />
                 <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>Cargas en Entrenamientos</Text>
               </View>
@@ -250,7 +294,7 @@ const styles = StyleSheet.create({
   scrollContent: { paddingBottom: 40 }, 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 15, paddingBottom: 10 },
   headerTitle: { fontSize: 28, fontWeight: '800' },
-  refreshBtn: { padding: 4 }, // Nuevo estilo para el botón
+  refreshBtn: { padding: 4 },
   athleteFilterContainer: { paddingBottom: 15 },
   athleteFilter: { paddingHorizontal: 20, gap: 8 },
   athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
@@ -268,7 +312,16 @@ const styles = StyleSheet.create({
   itemRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderRadius: 12, marginBottom: 10 },
   itemName: { fontSize: 16, fontWeight: '600' },
   itemValue: { fontSize: 16, fontWeight: '700' },
-  horizontalScroll: { flexDirection: 'row', gap: 12, marginBottom: 10 },
+  horizontalScroll: { flexDirection: 'row', gap: 12 },
+  
+  // ESTILOS DE BIENESTAR
+  wellnessCard: { width: width * 0.45, padding: 14, borderRadius: 16, borderWidth: 1 },
+  wellDate: { fontSize: 11, fontWeight: '600', marginBottom: 2 },
+  wellTitle: { fontSize: 14, fontWeight: '700', marginBottom: 10 },
+  wellMetrics: { gap: 6 },
+  wellBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, alignSelf: 'flex-start' },
+  wellLabel: { fontSize: 11, fontWeight: '800' },
+
   rmCard: { width: width * 0.4, padding: 15, borderRadius: 16, borderWidth: 1, alignItems: 'center' },
   rmLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 5, textAlign: 'center' },
   rmValue: { fontSize: 26, fontWeight: '900' },
