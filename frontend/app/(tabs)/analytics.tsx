@@ -27,17 +27,26 @@ export default function AnalyticsScreen() {
   const [summary, setSummary] = useState<any>(null);
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [testHistory, setTestHistory] = useState<any[]>([]);
+  
+  // Estados para el filtro de deportistas
+  const [athletes, setAthletes] = useState<any[]>([]);
+  const [selectedAthlete, setSelectedAthlete] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
-      const [sum, wk, ts] = await Promise.all([
-        api.getSummary(),
-        api.getWorkouts(),
-        api.getTests()
+      const params: any = {};
+      if (selectedAthlete) params.athlete_id = selectedAthlete;
+
+      const [sum, wk, ts, ath] = await Promise.all([
+        api.getSummary(params), 
+        api.getWorkouts(params),
+        api.getTests(params),
+        user?.role === 'trainer' ? api.getAthletes() : Promise.resolve([])
       ]);
       setSummary(sum);
-      setWorkoutHistory(wk.filter(w => w.completed && w.completion_data));
+      setWorkoutHistory(wk.filter((w: any) => w.completed && w.completion_data));
       setTestHistory(ts);
+      setAthletes(ath);
     } catch (e) {
       console.log('Error loading analytics:', e);
     } finally {
@@ -46,10 +55,11 @@ export default function AnalyticsScreen() {
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  // Recargar datos cuando se cambia el deportista seleccionado
+  useEffect(() => { loadData(); }, [selectedAthlete]);
+  
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
-  // Procesa los datos de los entrenos para agrupar por ejercicio
   const getWorkoutProgression = () => {
     const groups: Record<string, any[]> = {};
     workoutHistory.forEach(w => {
@@ -85,6 +95,36 @@ export default function AnalyticsScreen() {
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Rendimiento</Text>
       </View>
+
+      {/* FILTRO DE DEPORTISTAS (SOLO PARA ENTRENADORES) */}
+      {user?.role === 'trainer' && Array.isArray(athletes) && athletes.length > 0 && (
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.athleteFilter}
+        >
+          {[{ id: null, name: 'Todos' }, ...athletes].map((item, index) => (
+            <TouchableOpacity
+              key={item.id || `all-${index}`}
+              style={[
+                styles.athleteChip,
+                { backgroundColor: colors.surfaceHighlight },
+                selectedAthlete === item.id && { backgroundColor: colors.primary },
+              ]}
+              onPress={() => setSelectedAthlete(item.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={[
+                styles.athleteChipText,
+                { color: colors.textPrimary },
+                selectedAthlete === item.id && { color: '#FFF' },
+              ]}>
+                {item.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
         <TouchableOpacity 
@@ -134,7 +174,6 @@ export default function AnalyticsScreen() {
           </View>
         ) : (
           <View>
-            {/* SECCIÓN 1: RM DE TESTS (FUERZA MÁXIMA) */}
             <View style={styles.sectionHeader}>
               <Ionicons name="trophy-outline" size={20} color={colors.primary} />
               <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>RMs (Tests Físicos)</Text>
@@ -150,7 +189,6 @@ export default function AnalyticsScreen() {
               ))}
             </View>
 
-            {/* SECCIÓN 2: PROGRESIÓN DE CARGAS EN ENTRENOS */}
             <View style={[styles.sectionHeader, { marginTop: 20 }]}>
               <Ionicons name="trending-up-outline" size={20} color={colors.success} />
               <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>Cargas en Entrenamientos</Text>
@@ -176,7 +214,9 @@ export default function AnalyticsScreen() {
             ) : (
               <View style={styles.emptyState}>
                 <Ionicons name="barbell-outline" size={40} color={colors.textSecondary} />
-                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Completa entrenos anotando el peso real para ver tu progresión aquí</Text>
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                  {selectedAthlete ? 'Este deportista no tiene registros de carga aún' : 'No hay registros de progresión de cargas'}
+                </Text>
               </View>
             )}
           </View>
@@ -188,8 +228,13 @@ export default function AnalyticsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { paddingHorizontal: 20, paddingVertical: 15 },
+  header: { paddingHorizontal: 20, paddingTop: 15, paddingBottom: 10 },
   headerTitle: { fontSize: 28, fontWeight: '800' },
+  // Estilos del nuevo filtro
+  athleteFilter: { paddingHorizontal: 20, paddingBottom: 15, gap: 8 },
+  athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
+  athleteChipText: { fontSize: 13, fontWeight: '500' },
+  // Fin estilos filtro
   tabs: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 10, borderBottomWidth: 1 },
   tab: { paddingVertical: 12, marginRight: 25 },
   tabText: { fontSize: 16, fontWeight: '600' },
@@ -203,16 +248,12 @@ const styles = StyleSheet.create({
   itemRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderRadius: 12, marginBottom: 10 },
   itemName: { fontSize: 16, fontWeight: '600' },
   itemValue: { fontSize: 16, fontWeight: '700' },
-  
-  // Estilos de RM (Tests)
   horizontalScroll: { flexDirection: 'row', gap: 12, marginBottom: 10 },
   rmCard: { width: width * 0.4, padding: 15, borderRadius: 16, borderWidth: 1, alignItems: 'center' },
   rmLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 5 },
   rmValue: { fontSize: 26, fontWeight: '900' },
   rmUnit: { fontSize: 14, fontWeight: '600' },
   rmDate: { fontSize: 11, marginTop: 5 },
-
-  // Estilos de Progresión (Entrenos)
   progCard: { borderRadius: 16, padding: 16, marginBottom: 15, elevation: 1 },
   progName: { fontSize: 17, fontWeight: '700', marginBottom: 12 },
   progHistory: { borderRadius: 10, overflow: 'hidden' },
@@ -221,7 +262,6 @@ const styles = StyleSheet.create({
   progStats: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   progWeight: { fontSize: 15, fontWeight: '800' },
   progReps: { fontSize: 13, fontWeight: '500' },
-
   emptyState: { alignItems: 'center', marginTop: 40, paddingHorizontal: 40 },
   emptyText: { textAlign: 'center', fontSize: 14, marginTop: 10, lineHeight: 20 },
 });
