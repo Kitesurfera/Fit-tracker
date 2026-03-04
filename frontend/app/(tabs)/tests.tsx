@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator,
-  RefreshControl, Alert, Modal, TextInput, Platform
+  RefreshControl, Alert, Modal, TextInput, Platform, ScrollView
 } from 'react-native';
+
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
