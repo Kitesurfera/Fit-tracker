@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
-  ActivityIndicator, RefreshControl
+  ActivityIndicator
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -52,7 +52,6 @@ export default function HomeScreen() {
 
   const today = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
   
-  // Generamos la fecha de hoy en formato YYYY-MM-DD para poder compararla matemáticamente
   const tObj = new Date();
   const todayYMD = `${tObj.getFullYear()}-${String(tObj.getMonth() + 1).padStart(2, '0')}-${String(tObj.getDate()).padStart(2, '0')}`;
 
@@ -61,11 +60,23 @@ export default function HomeScreen() {
       testID="trainer-dashboard"
       data={athletes}
       keyExtractor={(item) => item.id}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      // REFRESH CONTROL ELIMINADO
       ListHeaderComponent={
         <View>
-          <Text style={[styles.date, { color: colors.textSecondary }]}>{today}</Text>
-          <Text style={[styles.greeting, { color: colors.textPrimary }]}>Hola, {user?.name?.split(' ')[0]}</Text>
+          {/* NUEVA CABECERA CON BOTÓN DE RECARGA */}
+          <View style={styles.headerTopRow}>
+            <View>
+              <Text style={[styles.date, { color: colors.textSecondary }]}>{today}</Text>
+              <Text style={[styles.greeting, { color: colors.textPrimary }]}>Hola, {user?.name?.split(' ')[0]}</Text>
+            </View>
+            <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
+              {refreshing ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons name="sync-outline" size={26} color={colors.primary} />
+              )}
+            </TouchableOpacity>
+          </View>
 
           <View style={styles.statsRow}>
             <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
@@ -81,7 +92,7 @@ export default function HomeScreen() {
           <View style={styles.actionsRow}>
             <TouchableOpacity
               testID="add-athlete-btn"
-              style={[styles.actionBtn, { backgroundColor: colors.primary }]}
+              style={[styles.actionBtn, { backgroundColor: colors.primary }] }
               onPress={() => router.push('/add-athlete')}
               activeOpacity={0.7}
             >
@@ -162,11 +173,23 @@ export default function HomeScreen() {
       testID="athlete-dashboard"
       data={workouts}
       keyExtractor={(item) => item.id}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      // REFRESH CONTROL ELIMINADO
       ListHeaderComponent={
         <View>
-          <Text style={[styles.date, { color: colors.textSecondary }]}>{today}</Text>
-          <Text style={[styles.greeting, { color: colors.textPrimary }]}>Hola, {user?.name?.split(' ')[0]}</Text>
+          {/* NUEVA CABECERA CON BOTÓN DE RECARGA */}
+          <View style={styles.headerTopRow}>
+            <View>
+              <Text style={[styles.date, { color: colors.textSecondary }]}>{today}</Text>
+              <Text style={[styles.greeting, { color: colors.textPrimary }]}>Hola, {user?.name?.split(' ')[0]}</Text>
+            </View>
+            <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
+              {refreshing ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons name="sync-outline" size={26} color={colors.primary} />
+              )}
+            </TouchableOpacity>
+          </View>
 
           {summary && (
             <View style={styles.statsRow}>
@@ -202,7 +225,6 @@ export default function HomeScreen() {
         
         const isIncomplete = item.completed && hasCD && sSets > 0;
         const isFullDone = item.completed && (!hasCD || sSets === 0);
-        // NUEVA LÓGICA: Si no está completado y la fecha ya pasó, está "No realizado"
         const isMissed = !item.completed && item.date < todayYMD;
         const pct = tSets > 0 ? Math.round((cSets / tSets) * 100) : 0;
 
@@ -219,7 +241,6 @@ export default function HomeScreen() {
                 <Text style={[styles.workoutDate, { color: colors.textSecondary }]}>{item.date}</Text>
               </View>
               
-              {/* RENDERIZADO DE LA ETIQUETA */}
               {isFullDone ? (
                 <View style={[styles.badge, { backgroundColor: colors.success + '15' }]}>
                   <Ionicons name="checkmark-circle" size={14} color={colors.success} />
@@ -280,7 +301,6 @@ export default function HomeScreen() {
                 <Text style={styles.completeBtnText}>Iniciar entrenamiento</Text>
               </TouchableOpacity>
             )}
-            {/* Si está "No realizado", le cambiamos el botón para que destaque */}
             {isMissed && (
                <TouchableOpacity
                testID={`start-training-late-${item.id}`}
@@ -318,8 +338,13 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   listContent: { padding: 20, paddingBottom: 32 },
+  
+  // NUEVOS ESTILOS DE CABECERA
+  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
+  refreshBtn: { padding: 8 },
   date: { fontSize: 13, fontWeight: '500', textTransform: 'capitalize', marginBottom: 4 },
-  greeting: { fontSize: 26, fontWeight: '700', marginBottom: 24 },
+  greeting: { fontSize: 26, fontWeight: '700' }, // Se le quitó el marginBottom, ahora lo maneja headerTopRow
+  
   statsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
   statCard: { flex: 1, borderRadius: 14, padding: 18, alignItems: 'center' },
   statValue: { fontSize: 26, fontWeight: '700' },
