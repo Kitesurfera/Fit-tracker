@@ -28,7 +28,6 @@ export default function AnalyticsScreen() {
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [testHistory, setTestHistory] = useState<any[]>([]);
   
-  // Estados para el filtro de deportistas
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<string | null>(null);
 
@@ -38,15 +37,15 @@ export default function AnalyticsScreen() {
       if (selectedAthlete) params.athlete_id = selectedAthlete;
 
       const [sum, wk, ts, ath] = await Promise.all([
-        api.getSummary(params), 
-        api.getWorkouts(params),
-        api.getTests(params),
-        user?.role === 'trainer' ? api.getAthletes() : Promise.resolve([])
+        api.getSummary(params).catch(() => null), 
+        api.getWorkouts(params).catch(() => []),
+        api.getTests(params).catch(() => []),
+        user?.role === 'trainer' ? api.getAthletes().catch(() => []) : Promise.resolve([])
       ]);
       setSummary(sum);
-      setWorkoutHistory(wk.filter((w: any) => w.completed && w.completion_data));
-      setTestHistory(ts);
-      setAthletes(ath);
+      setWorkoutHistory(Array.isArray(wk) ? wk.filter((w: any) => w.completed && w.completion_data) : []);
+      setTestHistory(Array.isArray(ts) ? ts : []);
+      setAthletes(Array.isArray(ath) ? ath : []);
     } catch (e) {
       console.log('Error loading analytics:', e);
     } finally {
@@ -55,7 +54,6 @@ export default function AnalyticsScreen() {
     }
   };
 
-  // Recargar datos cuando se cambia el deportista seleccionado
   useEffect(() => { loadData(); }, [selectedAthlete]);
   
   const onRefresh = () => { setRefreshing(true); loadData(); };
@@ -63,7 +61,7 @@ export default function AnalyticsScreen() {
   const getWorkoutProgression = () => {
     const groups: Record<string, any[]> = {};
     workoutHistory.forEach(w => {
-      w.completion_data.exercise_results.forEach((r: any) => {
+      w.completion_data?.exercise_results?.forEach((r: any) => {
         if (r.completed_sets > 0 && (r.logged_weight || w.exercises?.[r.exercise_index]?.weight)) {
           if (!groups[r.name]) groups[r.name] = [];
           groups[r.name].push({
@@ -92,56 +90,64 @@ export default function AnalyticsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Rendimiento</Text>
-      </View>
+      
+      {/* BLOQUE SUPERIOR FIJO (No se encoge) */}
+      <View style={{ flexShrink: 0 }}>
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Rendimiento</Text>
+        </View>
 
-      {/* FILTRO DE DEPORTISTAS (SOLO PARA ENTRENADORES) */}
-      {user?.role === 'trainer' && Array.isArray(athletes) && athletes.length > 0 && (
-        <ScrollView 
-          horizontal 
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.athleteFilter}
-        >
-          {[{ id: null, name: 'Todos' }, ...athletes].map((item, index) => (
-            <TouchableOpacity
-              key={item.id || `all-${index}`}
-              style={[
-                styles.athleteChip,
-                { backgroundColor: colors.surfaceHighlight },
-                selectedAthlete === item.id && { backgroundColor: colors.primary },
-              ]}
-              onPress={() => setSelectedAthlete(item.id)}
-              activeOpacity={0.7}
+        {user?.role === 'trainer' && Array.isArray(athletes) && athletes.length > 0 && (
+          <View style={styles.athleteFilterContainer}>
+            <ScrollView 
+              horizontal 
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.athleteFilter}
+              style={{ flexGrow: 0 }}
             >
-              <Text style={[
-                styles.athleteChipText,
-                { color: colors.textPrimary },
-                selectedAthlete === item.id && { color: '#FFF' },
-              ]}>
-                {item.name}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-      )}
+              {[{ id: null, name: 'Todos' }, ...athletes].map((item, index) => (
+                <TouchableOpacity
+                  key={item.id || `all-${index}`}
+                  style={[
+                    styles.athleteChip,
+                    { backgroundColor: colors.surfaceHighlight },
+                    selectedAthlete === item.id && { backgroundColor: colors.primary },
+                  ]}
+                  onPress={() => setSelectedAthlete(item.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[
+                    styles.athleteChipText,
+                    { color: colors.textPrimary },
+                    selectedAthlete === item.id && { color: '#FFF' },
+                  ]}>
+                    {item.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        )}
 
-      <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'summary' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
-          onPress={() => setActiveTab('summary')}
-        >
-          <Text style={[styles.tabText, { color: activeTab === 'summary' ? colors.primary : colors.textSecondary }]}>Resumen</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={[styles.tab, activeTab === 'progress' && { borderBottomColor: colors.success, borderBottomWidth: 2 }]}
-          onPress={() => setActiveTab('progress')}
-        >
-          <Text style={[styles.tabText, { color: activeTab === 'progress' ? colors.success : colors.textSecondary }]}>Progreso</Text>
-        </TouchableOpacity>
+        <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity 
+            style={[styles.tab, activeTab === 'summary' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
+            onPress={() => setActiveTab('summary')}
+          >
+            <Text style={[styles.tabText, { color: activeTab === 'summary' ? colors.primary : colors.textSecondary }]}>Resumen</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.tab, activeTab === 'progress' && { borderBottomColor: colors.success, borderBottomWidth: 2 }]}
+            onPress={() => setActiveTab('progress')}
+          >
+            <Text style={[styles.tabText, { color: activeTab === 'progress' ? colors.success : colors.textSecondary }]}>Progreso</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
+      {/* BLOQUE DE CONTENIDO DESPLAZABLE */}
       <ScrollView 
+        style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
@@ -187,6 +193,9 @@ export default function AnalyticsScreen() {
                   <Text style={[styles.rmDate, { color: colors.textSecondary }]}>{t.date}</Text>
                 </View>
               ))}
+              {testHistory.filter(t => t.test_type === 'strength').length === 0 && (
+                 <Text style={{ color: colors.textSecondary, fontStyle: 'italic' }}>Sin datos de RM</Text>
+              )}
             </View>
 
             <View style={[styles.sectionHeader, { marginTop: 20 }]}>
@@ -230,11 +239,11 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { paddingHorizontal: 20, paddingTop: 15, paddingBottom: 10 },
   headerTitle: { fontSize: 28, fontWeight: '800' },
-  // Estilos del nuevo filtro
+  // Estilos de la protección anti-encogimiento
+  athleteFilterContainer: { flexShrink: 0, flexGrow: 0 },
   athleteFilter: { paddingHorizontal: 20, paddingBottom: 15, gap: 8 },
   athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
   athleteChipText: { fontSize: 13, fontWeight: '500' },
-  // Fin estilos filtro
   tabs: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 10, borderBottomWidth: 1 },
   tab: { paddingVertical: 12, marginRight: 25 },
   tabText: { fontSize: 16, fontWeight: '600' },
@@ -250,7 +259,7 @@ const styles = StyleSheet.create({
   itemValue: { fontSize: 16, fontWeight: '700' },
   horizontalScroll: { flexDirection: 'row', gap: 12, marginBottom: 10 },
   rmCard: { width: width * 0.4, padding: 15, borderRadius: 16, borderWidth: 1, alignItems: 'center' },
-  rmLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 5 },
+  rmLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', marginBottom: 5, textAlign: 'center' },
   rmValue: { fontSize: 26, fontWeight: '900' },
   rmUnit: { fontSize: 14, fontWeight: '600' },
   rmDate: { fontSize: 11, marginTop: 5 },
