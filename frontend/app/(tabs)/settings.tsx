@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert, ScrollView,
-  TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Modal
+  TextInput, ActivityIndicator, KeyboardAvoidingView, Platform, Modal,
+  RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,6 +26,7 @@ export default function SettingsScreen() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false); // Añadido estado de refresco
 
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState(user?.name || '');
@@ -49,7 +51,13 @@ export default function SettingsScreen() {
       console.log('Load settings error:', e);
     } finally {
       setLoading(false);
+      setRefreshing(false); // Detenemos la animación
     }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadSettings();
   };
 
   const updateSetting = async (key: string, value: any) => {
@@ -86,16 +94,13 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = async () => {
-    // Si estamos en la web (Vercel)
     if (Platform.OS === 'web') {
       const confirm = window.confirm('¿Estás seguro de que quieres salir?');
       if (confirm) {
         await logout();
         router.replace('/');
       }
-    } 
-    // Si algún día descargáis la app como nativa en el móvil
-    else {
+    } else {
       Alert.alert('Cerrar sesión', '¿Estás seguro de que quieres salir?', [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Salir', style: 'destructive', onPress: async () => { 
@@ -105,7 +110,7 @@ export default function SettingsScreen() {
       ]);
     }
   };
-  // --- Notification toggle using simple TouchableOpacity instead of Switch ---
+
   const ToggleRow = ({ icon, label, value, onToggle, disabled }: any) => (
     <TouchableOpacity
       style={[styles.settingItem, { borderBottomColor: colors.border }]}
@@ -167,7 +172,17 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent} 
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl 
+              refreshing={refreshing} 
+              onRefresh={onRefresh} 
+              tintColor={colors.primary} 
+            />
+          }
+        >
           <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Ajustes</Text>
 
           {/* Profile */}
@@ -382,10 +397,8 @@ const styles = StyleSheet.create({
   settingLabel: { fontSize: 15 },
   settingValue: { fontSize: 14 },
   valueRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  // Custom toggle (replaces Switch to avoid animation glitch)
   toggleTrack: { width: 48, height: 28, borderRadius: 14, justifyContent: 'center' },
   toggleThumb: { width: 24, height: 24, borderRadius: 12 },
-  // Modals
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 },
   modalContent: { width: '100%', maxWidth: 340, borderRadius: 16, padding: 20 },
   modalTitle: { fontSize: 17, fontWeight: '700', marginBottom: 16 },
