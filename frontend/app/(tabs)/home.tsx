@@ -51,6 +51,10 @@ export default function HomeScreen() {
   }
 
   const today = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  
+  // Generamos la fecha de hoy en formato YYYY-MM-DD para poder compararla matemáticamente
+  const tObj = new Date();
+  const todayYMD = `${tObj.getFullYear()}-${String(tObj.getMonth() + 1).padStart(2, '0')}-${String(tObj.getDate()).padStart(2, '0')}`;
 
   const TrainerView = () => (
     <FlatList
@@ -101,7 +105,6 @@ export default function HomeScreen() {
         </View>
       }
       renderItem={({ item }) => {
-        // Buscamos si este deportista ha hecho algo hoy
         const athleteWorkoutToday = workouts.find(w => w.athlete_id === item.id);
         
         return (
@@ -121,7 +124,6 @@ export default function HomeScreen() {
                 {item.sport || 'Kitesurf'} {item.level ? `· ${item.level}` : ''}
               </Text>
               
-              {/* Indicador de actividad de hoy */}
               <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 }}>
                 <View style={{ 
                   width: 8, height: 8, borderRadius: 4, 
@@ -133,7 +135,6 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {/* Botón rápido de acción para Andre */}
             <TouchableOpacity 
               style={{ padding: 10 }}
               onPress={() => router.push({ pathname: '/add-workout', params: { athleteId: item.id } })}
@@ -198,8 +199,11 @@ export default function HomeScreen() {
             tSets += r.total_sets || 0;
           });
         }
+        
         const isIncomplete = item.completed && hasCD && sSets > 0;
         const isFullDone = item.completed && (!hasCD || sSets === 0);
+        // NUEVA LÓGICA: Si no está completado y la fecha ya pasó, está "No realizado"
+        const isMissed = !item.completed && item.date < todayYMD;
         const pct = tSets > 0 ? Math.round((cSets / tSets) * 100) : 0;
 
         return (
@@ -214,6 +218,8 @@ export default function HomeScreen() {
                 <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{item.title}</Text>
                 <Text style={[styles.workoutDate, { color: colors.textSecondary }]}>{item.date}</Text>
               </View>
+              
+              {/* RENDERIZADO DE LA ETIQUETA */}
               {isFullDone ? (
                 <View style={[styles.badge, { backgroundColor: colors.success + '15' }]}>
                   <Ionicons name="checkmark-circle" size={14} color={colors.success} />
@@ -224,12 +230,18 @@ export default function HomeScreen() {
                   <Ionicons name="alert-circle" size={14} color={colors.warning} />
                   <Text style={[styles.badgeText, { color: colors.warning }]}>Incompleto</Text>
                 </View>
+              ) : isMissed ? (
+                <View style={[styles.badge, { backgroundColor: colors.error + '15' }]}>
+                  <Ionicons name="close-circle" size={14} color={colors.error} />
+                  <Text style={[styles.badgeText, { color: colors.error }]}>No realizado</Text>
+                </View>
               ) : (
                 <View style={[styles.badge, { backgroundColor: colors.primary + '15' }]}>
                   <Text style={[styles.badgeText, { color: colors.primary }]}>Por hacer</Text>
                 </View>
               )}
             </View>
+            
             {hasCD && (
               <View style={[styles.completionBar, { marginTop: 10 }]}>
                 <View style={[styles.completionBarBg, { backgroundColor: colors.surfaceHighlight }]}>
@@ -257,7 +269,7 @@ export default function HomeScreen() {
                 )}
               </View>
             )}
-            {!item.completed && (
+            {!item.completed && !isMissed && (
               <TouchableOpacity
                 testID={`start-training-${item.id}`}
                 style={[styles.completeBtn, { backgroundColor: colors.primary }]}
@@ -267,6 +279,18 @@ export default function HomeScreen() {
                 <Ionicons name="play-circle-outline" size={16} color="#FFF" />
                 <Text style={styles.completeBtnText}>Iniciar entrenamiento</Text>
               </TouchableOpacity>
+            )}
+            {/* Si está "No realizado", le cambiamos el botón para que destaque */}
+            {isMissed && (
+               <TouchableOpacity
+               testID={`start-training-late-${item.id}`}
+               style={[styles.completeBtn, { backgroundColor: colors.error + '15', borderWidth: 1, borderColor: colors.error }]}
+               onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
+               activeOpacity={0.7}
+             >
+               <Ionicons name="play-circle-outline" size={16} color={colors.error} />
+               <Text style={[styles.completeBtnText, { color: colors.error }]}>Recuperar entrenamiento</Text>
+             </TouchableOpacity>
             )}
           </TouchableOpacity>
         );
