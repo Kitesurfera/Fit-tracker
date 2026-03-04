@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, RefreshControl, Dimensions
+  ActivityIndicator, Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +22,7 @@ export default function AnalyticsScreen() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'summary' | 'progress'>('summary');
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false); // Lo mantenemos para el botón
   
   const [summary, setSummary] = useState<any>(null);
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
@@ -56,7 +56,11 @@ export default function AnalyticsScreen() {
 
   useEffect(() => { loadData(); }, [selectedAthlete]);
   
-  const onRefresh = () => { setRefreshing(true); loadData(); };
+  // Función para el botón manual
+  const onRefresh = () => { 
+    setRefreshing(true); 
+    loadData(); 
+  };
 
   const getWorkoutProgression = () => {
     const groups: Record<string, any[]> = {};
@@ -91,14 +95,21 @@ export default function AnalyticsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       
-      {/* TODO ESTÁ AHORA DENTRO DEL SCROLLVIEW PARA QUE FUNCIONE EL ARRASTRE */}
+      {/* ScrollView normal, SIN RefreshControl fantasma */}
       <ScrollView 
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       >
+        {/* NUEVA CABECERA CON BOTÓN DE RECARGA */}
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Rendimiento</Text>
+          <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
+            {refreshing ? (
+              <ActivityIndicator size="small" color={colors.primary} />
+            ) : (
+              <Ionicons name="sync-outline" size={24} color={colors.primary} />
+            )}
+          </TouchableOpacity>
         </View>
 
         {user?.role === 'trainer' && Array.isArray(athletes) && athletes.length > 0 && (
@@ -236,9 +247,10 @@ export default function AnalyticsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingBottom: 40 }, // Único padding general inferior
-  header: { paddingHorizontal: 20, paddingTop: 15, paddingBottom: 10 },
+  scrollContent: { paddingBottom: 40 }, 
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 15, paddingBottom: 10 },
   headerTitle: { fontSize: 28, fontWeight: '800' },
+  refreshBtn: { padding: 4 }, // Nuevo estilo para el botón
   athleteFilterContainer: { paddingBottom: 15 },
   athleteFilter: { paddingHorizontal: 20, gap: 8 },
   athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
@@ -246,7 +258,7 @@ const styles = StyleSheet.create({
   tabs: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 10, borderBottomWidth: 1 },
   tab: { paddingVertical: 12, marginRight: 25 },
   tabText: { fontSize: 16, fontWeight: '600' },
-  innerContent: { paddingHorizontal: 20, paddingTop: 10 }, // Padding para el contenido de las pestañas
+  innerContent: { paddingHorizontal: 20, paddingTop: 10 }, 
   statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 25 },
   statCard: { flex: 1, padding: 20, borderRadius: 18, alignItems: 'center', gap: 8, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
   statValue: { fontSize: 24, fontWeight: '800' },
