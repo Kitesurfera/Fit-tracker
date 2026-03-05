@@ -10,6 +10,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import TutorialOverlay from '../../src/components/TutorialOverlay';
+import WellnessModal from '../../src/components/WellnessModal'; // NUEVO IMPORT
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function HomeScreen() {
@@ -23,8 +24,8 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
-  // ESTADO PARA MOSTRAR EL TUTORIAL (Iniciamos en false para evitar parpadeos, lo activamos tras leer AsyncStorage)
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showWellness, setShowWellness] = useState(false); // NUEVO ESTADO
 
   const loadData = async () => {
     try {
@@ -45,33 +46,39 @@ export default function HomeScreen() {
     }
   };
 
-  // --- NUEVA LÓGICA DE MEMORIA DEL TUTORIAL ---
   useEffect(() => {
-    const checkTutorialState = async () => {
+    const checkInitialStates = async () => {
       try {
+        // 1. Comprobar Tutorial
         const hasSeenTutorial = await AsyncStorage.getItem('has_seen_tutorial');
         if (hasSeenTutorial !== 'true') {
-          setShowTutorial(true); // Solo lo mostramos si NO existe la marca
+          setShowTutorial(true);
+        }
+
+        // 2. Comprobar Wellness (solo si eres atleta)
+        if (user?.role === 'athlete') {
+          const res = await api.checkTodayWellness();
+          if (!res.submitted) {
+            setShowWellness(true);
+          }
         }
       } catch (error) {
-        console.log('Error al leer el estado del tutorial:', error);
+        console.log('Error al leer estados iniciales:', error);
       }
     };
 
-    checkTutorialState();
+    checkInitialStates();
     loadData();
-  }, []);
+  }, [user]);
 
   const closeTutorial = async () => {
     try {
       await AsyncStorage.setItem('has_seen_tutorial', 'true');
       setShowTutorial(false);
     } catch (error) {
-      console.log('Error al guardar el estado del tutorial:', error);
-      setShowTutorial(false); // Lo cerramos igualmente por si falla la memoria
+      setShowTutorial(false);
     }
   };
-  // ---------------------------------------------
 
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
@@ -145,24 +152,21 @@ export default function HomeScreen() {
           </Text>
         </View>
       }
-      renderItem={({ item }) => {
-        const athleteWorkoutToday = workouts.find(w => w.athlete_id === item.id);
-        return (
-          <TouchableOpacity
-            style={[styles.card, { backgroundColor: colors.surface }]}
-            onPress={() => router.push({ pathname: '/athlete-detail', params: { id: item.id, name: item.name } })}
-          >
-            <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
-              <Text style={[styles.avatarText, { color: colors.primary }]}>{item.name?.charAt(0)?.toUpperCase()}</Text>
-            </View>
-            <View style={styles.cardContent}>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
-              <Text style={[styles.cardSub, { color: colors.textSecondary }]}>{item.sport || 'Kitesurf'}</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-        );
-      }}
+      renderItem={({ item }) => (
+        <TouchableOpacity
+          style={[styles.card, { backgroundColor: colors.surface }]}
+          onPress={() => router.push({ pathname: '/athlete-detail', params: { id: item.id, name: item.name } })}
+        >
+          <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
+            <Text style={[styles.avatarText, { color: colors.primary }]}>{item.name?.charAt(0)?.toUpperCase()}</Text>
+          </View>
+          <View style={styles.cardContent}>
+            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
+            <Text style={[styles.cardSub, { color: colors.textSecondary }]}>{item.sport || 'Kitesurf'}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+      )}
       contentContainerStyle={styles.listContent}
     />
   );
@@ -234,7 +238,7 @@ export default function HomeScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {user?.role === 'trainer' ? <TrainerView /> : <AthleteView />}
       
-      {/* COMPONENTE DEL TUTORIAL CON LA NUEVA FUNCIÓN DE CIERRE */}
+      {/* CAPA DE TUTORIAL */}
       {showTutorial && (
         <TutorialOverlay 
           role={user?.role || 'athlete'} 
@@ -242,6 +246,12 @@ export default function HomeScreen() {
           onClose={closeTutorial} 
         />
       )}
+
+      {/* MODAL DE WELLNESS DIARIO */}
+      <WellnessModal 
+        isVisible={showWellness} 
+        onClose={() => setShowWellness(false)} 
+      />
     </SafeAreaView>
   );
 }
