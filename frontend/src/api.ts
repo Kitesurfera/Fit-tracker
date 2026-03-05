@@ -129,4 +129,6 @@ export const api = {
   deleteMicrociclo: (id: string) => request(`/api/microciclos/${id}`, { method: 'DELETE' }),
   
   getPeriodizationTree: (athleteId: string) => request(`/api/periodization/tree/${athleteId}`),
+  submitWellness: (data: any) => request('/api/wellness', { method: 'POST', body: JSON.stringify(data) }),
+  checkTodayWellness: () => request('/api/wellness/today'),
 };
