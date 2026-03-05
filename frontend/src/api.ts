@@ -27,35 +27,58 @@ export const api = {
   deleteAthlete: (id: string) => request(`/api/athletes/${id}`, { method: 'DELETE' }),
 
   // Workouts
-  getWorkouts: (params?: { athlete_id?: string; date?: string }) => {
+  getWorkouts: async (params?: { athlete_id?: string; date?: string }) => {
     const query = new URLSearchParams();
     if (params?.athlete_id) query.set('athlete_id', params.athlete_id);
     if (params?.date) query.set('date', params.date);
-    return request(`/api/workouts?${query.toString()}`);
+    
+    try {
+      const workouts = await request(`/api/workouts?${query.toString()}`);
+      // Si hay red, guardamos copia para el modo offline (Safari PWA)
+      await AsyncStorage.setItem('offline_workouts', JSON.stringify(workouts));
+      return workouts;
+    } catch (error) {
+      // Si falla la red, intentamos cargar la "mochila"
+      const offlineData = await AsyncStorage.getItem('offline_workouts');
+      if (offlineData) {
+        console.log("Cargando entrenamientos desde memoria local (Offline)");
+        return JSON.parse(offlineData);
+      }
+      throw error;
+    }
   },
   getWorkout: (id: string) => request(`/api/workouts/${id}`),
   createWorkout: (data: any) => request('/api/workouts', { method: 'POST', body: JSON.stringify(data) }),
   updateWorkout: (id: string, data: any) => request(`/api/workouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteWorkout: (id: string) => request(`/api/workouts/${id}`, { method: 'DELETE' }),
+
+  // FUNCIÓN PARA COMPLETAR ENTRENOS (CON SOPORTE OFFLINE)
+  completeWorkout: async (id: string, data: any) => {
+    try {
+      return await request(`/api/workouts/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...data, completed: True })
+      });
+    } catch (error) {
+      // Si falla la conexión en la playa, guardamos en pendientes
+      const pending = await AsyncStorage.getItem('pending_sync') || '[]';
+      const list = JSON.parse(pending);
+      list.push({ id, data, type: 'COMPLETE_WORKOUT', timestamp: new Date().toISOString() });
+      await AsyncStorage.setItem('pending_sync', JSON.stringify(list));
+      return { status: 'saved_offline', message: 'Guardado localmente. Se sincronizará al tener red.' };
+    }
+  },
   
   uploadCSV: async (athleteId: string, fileUri: string, fileName: string) => {
     const token = await AsyncStorage.getItem('auth_token');
     const formData = new FormData();
-
-    // 1. Convertimos la dirección (URI) en un archivo real que el navegador entienda
     const response = await fetch(fileUri);
     const blob = await response.blob();
-    
-    // 2. Metemos el archivo real en la caja con la etiqueta 'file'
     formData.append('file', blob, fileName);
 
-    // 3. Hacemos el envío SIN forzar el Content-Type (importante)
     const res = await fetch(`${BACKEND_URL}/api/workouts/csv?athlete_id=${athleteId}`, {
       method: 'POST',
-      headers: { 
-        'Authorization': `Bearer ${token}`
-        // NOTA: NO pongas 'Content-Type' aquí, el navegador lo pondrá solo
-      },
+      headers: { 'Authorization': `Bearer ${token}` },
       body: formData,
     });
 
