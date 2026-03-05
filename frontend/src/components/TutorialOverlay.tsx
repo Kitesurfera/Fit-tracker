@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../src/hooks/useTheme';
+// RUTA CORREGIDA: Ya estamos dentro de src, solo subimos un nivel y entramos en hooks
+import { useTheme } from '../hooks/useTheme';
 
 const { width, height } = Dimensions.get('window');
 
@@ -78,7 +79,7 @@ export default function TutorialOverlay({ role, isVisible, onClose }: { role: st
 
 const styles = StyleSheet.create({
   overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', alignItems: 'center' },
-  card: { width: width * 0.85, padding: 24, borderRadius: 20, gap: 20, elevation: 10 },
+  card: { width: width * 0.85, padding: 24, borderRadius: 20, gap: 20 },
   header: { alignItems: 'center', gap: 12 },
   title: { fontSize: 20, fontWeight: '800', textAlign: 'center' },
   description: { fontSize: 15, textAlign: 'center', lineHeight: 22 },
