@@ -118,3 +118,32 @@ export const api = {
   // CSV Template URL
   getCSVTemplateURL: () => `${BACKEND_URL}/api/workouts/csv-template`,
 };
+// --- PERIODIZACIÓN (MACRO/MICROCICLOS) ---
+  
+  createMacrociclo: async (data: any) => {
+    const res = await fetch(`${API_URL}/macrociclos`, {
+      method: 'POST',
+      headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al crear macrociclo');
+    return res.json();
+  },
+
+  createMicrociclo: async (data: any) => {
+    const res = await fetch(`${API_URL}/microciclos`, {
+      method: 'POST',
+      headers: { ...getHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al crear microciclo');
+    return res.json();
+  },
+
+  getPeriodizationTree: async (athleteId: string) => {
+    const res = await fetch(`${API_URL}/periodization/tree/${athleteId}`, {
+      headers: getHeaders(),
+    });
+    if (!res.ok) throw new Error('Error al cargar el calendario');
+    return res.json();
+  },
