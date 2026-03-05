@@ -93,16 +93,16 @@ export default function SettingsScreen() {
     finally { setChangingPassword(false); }
   };
 
-  const handleConnectStrava = () => {
+const handleConnectStrava = () => {
   const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
   
-  // Este log te dirá si la variable ha llegado bien tras el redeploy
-  console.log("Intentando conectar con Client ID:", clientID);
-
-  if (!clientID) {
-    alert("Error: No se encuentra el Client ID en las variables de entorno");
-    return;
-  }
+  // ¡REVISA ESTA LÍNEA! Tiene que ser la URL de tu API en Render
+  const redirectURI = "https://claudia-api.onrender.com/api/auth/strava/callback";
+  
+  const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all`;
+  
+  window.location.href = url;
+};
 
   const redirectURI = "https://tu-backend.vercel.app/api/auth/strava/callback";
   const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all`;
