@@ -59,6 +59,7 @@ class WorkoutCreate(BaseModel):
     title: str
     exercises: List[dict]
     notes: Optional[str] = ""
+    microciclo_id: Optional[str] = None  # NUEVO CAMPO: Para enlazar al calendario
 
 class TestCreate(BaseModel):
     athlete_id: str
@@ -103,6 +104,26 @@ class WorkoutUpdate(BaseModel):
     completed: Optional[bool] = None
     completion_data: Optional[dict] = None
     observations: Optional[str] = None
+    microciclo_id: Optional[str] = None  # NUEVO CAMPO
+
+# NUEVOS MODELOS DE PERIODIZACIÓN
+class MacrocicloCreate(BaseModel):
+    nombre: str
+    fecha_inicio: str
+    fecha_fin: str
+    color: Optional[str] = "#4A90E2"
+    objetivo: Optional[str] = ""
+    athlete_id: str
+
+class MicrocicloCreate(BaseModel):
+    macrociclo_id: str
+    nombre: str
+    tipo: str = "CARGA"  # CARGA, RECUPERACION, TEST, COMPETICION
+    fecha_inicio: str
+    fecha_fin: str
+    color: Optional[str] = "#34C759"
+    notas: Optional[str] = ""
+
 
 # --- Auth Helpers ---
 def hash_password(password: str) -> str:
@@ -328,6 +349,71 @@ async def delete_athlete(athlete_id: str, trainer=Depends(require_trainer)):
     await db.physical_tests.delete_many({"athlete_id": athlete_id})
     return {"message": "Athlete deleted"}
 
+# --- Periodization (Macrociclos & Microciclos) ---
+@api_router.post("/macrociclos")
+async def create_macrociclo(data: MacrocicloCreate, trainer=Depends(require_trainer)):
+    macro_id = str(uuid.uuid4())
+    macro = {
+        "id": macro_id,
+        "nombre": data.nombre,
+        "fecha_inicio": data.fecha_inicio,
+        "fecha_fin": data.fecha_fin,
+        "color": data.color,
+        "objetivo": data.objetivo,
+        "athlete_id": data.athlete_id,
+        "trainer_id": trainer['id'],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.macrociclos.insert_one(macro)
+    return {k: v for k, v in macro.items() if k != '_id'}
+
+@api_router.post("/microciclos")
+async def create_microciclo(data: MicrocicloCreate, trainer=Depends(require_trainer)):
+    # Verificamos que el macrociclo exista
+    macro = await db.macrociclos.find_one({"id": data.macrociclo_id})
+    if not macro:
+        raise HTTPException(status_code=404, detail="Macrociclo no encontrado")
+
+    micro_id = str(uuid.uuid4())
+    micro = {
+        "id": micro_id,
+        "macrociclo_id": data.macrociclo_id,
+        "nombre": data.nombre,
+        "tipo": data.tipo,
+        "fecha_inicio": data.fecha_inicio,
+        "fecha_fin": data.fecha_fin,
+        "color": data.color,
+        "notas": data.notas,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.microciclos.insert_one(micro)
+    return {k: v for k, v in micro.items() if k != '_id'}
+
+@api_router.get("/periodization/tree/{athlete_id}")
+async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
+    # 1. Obtener todos los macrociclos del deportista
+    macrociclos = await db.macrociclos.find({"athlete_id": athlete_id}, {"_id": 0}).to_list(100)
+    macro_ids = [m['id'] for m in macrociclos]
+
+    # 2. Obtener los microciclos que pertenecen a esos macrociclos
+    microciclos = await db.microciclos.find({"macrociclo_id": {"$in": macro_ids}}, {"_id": 0}).to_list(500)
+    micro_ids = [m['id'] for m in microciclos]
+
+    # 3. Obtener los entrenamientos asignados a esos microciclos
+    workouts = await db.workouts.find({"microciclo_id": {"$in": micro_ids}}, {"_id": 0}).sort("date", 1).to_list(1000)
+
+    # 4. Construir el árbol de datos anidado
+    tree = []
+    for macro in macrociclos:
+        micros_in_macro = [m for m in microciclos if m['macrociclo_id'] == macro['id']]
+        for micro in micros_in_macro:
+            micro['workouts'] = [w for w in workouts if w.get('microciclo_id') == micro['id']]
+        
+        macro['microciclos'] = micros_in_macro
+        tree.append(macro)
+
+    return tree
+
 # --- Workouts ---
 @api_router.post("/workouts")
 async def create_workout(data: WorkoutCreate, trainer=Depends(require_trainer)):
@@ -336,6 +422,7 @@ async def create_workout(data: WorkoutCreate, trainer=Depends(require_trainer)):
         "id": workout_id,
         "trainer_id": trainer['id'],
         "athlete_id": data.athlete_id,
+        "microciclo_id": data.microciclo_id,  # Lazo al calendario
         "date": data.date,
         "title": data.title,
         "exercises": data.exercises,
