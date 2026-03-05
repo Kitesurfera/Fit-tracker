@@ -1,15 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
-  ActivityIndicator, Alert, Linking, TextInput, Modal, ScrollView, Platform, Dimensions
+  ActivityIndicator, Alert, Linking, TextInput, Modal, ScrollView, Platform
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
-
-const { width } = Dimensions.get('window');
 
 const TEST_LABELS: Record<string, string> = {
   squat_rm: 'Sentadilla RM', bench_rm: 'Press Banca RM', deadlift_rm: 'Peso Muerto RM',
@@ -29,6 +27,10 @@ export default function AthleteDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
   const [expandedExercise, setExpandedExercise] = useState<string | null>(null);
+  
+  // NUEVO: Estado para el buscador de progresión
+  const [searchQuery, setSearchQuery] = useState('');
+
   const [duplicateModal, setDuplicateModal] = useState<any>(null);
   const [duplicateDate, setDuplicateDate] = useState('');
   const [duplicating, setDuplicating] = useState(false);
@@ -87,7 +89,26 @@ export default function AthleteDetailScreen() {
     finally { setDuplicating(false); }
   };
 
-  // --- RENDERIZADO DE CONTENIDO ---
+  // --- LÓGICA DE PROGRESIÓN ---
+  const getProgressionData = () => {
+    const exMap: Record<string, any> = {};
+    workouts.filter(w => w.completed && w.completion_data).forEach(w => {
+      w.completion_data.exercise_results?.forEach((r: any) => {
+        if (!exMap[r.name]) exMap[r.name] = { name: r.name, maxW: 0, history: [] };
+        const wVal = parseFloat(r.logged_weight) || 0;
+        if (wVal > exMap[r.name].maxW) exMap[r.name].maxW = wVal;
+        exMap[r.name].history.push({ date: w.date, weight: wVal, reps: r.logged_reps });
+      });
+    });
+    
+    const results = Object.values(exMap);
+
+    // FILTRO DEL BUSCADOR
+    if (searchQuery.trim() === '') return results;
+    return results.filter((ex: any) => 
+      ex.name.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  };
 
   const renderDashboard = () => {
     const recentObs = workouts.filter(w => w.observations).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
@@ -149,19 +170,6 @@ export default function AthleteDetailScreen() {
     </View>
   );
 
-  const getProgressionData = () => {
-    const exMap: Record<string, any> = {};
-    workouts.filter(w => w.completed && w.completion_data).forEach(w => {
-      w.completion_data.exercise_results?.forEach((r: any) => {
-        if (!exMap[r.name]) exMap[r.name] = { name: r.name, maxW: 0, history: [] };
-        const wVal = parseFloat(r.logged_weight) || 0;
-        if (wVal > exMap[r.name].maxW) exMap[r.name].maxW = wVal;
-        exMap[r.name].history.push({ date: w.date, weight: wVal, reps: r.logged_reps });
-      });
-    });
-    return Object.values(exMap);
-  };
-
   const renderProgressionItem = ({ item }: { item: any }) => {
     const isExpanded = expandedExercise === item.name;
     return (
@@ -209,6 +217,26 @@ export default function AthleteDetailScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* BUSCADOR: SOLO APARECE EN PESTAÑA PROGRESIÓN */}
+            {activeTab === 'progression' && (
+              <View style={[styles.searchContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Ionicons name="search" size={18} color={colors.textSecondary} />
+                <TextInput
+                  style={[styles.searchInput, { color: colors.textPrimary }]}
+                  placeholder="Buscar ejercicio..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                  autoCorrect={false}
+                />
+                {searchQuery.length > 0 && (
+                  <TouchableOpacity onPress={() => setSearchQuery('')}>
+                    <Ionicons name="close-circle" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
           </View>
         }
         renderItem={activeTab === 'dashboard' ? renderDashboard : activeTab === 'workouts' ? renderWorkoutItem : activeTab === 'tests' ? renderTestItem : renderProgressionItem}
@@ -235,7 +263,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700' },
-  tabsRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  tabsRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#eee', marginBottom: 16 },
   tab: { paddingVertical: 10, paddingHorizontal: 5 },
   tabText: { fontSize: 10, fontWeight: '700' },
   tabContainer: { padding: 16 },
@@ -243,6 +271,20 @@ const styles = StyleSheet.create({
   cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   sectionTitle: { fontSize: 16, fontWeight: '700' },
   badge: { backgroundColor: '#e3f2fd', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  
+  // NUEVOS ESTILOS DEL BUSCADOR
+  searchContainer: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 12, 
+    height: 44, 
+    borderRadius: 10, 
+    borderWidth: 1, 
+    marginTop: 8,
+    marginHorizontal: 0
+  },
+  searchInput: { flex: 1, marginLeft: 8, fontSize: 14 },
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 40 },
   modalCard: { padding: 25, borderRadius: 15 },
   input: { borderWidth: 1, padding: 12, borderRadius: 8 },
