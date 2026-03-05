@@ -93,6 +93,15 @@ export default function SettingsScreen() {
     finally { setChangingPassword(false); }
   };
 
+  const handleConnectStrava = () => {
+  const clientID = "TU_CLIENT_ID";
+  const redirectURI = "https://tu-backend.vercel.app/api/auth/strava/callback";
+  const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${redirectURI}&scope=read,activity:read_all`;
+  
+  // Abrimos Strava para que Claudia de permiso
+  window.location.href = url;
+};
+
   const handleLogout = async () => {
     if (Platform.OS === 'web') {
       const confirm = window.confirm('¿Estás seguro de que quieres salir?');
@@ -271,6 +280,14 @@ export default function SettingsScreen() {
           <View style={[styles.settingSection, { backgroundColor: colors.surface }]}>
             <TapRow icon="information-circle-outline" label="Version" value="1.0.0" />
           </View>
+
+          <TouchableOpacity 
+  style={{ backgroundColor: '#FC6100', padding: 15, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+  onPress={handleConnectStrava}
+>
+  <Ionicons name="flash" size={20} color="#FFF" style={{ marginRight: 10 }} />
+  <Text style={{ color: '#FFF', fontWeight: '800' }}>CONECTAR CON STRAVA</Text>
+</TouchableOpacity>
 
           {/* Logout */}
           <View style={[styles.settingSection, { backgroundColor: colors.surface, marginTop: 24 }]}>
