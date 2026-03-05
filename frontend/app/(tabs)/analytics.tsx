@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { LineChart } from "react-native-chart-kit";
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
@@ -14,7 +13,7 @@ const { width } = Dimensions.get('window');
 
 const TEST_LABELS: Record<string, string> = {
   squat_rm: 'Sentadilla', bench_rm: 'Press Banca', deadlift_rm: 'Peso Muerto',
-  cmj: 'Salto CMJ', sj: 'Salto SJ', dj: 'Salto DJ',
+  cmj: 'Salto CMJ', sj: 'Salto SJ', dj: 'DJ',
   hamstring: 'Isquios', calf: 'Gemelo', quadriceps: 'Cuádriceps', tibialis: 'Tibial',
 };
 
@@ -29,9 +28,7 @@ export default function AnalyticsScreen() {
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [testHistory, setTestHistory] = useState<any[]>([]);
   
-  // Estados para el control de la progresión y gráficas
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
-  const [chartTimeframe, setChartTimeframe] = useState<'days' | 'months'>('days');
 
   const loadData = async () => {
     try {
@@ -53,12 +50,9 @@ export default function AnalyticsScreen() {
 
   useEffect(() => { loadData(); }, []);
   
-  const onRefresh = () => { 
-    setRefreshing(true); 
-    loadData(); 
-  };
+  const onRefresh = () => { setRefreshing(true); loadData(); };
 
-  // --- NUEVA LÓGICA DE PROGRESIÓN SIN DUPLICADOS Y CON PBs ---
+  // Lógica de Progresión: Agrupa por nombre y busca el Récord Máximo (PB)
   const getCleanProgression = () => {
     const exercises: Record<string, any> = {};
 
@@ -71,23 +65,15 @@ export default function AnalyticsScreen() {
           const date = w.date;
 
           if (!exercises[name]) {
-            exercises[name] = {
-              name,
-              maxWeight: 0,
-              maxRepsAtMaxWeight: 0,
-              history: []
-            };
+            exercises[name] = { name, maxWeight: 0, maxReps: 0, history: [] };
           }
 
-          // Actualizar Récord Personal (PB)
           if (weight > exercises[name].maxWeight) {
             exercises[name].maxWeight = weight;
-            exercises[name].maxRepsAtMaxWeight = reps;
-          } else if (weight === exercises[name].maxWeight && reps > exercises[name].maxRepsAtMaxWeight) {
-            exercises[name].maxRepsAtMaxWeight = reps;
+            exercises[name].maxReps = reps;
           }
 
-          exercises[name].history.push({ date, weight });
+          exercises[name].history.push({ date, weight, reps });
         }
       });
     });
@@ -97,27 +83,7 @@ export default function AnalyticsScreen() {
 
   const renderProgressionCard = (item: any) => {
     const isSelected = selectedExercise === item.name;
-    
-    // Preparar datos del gráfico
-    let rawHistory = [...item.history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    let labels: string[] = [];
-    let dataPoints: number[] = [];
-
-    if (chartTimeframe === 'months') {
-      const monthlyMax: Record<string, number> = {};
-      rawHistory.forEach(h => {
-        const month = h.date.substring(5, 7); // MM
-        monthlyMax[month] = Math.max(monthlyMax[month] || 0, h.weight);
-      });
-      const sortedMonths = Object.keys(monthlyMax).sort();
-      labels = sortedMonths.map(m => m); // Solo el número del mes
-      dataPoints = sortedMonths.map(m => monthlyMax[m]);
-    } else {
-      // Por días, últimos 6 puntos
-      const recent = rawHistory.slice(-6);
-      labels = recent.map(h => h.date.split('-')[2]); // Solo el día
-      dataPoints = recent.map(h => h.weight);
-    }
+    const sortedHistory = [...item.history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return (
       <View key={item.name} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -129,51 +95,26 @@ export default function AnalyticsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={[styles.progName, { color: colors.textPrimary }]}>{item.name}</Text>
             <View style={styles.pbRow}>
-              <Ionicons name="trophy-outline" size={14} color={colors.primary} />
+              <Ionicons name="trophy" size={14} color="#FFD700" />
               <Text style={[styles.pbText, { color: colors.textSecondary }]}>
-                Récord: <Text style={{ color: colors.primary, fontWeight: '800' }}>{item.maxWeight} kg</Text> x {item.maxRepsAtMaxWeight} reps
+                Récord: <Text style={{ color: colors.primary, fontWeight: '800' }}>{item.maxWeight} kg</Text> x {item.maxReps} reps
               </Text>
             </View>
           </View>
-          <Ionicons name={isSelected ? "chevron-up" : "analytics-outline"} size={22} color={colors.primary} />
+          <Ionicons name={isSelected ? "chevron-up" : "chevron-forward"} size={20} color={colors.textSecondary} />
         </TouchableOpacity>
 
-        {isSelected && dataPoints.length > 0 && (
-          <View style={styles.chartArea}>
-            <View style={styles.chartToggle}>
-              <TouchableOpacity onPress={() => setChartTimeframe('days')} style={[styles.miniBtn, chartTimeframe === 'days' && {backgroundColor: colors.primary}]}>
-                <Text style={[styles.miniBtnText, {color: chartTimeframe === 'days' ? '#FFF' : colors.textSecondary}]}>Días</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setChartTimeframe('months')} style={[styles.miniBtn, chartTimeframe === 'months' && {backgroundColor: colors.primary}]}>
-                <Text style={[styles.miniBtnText, {color: chartTimeframe === 'months' ? '#FFF' : colors.textSecondary}]}>Meses</Text>
-              </TouchableOpacity>
-            </View>
-
-            {dataPoints.length > 1 ? (
-              <LineChart
-                data={{
-                  labels: labels,
-                  datasets: [{ data: dataPoints }]
-                }}
-                width={width - 72}
-                height={180}
-                chartConfig={{
-                  backgroundColor: colors.surface,
-                  backgroundGradientFrom: colors.surface,
-                  backgroundGradientTo: colors.surface,
-                  decimalPlaces: 1,
-                  color: (opacity = 1) => colors.primary,
-                  labelColor: (opacity = 1) => colors.textSecondary,
-                  style: { borderRadius: 16 },
-                  propsForDots: { r: "4", strokeWidth: "2", stroke: colors.primary }
-                }}
-                bezier
-                style={{ marginVertical: 8, borderRadius: 16 }}
-              />
-            ) : (
-              <Text style={{ color: colors.textSecondary, padding: 20 }}>Registra más entrenos para ver la gráfica.</Text>
-            )}
-            <Text style={styles.chartLegend}>Eje Y: kg | Eje X: {chartTimeframe === 'days' ? 'Día' : 'Mes'}</Text>
+        {isSelected && (
+          <View style={[styles.historyList, { borderTopWidth: 1, borderTopColor: colors.border }]}>
+            {sortedHistory.map((h, i) => (
+              <View key={i} style={[styles.historyRow, i > 0 && { borderTopWidth: 0.5, borderTopColor: colors.border }]}>
+                <Text style={[styles.historyDate, { color: colors.textSecondary }]}>{h.date}</Text>
+                <View style={styles.historyData}>
+                  <Text style={[styles.historyWeight, { color: colors.textPrimary }]}>{h.weight} kg</Text>
+                  <Text style={[styles.historyReps, { color: colors.textSecondary }]}>x {h.reps} reps</Text>
+                </View>
+              </View>
+            ))}
           </View>
         )}
       </View>
@@ -192,15 +133,11 @@ export default function AnalyticsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Rendimiento</Text>
           <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
-            {refreshing ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Ionicons name="sync-outline" size={24} color={colors.primary} />
-            )}
+            {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={24} color={colors.primary} />}
           </TouchableOpacity>
         </View>
 
@@ -244,7 +181,7 @@ export default function AnalyticsScreen() {
                   </View>
                 ))
               ) : (
-                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10 }}>No hay tests registrados</Text>
+                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10 }}>Sin registros</Text>
               )}
             </View>
           ) : (
@@ -253,15 +190,7 @@ export default function AnalyticsScreen() {
                 <Ionicons name="trending-up-outline" size={20} color={colors.primary} />
                 <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>Mis Récords Personales</Text>
               </View>
-
-              {cleanProgression.length > 0 ? (
-                cleanProgression.map(item => renderProgressionCard(item))
-              ) : (
-                <View style={styles.emptyState}>
-                  <Ionicons name="barbell-outline" size={40} color={colors.textSecondary} />
-                  <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Completa entrenamientos para ver tu progresión.</Text>
-                </View>
-              )}
+              {cleanProgression.map(renderProgressionCard)}
             </View>
           )}
         </View>
@@ -272,7 +201,7 @@ export default function AnalyticsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingBottom: 40 }, 
+  scrollContent: { paddingBottom: 40 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 15, paddingBottom: 10 },
   headerTitle: { fontSize: 28, fontWeight: '800' },
   refreshBtn: { padding: 4 },
@@ -289,19 +218,15 @@ const styles = StyleSheet.create({
   itemRow: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderRadius: 12, marginBottom: 10 },
   itemName: { fontSize: 16, fontWeight: '600' },
   itemValue: { fontSize: 16, fontWeight: '700' },
-  
-  // ESTILOS PROGRESIÓN MEJORADA
   progCard: { borderRadius: 16, marginBottom: 12, borderWidth: 1, overflow: 'hidden' },
   progHeader: { padding: 16, flexDirection: 'row', alignItems: 'center' },
   progName: { fontSize: 17, fontWeight: '700' },
   pbRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
   pbText: { fontSize: 13 },
-  chartArea: { padding: 16, alignItems: 'center', borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  chartToggle: { flexDirection: 'row', backgroundColor: '#f0f0f0', borderRadius: 8, padding: 2, marginBottom: 12 },
-  miniBtn: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6 },
-  miniBtnText: { fontSize: 12, fontWeight: '700' },
-  chartLegend: { fontSize: 10, color: '#aaa', marginTop: 4 },
-  
-  emptyState: { alignItems: 'center', marginTop: 40, paddingHorizontal: 40 },
-  emptyText: { textAlign: 'center', fontSize: 14, color: '#888' },
+  historyList: { paddingHorizontal: 16 },
+  historyRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12 },
+  historyDate: { fontSize: 13, fontWeight: '500' },
+  historyData: { flexDirection: 'row', gap: 8 },
+  historyWeight: { fontSize: 14, fontWeight: '700' },
+  historyReps: { fontSize: 14 },
 });
