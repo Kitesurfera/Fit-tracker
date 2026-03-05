@@ -9,6 +9,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
+import TutorialOverlay from '../../components/TutorialOverlay';
+
+export default function HomeScreen() {
+  const { user } = useAuth();
+  const [showTutorial, setShowTutorial] = useState(true); // Puedes conectar esto a la base de datos luego
+
+  return (
+    <SafeAreaView style={{ flex: 1 }}>
+      {/* Tu contenido de Home actual... */}
+      
+      <TutorialOverlay 
+        role={user?.role || 'athlete'} 
+        isVisible={showTutorial} 
+        onClose={() => setShowTutorial(false)} 
+      />
+    </SafeAreaView>
+  );
+}
 
 export default function HomeScreen() {
   const { user } = useAuth();
