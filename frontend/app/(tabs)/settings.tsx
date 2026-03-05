@@ -97,7 +97,7 @@ const handleConnectStrava = () => {
   const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
   
   // ¡REVISA ESTA LÍNEA! Tiene que ser la URL de tu API en Render
-  const redirectURI = "https://claudia-api.onrender.com/api/auth/strava/callback";
+  const redirectURI = "https://fit-tracker-backend-rtx2.onrender.com/api/auth/strava/callback";
   
   const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all`;
   
