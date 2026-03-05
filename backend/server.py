@@ -322,7 +322,7 @@ async def strava_callback(code: str, state: str):
     )
     
     # Redirigimos de vuelta a la App (Vercel)
-    return RedirectResponse(url="https://fit-tracker-frontend-claudia.vercel.app/settings?strava=success")
+    return RedirectResponse(url="https://fit-tracker-azure-iota.vercel.app/settings?strava=success")
 
 @api_router.put("/settings")
 async def update_settings(data: SettingsUpdate, user=Depends(get_current_user)):
