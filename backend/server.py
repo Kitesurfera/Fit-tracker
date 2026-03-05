@@ -368,6 +368,35 @@ async def analytics_summary(user=Depends(get_current_user)):
         "latest_tests": {"hr_rest": hr_test or {"value": "--"}},
         "completion_rate": round((completed_workouts / total_workouts * 100) if total_workouts > 0 else 0, 1),
     }
+    @api_router.post("/auth/strava/sync")
+async def sync_strava_data(user=Depends(get_current_user)):
+    if "strava_token" not in user:
+        raise HTTPException(status_code=400, detail="Strava no conectado")
+    
+    try:
+        headers = {"Authorization": f"Bearer {user['strava_token']}"}
+        # Pedimos las actividades de las últimas 24h
+        url = "https://www.strava.com/api/v3/athlete/activities?per_page=1"
+        r = requests.get(url, headers=headers)
+        
+        if r.status_code == 200:
+            data = r.json()
+            if data:
+                last_act = data[0]
+                # Actualizamos el pulso
+                await db.physical_tests.update_one(
+                    {"athlete_id": user['id'], "test_name": "hr_rest"},
+                    {"$set": {
+                        "value": last_act.get("average_heartrate", 60),
+                        "date": datetime.now(timezone.utc).strftime('%Y-%m-%d'),
+                        "unit": "bpm"
+                    }},
+                    upsert=True
+                )
+        return {"status": "success", "message": "Datos actualizados"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @api_router.put("/settings")
 async def update_settings(data: SettingsUpdate, user=Depends(get_current_user)):
