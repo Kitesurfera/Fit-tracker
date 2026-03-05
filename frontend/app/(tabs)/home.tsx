@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, RefreshControl 
+  ActivityIndicator, RefreshControl, Alert 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,9 +19,10 @@ export default function HomeScreen() {
   const [workouts, setWorkouts] = useState([]);
   const [athletes, setAthletes] = useState([]);
   const [summary, setSummary] = useState(null);
-  const [activeMicro, setActiveMicro] = useState(null); // Nuevo estado
+  const [activeMicro, setActiveMicro] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [syncing, setSyncing] = useState(false); // Estado para el botón de Strava
   const [showWellness, setShowWellness] = useState(false);
 
   const isTrainer = user?.role === 'trainer';
@@ -40,13 +41,11 @@ export default function HomeScreen() {
         const [wData, sData, treeData] = await Promise.all([
           api.getWorkouts(),
           api.getSummary(),
-          api.getPeriodizationTree(user.id) // Buscamos la planificación
+          api.getPeriodizationTree(user.id)
         ]);
-        
         setWorkouts(wData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         setSummary(sData);
 
-        // Lógica para encontrar el microciclo actual
         let foundMicro = null;
         treeData.forEach(macro => {
           macro.microciclos.forEach(micro => {
@@ -65,12 +64,24 @@ export default function HomeScreen() {
     }
   };
 
+  const handleManualSync = async () => {
+    setSyncing(true);
+    try {
+      await api.syncStrava();
+      await loadData();
+      Alert.alert("¡Sincronizado!", "Datos de Apple Watch actualizados correctamente.");
+    } catch (e) {
+      Alert.alert("Error", "No se pudo sincronizar con Strava en este momento.");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
   };
 
-  // --- VISTA ENTRENADOR ---
   const TrainerView = () => (
     <FlatList
       data={athletes}
@@ -93,7 +104,6 @@ export default function HomeScreen() {
     />
   );
 
-  // --- VISTA DEPORTISTA ---
   const AthleteView = () => (
     <FlatList
       data={workouts}
@@ -104,19 +114,24 @@ export default function HomeScreen() {
           <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
           <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 🤙</Text>
 
-          {/* TARJETA DE MICROCICLO ACTUAL */}
+          {/* TARJETA MICROCICLO */}
           <View style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
             <View style={styles.phaseInfo}>
               <Text style={styles.phaseLabel}>FASE ACTUAL</Text>
               <Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Sin fase activa'}</Text>
               <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Habla con Andre para tu plan'}</Text>
             </View>
-            <View style={styles.phaseBadge}>
-              <Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'REPOSO'}</Text>
-            </View>
+            <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'REPOSO'}</Text></View>
           </View>
 
-          {/* MÉTRICAS SALUD */}
+          {/* MÉTRICAS CON BOTÓN DE SYNC */}
+          <View style={styles.metricsHeader}>
+             <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>SALUD (APPLE WATCH)</Text>
+             <TouchableOpacity onPress={handleManualSync} disabled={syncing}>
+               {syncing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh-circle" size={26} color={colors.primary} />}
+             </TouchableOpacity>
+          </View>
+          
           <View style={styles.metricsGrid}>
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
               <Ionicons name="heart" size={20} color={colors.error} />
@@ -126,7 +141,7 @@ export default function HomeScreen() {
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
               <Ionicons name="footsteps" size={20} color={colors.primary} />
               <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.latest_wellness?.steps || '0'}</Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PASOS</Text>
+              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PASOS HOY</Text>
             </View>
           </View>
 
@@ -174,8 +189,6 @@ const styles = StyleSheet.create({
   container: { padding: 20 },
   dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   welcomeText: { fontSize: 28, fontWeight: '900', marginTop: 5, marginBottom: 15 },
-  
-  // ESTILOS TARJETA DE FASE/MICROCICLO
   phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 20, alignItems: 'center', elevation: 4 },
   phaseInfo: { flex: 1 },
   phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
@@ -183,7 +196,7 @@ const styles = StyleSheet.create({
   macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 },
   phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
-
+  metricsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingHorizontal: 5 },
   metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 },
   metricCard: { flex: 1, padding: 15, borderRadius: 20, alignItems: 'center' },
   metricValue: { fontSize: 20, fontWeight: '900', marginTop: 5 },
