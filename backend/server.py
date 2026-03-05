@@ -1,3 +1,4 @@
+import requests
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Query, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, Response
@@ -24,6 +25,9 @@ load_dotenv(ROOT_DIR / '.env')
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+STRAVA_CLIENT_ID = "208505"
+STRAVA_CLIENT_SECRET = "29bfcbab7928604bb2b5fef076c300f9bfbebfa0"
 
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET', 'fitness-tracker-secret-key-2026')
@@ -285,6 +289,24 @@ async def get_settings(user=Depends(get_current_user)):
         return {k: v for k, v in default.items() if k != '_id'}
     return settings
 
+@api_router.get("/auth/strava/callback")
+async def strava_callback(code: str, user=Depends(get_current_user)):
+    # Intercambiamos el código que nos da Strava por un token real
+    response = requests.post("https://www.strava.com/oauth/token", data={
+        "client_id": STRAVA_CLIENT_ID,
+        "client_secret": STRAVA_CLIENT_SECRET,
+        "code": code,
+        "grant_type": "authorization_code"
+    })
+    strava_data = response.json()
+    
+    # Guardamos el token de Strava en el perfil de la usuaria (Claudia)
+    await db.users.update_one(
+        {"id": user['id']},
+        {"$set": {"strava_token": strava_data['access_token'], "strava_id": strava_data['athlete']['id']}}
+    )
+    return {"status": "Strava conectado correctamente"}
+    
 @api_router.put("/settings")
 async def update_settings(data: SettingsUpdate, user=Depends(get_current_user)):
     update_data = {k: v for k, v in data.dict().items() if v is not None}
