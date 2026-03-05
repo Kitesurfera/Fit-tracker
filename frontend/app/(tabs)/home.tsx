@@ -9,7 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
-import TutorialOverlay from '../../components/TutorialOverlay';
+import TutorialOverlay from '../../src/components/TutorialOverlay';
 
 export default function HomeScreen() {
   const { user } = useAuth();
