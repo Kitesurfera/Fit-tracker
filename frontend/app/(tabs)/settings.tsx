@@ -93,18 +93,37 @@ export default function SettingsScreen() {
     finally { setChangingPassword(false); }
   };
   
-  const handleConnectStrava = async () => {
-  const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
-  const redirectURI = "https://fit-tracker-backend-rtx2.onrender.com/api/auth/strava/callback";
-  
-  // Obtenemos tu token actual de la memoria del móvil
-  const token = await AsyncStorage.getItem('auth_token');
+const handleConnectStrava = async () => {
+    try {
+      // 1. Pillamos el ID de las variables de entorno
+      const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
+      
+      if (!clientID) {
+        alert("Error: No se encuentra el EXPO_PUBLIC_STRAVA_CLIENT_ID en Vercel.");
+        return;
+      }
 
-  // Añadimos &state=${token} a la URL
-  const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all&state=${token}`;
-  
-  window.location.href = url;
-};
+      // 2. Pillamos tu token de sesión para que el backend sepa que eres tú (Claudia)
+      const token = await AsyncStorage.getItem('auth_token');
+      
+      if (!token) {
+        alert("Error: No se ha encontrado tu sesión. Prueba a salir y volver a entrar.");
+        return;
+      }
+
+      const redirectURI = "https://fit-tracker-backend-rtx2.onrender.com/api/auth/strava/callback";
+      
+      // 3. Construimos la URL con el 'state' para la vuelta
+      const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all&state=${token}`;
+      
+      console.log("Redirigiendo a Strava...");
+      window.location.href = url;
+
+    } catch (error) {
+      console.error("Error al conectar con Strava:", error);
+      alert("Hubo un fallo al intentar abrir Strava.");
+    }
+  };
 
   const handleLogout = async () => {
     if (Platform.OS === 'web') {
