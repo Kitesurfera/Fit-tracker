@@ -94,12 +94,19 @@ export default function SettingsScreen() {
   };
 
   const handleConnectStrava = () => {
-    console.log("Mi Client ID es:", process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID);
-  const clientID = "TU_CLIENT_ID";
-  const redirectURI = "https://tu-backend.vercel.app/api/auth/strava/callback";
-  const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${redirectURI}&scope=read,activity:read_all`;
+  const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
   
-  // Abrimos Strava para que Claudia de permiso
+  // Este log te dirá si la variable ha llegado bien tras el redeploy
+  console.log("Intentando conectar con Client ID:", clientID);
+
+  if (!clientID) {
+    alert("Error: No se encuentra el Client ID en las variables de entorno");
+    return;
+  }
+
+  const redirectURI = "https://tu-backend.vercel.app/api/auth/strava/callback";
+  const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all`;
+  
   window.location.href = url;
 };
 
