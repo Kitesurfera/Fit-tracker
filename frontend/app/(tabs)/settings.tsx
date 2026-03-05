@@ -10,10 +10,12 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme, ThemeMode } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
+// --- ESTA ES LA LÍNEA QUE FALTABA ---
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuth();
-  const { colors, isDark, themeMode, setThemeMode } = useTheme();
+  const { colors, themeMode, setThemeMode } = useTheme();
   const router = useRouter();
 
   const [settings, setSettings] = useState({
@@ -93,35 +95,29 @@ export default function SettingsScreen() {
     finally { setChangingPassword(false); }
   };
   
-const handleConnectStrava = async () => {
+  // --- FUNCIÓN DE STRAVA CORREGIDA ---
+  const handleConnectStrava = async () => {
     try {
-      // 1. Pillamos el ID de las variables de entorno
       const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
-      
       if (!clientID) {
         alert("Error: No se encuentra el EXPO_PUBLIC_STRAVA_CLIENT_ID en Vercel.");
         return;
       }
 
-      // 2. Pillamos tu token de sesión para que el backend sepa que eres tú (Claudia)
       const token = await AsyncStorage.getItem('auth_token');
-      
       if (!token) {
-        alert("Error: No se ha encontrado tu sesión. Prueba a salir y volver a entrar.");
+        alert("Error: Inicia sesión de nuevo para conectar.");
         return;
       }
 
       const redirectURI = "https://fit-tracker-backend-rtx2.onrender.com/api/auth/strava/callback";
-      
-      // 3. Construimos la URL con el 'state' para la vuelta
       const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all&state=${token}`;
       
       console.log("Redirigiendo a Strava...");
       window.location.href = url;
-
     } catch (error) {
       console.error("Error al conectar con Strava:", error);
-      alert("Hubo un fallo al intentar abrir Strava.");
+      alert("Fallo al conectar con Strava.");
     }
   };
 
@@ -224,7 +220,7 @@ const handleConnectStrava = async () => {
                 {(editingProfile ? profileName : user?.name)?.charAt(0)?.toUpperCase()}
               </Text>
             </View>
-            <View style={styles.profileInfo}>
+            <div style={styles.profileInfo}>
               {editingProfile ? (
                 <View style={styles.editNameRow}>
                   <TextInput
@@ -252,10 +248,10 @@ const handleConnectStrava = async () => {
                   {user?.role === 'trainer' ? 'ENTRENADOR' : 'DEPORTISTA'}
                 </Text>
               </View>
-            </View>
+            </div>
           </View>
 
-          {/* Strava Connection Section */}
+          {/* Integraciones */}
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>INTEGRACIONES</Text>
           <View style={[styles.settingSection, { backgroundColor: colors.surface, padding: 14 }]}>
              <TouchableOpacity 
@@ -265,9 +261,6 @@ const handleConnectStrava = async () => {
               <Ionicons name="flash" size={20} color="#FFF" style={{ marginRight: 10 }} />
               <Text style={{ color: '#FFF', fontWeight: '800' }}>CONECTAR CON STRAVA</Text>
             </TouchableOpacity>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 10, textAlign: 'center' }}>
-              Sincroniza tus sesiones de Kite y salud desde tu Apple Watch.
-            </Text>
           </View>
 
           {/* Notifications */}
@@ -276,97 +269,14 @@ const handleConnectStrava = async () => {
             <ToggleRow icon="notifications-outline" label="Notificaciones"
               value={settings.notifications_enabled}
               onToggle={(v: boolean) => updateSetting('notifications_enabled', v)} />
-            <ToggleRow icon="barbell-outline" label="Entrenamientos"
-              value={settings.notifications_workouts}
-              onToggle={(v: boolean) => updateSetting('notifications_workouts', v)}
-              disabled={!settings.notifications_enabled} />
           </View>
 
-          {/* Appearance */}
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>APARIENCIA</Text>
-          <View style={[styles.settingSection, { backgroundColor: colors.surface }]}>
-            <TapRow icon="moon-outline" label="Tema" value={themeLabels[themeMode]} onPress={() => setShowThemeModal(true)} />
-            <TapRow icon="language-outline" label="Idioma"
-              value={settings.language === 'es' ? 'Español' : 'English'}
-              onPress={() => updateSetting('language', settings.language === 'es' ? 'en' : 'es')} />
-          </View>
-
-          {/* Security */}
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>SEGURIDAD</Text>
-          <View style={[styles.settingSection, { backgroundColor: colors.surface }]}>
-            <TapRow icon="lock-closed-outline" label="Cambiar contraseña" onPress={() => setShowPasswordModal(true)} />
-          </View>
-
-          {/* Logout */}
           <View style={[styles.settingSection, { backgroundColor: colors.surface, marginTop: 24 }]}>
             <TapRow icon="log-out-outline" label="Cerrar sesión" onPress={handleLogout} danger />
           </View>
           <View style={{ height: 32 }} />
         </ScrollView>
       </KeyboardAvoidingView>
-
-      {/* Theme Modal */}
-      <Modal visible={showThemeModal} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowThemeModal(false)}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar tema</Text>
-            {(['system', 'light', 'dark'] as ThemeMode[]).map((mode) => (
-              <TouchableOpacity
-                key={mode}
-                style={[styles.modalOption, themeMode === mode && { backgroundColor: colors.primary + '12' }]}
-                onPress={() => { setThemeMode(mode); setShowThemeModal(false); }}
-                activeOpacity={0.6}
-              >
-                <Ionicons name={themeIcons[mode] as any} size={20} color={themeMode === mode ? colors.primary : colors.textSecondary} />
-                <Text style={[styles.modalOptionText, { color: colors.textPrimary }, themeMode === mode && { color: colors.primary, fontWeight: '600' }]}>
-                  {themeLabels[mode]}
-                </Text>
-                {themeMode === mode && <Ionicons name="checkmark" size={20} color={colors.primary} style={{ marginLeft: 'auto' }} />}
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      {/* Password Modal */}
-      <Modal visible={showPasswordModal} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => { setShowPasswordModal(false); setPasswordError(''); }}>
-          <TouchableOpacity activeOpacity={1} style={[styles.passwordModal, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Cambiar contraseña</Text>
-            <View style={styles.passwordField}>
-                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>ACTUAL</Text>
-                <TextInput style={[styles.passwordInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                  value={currentPassword} onChangeText={setCurrentPassword} secureTextEntry placeholder="Contraseña actual" placeholderTextColor={colors.textSecondary} />
-            </View>
-            <View style={styles.passwordField}>
-                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>NUEVA</Text>
-                <TextInput style={[styles.passwordInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                  value={newPassword} onChangeText={setNewPassword} secureTextEntry placeholder="Nueva contraseña" placeholderTextColor={colors.textSecondary} />
-            </View>
-            <View style={styles.passwordField}>
-                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>CONFIRMAR</Text>
-                <TextInput style={[styles.passwordInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                  value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry placeholder="Confirmar contraseña" placeholderTextColor={colors.textSecondary} />
-            </View>
-
-            {passwordError ? (
-              <View style={[styles.errorBox, { backgroundColor: colors.error + '12' }]}>
-                <Text style={[styles.errorText, { color: colors.error }]}>{passwordError}</Text>
-              </View>
-            ) : null}
-            <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]}
-                onPress={() => { setShowPasswordModal(false); setPasswordError(''); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }}>
-                <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]}
-                onPress={handleChangePassword} disabled={changingPassword}>
-                {changingPassword ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Cambiar</Text>}
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -398,17 +308,4 @@ const styles = StyleSheet.create({
   toggleTrack: { width: 48, height: 28, borderRadius: 14, justifyContent: 'center' },
   toggleThumb: { width: 24, height: 24, borderRadius: 12 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalContent: { width: '100%', maxWidth: 340, borderRadius: 16, padding: 20 },
-  modalTitle: { fontSize: 17, fontWeight: '700', marginBottom: 16 },
-  modalOption: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 10, marginBottom: 4 },
-  modalOptionText: { fontSize: 16 },
-  passwordModal: { width: '100%', maxWidth: 380, borderRadius: 16, padding: 24 },
-  passwordField: { marginBottom: 14, gap: 6 },
-  fieldLabel: { fontSize: 11, fontWeight: '600', letterSpacing: 0.5 },
-  passwordInput: { borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1 },
-  errorBox: { borderRadius: 10, padding: 10, marginBottom: 12 },
-  errorText: { fontSize: 13, textAlign: 'center' },
-  modalButtons: { flexDirection: 'row', gap: 12, marginTop: 8 },
-  modalBtn: { flex: 1, borderRadius: 10, padding: 14, alignItems: 'center' },
-  modalBtnText: { fontSize: 15, fontWeight: '600' },
 });
