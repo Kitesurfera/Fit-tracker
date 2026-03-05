@@ -90,8 +90,21 @@ export default function AthleteDetailScreen() {
 
   // --- RENDERIZADORES ---
 
-  const renderDashboard = () => (
+const renderDashboard = () => (
     <View style={styles.tabContainer}>
+      
+      {/* NUEVO BOTÓN DE PERIODIZACIÓN */}
+      <TouchableOpacity 
+        style={[styles.mainCard, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 16, marginBottom: 24, borderColor: colors.primary }]}
+        onPress={() => router.push({ pathname: '/periodization', params: { athlete_id: params.id, name: params.name } })}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="calendar" size={22} color="#FFFFFF" style={{ marginRight: 10 }} />
+        <Text style={{ color: '#FFFFFF', fontSize: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 }}>
+          Planificación (Macro/Micro)
+        </Text>
+      </TouchableOpacity>
+
       {/* Último Entrenamiento */}
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Último realizado</Text>
       {lastCompleted ? (
