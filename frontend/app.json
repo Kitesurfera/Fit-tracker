@@ -1,27 +1,59 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
+    "name": "Elite Training",
+    "slug": "elite-training-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "scheme": "elite-training",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.elite.training",
+      "icon": "./assets/images/icon.png"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000"
+        "backgroundColor": "#000000"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "display": "standalone",
+      "backgroundColor": "#000000",
+      "themeColor": "#4A90E2",
+      "lang": "es",
+      "config": {
+        "pwa": {
+          "manifest": {
+            "name": "Elite Training",
+            "short_name": "EliteApp",
+            "description": "Seguimiento de deportistas de élite",
+            "start_url": "/",
+            "display": "standalone",
+            "orientation": "portrait",
+            "background_color": "#000000",
+            "theme_color": "#4A90E2",
+            "icons": [
+              {
+                "src": "./assets/images/icon.png",
+                "sizes": "192x192",
+                "type": "image/png"
+              },
+              {
+                "src": "./assets/images/icon.png",
+                "sizes": "512x512",
+                "type": "image/png"
+              }
+            ]
+          }
+        }
+      }
     },
     "plugins": [
       "expo-router",
@@ -31,7 +63,7 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000"
+          "backgroundColor": "#000000"
         }
       ]
     ],
