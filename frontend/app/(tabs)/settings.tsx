@@ -26,7 +26,7 @@ export default function SettingsScreen() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false); // Añadido estado de refresco
+  const [refreshing, setRefreshing] = useState(false);
 
   const [editingProfile, setEditingProfile] = useState(false);
   const [profileName, setProfileName] = useState(user?.name || '');
@@ -51,7 +51,7 @@ export default function SettingsScreen() {
       console.log('Load settings error:', e);
     } finally {
       setLoading(false);
-      setRefreshing(false); // Detenemos la animación
+      setRefreshing(false);
     }
   };
 
@@ -93,22 +93,25 @@ export default function SettingsScreen() {
     finally { setChangingPassword(false); }
   };
 
-const handleConnectStrava = () => {
-  const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
-  
-  // ¡REVISA ESTA LÍNEA! Tiene que ser la URL de tu API en Render
-  const redirectURI = "https://fit-tracker-backend-rtx2.onrender.com/api/auth/strava/callback";
-  
-  const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all`;
-  
-  window.location.href = url;
-};
+  // --- LÓGICA DE STRAVA CORREGIDA ---
+  const handleConnectStrava = () => {
+    const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
+    const redirectURI = "https://fit-tracker-backend-rtx2.onrender.com/api/auth/strava/callback";
+    
+    if (!clientID) {
+      Alert.alert("Error", "No se detectó el Client ID de Strava.");
+      return;
+    }
 
-  const redirectURI = "https://tu-backend.vercel.app/api/auth/strava/callback";
-  const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all`;
-  
-  window.location.href = url;
-};
+    const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all`;
+    
+    if (Platform.OS === 'web') {
+      window.location.href = url;
+    } else {
+      // Para nativo podrías usar Linking de expo, pero en PWA/Web Safari esto es lo ideal
+      window.location.href = url;
+    }
+  };
 
   const handleLogout = async () => {
     if (Platform.OS === 'web') {
@@ -202,7 +205,7 @@ const handleConnectStrava = () => {
         >
           <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Ajustes</Text>
 
-          {/* Profile */}
+          {/* Profile Card */}
           <View style={[styles.profileCard, { backgroundColor: colors.surface }]}>
             <View style={[styles.profileAvatar, { backgroundColor: colors.primary + '15' }]}>
               <Text style={[styles.profileAvatarText, { color: colors.primary }]}>
@@ -213,11 +216,10 @@ const handleConnectStrava = () => {
               {editingProfile ? (
                 <View style={styles.editNameRow}>
                   <TextInput
-                    testID="edit-name-input"
                     style={[styles.nameInput, { color: colors.textPrimary, borderColor: colors.primary, backgroundColor: colors.surfaceHighlight }]}
                     value={profileName} onChangeText={setProfileName} autoFocus
                   />
-                  <TouchableOpacity testID="save-name-btn" onPress={handleSaveProfile}
+                  <TouchableOpacity onPress={handleSaveProfile}
                     style={[styles.iconBtn, { backgroundColor: colors.primary }]} disabled={saving}>
                     {saving ? <ActivityIndicator color="#FFF" size="small" /> : <Ionicons name="checkmark" size={18} color="#FFF" />}
                   </TouchableOpacity>
@@ -227,7 +229,7 @@ const handleConnectStrava = () => {
                   </TouchableOpacity>
                 </View>
               ) : (
-                <TouchableOpacity testID="edit-profile-btn" onPress={() => setEditingProfile(true)} style={styles.nameRow} activeOpacity={0.6}>
+                <TouchableOpacity onPress={() => setEditingProfile(true)} style={styles.nameRow} activeOpacity={0.6}>
                   <Text style={[styles.profileName, { color: colors.textPrimary }]}>{user?.name}</Text>
                   <Ionicons name="pencil-outline" size={14} color={colors.primary} />
                 </TouchableOpacity>
@@ -241,6 +243,21 @@ const handleConnectStrava = () => {
             </View>
           </View>
 
+          {/* Strava Connection Section */}
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>INTEGRACIONES</Text>
+          <View style={[styles.settingSection, { backgroundColor: colors.surface, padding: 14 }]}>
+             <TouchableOpacity 
+              style={{ backgroundColor: '#FC6100', padding: 15, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+              onPress={handleConnectStrava}
+            >
+              <Ionicons name="flash" size={20} color="#FFF" style={{ marginRight: 10 }} />
+              <Text style={{ color: '#FFF', fontWeight: '800' }}>CONECTAR CON STRAVA</Text>
+            </TouchableOpacity>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 10, textAlign: 'center' }}>
+              Sincroniza tus sesiones de Kite y salud desde tu Apple Watch.
+            </Text>
+          </View>
+
           {/* Notifications */}
           <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>NOTIFICACIONES</Text>
           <View style={[styles.settingSection, { backgroundColor: colors.surface }]}>
@@ -251,10 +268,6 @@ const handleConnectStrava = () => {
               value={settings.notifications_workouts}
               onToggle={(v: boolean) => updateSetting('notifications_workouts', v)}
               disabled={!settings.notifications_enabled} />
-            <ToggleRow icon="analytics-outline" label="Tests fisicos"
-              value={settings.notifications_tests}
-              onToggle={(v: boolean) => updateSetting('notifications_tests', v)}
-              disabled={!settings.notifications_enabled} />
           </View>
 
           {/* Appearance */}
@@ -262,19 +275,8 @@ const handleConnectStrava = () => {
           <View style={[styles.settingSection, { backgroundColor: colors.surface }]}>
             <TapRow icon="moon-outline" label="Tema" value={themeLabels[themeMode]} onPress={() => setShowThemeModal(true)} />
             <TapRow icon="language-outline" label="Idioma"
-              value={settings.language === 'es' ? 'Espanol' : 'English'}
+              value={settings.language === 'es' ? 'Español' : 'English'}
               onPress={() => updateSetting('language', settings.language === 'es' ? 'en' : 'es')} />
-          </View>
-
-          {/* Units */}
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>UNIDADES</Text>
-          <View style={[styles.settingSection, { backgroundColor: colors.surface }]}>
-            <TapRow icon="speedometer-outline" label="Peso"
-              value={settings.weight_unit === 'kg' ? 'Kilogramos (kg)' : 'Libras (lb)'}
-              onPress={() => setShowUnitModal('weight')} />
-            <TapRow icon="resize-outline" label="Altura"
-              value={settings.height_unit === 'cm' ? 'Centimetros (cm)' : 'Pies (ft)'}
-              onPress={() => setShowUnitModal('height')} />
           </View>
 
           {/* Security */}
@@ -283,23 +285,9 @@ const handleConnectStrava = () => {
             <TapRow icon="lock-closed-outline" label="Cambiar contraseña" onPress={() => setShowPasswordModal(true)} />
           </View>
 
-          {/* Info */}
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>INFORMACION</Text>
-          <View style={[styles.settingSection, { backgroundColor: colors.surface }]}>
-            <TapRow icon="information-circle-outline" label="Version" value="1.0.0" />
-          </View>
-
-          <TouchableOpacity 
-  style={{ backgroundColor: '#FC6100', padding: 15, borderRadius: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
-  onPress={handleConnectStrava}
->
-  <Ionicons name="flash" size={20} color="#FFF" style={{ marginRight: 10 }} />
-  <Text style={{ color: '#FFF', fontWeight: '800' }}>CONECTAR CON STRAVA</Text>
-</TouchableOpacity>
-
           {/* Logout */}
           <View style={[styles.settingSection, { backgroundColor: colors.surface, marginTop: 24 }]}>
-            <TapRow icon="log-out-outline" label="Cerrar sesion" onPress={handleLogout} danger />
+            <TapRow icon="log-out-outline" label="Cerrar sesión" onPress={handleLogout} danger />
           </View>
           <View style={{ height: 32 }} />
         </ScrollView>
@@ -313,7 +301,6 @@ const handleConnectStrava = () => {
             {(['system', 'light', 'dark'] as ThemeMode[]).map((mode) => (
               <TouchableOpacity
                 key={mode}
-                testID={`theme-${mode}`}
                 style={[styles.modalOption, themeMode === mode && { backgroundColor: colors.primary + '12' }]}
                 onPress={() => { setThemeMode(mode); setShowThemeModal(false); }}
                 activeOpacity={0.6}
@@ -329,53 +316,27 @@ const handleConnectStrava = () => {
         </TouchableOpacity>
       </Modal>
 
-      {/* Unit Modal */}
-      <Modal visible={showUnitModal !== null} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowUnitModal(null)}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
-              {showUnitModal === 'weight' ? 'Unidad de peso' : 'Unidad de altura'}
-            </Text>
-            {(showUnitModal === 'weight' ? [
-              { key: 'kg', label: 'Kilogramos (kg)' }, { key: 'lb', label: 'Libras (lb)' },
-            ] : [
-              { key: 'cm', label: 'Centimetros (cm)' }, { key: 'ft', label: 'Pies (ft)' },
-            ]).map(opt => {
-              const settingKey = showUnitModal === 'weight' ? 'weight_unit' : 'height_unit';
-              const isSelected = (settings as any)[settingKey] === opt.key;
-              return (
-                <TouchableOpacity
-                  key={opt.key} testID={`unit-${opt.key}`}
-                  style={[styles.modalOption, isSelected && { backgroundColor: colors.primary + '12' }]}
-                  onPress={() => { updateSetting(settingKey, opt.key); setShowUnitModal(null); }}
-                  activeOpacity={0.6}
-                >
-                  <Text style={[styles.modalOptionText, { color: colors.textPrimary }, isSelected && { color: colors.primary, fontWeight: '600' }]}>{opt.label}</Text>
-                  {isSelected && <Ionicons name="checkmark" size={20} color={colors.primary} style={{ marginLeft: 'auto' }} />}
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
       {/* Password Modal */}
       <Modal visible={showPasswordModal} transparent animationType="fade">
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => { setShowPasswordModal(false); setPasswordError(''); }}>
           <TouchableOpacity activeOpacity={1} style={[styles.passwordModal, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Cambiar contraseña</Text>
-            {[
-              { label: 'ACTUAL', value: currentPassword, setter: setCurrentPassword, testID: 'current-password-input', placeholder: 'Contraseña actual' },
-              { label: 'NUEVA', value: newPassword, setter: setNewPassword, testID: 'new-password-input', placeholder: 'Nueva contraseña' },
-              { label: 'CONFIRMAR', value: confirmPassword, setter: setConfirmPassword, testID: 'confirm-password-input', placeholder: 'Confirmar contraseña' },
-            ].map(f => (
-              <View key={f.testID} style={styles.passwordField}>
-                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>{f.label}</Text>
-                <TextInput testID={f.testID}
-                  style={[styles.passwordInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                  value={f.value} onChangeText={f.setter} secureTextEntry placeholder={f.placeholder} placeholderTextColor={colors.textSecondary} />
-              </View>
-            ))}
+            <View style={styles.passwordField}>
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>ACTUAL</Text>
+                <TextInput style={[styles.passwordInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                  value={currentPassword} onChangeText={setCurrentPassword} secureTextEntry placeholder="Contraseña actual" placeholderTextColor={colors.textSecondary} />
+            </View>
+            <View style={styles.passwordField}>
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>NUEVA</Text>
+                <TextInput style={[styles.passwordInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                  value={newPassword} onChangeText={setNewPassword} secureTextEntry placeholder="Nueva contraseña" placeholderTextColor={colors.textSecondary} />
+            </View>
+            <View style={styles.passwordField}>
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>CONFIRMAR</Text>
+                <TextInput style={[styles.passwordInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                  value={confirmPassword} onChangeText={setConfirmPassword} secureTextEntry placeholder="Confirmar contraseña" placeholderTextColor={colors.textSecondary} />
+            </View>
+
             {passwordError ? (
               <View style={[styles.errorBox, { backgroundColor: colors.error + '12' }]}>
                 <Text style={[styles.errorText, { color: colors.error }]}>{passwordError}</Text>
@@ -386,7 +347,7 @@ const handleConnectStrava = () => {
                 onPress={() => { setShowPasswordModal(false); setPasswordError(''); setCurrentPassword(''); setNewPassword(''); setConfirmPassword(''); }}>
                 <Text style={[styles.modalBtnText, { color: colors.textPrimary }]}>Cancelar</Text>
               </TouchableOpacity>
-              <TouchableOpacity testID="change-password-submit" style={[styles.modalBtn, { backgroundColor: colors.primary }]}
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]}
                 onPress={handleChangePassword} disabled={changingPassword}>
                 {changingPassword ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={[styles.modalBtnText, { color: '#FFF' }]}>Cambiar</Text>}
               </TouchableOpacity>
@@ -414,7 +375,7 @@ const styles = StyleSheet.create({
   editNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   nameInput: { flex: 1, borderRadius: 8, padding: 10, fontSize: 16, borderWidth: 1.5 },
   iconBtn: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
-  sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: 8 },
+  sectionTitle: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginBottom: 8, marginTop: 10 },
   settingSection: { borderRadius: 14, overflow: 'hidden', marginBottom: 20 },
   settingItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 14, borderBottomWidth: 0.5 },
   settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 12, flex: 1 },
