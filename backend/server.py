@@ -41,6 +41,9 @@ class WellnessCreate(BaseModel):
     stress: int
     fatigue: int
     notes: Optional[str] = ""
+    hr_rest: Optional[int] = None
+    steps: Optional[int] = None
+    sleep_hours: Optional[float] = None
 class UserRegister(BaseModel):
     email: str
     password: str
