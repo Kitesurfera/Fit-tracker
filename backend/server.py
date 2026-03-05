@@ -36,6 +36,11 @@ app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
 # --- Models ---
+class WellnessCreate(BaseModel):
+    sleep: int
+    stress: int
+    fatigue: int
+    notes: Optional[str] = ""
 class UserRegister(BaseModel):
     email: str
     password: str
@@ -764,6 +769,38 @@ async def download_file(path: str, auth: str = Query(None), authorization: str =
         return Response(content=data, media_type=content_type)
     except Exception:
         raise HTTPException(status_code=404, detail="File not found")
+
+# --- Wellness (Monitoreo Diario) ---
+@api_router.post("/wellness")
+async def submit_wellness(data: WellnessCreate, user=Depends(get_current_user)):
+    if user['role'] != 'athlete':
+        raise HTTPException(status_code=403, detail="Only athletes can submit wellness")
+    
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    existing = await db.wellness.find_one({"athlete_id": user['id'], "date": today})
+    if existing:
+        return {"message": "Ya rellenado hoy"}
+        
+    record = {
+        "id": str(uuid.uuid4()),
+        "athlete_id": user['id'],
+        "date": today,
+        "sleep": data.sleep,
+        "stress": data.stress,
+        "fatigue": data.fatigue,
+        "notes": data.notes,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.wellness.insert_one(record)
+    return {k: v for k, v in record.items() if k != '_id'}
+
+@api_router.get("/wellness/today")
+async def check_today_wellness(user=Depends(get_current_user)):
+    if user['role'] != 'athlete':
+        return {"submitted": True} # El entrenador no necesita rellenarlo
+    today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+    existing = await db.wellness.find_one({"athlete_id": user['id'], "date": today})
+    return {"submitted": bool(existing)}
 
 # Include router
 app.include_router(api_router)
