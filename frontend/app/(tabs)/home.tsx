@@ -11,6 +11,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 // IMPORTAMOS EL TUTORIAL DESDE SU NUEVA UBICACIÓN
 import TutorialOverlay from '../../src/components/TutorialOverlay';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function HomeScreen() {
   const { user } = useAuth();
