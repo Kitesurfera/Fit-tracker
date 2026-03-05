@@ -17,6 +17,7 @@ from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
+import os
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -26,8 +27,11 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-STRAVA_CLIENT_ID = "208505"
-STRAVA_CLIENT_SECRET = "29bfcbab7928604bb2b5fef076c300f9bfbebfa0"
+
+
+# Borra los números reales y pon esto:
+STRAVA_CLIENT_ID = os.getenv("STRAVA_CLIENT_ID")
+STRAVA_CLIENT_SECRET = os.getenv("STRAVA_CLIENT_SECRET")
 
 # JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET', 'fitness-tracker-secret-key-2026')
