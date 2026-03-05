@@ -44,8 +44,8 @@ export default function AthleteDetailScreen() {
         api.getTests({ athlete_id: params.id! }),
       ]);
       setAthlete(ath);
-      setWorkouts(wk);
-      setTests(ts);
+      setWorkouts(wk || []);
+      setTests(ts || []);
     } catch (e) { console.log(e); }
     finally { setLoading(false); setRefreshing(false); }
   };
@@ -53,9 +53,9 @@ export default function AthleteDetailScreen() {
   useEffect(() => { loadData(); }, []);
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
-  // LÓGICA DE BORRADO (CORREGIDA PARA WEB)
+  // BORRADO SEGURO
   const handleDeleteAthlete = () => {
-    const msg = `¿Estás seguro de eliminar a ${params.name}?`;
+    const msg = `¿Eliminar a ${params.name}?`;
     if (Platform.OS === 'web') {
       if (window.confirm(msg)) api.deleteAthlete(params.id!).then(() => router.back());
     } else {
@@ -63,15 +63,15 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  const handleDeleteWorkout = async (wId: string) => {
+  const handleDeleteWorkout = (wId: string) => {
     if (Platform.OS === 'web') {
       if (window.confirm('¿Borrar entreno?')) api.deleteWorkout(wId).then(() => setWorkouts(prev => prev.filter(w => w.id !== wId)));
     } else {
-      Alert.alert('Borrar', '¿Borrar entreno?', [{ text: 'No' }, { text: 'Sí', onPress: () => api.deleteWorkout(wId).then(() => setWorkouts(prev => prev.filter(w => w.id !== wId))) }]);
+      Alert.alert('Borrar', '¿Borrar?', [{ text: 'No' }, { text: 'Sí', onPress: () => api.deleteWorkout(wId).then(() => setWorkouts(prev => prev.filter(w => w.id !== wId))) }]);
     }
   };
 
-  // DUPLICAR ENTRENAMIENTO
+  // DUPLICAR
   const openDuplicateModal = (workout: any) => { setDuplicateModal(workout); setDuplicateDate(todayYMD); };
   const handleDuplicate = async () => {
     if (!duplicateModal || !duplicateDate) return;
@@ -79,64 +79,62 @@ export default function AthleteDetailScreen() {
     try {
       const newWorkout = await api.createWorkout({
         athlete_id: params.id!, date: duplicateDate, title: duplicateModal.title + ' (Copia)',
-        exercises: duplicateModal.exercises.map((ex: any) => ({ name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight || '', rest: ex.rest || '', video_url: ex.video_url || '' })),
-        notes: duplicateModal.notes || '',
+        exercises: duplicateModal.exercises, notes: duplicateModal.notes || '',
       });
-      setWorkouts(prev => [newWorkout, ...prev].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+      setWorkouts(prev => [newWorkout, ...prev]);
       setDuplicateModal(null);
-    } catch (e: any) { Alert.alert('Error', 'No se pudo duplicar'); }
+    } catch (e) { Alert.alert('Error', 'No se pudo duplicar'); }
     finally { setDuplicating(false); }
   };
 
-  // --- LÓGICA DE PROGRESIÓN (VERSIÓN SEGURA SIN GRÁFICAS EXTERNAS) ---
-  const getCleanProgression = () => {
-    const exercises: Record<string, any> = {};
-    workouts.filter(w => w.completed && w.completion_data).forEach(w => {
-      w.completion_data.exercise_results?.forEach((r: any) => {
-        if (r.completed_sets > 0) {
-          const name = r.name;
-          const weight = parseFloat(r.logged_weight) || 0;
-          const reps = parseInt(r.logged_reps) || 0;
-          if (!exercises[name]) exercises[name] = { name, maxWeight: 0, maxReps: 0, history: [] };
-          if (weight > exercises[name].maxWeight) { exercises[name].maxWeight = weight; exercises[name].maxReps = reps; }
-          exercises[name].history.push({ date: w.date, weight, reps });
-        }
-      });
-    });
-    return Object.values(exercises).sort((a: any, b: any) => a.name.localeCompare(b.name));
-  };
+  // --- RENDERIZADO DE CONTENIDO ---
 
   const renderDashboard = () => {
     const recentObs = workouts.filter(w => w.observations).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 5);
+    const latest = workouts.find(w => w.completion_data?.rpe || w.completion_data?.sleep);
+
     return (
-      <View style={styles.dashboardContainer}>
-        <Text style={[styles.dashboardSectionTitle, { color: colors.textPrimary }]}>Feedback Reciente</Text>
+      <View style={styles.tabContainer}>
+        {latest && (
+           <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+             <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Estado Actual</Text>
+             <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+               {latest.completion_data.rpe && <View style={styles.badge}><Text style={{ color: colors.primary }}>RPE: {latest.completion_data.rpe}/10</Text></View>}
+               {latest.completion_data.sleep && <View style={styles.badge}><Text style={{ color: colors.primary }}>Sueño: {latest.completion_data.sleep}</Text></View>}
+             </View>
+           </View>
+        )}
+        <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: 20 }]}>Feedback Reciente</Text>
         {recentObs.map(w => (
-          <View key={w.id} style={[styles.obsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={styles.obsHeader}><Text style={[styles.obsWorkoutTitle, { color: colors.textPrimary }]}>{w.title}</Text><Text style={[styles.obsDate, { color: colors.textSecondary }]}>{w.date}</Text></View>
-            <View style={[styles.obsTextContainer, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.obsText, { color: colors.textPrimary }]}>"{w.observations}"</Text></View>
+          <View key={w.id} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{w.title} ({w.date})</Text>
+            <Text style={{ fontStyle: 'italic', marginTop: 5, color: colors.textSecondary }}>"{w.observations}"</Text>
           </View>
         ))}
+        {recentObs.length === 0 && <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>No hay observaciones aún.</Text>}
       </View>
     );
   };
 
-  const renderProgressionItem = ({ item }: { item: any }) => {
-    const isExpanded = expandedExercise === item.name;
-    const sortedHistory = [...item.history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const renderWorkoutItem = ({ item }: { item: any }) => {
+    const isExpanded = expandedWorkout === item.id;
     return (
-      <View style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <TouchableOpacity style={styles.progHeader} onPress={() => setExpandedExercise(isExpanded ? null : item.name)}>
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <TouchableOpacity style={styles.cardHeader} onPress={() => setExpandedWorkout(isExpanded ? null : item.id)}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.progName, { color: colors.textPrimary }]}>{item.name}</Text>
-            <Text style={[styles.pbText, { color: colors.textSecondary }]}><Ionicons name="trophy" size={12} color="#FFD700" /> Récord: {item.maxWeight}kg x {item.maxReps}</Text>
+            <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{item.title}</Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary }}>{item.date} · {item.exercises?.length || 0} exs.</Text>
           </View>
-          <Ionicons name={isExpanded ? "chevron-up" : "chevron-forward"} size={20} color={colors.textSecondary} />
+          <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => openDuplicateModal(item)}><Ionicons name="copy-outline" size={20} color={colors.primary} /></TouchableOpacity>
+            <TouchableOpacity onPress={() => handleDeleteWorkout(item.id)}><Ionicons name="trash-outline" size={20} color={colors.error} /></TouchableOpacity>
+            <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+          </View>
         </TouchableOpacity>
         {isExpanded && (
-          <View style={styles.historyList}>
-            {sortedHistory.map((h, i) => (
-              <View key={i} style={styles.historyRow}><Text style={styles.historyDate}>{h.date}</Text><Text style={styles.historyVal}>{h.weight}kg x {h.reps}</Text></View>
+          <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+            {item.exercises?.map((ex: any, i: number) => (
+              <Text key={i} style={{ color: colors.textSecondary, marginBottom: 4 }}>• {ex.name} ({ex.sets}x{ex.reps})</Text>
             ))}
           </View>
         )}
@@ -144,45 +142,87 @@ export default function AthleteDetailScreen() {
     );
   };
 
-  const data = activeTab === 'dashboard' ? [1] : activeTab === 'workouts' ? workouts : activeTab === 'tests' ? tests : getCleanProgression();
+  const renderTestItem = ({ item }: { item: any }) => (
+    <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: 'row', justifyContent: 'space-between' }]}>
+      <Text style={{ fontWeight: '600', color: colors.textPrimary }}>{TEST_LABELS[item.test_name] || item.test_name}</Text>
+      <Text style={{ fontWeight: '700', color: colors.primary }}>{item.value} {item.unit}</Text>
+    </View>
+  );
+
+  const getProgressionData = () => {
+    const exMap: Record<string, any> = {};
+    workouts.filter(w => w.completed && w.completion_data).forEach(w => {
+      w.completion_data.exercise_results?.forEach((r: any) => {
+        if (!exMap[r.name]) exMap[r.name] = { name: r.name, maxW: 0, history: [] };
+        const wVal = parseFloat(r.logged_weight) || 0;
+        if (wVal > exMap[r.name].maxW) exMap[r.name].maxW = wVal;
+        exMap[r.name].history.push({ date: w.date, weight: wVal, reps: r.logged_reps });
+      });
+    });
+    return Object.values(exMap);
+  };
+
+  const renderProgressionItem = ({ item }: { item: any }) => {
+    const isExpanded = expandedExercise === item.name;
+    return (
+      <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <TouchableOpacity style={styles.cardHeader} onPress={() => setExpandedExercise(isExpanded ? null : item.name)}>
+          <View style={{ flex: 1 }}>
+            <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{item.name}</Text>
+            <Text style={{ fontSize: 12, color: colors.textSecondary }}>Récord: {item.maxW}kg</Text>
+          </View>
+          <Ionicons name={isExpanded ? "chevron-up" : "chevron-forward"} size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+        {isExpanded && (
+          <View style={{ marginTop: 10, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10 }}>
+            {item.history.map((h: any, i: number) => (
+              <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                <Text style={{ fontSize: 12, color: colors.textSecondary }}>{h.date}</Text>
+                <Text style={{ fontSize: 12, fontWeight: '600', color: colors.textPrimary }}>{h.weight}kg x {h.reps}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
+
+  const activeData = activeTab === 'dashboard' ? [1] : activeTab === 'workouts' ? workouts : activeTab === 'tests' ? tests : getProgressionData();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 4 }}><Ionicons name="arrow-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{params.name}</Text>
-        <TouchableOpacity onPress={onRefresh} style={{ padding: 4 }}><Ionicons name="sync-outline" size={22} color={colors.primary} /></TouchableOpacity>
+        <TouchableOpacity onPress={onRefresh}><Ionicons name="sync-outline" size={24} color={colors.primary} /></TouchableOpacity>
       </View>
 
       <FlatList
-        data={data}
+        data={activeData}
         keyExtractor={(item, index) => index.toString()}
         ListHeaderComponent={
           <View style={{ padding: 16 }}>
-            <View style={styles.tabsWrapper}>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                {['dashboard', 'workouts', 'tests', 'progression'].map((t) => (
-                  <TouchableOpacity key={t} style={[styles.tab, activeTab === t && { borderBottomWidth: 2, borderBottomColor: colors.primary }]} onPress={() => setActiveTab(t as any)}>
-                    <Text style={[styles.tabText, { color: activeTab === t ? colors.primary : colors.textSecondary }]}>{t.toUpperCase()}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+            <View style={styles.tabsRow}>
+              {['dashboard', 'workouts', 'tests', 'progression'].map(tab => (
+                <TouchableOpacity key={tab} style={[styles.tab, activeTab === tab && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]} onPress={() => setActiveTab(tab as any)}>
+                  <Text style={[styles.tabText, { color: activeTab === tab ? colors.primary : colors.textSecondary }]}>{tab.toUpperCase()}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
         }
-        renderItem={activeTab === 'dashboard' ? renderDashboard : activeTab === 'workouts' ? null : activeTab === 'tests' ? null : renderProgressionItem}
+        renderItem={activeTab === 'dashboard' ? renderDashboard : activeTab === 'workouts' ? renderWorkoutItem : activeTab === 'tests' ? renderTestItem : renderProgressionItem}
         contentContainerStyle={{ paddingBottom: 100 }}
       />
 
-      {/* MODAL DUPLICAR */}
       <Modal visible={!!duplicateModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
-            <Text style={styles.modalTitle}>Duplicar en fecha:</Text>
-            <TextInput style={styles.modalInput} value={duplicateDate} onChangeText={setDuplicateDate} />
-            <View style={styles.modalBtns}>
-              <TouchableOpacity onPress={() => setDuplicateModal(null)}><Text>Cancelar</Text></TouchableOpacity>
-              <TouchableOpacity onPress={handleDuplicate}><Text style={{ color: colors.primary }}>Confirmar</Text></TouchableOpacity>
+            <Text style={{ fontWeight: '700', marginBottom: 10 }}>Duplicar en fecha (YYYY-MM-DD):</Text>
+            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} value={duplicateDate} onChangeText={setDuplicateDate} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
+              <TouchableOpacity onPress={() => setDuplicateModal(null)}><Text style={{ color: colors.error }}>Cancelar</Text></TouchableOpacity>
+              <TouchableOpacity onPress={handleDuplicate}><Text style={{ color: colors.primary, fontWeight: '700' }}>Confirmar</Text></TouchableOpacity>
             </View>
           </View>
         </View>
@@ -195,29 +235,15 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, alignItems: 'center' },
   headerTitle: { fontSize: 18, fontWeight: '700' },
-  tabsWrapper: { borderBottomWidth: 1, borderBottomColor: '#eee', marginBottom: 16 },
-  tab: { paddingHorizontal: 16, paddingVertical: 12 },
-  tabText: { fontSize: 12, fontWeight: '700' },
-  listContent: { padding: 16 },
-  dashboardContainer: { padding: 16 },
-  dashboardSectionTitle: { fontSize: 16, fontWeight: '700', marginBottom: 12 },
-  obsCard: { borderRadius: 12, borderWidth: 1, padding: 14, marginBottom: 10 },
-  obsHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  obsWorkoutTitle: { fontWeight: '700' },
-  obsDate: { fontSize: 11 },
-  obsTextContainer: { padding: 10, borderRadius: 8 },
-  obsText: { fontStyle: 'italic', fontSize: 13 },
-  progCard: { marginHorizontal: 16, marginBottom: 10, borderRadius: 12, borderWidth: 1 },
-  progHeader: { padding: 14, flexDirection: 'row', alignItems: 'center' },
-  progName: { fontWeight: '700', fontSize: 15 },
-  pbText: { fontSize: 12, marginTop: 2 },
-  historyList: { padding: 14, borderTopWidth: 1, borderTopColor: '#eee' },
-  historyRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  historyDate: { fontSize: 12, color: '#666' },
-  historyVal: { fontSize: 12, fontWeight: '600' },
+  tabsRow: { flexDirection: 'row', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  tab: { paddingVertical: 10, paddingHorizontal: 5 },
+  tabText: { fontSize: 10, fontWeight: '700' },
+  tabContainer: { padding: 16 },
+  card: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 10, marginHorizontal: 16 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sectionTitle: { fontSize: 16, fontWeight: '700' },
+  badge: { backgroundColor: '#e3f2fd', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 40 },
-  modalCard: { padding: 20, borderRadius: 12 },
-  modalTitle: { fontWeight: '700', marginBottom: 10 },
-  modalInput: { borderWidth: 1, borderColor: '#ccc', padding: 10, borderRadius: 8, marginBottom: 20 },
-  modalBtns: { flexDirection: 'row', justifyContent: 'space-between' }
+  modalCard: { padding: 25, borderRadius: 15 },
+  input: { borderWidth: 1, padding: 12, borderRadius: 8 },
 });
