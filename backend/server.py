@@ -324,6 +324,51 @@ async def strava_callback(code: str, state: str):
     # Redirigimos de vuelta a la App (Vercel)
     return RedirectResponse(url="https://fit-tracker-azure-iota.vercel.app/settings?strava=success")
 
+# --- LÓGICA PARA ACTUALIZAR DATOS DESDE EL DASHBOARD ---
+@api_router.get("/analytics/summary")
+async def analytics_summary(user=Depends(get_current_user)):
+    target_id = user['id']
+    
+    # 1. Intentamos actualizar datos desde Strava si hay token
+    if "strava_token" in user:
+        try:
+            # Pedimos las últimas actividades a Strava
+            headers = {"Authorization": f"Bearer {user['strava_token']}"}
+            # Traemos la última actividad para ver el pulso
+            r = requests.get("https://www.strava.com/api/v3/athlete/activities?per_page=1", headers=headers)
+            if r.status_code == 200:
+                last_act = r.json()[0]
+                # Guardamos el pulso medio como "Pulso en reposo" reciente
+                await db.physical_tests.update_one(
+                    {"athlete_id": target_id, "test_name": "hr_rest"},
+                    {"$set": {
+                        "value": last_act.get("average_heartrate", 60),
+                        "date": datetime.now(timezone.utc).strftime('%Y-%m-%d'),
+                        "unit": "bpm"
+                    }},
+                    upsert=True
+                )
+        except Exception as e:
+            print(f"Error sincronizando Strava: {e}")
+
+    # 2. El resto del resumen (lo que ya tenías)
+    total_workouts = await db.workouts.count_documents({"athlete_id": target_id})
+    completed_workouts = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
+    
+    # Buscamos el último wellness para los pasos
+    latest_well = await db.wellness.find_one({"athlete_id": target_id}, sort=[("date", -1)])
+
+    # Buscamos el hr_rest que acabamos de actualizar
+    hr_test = await db.physical_tests.find_one({"athlete_id": target_id, "test_name": "hr_rest"})
+
+    return {
+        "total_workouts": total_workouts,
+        "completed_workouts": completed_workouts,
+        "latest_wellness": latest_well or {"steps": 0},
+        "latest_tests": {"hr_rest": hr_test or {"value": "--"}},
+        "completion_rate": round((completed_workouts / total_workouts * 100) if total_workouts > 0 else 0, 1),
+    }
+
 @api_router.put("/settings")
 async def update_settings(data: SettingsUpdate, user=Depends(get_current_user)):
     update_data = {k: v for k, v in data.dict().items() if v is not None}
