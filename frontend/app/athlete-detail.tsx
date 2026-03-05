@@ -104,6 +104,17 @@ const renderDashboard = () => (
           Planificación (Macro/Micro)
         </Text>
       </TouchableOpacity>
+      {/* BOTÓN DE GRÁFICAS DE EVOLUCIÓN */}
+      <TouchableOpacity 
+        style={[styles.mainCard, { backgroundColor: colors.surface, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 16, marginBottom: 24, borderWidth: 1, borderColor: colors.border }]}
+        onPress={() => router.push({ pathname: '/progress', params: { athlete_id: params.id, name: params.name } })}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="stats-chart" size={22} color={colors.primary} style={{ marginRight: 10 }} />
+        <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 }}>
+          Ver Gráficas y Evolución
+        </Text>
+      </TouchableOpacity>
 
       {/* Último Entrenamiento */}
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Último realizado</Text>
