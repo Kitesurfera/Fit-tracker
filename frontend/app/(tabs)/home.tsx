@@ -9,7 +9,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
-// IMPORTAMOS EL TUTORIAL DESDE SU NUEVA UBICACIÓN
 import TutorialOverlay from '../../src/components/TutorialOverlay';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -24,8 +23,8 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
-  // ESTADO PARA MOSTRAR EL TUTORIAL AL ENTRAR
-  const [showTutorial, setShowTutorial] = useState(true);
+  // ESTADO PARA MOSTRAR EL TUTORIAL (Iniciamos en false para evitar parpadeos, lo activamos tras leer AsyncStorage)
+  const [showTutorial, setShowTutorial] = useState(false);
 
   const loadData = async () => {
     try {
@@ -46,7 +45,34 @@ export default function HomeScreen() {
     }
   };
 
-  useEffect(() => { loadData(); }, []);
+  // --- NUEVA LÓGICA DE MEMORIA DEL TUTORIAL ---
+  useEffect(() => {
+    const checkTutorialState = async () => {
+      try {
+        const hasSeenTutorial = await AsyncStorage.getItem('has_seen_tutorial');
+        if (hasSeenTutorial !== 'true') {
+          setShowTutorial(true); // Solo lo mostramos si NO existe la marca
+        }
+      } catch (error) {
+        console.log('Error al leer el estado del tutorial:', error);
+      }
+    };
+
+    checkTutorialState();
+    loadData();
+  }, []);
+
+  const closeTutorial = async () => {
+    try {
+      await AsyncStorage.setItem('has_seen_tutorial', 'true');
+      setShowTutorial(false);
+    } catch (error) {
+      console.log('Error al guardar el estado del tutorial:', error);
+      setShowTutorial(false); // Lo cerramos igualmente por si falla la memoria
+    }
+  };
+  // ---------------------------------------------
+
   const onRefresh = () => { setRefreshing(true); loadData(); };
 
   if (loading) {
@@ -208,12 +234,14 @@ export default function HomeScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {user?.role === 'trainer' ? <TrainerView /> : <AthleteView />}
       
-      {/* COMPONENTE DEL TUTORIAL */}
-      <TutorialOverlay 
-        role={user?.role || 'athlete'} 
-        isVisible={showTutorial} 
-        onClose={() => setShowTutorial(false)} 
-      />
+      {/* COMPONENTE DEL TUTORIAL CON LA NUEVA FUNCIÓN DE CIERRE */}
+      {showTutorial && (
+        <TutorialOverlay 
+          role={user?.role || 'athlete'} 
+          isVisible={showTutorial} 
+          onClose={closeTutorial} 
+        />
+      )}
     </SafeAreaView>
   );
 }
