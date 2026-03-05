@@ -1,444 +1,244 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert, Image
-} from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
-import * as ImagePicker from 'expo-image-picker';
-import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
-type TabMode = 'manual' | 'csv';
-
 export default function AddWorkoutScreen() {
-  const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
-  const [athletes, setAthletes] = useState<any[]>([]);
-  const [selectedAthlete, setSelectedAthlete] = useState<string>('');
-  const [title, setTitle] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [notes, setNotes] = useState('');
-  const [exercises, setExercises] = useState([{ name: '', sets: '', reps: '', weight: '', rest: '', video_url: '', exercise_notes: '' }]);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const [mode, setMode] = useState<TabMode>('manual');
+  const params = useLocalSearchParams<{ athlete_id: string; name: string }>();
+
+  // --- ESTADOS ORIGINALES DEL ENTRENAMIENTO ---
+  const [titulo, setTitulo] = useState('');
+  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
+  const [notas, setNotas] = useState('');
+  const [ejercicios, setEjercicios] = useState([{ name: '', sets: '', reps: '', weight: '', rest: '', exercise_notes: '', video_url: '' }]);
+  const [saving, setSaving] = useState(false);
+
+  // --- NUEVOS ESTADOS PARA PERIODIZACIÓN ---
+  const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
+  const [selectedMicroId, setSelectedMicroId] = useState<string | null>(null);
+
+  // --- CARGAR MICROCICLOS DEL DEPORTISTA ---
+  const loadMicrociclos = async () => {
+    try {
+      if (!params.athlete_id) return;
+      const tree = await api.getPeriodizationTree(params.athlete_id);
+      
+      // Extraemos todos los microciclos de dentro de los macrociclos
+      const todosLosMicros = tree.flatMap((macro: any) => macro.microciclos || []);
+      
+      // Los ordenamos por fecha de inicio para que aparezcan lógicos
+      todosLosMicros.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+      
+      setMicrociclosDisponibles(todosLosMicros);
+    } catch (error) {
+      console.log("Error cargando microciclos para el selector:", error);
+    }
+  };
 
   useEffect(() => {
-    if (user?.role === 'trainer') {
-      api.getAthletes().then(setAthletes).catch(console.log);
-    }
-  }, []);
+    loadMicrociclos();
+  }, [params.athlete_id]);
 
+  // --- MANEJO DE EJERCICIOS ---
   const addExercise = () => {
-    setExercises([...exercises, { name: '', sets: '', reps: '', weight: '', rest: '', video_url: '', exercise_notes: '' }]);
+    setEjercicios([...ejercicios, { name: '', sets: '', reps: '', weight: '', rest: '', exercise_notes: '', video_url: '' }]);
   };
 
   const updateExercise = (index: number, field: string, value: string) => {
-    const updated = [...exercises];
-    (updated[index] as any)[field] = value;
-    setExercises(updated);
+    const updated = [...ejercicios];
+    updated[index] = { ...updated[index], [field]: value };
+    setEjercicios(updated);
   };
 
   const removeExercise = (index: number) => {
-    if (exercises.length <= 1) return;
-    setExercises(exercises.filter((_, i) => i !== index));
+    const updated = ejercicios.filter((_, i) => i !== index);
+    setEjercicios(updated);
   };
 
-  const [imageUploading, setImageUploading] = useState<number | null>(null);
-  const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
-
-  const pickExerciseImage = async (exIndex: number) => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.7,
-      });
-      if (result.canceled) return;
-      const asset = result.assets[0];
-      setImageUploading(exIndex);
-      setImagePreviews(prev => ({ ...prev, [exIndex]: asset.uri }));
-      const fileName = asset.uri.split('/').pop() || 'image.jpg';
-      const fileType = asset.mimeType || 'image/jpeg';
-      const uploaded = await api.uploadFile(asset.uri, fileName, fileType);
-      updateExercise(exIndex, 'image_path', uploaded.storage_path);
-    } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo subir la imagen');
-    } finally {
-      setImageUploading(null);
-    }
-  };
-
-  const handleSubmit = async () => {
-    setError('');
-    if (!selectedAthlete || !title || !date) {
-      setError('Selecciona deportista, titulo y fecha');
+  // --- GUARDADO FINAL ---
+  const handleSave = async () => {
+    if (!titulo || !fecha) {
+      Alert.alert('Error', 'Por favor, completa el título y la fecha.');
       return;
     }
-    setSubmitting(true);
+
+    // Limpiamos ejercicios vacíos
+    const ejerciciosLimpios = ejercicios.filter(e => e.name.trim() !== '');
+    if (ejerciciosLimpios.length === 0) {
+      Alert.alert('Error', 'Añade al menos un ejercicio con nombre.');
+      return;
+    }
+
+    setSaving(true);
     try {
       await api.createWorkout({
-        athlete_id: selectedAthlete,
-        title,
-        date,
-        notes,
-        exercises: exercises.filter(e => e.name.trim()),
+        title: titulo,
+        date: fecha,
+        exercises: ejerciciosLimpios,
+        notes: notas,
+        athlete_id: params.athlete_id,
+        microciclo_id: selectedMicroId // <-- AQUÍ ENLAZAMOS CON EL CALENDARIO
       });
-      router.back();
-    } catch (e: any) {
-      setError(e.message);
+      Alert.alert('Éxito', 'Entrenamiento creado correctamente', [
+        { text: 'OK', onPress: () => router.back() }
+      ]);
+    } catch (e) {
+      Alert.alert('Error', 'Hubo un problema al guardar el entrenamiento.');
     } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleCSVUpload = async () => {
-    if (!selectedAthlete) {
-      setError('Selecciona un deportista primero');
-      return;
-    }
-    try {
-      const result = await DocumentPicker.getDocumentAsync({ type: 'text/csv' });
-      if (!result.canceled && result.assets?.[0]) {
-        setSubmitting(true);
-        const file = result.assets[0];
-        const res = await api.uploadCSV(selectedAthlete, file.uri, file.name);
-        Alert.alert(
-          'CSV importado',
-          `Se han creado ${res.count} entrenamiento(s) correctamente`,
-        );
-        router.back();
-      }
-    } catch (e: any) {
-      setError(e.message || 'Error al importar CSV');
-    } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
-        {/* Header */}
-        <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => router.back()} testID="close-add-workout" activeOpacity={0.7} style={styles.headerBtn}>
-            <Ionicons name="close" size={24} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nuevo Entreno</Text>
-          <View style={styles.headerBtn} />
-        </View>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="close" size={28} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nuevo Entrenamiento</Text>
+        <TouchableOpacity onPress={handleSave} disabled={saving}>
+          {saving ? <ActivityIndicator color={colors.primary} /> : <Text style={[styles.saveText, { color: colors.primary }]}>Guardar</Text>}
+        </TouchableOpacity>
+      </View>
 
-        <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-          {/* Athlete selector */}
-          {athletes.length > 0 ? (
-            <View style={styles.section}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>DEPORTISTA</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                <View style={styles.chipRow}>
-                  {athletes.map(a => (
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+        <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+          
+          {/* DATOS BÁSICOS */}
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>TÍTULO DEL ENTRENAMIENTO</Text>
+            <TextInput
+              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}
+              placeholder="Ej: Torso Fuerza Máxima"
+              placeholderTextColor={colors.textSecondary}
+              value={titulo}
+              onChangeText={setTitulo}
+            />
+
+            <View style={{ marginTop: 16 }}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA</Text>
+              <TextInput
+                style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.textSecondary}
+                value={fecha}
+                onChangeText={setFecha}
+              />
+            </View>
+
+            {/* --- SELECTOR DE MICROCICLO (NUEVO) --- */}
+            <View style={{ marginTop: 24, marginBottom: 8 }}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>ASIGNAR A SEMANA (MICROCICLO)</Text>
+              
+              {microciclosDisponibles.length === 0 ? (
+                <Text style={{ fontSize: 13, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 }}>
+                  No hay microciclos creados en el calendario.
+                </Text>
+              ) : (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                  <TouchableOpacity
+                    style={[
+                      styles.microChip,
+                      selectedMicroId === null 
+                        ? { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }
+                        : { backgroundColor: 'transparent', borderColor: colors.border }
+                    ]}
+                    onPress={() => setSelectedMicroId(null)}
+                  >
+                    <Text style={{ color: colors.textPrimary, fontWeight: selectedMicroId === null ? '700' : '400' }}>
+                      Sin asignar
+                    </Text>
+                  </TouchableOpacity>
+
+                  {microciclosDisponibles.map((micro) => (
                     <TouchableOpacity
-                      key={a.id}
+                      key={micro.id}
                       style={[
-                        styles.chip,
-                        { backgroundColor: colors.surfaceHighlight },
-                        selectedAthlete === a.id && { backgroundColor: colors.primary },
+                        styles.microChip,
+                        selectedMicroId === micro.id 
+                          ? { backgroundColor: micro.color + '20', borderColor: micro.color, borderWidth: 2 }
+                          : { backgroundColor: 'transparent', borderColor: colors.border }
                       ]}
-                      onPress={() => setSelectedAthlete(a.id)}
-                      activeOpacity={0.7}
+                      onPress={() => setSelectedMicroId(micro.id)}
                     >
-                      <Text style={[
-                        styles.chipText,
-                        { color: colors.textPrimary },
-                        selectedAthlete === a.id && { color: '#FFF' },
-                      ]}>{a.name}</Text>
+                      <Text style={{ color: selectedMicroId === micro.id ? micro.color : colors.textPrimary, fontWeight: selectedMicroId === micro.id ? '800' : '500' }}>
+                        {micro.nombre}
+                      </Text>
                     </TouchableOpacity>
                   ))}
-                </View>
-              </ScrollView>
+                </ScrollView>
+              )}
             </View>
-          ) : (
-            <View style={[styles.infoBox, { backgroundColor: colors.warning + '12' }]}>
-              <Ionicons name="alert-circle-outline" size={18} color={colors.warning} />
-              <Text style={[styles.infoText, { color: colors.warning }]}>Crea un deportista primero desde la pantalla de inicio</Text>
-            </View>
-          )}
+            {/* --- FIN SELECTOR MICROCICLO --- */}
 
-          {/* Mode tabs */}
-          <View style={[styles.modeTabs, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
-            <TouchableOpacity
-              testID="mode-manual"
-              style={[styles.modeTab, mode === 'manual' && { backgroundColor: colors.surface }]}
-              onPress={() => setMode('manual')}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="create-outline" size={16} color={mode === 'manual' ? colors.primary : colors.textSecondary} />
-              <Text style={[styles.modeTabText, { color: mode === 'manual' ? colors.primary : colors.textSecondary }]}>Manual</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="mode-csv"
-              style={[styles.modeTab, mode === 'csv' && { backgroundColor: colors.surface }]}
-              onPress={() => setMode('csv')}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="document-text-outline" size={16} color={mode === 'csv' ? colors.primary : colors.textSecondary} />
-              <Text style={[styles.modeTabText, { color: mode === 'csv' ? colors.primary : colors.textSecondary }]}>Importar CSV</Text>
+          </View>
+
+          {/* EJERCICIOS */}
+          <View style={[styles.section, { marginTop: 10 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Ejercicios</Text>
+            </View>
+
+            {ejercicios.map((ej, index) => (
+              <View key={index} style={[styles.exerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <Text style={{ fontWeight: '800', color: colors.textPrimary, fontSize: 16 }}>#{index + 1}</Text>
+                  {ejercicios.length > 1 && (
+                    <TouchableOpacity onPress={() => removeExercise(index)} style={{ padding: 4 }}>
+                      <Ionicons name="trash-outline" size={20} color={colors.error} />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <TextInput
+                  style={[styles.input, { marginBottom: 10, color: colors.textPrimary, borderColor: colors.border }]}
+                  placeholder="Nombre del Ejercicio (Ej: Sentadilla)"
+                  placeholderTextColor={colors.textSecondary}
+                  value={ej.name}
+                  onChangeText={(t) => updateExercise(index, 'name', t)}
+                />
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Series</Text>
+                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 4" placeholderTextColor={colors.textSecondary} value={ej.sets} onChangeText={(t) => updateExercise(index, 'sets', t)} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Reps</Text>
+                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 8-10" placeholderTextColor={colors.textSecondary} value={ej.reps} onChangeText={(t) => updateExercise(index, 'reps', t)} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Descanso</Text>
+                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 90s" placeholderTextColor={colors.textSecondary} value={ej.rest} onChangeText={(t) => updateExercise(index, 'rest', t)} />
+                  </View>
+                </View>
+              </View>
+            ))}
+
+            <TouchableOpacity style={[styles.addBtn, { borderColor: colors.primary, borderStyle: 'dashed' }]} onPress={addExercise}>
+              <Ionicons name="add" size={20} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '700', marginLeft: 8 }}>AÑADIR EJERCICIO</Text>
             </TouchableOpacity>
           </View>
 
-          {mode === 'manual' ? (
-            <>
-              {/* Title + Date */}
-              <View style={styles.row}>
-                <View style={[styles.section, { flex: 2 }]}>
-                  <Text style={[styles.label, { color: colors.textSecondary }]}>TITULO</Text>
-                  <TextInput
-                    testID="workout-title-input"
-                    style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-                    value={title} onChangeText={setTitle} placeholder="Ej: Tren inferior"
-                    placeholderTextColor={colors.textSecondary}
-                  />
-                </View>
-                <View style={[styles.section, { flex: 1 }]}>
-                  <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA</Text>
-                  <TextInput
-                    testID="workout-date-input"
-                    style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-                    value={date} onChangeText={setDate} placeholder="AAAA-MM-DD"
-                    placeholderTextColor={colors.textSecondary}
-                  />
-                </View>
-              </View>
+          {/* NOTAS GENERALES */}
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS DEL ENTRENAMIENTO</Text>
+            <TextInput
+              style={[styles.input, styles.textArea, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}
+              placeholder="Instrucciones generales para la sesión..."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              value={notas}
+              onChangeText={setNotas}
+            />
+          </View>
 
-              {/* Exercises */}
-              <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                  <Text style={[styles.label, { color: colors.textSecondary }]}>EJERCICIOS</Text>
-                  <TouchableOpacity onPress={addExercise} testID="add-exercise-btn" activeOpacity={0.7} style={styles.addExBtn}>
-                    <Ionicons name="add" size={18} color={colors.primary} />
-                    <Text style={[styles.addExText, { color: colors.primary }]}>Anadir</Text>
-                  </TouchableOpacity>
-                </View>
-                {exercises.map((ex, i) => (
-                  <View key={i} style={[styles.exerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                    <View style={styles.exerciseHeader}>
-                      <View style={[styles.exNumBadge, { backgroundColor: colors.primary + '15' }]}>
-                        <Text style={[styles.exNum, { color: colors.primary }]}>{i + 1}</Text>
-                      </View>
-                      <TextInput
-                        style={[styles.exNameInput, { color: colors.textPrimary }]}
-                        value={ex.name} onChangeText={v => updateExercise(i, 'name', v)}
-                        placeholder="Nombre del ejercicio" placeholderTextColor={colors.textSecondary}
-                      />
-                      {exercises.length > 1 && (
-                        <TouchableOpacity onPress={() => removeExercise(i)} activeOpacity={0.7} style={styles.removeExBtn}>
-                          <Ionicons name="close" size={16} color={colors.error} />
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                    <View style={[styles.exDetailsRow, { borderTopColor: colors.border }]}>
-                      <View style={styles.exDetail}>
-                        <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Series</Text>
-                        <TextInput
-                          style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]}
-                          value={ex.sets} onChangeText={v => updateExercise(i, 'sets', v)}
-                          placeholder="-" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
-                        />
-                      </View>
-                      <View style={[styles.exDivider, { backgroundColor: colors.border }]} />
-                      <View style={styles.exDetail}>
-                        <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Reps</Text>
-                        <TextInput
-                          style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]}
-                          value={ex.reps} onChangeText={v => updateExercise(i, 'reps', v)}
-                          placeholder="-" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
-                        />
-                      </View>
-                      <View style={[styles.exDivider, { backgroundColor: colors.border }]} />
-                      <View style={styles.exDetail}>
-                        <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Kg</Text>
-                        <TextInput
-                          style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]}
-                          value={ex.weight} onChangeText={v => updateExercise(i, 'weight', v)}
-                          placeholder="-" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
-                        />
-                      </View>
-                      <View style={[styles.exDivider, { backgroundColor: colors.border }]} />
-                      <View style={styles.exDetail}>
-                        <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Desc</Text>
-                        <TextInput
-                          style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]}
-                          value={ex.rest} onChangeText={v => updateExercise(i, 'rest', v)}
-                          placeholder="-" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
-                        />
-                      </View>
-                    </View>
-                    {/* Video URL input */}
-                    <View style={[styles.videoUrlRow, { borderTopColor: colors.border }]}>
-                      <Ionicons name="videocam-outline" size={16} color={colors.textSecondary} />
-                      <TextInput
-                        style={[styles.videoUrlInput, { color: colors.textPrimary }]}
-                        value={ex.video_url} onChangeText={v => updateExercise(i, 'video_url', v)}
-                        placeholder="URL de video (YouTube, Drive...)"
-                        placeholderTextColor={colors.textSecondary}
-                        autoCapitalize="none"
-                        keyboardType="url"
-                      />
-                    </View>
-                    {/* Exercise notes */}
-                    <View style={[styles.videoUrlRow, { borderTopColor: colors.border }]}>
-                      <Ionicons name="chatbubble-outline" size={16} color={colors.textSecondary} />
-                      <TextInput
-                        style={[styles.videoUrlInput, { color: colors.textPrimary }]}
-                        value={ex.exercise_notes} onChangeText={v => updateExercise(i, 'exercise_notes', v)}
-                        placeholder="Observaciones del ejercicio..."
-                        placeholderTextColor={colors.textSecondary}
-                      />
-                    </View>
-                    {/* Image upload */}
-                    <View style={[styles.videoUrlRow, { borderTopColor: colors.border }]}>
-                      {imagePreviews[i] || (ex as any).image_path ? (
-                        <View style={styles.imagePreviewRow}>
-                          <Image source={{ uri: imagePreviews[i] || '' }} style={styles.imageThumb} />
-                          <Text style={[styles.imageFileName, { color: colors.textSecondary }]} numberOfLines={1}>Imagen adjunta</Text>
-                          <TouchableOpacity onPress={() => {
-                            updateExercise(i, 'image_path', '');
-                            setImagePreviews(prev => { const n = {...prev}; delete n[i]; return n; });
-                          }}>
-                            <Ionicons name="close-circle" size={20} color={colors.error} />
-                          </TouchableOpacity>
-                        </View>
-                      ) : (
-                        <TouchableOpacity
-                          testID={`upload-image-${i}`}
-                          style={styles.imagePickBtn}
-                          onPress={() => pickExerciseImage(i)}
-                          disabled={imageUploading === i}
-                          activeOpacity={0.7}
-                        >
-                          {imageUploading === i ? (
-                            <ActivityIndicator size="small" color={colors.primary} />
-                          ) : (
-                            <Ionicons name="camera-outline" size={18} color={colors.primary} />
-                          )}
-                          <Text style={[styles.imagePickText, { color: colors.primary }]}>
-                            {imageUploading === i ? 'Subiendo...' : 'Subir imagen/dibujo'}
-                          </Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
-                  </View>
-                ))}
-              </View>
-              <View style={styles.section}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS</Text>
-                <TextInput
-                  testID="workout-notes-input"
-                  style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-                  value={notes} onChangeText={setNotes} placeholder="Observaciones opcionales..."
-                  placeholderTextColor={colors.textSecondary} multiline numberOfLines={3}
-                />
-              </View>
-
-              {error ? (
-                <View style={[styles.errorBox, { backgroundColor: colors.error + '12' }]}>
-                  <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
-                </View>
-              ) : null}
-
-              <TouchableOpacity
-                testID="create-workout-submit"
-                style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                onPress={handleSubmit} disabled={submitting} activeOpacity={0.7}
-              >
-                {submitting ? <ActivityIndicator color="#FFF" /> : (
-                  <Text style={styles.submitText}>Crear entrenamiento</Text>
-                )}
-              </TouchableOpacity>
-            </>
-          ) : (
-            /* CSV Mode */
-            <View style={styles.csvSection}>
-              {/* Inline template with copiable text */}
-              <View style={[styles.csvTemplateCard, { backgroundColor: colors.surface }]}>
-                <View style={styles.csvTemplateHeader}>
-                  <View style={[styles.csvTemplateBadge, { backgroundColor: colors.primary + '12' }]}>
-                    <Ionicons name="document-text" size={20} color={colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.csvTemplateTitle, { color: colors.textPrimary }]}>Plantilla CSV</Text>
-                    <Text style={[styles.csvTemplateSubtitle, { color: colors.textSecondary }]}>Copia este contenido en un archivo .csv</Text>
-                  </View>
-                </View>
-
-                <View style={[styles.csvCodeBlock, { backgroundColor: colors.surfaceHighlight }]}>
-                  <Text style={[styles.csvCodeText, { color: colors.primary }]} selectable>
-                    {'dia,ejercicio,repeticiones,series,video,observaciones\n2026-02-24,Sentadilla,8,4,https://youtube.com/watch?v=example1,Bajar hasta paralelo\n2026-02-24,Press banca,10,3,,Agarre medio\n2026-02-24,Peso muerto,6,4,https://drive.google.com/file/example,\n2026-02-25,Zancadas,12,3,,Alternar piernas\n2026-02-25,Remo con barra,10,4,,'}
-                  </Text>
-                </View>
-
-                <Text style={[styles.csvTip, { color: colors.textSecondary }]}>
-                  Manten pulsado para seleccionar y copiar el texto
-                </Text>
-              </View>
-
-              {/* Columns explanation */}
-              <View style={[styles.csvColumnsCard, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.csvColumnsTitle, { color: colors.textPrimary }]}>Columnas requeridas</Text>
-                {[
-                  { col: 'dia', desc: 'Fecha en formato AAAA-MM-DD', example: '2026-02-24' },
-                  { col: 'ejercicio', desc: 'Nombre del ejercicio', example: 'Sentadilla' },
-                  { col: 'repeticiones', desc: 'Numero de repeticiones', example: '8' },
-                  { col: 'series', desc: 'Numero de series', example: '4' },
-                  { col: 'video', desc: 'URL de video (opcional)', example: 'https://youtube.com/...' },
-                  { col: 'observaciones', desc: 'Notas del ejercicio (opcional)', example: 'Bajar hasta paralelo' },
-                ].map((item) => (
-                  <View key={item.col} style={[styles.csvColRow, { borderBottomColor: colors.border }]}>
-                    <View style={[styles.csvColBadge, { backgroundColor: colors.primary + '10' }]}>
-                      <Text style={[styles.csvColName, { color: colors.primary }]}>{item.col}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.csvColDesc, { color: colors.textPrimary }]}>{item.desc}</Text>
-                      <Text style={[styles.csvColExample, { color: colors.textSecondary }]}>Ej: {item.example}</Text>
-                    </View>
-                  </View>
-                ))}
-              </View>
-
-              <View style={[styles.csvInfoBox, { backgroundColor: colors.warning + '10' }]}>
-                <Ionicons name="bulb-outline" size={18} color={colors.warning} />
-                <Text style={[styles.csvInfoText, { color: colors.warning }]}>
-                  Los ejercicios del mismo dia se agruparan automaticamente en un unico entrenamiento.
-                </Text>
-              </View>
-
-              {error ? (
-                <View style={[styles.errorBox, { backgroundColor: colors.error + '12' }]}>
-                  <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
-                </View>
-              ) : null}
-
-              {/* Upload button */}
-              <TouchableOpacity
-                testID="csv-upload-btn"
-                style={[styles.uploadBtn, { backgroundColor: colors.primary }]}
-                onPress={handleCSVUpload}
-                disabled={submitting}
-                activeOpacity={0.7}
-              >
-                {submitting ? <ActivityIndicator color="#FFF" /> : (
-                  <>
-                    <Ionicons name="cloud-upload-outline" size={22} color="#FFF" />
-                    <Text style={styles.uploadBtnText}>Seleccionar archivo CSV</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-            </View>
-          )}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -447,80 +247,21 @@ export default function AddWorkoutScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  flex: { flex: 1 },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5,
-  },
-  headerBtn: { width: 32 },
-  headerTitle: { fontSize: 17, fontWeight: '600' },
-  form: { padding: 20, gap: 20, paddingBottom: 48 },
-  section: { gap: 10 },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
-  input: { borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1 },
-  textArea: { minHeight: 72, textAlignVertical: 'top' },
-  row: { flexDirection: 'row', gap: 12 },
-  chipRow: { flexDirection: 'row', gap: 8 },
-  chip: { paddingHorizontal: 18, paddingVertical: 10, borderRadius: 24 },
-  chipText: { fontSize: 14, fontWeight: '600' },
-  infoBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 10 },
-  infoText: { fontSize: 14, flex: 1 },
-  // Mode tabs
-  modeTabs: { flexDirection: 'row', borderRadius: 12, padding: 4, borderWidth: 1 },
-  modeTab: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 6, paddingVertical: 10, borderRadius: 10,
-  },
-  modeTabText: { fontSize: 14, fontWeight: '600' },
-  // Exercise card
-  addExBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  addExText: { fontSize: 13, fontWeight: '600' },
-  exerciseCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
-  exerciseHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
-  exNumBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  exNum: { fontSize: 13, fontWeight: '700' },
-  exNameInput: { flex: 1, fontSize: 16, fontWeight: '500' },
-  removeExBtn: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5 },
-  exDetail: { flex: 1, alignItems: 'center', padding: 8, gap: 4 },
-  exDetailLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' },
-  exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 8, fontSize: 16, fontWeight: '600' },
-  exDivider: { width: 0.5 },
-  videoUrlRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 0.5 },
-  videoUrlInput: { flex: 1, fontSize: 14 },
-  // CSV Section
-  csvSection: { gap: 16 },
-  csvTemplateCard: { borderRadius: 14, padding: 16, gap: 14 },
-  csvTemplateHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  csvTemplateBadge: { width: 40, height: 40, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  csvTemplateTitle: { fontSize: 16, fontWeight: '600' },
-  csvTemplateSubtitle: { fontSize: 13, marginTop: 2 },
-  csvCodeBlock: { borderRadius: 10, padding: 14 },
-  csvCodeText: { fontSize: 13, fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', lineHeight: 20 },
-  csvTip: { fontSize: 12, textAlign: 'center', fontStyle: 'italic' },
-  csvColumnsCard: { borderRadius: 14, padding: 16, gap: 2 },
-  csvColumnsTitle: { fontSize: 15, fontWeight: '600', marginBottom: 10 },
-  csvColRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 0.5 },
-  csvColBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
-  csvColName: { fontSize: 13, fontWeight: '700', fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace' },
-  csvColDesc: { fontSize: 14 },
-  csvColExample: { fontSize: 12, marginTop: 2 },
-  csvInfoBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 10 },
-  csvInfoText: { fontSize: 13, flex: 1, lineHeight: 18 },
-  uploadBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-    borderRadius: 10, paddingVertical: 16,
-  },
-  uploadBtnText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-  errorBox: { borderRadius: 10, padding: 12 },
-  errorText: { fontSize: 14, textAlign: 'center' },
-  submitBtn: { borderRadius: 10, padding: 16, alignItems: 'center' },
-  submitText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-  // Image upload styles
-  imagePreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
-  imageThumb: { width: 40, height: 40, borderRadius: 6 },
-  imageFileName: { flex: 1, fontSize: 13 },
-  imagePickBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 },
-  imagePickText: { fontSize: 14, fontWeight: '500' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  headerTitle: { fontSize: 18, fontWeight: '800' },
+  saveText: { fontSize: 16, fontWeight: '800' },
+  content: { padding: 16 },
+  
+  section: { marginBottom: 24 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
+  label: { fontSize: 12, fontWeight: '700', marginBottom: 6, letterSpacing: 0.5 },
+  smallLabel: { fontSize: 11, fontWeight: '600', marginBottom: 4, letterSpacing: 0.5 },
+  
+  input: { borderWidth: 1, borderRadius: 8, padding: 14, fontSize: 15 },
+  textArea: { height: 100, textAlignVertical: 'top' },
+  
+  microChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, marginRight: 8, borderWidth: 1 },
+  
+  exerciseCard: { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16 },
+  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderWidth: 2, borderRadius: 12, marginTop: 8 }
 });
