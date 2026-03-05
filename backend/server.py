@@ -1,7 +1,7 @@
 import requests
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Query, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, RedirectResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -12,12 +12,10 @@ import jwt
 import uuid
 import csv
 import io
-import requests
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
-import os
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -27,9 +25,7 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-
-
-# Borra los números reales y pon esto:
+# Variables de Strava (Configúralas en el panel de Render)
 STRAVA_CLIENT_ID = os.getenv("STRAVA_CLIENT_ID")
 STRAVA_CLIENT_SECRET = os.getenv("STRAVA_CLIENT_SECRET")
 
@@ -52,6 +48,7 @@ class WellnessCreate(BaseModel):
     hr_rest: Optional[int] = None
     steps: Optional[int] = None
     sleep_hours: Optional[float] = None
+
 class UserRegister(BaseModel):
     email: str
     password: str
@@ -122,7 +119,7 @@ class WorkoutUpdate(BaseModel):
     observations: Optional[str] = None
     microciclo_id: Optional[str] = None
 
-# NUEVOS MODELOS DE PERIODIZACIÓN
+# MODELOS DE PERIODIZACIÓN
 class MacrocicloCreate(BaseModel):
     nombre: str
     fecha_inicio: str
@@ -154,7 +151,6 @@ class MicrocicloUpdate(BaseModel):
     fecha_fin: Optional[str] = None
     color: Optional[str] = None
     notas: Optional[str] = None
-
 
 # --- Auth Helpers ---
 def hash_password(password: str) -> str:
@@ -293,24 +289,41 @@ async def get_settings(user=Depends(get_current_user)):
         return {k: v for k, v in default.items() if k != '_id'}
     return settings
 
+# --- STRAVA CALLBACK (CORREGIDO) ---
 @api_router.get("/auth/strava/callback")
-async def strava_callback(code: str, user=Depends(get_current_user)):
-    # Intercambiamos el código que nos da Strava por un token real
+async def strava_callback(code: str, state: str):
+    # Verificamos manualmente el token que viene en 'state' para saber quién es Claudia
+    try:
+        payload = jwt.decode(state, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        user_id = payload['user_id']
+    except Exception:
+        raise HTTPException(status_code=401, detail="Sesión expirada durante la conexión con Strava")
+
+    # Pedimos el token real a Strava
     response = requests.post("https://www.strava.com/oauth/token", data={
-        "client_id": STRAVA_CLIENT_ID,
+        "client_id": int(STRAVA_CLIENT_ID),
         "client_secret": STRAVA_CLIENT_SECRET,
         "code": code,
         "grant_type": "authorization_code"
     })
+    
+    if response.status_code != 200:
+        raise HTTPException(status_code=400, detail="Error de comunicación con Strava")
+        
     strava_data = response.json()
     
-    # Guardamos el token de Strava en el perfil de la usuaria (Claudia)
+    # Guardamos el token en la base de datos de Claudia
     await db.users.update_one(
-        {"id": user['id']},
-        {"$set": {"strava_token": strava_data['access_token'], "strava_id": strava_data['athlete']['id']}}
+        {"id": user_id},
+        {"$set": {
+            "strava_token": strava_data['access_token'], 
+            "strava_id": strava_data['athlete']['id']
+        }}
     )
-    return {"status": "Strava conectado correctamente"}
     
+    # Redirigimos de vuelta a la App (Vercel)
+    return RedirectResponse(url="https://fit-tracker-frontend-claudia.vercel.app/settings?strava=success")
+
 @api_router.put("/settings")
 async def update_settings(data: SettingsUpdate, user=Depends(get_current_user)):
     update_data = {k: v for k, v in data.dict().items() if v is not None}
@@ -335,18 +348,14 @@ async def update_settings(data: SettingsUpdate, user=Depends(get_current_user)):
     return updated
 
 @api_router.put("/profile/password")
-async def change_password(
-    data: PasswordChange,
-    user=Depends(get_current_user)
-):
+async def change_password(data: PasswordChange, user=Depends(get_current_user)):
     full_user = await db.users.find_one({"id": user['id']})
     if not verify_password(data.current_password, full_user['password']):
         raise HTTPException(status_code=400, detail="Contraseña actual incorrecta")
     await db.users.update_one({"id": user['id']}, {"$set": {"password": hash_password(data.new_password)}})
     return {"message": "Contraseña actualizada"}
 
-
-# --- Athlete Management (Trainer) ---
+# --- Athlete Management ---
 @api_router.post("/athletes")
 async def create_athlete(data: AthleteCreate, trainer=Depends(require_trainer)):
     existing = await db.users.find_one({"email": data.email})
@@ -370,11 +379,7 @@ async def create_athlete(data: AthleteCreate, trainer=Depends(require_trainer)):
 @api_router.get("/athletes")
 async def list_athletes(user=Depends(get_current_user)):
     if user['role'] == 'trainer':
-        athletes = await db.users.find(
-            {"trainer_id": user['id'], "role": "athlete"},
-            {"_id": 0, "password": 0}
-        ).to_list(1000)
-        return athletes
+        return await db.users.find({"trainer_id": user['id'], "role": "athlete"}, {"_id": 0, "password": 0}).to_list(1000)
     return []
 
 @api_router.get("/athletes/{athlete_id}")
@@ -384,8 +389,6 @@ async def get_athlete(athlete_id: str, user=Depends(get_current_user)):
         raise HTTPException(status_code=404, detail="Athlete not found")
     if user['role'] == 'trainer' and athlete.get('trainer_id') != user['id']:
         raise HTTPException(status_code=403, detail="Not your athlete")
-    if user['role'] == 'athlete' and user['id'] != athlete_id:
-        raise HTTPException(status_code=403, detail="Access denied")
     return athlete
 
 @api_router.delete("/athletes/{athlete_id}")
@@ -394,10 +397,9 @@ async def delete_athlete(athlete_id: str, trainer=Depends(require_trainer)):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Athlete not found")
     await db.workouts.delete_many({"athlete_id": athlete_id})
-    await db.physical_tests.delete_many({"athlete_id": athlete_id})
     return {"message": "Athlete deleted"}
 
-# --- Periodization (Macrociclos & Microciclos) ---
+# --- Periodization ---
 @api_router.post("/macrociclos")
 async def create_macrociclo(data: MacrocicloCreate, trainer=Depends(require_trainer)):
     macro_id = str(uuid.uuid4())
@@ -415,91 +417,12 @@ async def create_macrociclo(data: MacrocicloCreate, trainer=Depends(require_trai
     await db.macrociclos.insert_one(macro)
     return {k: v for k, v in macro.items() if k != '_id'}
 
-@api_router.put("/macrociclos/{macro_id}")
-async def update_macrociclo(macro_id: str, data: MacrocicloUpdate, trainer=Depends(require_trainer)):
-    update_data = {k: v for k, v in data.dict().items() if v is not None}
-    if not update_data:
-        raise HTTPException(status_code=400, detail="No hay datos para actualizar")
-    
-    result = await db.macrociclos.update_one({"id": macro_id}, {"$set": update_data})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Macrociclo no encontrado")
-        
-    updated = await db.macrociclos.find_one({"id": macro_id}, {"_id": 0})
-    return updated
-
-@api_router.delete("/macrociclos/{macro_id}")
-async def delete_macrociclo(macro_id: str, trainer=Depends(require_trainer)):
-    result = await db.macrociclos.delete_one({"id": macro_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Macrociclo no encontrado")
-        
-    micros = await db.microciclos.find({"macrociclo_id": macro_id}).to_list(1000)
-    micro_ids = [m['id'] for m in micros]
-    
-    if micro_ids:
-        await db.workouts.update_many(
-            {"microciclo_id": {"$in": micro_ids}}, 
-            {"$set": {"microciclo_id": None}}
-        )
-        
-    await db.microciclos.delete_many({"macrociclo_id": macro_id})
-    return {"message": "Macrociclo y microciclos eliminados. Entrenamientos protegidos."}
-
-@api_router.post("/microciclos")
-async def create_microciclo(data: MicrocicloCreate, trainer=Depends(require_trainer)):
-    macro = await db.macrociclos.find_one({"id": data.macrociclo_id})
-    if not macro:
-        raise HTTPException(status_code=404, detail="Macrociclo no encontrado")
-
-    micro_id = str(uuid.uuid4())
-    micro = {
-        "id": micro_id,
-        "macrociclo_id": data.macrociclo_id,
-        "nombre": data.nombre,
-        "tipo": data.tipo,
-        "fecha_inicio": data.fecha_inicio,
-        "fecha_fin": data.fecha_fin,
-        "color": data.color,
-        "notas": data.notas,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.microciclos.insert_one(micro)
-    return {k: v for k, v in micro.items() if k != '_id'}
-
-@api_router.put("/microciclos/{micro_id}")
-async def update_microciclo(micro_id: str, data: MicrocicloUpdate, trainer=Depends(require_trainer)):
-    update_data = {k: v for k, v in data.dict().items() if v is not None}
-    if not update_data:
-        raise HTTPException(status_code=400, detail="No hay datos para actualizar")
-        
-    result = await db.microciclos.update_one({"id": micro_id}, {"$set": update_data})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Microciclo no encontrado")
-        
-    updated = await db.microciclos.find_one({"id": micro_id}, {"_id": 0})
-    return updated
-
-@api_router.delete("/microciclos/{micro_id}")
-async def delete_microciclo(micro_id: str, trainer=Depends(require_trainer)):
-    result = await db.microciclos.delete_one({"id": micro_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Microciclo no encontrado")
-        
-    await db.workouts.update_many(
-        {"microciclo_id": micro_id}, 
-        {"$set": {"microciclo_id": None}}
-    )
-    return {"message": "Microciclo eliminado. Entrenamientos protegidos."}
-
 @api_router.get("/periodization/tree/{athlete_id}")
 async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
     macrociclos = await db.macrociclos.find({"athlete_id": athlete_id}, {"_id": 0}).sort("fecha_inicio", 1).to_list(100)
     macro_ids = [m['id'] for m in macrociclos]
-
     microciclos = await db.microciclos.find({"macrociclo_id": {"$in": macro_ids}}, {"_id": 0}).sort("fecha_inicio", 1).to_list(500)
     micro_ids = [m['id'] for m in microciclos]
-
     workouts = await db.workouts.find({"microciclo_id": {"$in": micro_ids}}, {"_id": 0}).sort("date", 1).to_list(1000)
 
     tree = []
@@ -507,10 +430,8 @@ async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)
         micros_in_macro = [m for m in microciclos if m['macrociclo_id'] == macro['id']]
         for micro in micros_in_macro:
             micro['workouts'] = [w for w in workouts if w.get('microciclo_id') == micro['id']]
-        
         macro['microciclos'] = micros_in_macro
         tree.append(macro)
-
     return tree
 
 # --- Workouts ---
@@ -532,88 +453,16 @@ async def create_workout(data: WorkoutCreate, trainer=Depends(require_trainer)):
     await db.workouts.insert_one(workout)
     return {k: v for k, v in workout.items() if k != '_id'}
 
-@api_router.post("/workouts/csv")
-async def upload_csv_workouts(athlete_id: str, file: UploadFile = File(...), trainer=Depends(require_trainer)):
-    content = await file.read()
-    text = content.decode('utf-8')
-    reader = csv.DictReader(io.StringIO(text))
-    
-    workouts_by_date: dict = {}
-    for row in reader:
-        row = {k.strip().lower(): v.strip() for k, v in row.items()}
-        date = row.get('dia', row.get('date', datetime.now(timezone.utc).strftime('%Y-%m-%d')))
-        exercise_name = row.get('ejercicio', row.get('exercise', ''))
-        reps = row.get('repeticiones', row.get('reps', ''))
-        sets = row.get('series', row.get('sets', ''))
-        
-        if not exercise_name:
-            continue
-            
-        exercise = {"name": exercise_name, "sets": sets, "reps": reps, "weight": "", "rest": "", "video_url": row.get('video', ''), "exercise_notes": row.get('observaciones', '')}
-        
-        if date not in workouts_by_date:
-            workouts_by_date[date] = []
-        workouts_by_date[date].append(exercise)
-    
-    workouts_created = []
-    for date, exercises in workouts_by_date.items():
-        workout_id = str(uuid.uuid4())
-        workout = {
-            "id": workout_id,
-            "trainer_id": trainer['id'],
-            "athlete_id": athlete_id,
-            "date": date,
-            "title": f"Entreno {date}",
-            "exercises": exercises,
-            "notes": "Importado desde CSV",
-            "completed": False,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-        await db.workouts.insert_one(workout)
-        workouts_created.append({k: v for k, v in workout.items() if k != '_id'})
-    return {"count": len(workouts_created), "workouts": workouts_created}
-
-@api_router.get("/workouts/csv-template")
-async def download_csv_template():
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(['dia', 'ejercicio', 'repeticiones', 'series', 'video', 'observaciones'])
-    writer.writerow(['2026-02-24', 'Sentadilla', '8', '4', 'https://youtube.com/watch?v=example1', 'Bajar hasta paralelo'])
-    writer.writerow(['2026-02-24', 'Press banca', '10', '3', '', 'Agarre medio'])
-    writer.writerow(['2026-02-24', 'Peso muerto', '6', '4', 'https://drive.google.com/file/example', ''])
-    writer.writerow(['2026-02-25', 'Zancadas', '12', '3', '', 'Alternar piernas'])
-    writer.writerow(['2026-02-25', 'Remo con barra', '10', '4', '', ''])
-    output.seek(0)
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=plantilla_entrenamientos.csv"}
-    )
-
 @api_router.get("/workouts")
-async def list_workouts(
-    athlete_id: Optional[str] = None,
-    date: Optional[str] = None,
-    user=Depends(get_current_user)
-):
+async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = None, user=Depends(get_current_user)):
     query = {}
     if user['role'] == 'athlete':
         query['athlete_id'] = user['id']
     elif user['role'] == 'trainer':
         query['trainer_id'] = user['id']
-        if athlete_id:
-            query['athlete_id'] = athlete_id
-    if date:
-        query['date'] = date
-    workouts = await db.workouts.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
-    return workouts
-
-@api_router.get("/workouts/{workout_id}")
-async def get_workout(workout_id: str, user=Depends(get_current_user)):
-    workout = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
-    if not workout:
-        raise HTTPException(status_code=404, detail="Workout not found")
-    return workout
+        if athlete_id: query['athlete_id'] = athlete_id
+    if date: query['date'] = date
+    return await db.workouts.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
 
 @api_router.put("/workouts/{workout_id}")
 async def update_workout(workout_id: str, data: WorkoutUpdate, user=Depends(get_current_user)):
@@ -623,193 +472,16 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, user=Depends(get_
     result = await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Workout not found")
-    updated = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
-    return updated
+    return await db.workouts.find_one({"id": workout_id}, {"_id": 0})
 
-@api_router.delete("/workouts/{workout_id}")
-async def delete_workout(workout_id: str, trainer=Depends(require_trainer)):
-    result = await db.workouts.delete_one({"id": workout_id, "trainer_id": trainer['id']})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Workout not found")
-    return {"message": "Workout deleted"}
-
-# --- Physical Tests ---
-@api_router.post("/tests")
-async def create_test(data: TestCreate, user=Depends(get_current_user)):
-    if user['role'] == 'trainer':
-        athlete = await db.users.find_one({"id": data.athlete_id, "trainer_id": user['id']})
-        if not athlete:
-            raise HTTPException(status_code=404, detail="Athlete not found")
-    elif user['role'] == 'athlete' and data.athlete_id != user['id']:
-        raise HTTPException(status_code=403, detail="Can only add your own tests")
-    test_id = str(uuid.uuid4())
-    test = {
-        "id": test_id,
-        "athlete_id": data.athlete_id,
-        "created_by": user['id'],
-        "test_type": data.test_type,
-        "test_name": data.test_name,
-        "custom_name": data.custom_name or "",
-        "value": data.value,
-        "unit": data.unit,
-        "date": data.date,
-        "notes": data.notes or "",
-        "value_left": data.value_left,
-        "value_right": data.value_right,
-        "created_at": datetime.now(timezone.utc).isoformat(),
-    }
-    await db.physical_tests.insert_one(test)
-    return {k: v for k, v in test.items() if k != '_id'}
-
-@api_router.get("/tests")
-async def list_tests(
-    athlete_id: Optional[str] = None,
-    test_type: Optional[str] = None,
-    test_name: Optional[str] = None,
-    user=Depends(get_current_user)
-):
-    query = {}
-    if user['role'] == 'athlete':
-        query['athlete_id'] = user['id']
-    elif user['role'] == 'trainer':
-        if athlete_id:
-            query['athlete_id'] = athlete_id
-    if test_type:
-        query['test_type'] = test_type
-    if test_name:
-        query['test_name'] = test_name
-    tests = await db.physical_tests.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
-    return tests
-
-@api_router.get("/tests/history")
-async def test_history(
-    athlete_id: str,
-    test_name: str,
-    user=Depends(get_current_user)
-):
-    query = {"athlete_id": athlete_id, "test_name": test_name}
-    tests = await db.physical_tests.find(query, {"_id": 0}).sort("date", 1).to_list(1000)
-    return tests
-
-@api_router.put("/tests/{test_id}")
-async def update_test(test_id: str, data: TestUpdate, user=Depends(get_current_user)):
-    update_data = {k: v for k, v in data.dict().items() if v is not None}
-    if not update_data:
-        raise HTTPException(status_code=400, detail="No data to update")
-    result = await db.physical_tests.update_one({"id": test_id}, {"$set": update_data})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Test not found")
-    updated = await db.physical_tests.find_one({"id": test_id}, {"_id": 0})
-    return updated
-
-@api_router.delete("/tests/{test_id}")
-async def delete_test(test_id: str, user=Depends(get_current_user)):
-    result = await db.physical_tests.delete_one({"id": test_id})
-    if result.deleted_count == 0:
-        raise HTTPException(status_code=404, detail="Test not found")
-    return {"message": "Test deleted"}
-
-# --- Analytics ---
-@api_router.get("/analytics/summary")
-async def analytics_summary(
-    athlete_id: Optional[str] = None,
-    user=Depends(get_current_user)
-):
-    target_id = athlete_id if user['role'] == 'trainer' and athlete_id else user['id']
-    total_workouts = await db.workouts.count_documents({"athlete_id": target_id})
-    completed_workouts = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
-    total_tests = await db.physical_tests.count_documents({"athlete_id": target_id})
-    
-    latest_tests = {}
-    test_names = await db.physical_tests.distinct("test_name", {"athlete_id": target_id})
-    for tn in test_names:
-        latest = await db.physical_tests.find_one(
-            {"athlete_id": target_id, "test_name": tn},
-            {"_id": 0},
-            sort=[("date", -1)]
-        )
-        if latest:
-            latest_tests[tn] = latest
-
-    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime('%Y-%m-%d')
-    week_workouts = await db.workouts.count_documents({"athlete_id": target_id, "date": {"$gte": week_ago}})
-
-    return {
-        "total_workouts": total_workouts,
-        "completed_workouts": completed_workouts,
-        "total_tests": total_tests,
-        "latest_tests": latest_tests,
-        "week_workouts": week_workouts,
-        "completion_rate": round((completed_workouts / total_workouts * 100) if total_workouts > 0 else 0, 1),
-    }
-
-@api_router.get("/analytics/progress")
-async def analytics_progress(
-    athlete_id: str,
-    user=Depends(get_current_user)
-):
-    test_names = await db.physical_tests.distinct("test_name", {"athlete_id": athlete_id})
-    progress = {}
-    for tn in test_names:
-        history = await db.physical_tests.find(
-            {"athlete_id": athlete_id, "test_name": tn},
-            {"_id": 0}
-        ).sort("date", 1).to_list(100)
-        if len(history) >= 2:
-            first_val = history[0]['value']
-            last_val = history[-1]['value']
-            change = round(((last_val - first_val) / first_val * 100) if first_val != 0 else 0, 1)
-        else:
-            change = 0
-        progress[tn] = {
-            "history": history,
-            "change_percent": change,
-            "latest": history[-1] if history else None,
-        }
-    return progress
-
-# --- File Upload/Download ---
-@api_router.post("/upload")
-async def upload_file(file: UploadFile = File(...), user=Depends(get_current_user)):
-    ext = file.filename.split(".")[-1].lower() if "." in file.filename else "bin"
-    allowed = {"jpg", "jpeg", "png", "gif", "webp"}
-    if ext not in allowed:
-        raise HTTPException(status_code=400, detail=f"Tipo de archivo no permitido. Permitidos: {', '.join(allowed)}")
-    data = await file.read()
-    if len(data) > 5 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="Archivo demasiado grande (max 5MB)")
-    file_id = str(uuid.uuid4())
-    path = f"{APP_NAME}/uploads/{user['id']}/{file_id}.{ext}"
-    result = put_object(path, data, file.content_type or "application/octet-stream")
-    return {"file_id": file_id, "storage_path": result["path"], "filename": file.filename}
-
-@api_router.get("/files/{path:path}")
-async def download_file(path: str, auth: str = Query(None), authorization: str = Header(None)):
-    token = None
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
-    elif auth:
-        token = auth
-    if not token:
-        raise HTTPException(status_code=401, detail="No auth provided")
-    decode_token(token)
-    try:
-        data, content_type = get_object(path)
-        return Response(content=data, media_type=content_type)
-    except Exception:
-        raise HTTPException(status_code=404, detail="File not found")
-
-# --- Wellness (Monitoreo Diario) ---
+# --- Wellness ---
 @api_router.post("/wellness")
 async def submit_wellness(data: WellnessCreate, user=Depends(get_current_user)):
     if user['role'] != 'athlete':
         raise HTTPException(status_code=403, detail="Only athletes can submit wellness")
-    
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     existing = await db.wellness.find_one({"athlete_id": user['id'], "date": today})
-    if existing:
-        return {"message": "Ya rellenado hoy"}
-        
+    if existing: return {"message": "Ya rellenado hoy"}
     record = {
         "id": str(uuid.uuid4()),
         "athlete_id": user['id'],
@@ -817,6 +489,9 @@ async def submit_wellness(data: WellnessCreate, user=Depends(get_current_user)):
         "sleep": data.sleep,
         "stress": data.stress,
         "fatigue": data.fatigue,
+        "hr_rest": data.hr_rest,
+        "steps": data.steps,
+        "sleep_hours": data.sleep_hours,
         "notes": data.notes,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
@@ -825,13 +500,12 @@ async def submit_wellness(data: WellnessCreate, user=Depends(get_current_user)):
 
 @api_router.get("/wellness/today")
 async def check_today_wellness(user=Depends(get_current_user)):
-    if user['role'] != 'athlete':
-        return {"submitted": True} # El entrenador no necesita rellenarlo
+    if user['role'] != 'athlete': return {"submitted": True}
     today = datetime.now(timezone.utc).strftime('%Y-%m-%d')
     existing = await db.wellness.find_one({"athlete_id": user['id'], "date": today})
     return {"submitted": bool(existing)}
 
-# Include router
+# Include router e inicio
 app.include_router(api_router)
 
 app.add_middleware(
@@ -842,7 +516,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 @app.on_event("shutdown")
