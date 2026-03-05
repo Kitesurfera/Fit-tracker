@@ -94,6 +94,7 @@ export default function SettingsScreen() {
   };
 
   const handleConnectStrava = () => {
+    console.log("Mi Client ID es:", process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID);
   const clientID = "TU_CLIENT_ID";
   const redirectURI = "https://tu-backend.vercel.app/api/auth/strava/callback";
   const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${redirectURI}&scope=read,activity:read_all`;
