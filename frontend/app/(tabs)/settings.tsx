@@ -92,26 +92,19 @@ export default function SettingsScreen() {
     } catch (e: any) { setPasswordError(e.message || 'Error'); }
     finally { setChangingPassword(false); }
   };
+  
+  const handleConnectStrava = async () => {
+  const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
+  const redirectURI = "https://fit-tracker-backend-rtx2.onrender.com/api/auth/strava/callback";
+  
+  // Obtenemos tu token actual de la memoria del móvil
+  const token = await AsyncStorage.getItem('auth_token');
 
-  // --- LÓGICA DE STRAVA CORREGIDA ---
-  const handleConnectStrava = () => {
-    const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
-    const redirectURI = "https://fit-tracker-backend-rtx2.onrender.com/api/auth/strava/callback";
-    
-    if (!clientID) {
-      Alert.alert("Error", "No se detectó el Client ID de Strava.");
-      return;
-    }
-
-    const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all`;
-    
-    if (Platform.OS === 'web') {
-      window.location.href = url;
-    } else {
-      // Para nativo podrías usar Linking de expo, pero en PWA/Web Safari esto es lo ideal
-      window.location.href = url;
-    }
-  };
+  // Añadimos &state=${token} a la URL
+  const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all&state=${token}`;
+  
+  window.location.href = url;
+};
 
   const handleLogout = async () => {
     if (Platform.OS === 'web') {
