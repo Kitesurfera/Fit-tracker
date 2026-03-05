@@ -21,6 +21,11 @@ export default function EditWorkoutScreen() {
   const [date, setDate] = useState('');
   const [exercises, setExercises] = useState<any[]>([]);
   const [error, setError] = useState('');
+  
+  // --- NUEVOS ESTADOS DE PERIODIZACIÓN ---
+  const [athleteId, setAthleteId] = useState<string>('');
+  const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
+  const [selectedMicroId, setSelectedMicroId] = useState<string | null>(null);
 
   useEffect(() => {
     if (workoutId) {
@@ -28,6 +33,8 @@ export default function EditWorkoutScreen() {
         setTitle(w.title || '');
         setNotes(w.notes || '');
         setDate(w.date || '');
+        setAthleteId(w.athlete_id || ''); // Necesitamos el athlete_id para cargar sus ciclos
+        setSelectedMicroId(w.microciclo_id || null); // Marcamos el que ya tenía asignado
         setExercises(
           (w.exercises || []).map((ex: any) => ({
             _key: Math.random().toString(),
@@ -45,6 +52,17 @@ export default function EditWorkoutScreen() {
         .finally(() => setLoading(false));
     }
   }, [workoutId]);
+
+  // --- EFECTO PARA CARGAR MICROCICLOS UNA VEZ SABEMOS EL ATLETA ---
+  useEffect(() => {
+    if (athleteId) {
+      api.getPeriodizationTree(athleteId).then((tree) => {
+        const todosLosMicros = tree.flatMap((macro: any) => macro.microciclos || []);
+        todosLosMicros.sort((a: any, b: any) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+        setMicrociclosDisponibles(todosLosMicros);
+      }).catch((e) => console.log("Error cargando microciclos:", e));
+    }
+  }, [athleteId]);
 
   const updateExercise = (index: number, field: string, value: string) => {
     const updated = [...exercises];
@@ -70,7 +88,6 @@ export default function EditWorkoutScreen() {
   const removeExercise = (index: number) => {
     if (exercises.length <= 1) return;
     
-    // Arreglo web para la confirmación de eliminación
     if (Platform.OS === 'web') {
       const confirm = window.confirm(`¿Eliminar "${exercises[index].name || 'ejercicio'}"?`);
       if (confirm) {
@@ -117,7 +134,6 @@ export default function EditWorkoutScreen() {
     setError('');
     if (!title.trim()) { setError('El titulo es obligatorio'); return; }
     
-    // Limpiamos la etiqueta _key antes de enviar al backend
     const cleanExercises = exercises
       .filter(e => e.name.trim())
       .map(ex => ({
@@ -134,7 +150,12 @@ export default function EditWorkoutScreen() {
     if (cleanExercises.length === 0) { setError('Agrega al menos un ejercicio'); return; }
     setSaving(true);
     try {
-      await api.updateWorkout(workoutId!, { title: title.trim(), notes: notes.trim(), exercises: cleanExercises });
+      await api.updateWorkout(workoutId!, { 
+        title: title.trim(), 
+        notes: notes.trim(), 
+        exercises: cleanExercises,
+        microciclo_id: selectedMicroId // <-- AQUÍ GUARDAMOS EL CAMBIO DE SEMANA
+      });
       router.back();
     } catch (e: any) {
       setError(e.message || 'Error al guardar');
@@ -168,15 +189,18 @@ export default function EditWorkoutScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-          {/* Date badge */}
-          <View style={[styles.dateBadge, { backgroundColor: colors.surfaceHighlight }]}>
-            <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
-            <Text style={[styles.dateText, { color: colors.textSecondary }]}>{date}</Text>
+          
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            {/* Date badge */}
+            <View style={[styles.dateBadge, { backgroundColor: colors.surfaceHighlight }]}>
+              <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+              <Text style={[styles.dateText, { color: colors.textSecondary }]}>{date}</Text>
+            </View>
           </View>
 
           {/* Title */}
           <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>TITULO</Text>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>TÍTULO</Text>
             <TextInput
               testID="edit-workout-title"
               style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
@@ -184,6 +208,51 @@ export default function EditWorkoutScreen() {
               placeholderTextColor={colors.textSecondary}
             />
           </View>
+
+          {/* --- SELECTOR DE MICROCICLO --- */}
+          <View style={[styles.section, { marginTop: 8, marginBottom: 8 }]}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>PERTENECE AL MICROCICLO:</Text>
+            
+            {microciclosDisponibles.length === 0 ? (
+              <Text style={{ fontSize: 13, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 }}>
+                No hay microciclos disponibles.
+              </Text>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                <TouchableOpacity
+                  style={[
+                    styles.microChip,
+                    selectedMicroId === null 
+                      ? { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }
+                      : { backgroundColor: 'transparent', borderColor: colors.border }
+                  ]}
+                  onPress={() => setSelectedMicroId(null)}
+                >
+                  <Text style={{ color: colors.textPrimary, fontWeight: selectedMicroId === null ? '700' : '400' }}>
+                    Sin asignar
+                  </Text>
+                </TouchableOpacity>
+
+                {microciclosDisponibles.map((micro) => (
+                  <TouchableOpacity
+                    key={micro.id}
+                    style={[
+                      styles.microChip,
+                      selectedMicroId === micro.id 
+                        ? { backgroundColor: micro.color + '20', borderColor: micro.color, borderWidth: 2 }
+                        : { backgroundColor: 'transparent', borderColor: colors.border }
+                    ]}
+                    onPress={() => setSelectedMicroId(micro.id)}
+                  >
+                    <Text style={{ color: selectedMicroId === micro.id ? micro.color : colors.textPrimary, fontWeight: selectedMicroId === micro.id ? '800' : '500' }}>
+                      {micro.nombre}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            )}
+          </View>
+          {/* --- FIN SELECTOR --- */}
 
           {/* Exercises */}
           <View style={styles.section}>
@@ -285,7 +354,7 @@ export default function EditWorkoutScreen() {
                 <View style={[styles.videoUrlRow, { borderTopColor: colors.border }]}>
                   {imagePreviews[i] || (ex as any).image_path ? (
                     <View style={styles.imagePreviewRow}>
-                      <Image source={{ uri: imagePreviews[i] || '' }} style={styles.imageThumb} />
+                      <Image source={{ uri: imagePreviews[i] || (ex as any).image_path }} style={styles.imageThumb} />
                       <Text style={[styles.imageFileName, { color: colors.textSecondary }]} numberOfLines={1}>Imagen adjunta</Text>
                       <TouchableOpacity onPress={() => {
                         updateExercise(i, 'image_path', '');
@@ -316,8 +385,9 @@ export default function EditWorkoutScreen() {
               </View>
             ))}
           </View>
-<View style={styles.section}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS</Text>
+
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS GENERALES</Text>
             <TextInput
               testID="edit-workout-notes"
               style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
@@ -365,14 +435,15 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   input: { borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1 },
   textArea: { minHeight: 72, textAlignVertical: 'top' },
+  
+  microChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, marginRight: 8, borderWidth: 1 },
+
   addExBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   addExText: { fontSize: 13, fontWeight: '600' },
   exerciseCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
   exerciseHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
   reorderBtns: { gap: 2 },
   reorderBtn: { padding: 2 },
-  exNumBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  exNum: { fontSize: 13, fontWeight: '700' },
   exNameInput: { flex: 1, fontSize: 16, fontWeight: '500' },
   removeExBtn: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5 },
