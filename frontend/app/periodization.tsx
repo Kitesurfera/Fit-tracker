@@ -217,49 +217,83 @@ export default function PeriodizationScreen() {
                 {macro.microciclos?.length === 0 && (
                   <Text style={[styles.emptyText, { fontSize: 12, marginTop: 0 }]}>No hay semanas planificadas en este bloque.</Text>
                 )}
-                {macro.microciclos?.map((micro: any, j: number) => (
-                  <View key={j} style={[styles.microCard, { borderLeftColor: micro.color }]}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.microTitle}>{micro.nombre}</Text>
-                        <Text style={styles.dateText}>{micro.fecha_inicio} al {micro.fecha_fin}</Text>
-                      </View>
-                      
-                      {/* BOTONES ACCIÓN MICRO */}
-                      <View style={{ alignItems: 'flex-end' }}>
-                        <View style={[styles.typeBadge, { backgroundColor: micro.color + '20', marginBottom: 6 }]}>
-                          <Text style={[styles.typeBadgeText, { color: micro.color }]}>{micro.tipo}</Text>
+                {macro.microciclos?.map((micro: any, j: number) => {
+                  
+                  // --- MOTOR DE ESTADÍSTICAS DEL MICROCICLO ---
+                  const totalWorkouts = micro.workouts?.length || 0;
+                  const completedWorkouts = micro.workouts?.filter((w: any) => w.completed).length || 0;
+                  const totalExercises = micro.workouts?.reduce((acc: number, w: any) => acc + (w.exercises?.length || 0), 0) || 0;
+                  const progressPct = totalWorkouts > 0 ? (completedWorkouts / totalWorkouts) * 100 : 0;
+                  // ---------------------------------------------
+
+                  return (
+                    <View key={j} style={[styles.microCard, { borderLeftColor: micro.color }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.microTitle}>{micro.nombre}</Text>
+                          <Text style={styles.dateText}>{micro.fecha_inicio} al {micro.fecha_fin}</Text>
                         </View>
-                        <View style={styles.actionsRow}>
-                          <TouchableOpacity onPress={() => openEditMicro(micro)} style={{ padding: 4 }}>
-                            <Ionicons name="pencil" size={16} color={colors.textSecondary} />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => handleDeleteMicro(micro.id, micro.nombre)} style={{ padding: 4 }}>
-                            <Ionicons name="trash" size={16} color={colors.error} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    </View>
-                    
-                    {/* LISTA DE ENTRENAMIENTOS (AHORA CLICABLES) */}
-                    <View style={styles.workoutList}>
-                      {micro.workouts?.map((wk: any, k: number) => (
-                        <TouchableOpacity 
-                          key={k} 
-                          style={[styles.workoutItem, { backgroundColor: colors.surfaceHighlight }]}
-                          onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}
-                        >
-                          <Ionicons name={wk.completed ? "checkmark-circle" : "barbell"} size={16} color={wk.completed ? colors.success : colors.textSecondary} />
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.workoutTitle, { color: colors.textPrimary }]} numberOfLines={1}>{wk.title}</Text>
-                            <Text style={{ fontSize: 10, color: colors.textSecondary }}>{wk.date}</Text>
+                        
+                        {/* BOTONES ACCIÓN MICRO */}
+                        <View style={{ alignItems: 'flex-end' }}>
+                          <View style={[styles.typeBadge, { backgroundColor: micro.color + '20', marginBottom: 6 }]}>
+                            <Text style={[styles.typeBadgeText, { color: micro.color }]}>{micro.tipo}</Text>
                           </View>
-                          <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
-                        </TouchableOpacity>
-                      ))}
+                          <View style={styles.actionsRow}>
+                            <TouchableOpacity onPress={() => openEditMicro(micro)} style={{ padding: 4 }}>
+                              <Ionicons name="pencil" size={16} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDeleteMicro(micro.id, micro.nombre)} style={{ padding: 4 }}>
+                              <Ionicons name="trash" size={16} color={colors.error} />
+                            </TouchableOpacity>
+                          </View>
+                        </View>
+                      </View>
+
+                      {/* --- NUEVA BARRA DE ESTADÍSTICAS --- */}
+                      <View style={[styles.statsContainer, { backgroundColor: colors.surfaceHighlight }]}>
+                        <View style={styles.statsRow}>
+                          <View style={styles.statItem}>
+                            <Ionicons name="calendar-outline" size={12} color={colors.textSecondary} />
+                            <Text style={[styles.statText, { color: colors.textSecondary }]}>{totalWorkouts} sesiones</Text>
+                          </View>
+                          <View style={styles.statItem}>
+                            <Ionicons name="barbell-outline" size={12} color={colors.textSecondary} />
+                            <Text style={[styles.statText, { color: colors.textSecondary }]}>{totalExercises} ejercicios</Text>
+                          </View>
+                        </View>
+                        
+                        {totalWorkouts > 0 && (
+                          <View style={styles.progressWrapper}>
+                            <View style={[styles.progressBarBg, { backgroundColor: colors.border }]}>
+                              <View style={[styles.progressBarFill, { backgroundColor: micro.color, width: `${progressPct}%` }]} />
+                            </View>
+                            <Text style={[styles.progressText, { color: colors.textSecondary }]}>{Math.round(progressPct)}% completado</Text>
+                          </View>
+                        )}
+                      </View>
+                      {/* ----------------------------------- */}
+                      
+                      {/* LISTA DE ENTRENAMIENTOS CLICABLES */}
+                      <View style={styles.workoutList}>
+                        {micro.workouts?.map((wk: any, k: number) => (
+                          <TouchableOpacity 
+                            key={k} 
+                            style={[styles.workoutItem, { backgroundColor: colors.surfaceHighlight }]}
+                            onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}
+                          >
+                            <Ionicons name={wk.completed ? "checkmark-circle" : "ellipse-outline"} size={16} color={wk.completed ? colors.success : colors.textSecondary} />
+                            <View style={{ flex: 1 }}>
+                              <Text style={[styles.workoutTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]} numberOfLines={1}>{wk.title}</Text>
+                              <Text style={{ fontSize: 10, color: colors.textSecondary }}>{wk.date}</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={14} color={colors.textSecondary} />
+                          </TouchableOpacity>
+                        ))}
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             </View>
           ))
@@ -376,11 +410,21 @@ const styles = StyleSheet.create({
   addMicroBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8 },
   
   microContainer: { padding: 12, backgroundColor: '#FAFAFA' },
-  microCard: { backgroundColor: '#FFF', padding: 12, borderRadius: 8, borderLeftWidth: 6, marginBottom: 10, elevation: 1 },
+  microCard: { backgroundColor: '#FFF', padding: 12, borderRadius: 8, borderLeftWidth: 6, marginBottom: 12, elevation: 1 },
   microTitle: { fontSize: 15, fontWeight: '700' },
   
   typeBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start' },
   typeBadgeText: { fontSize: 10, fontWeight: '800' },
+
+  // Nuevos estilos para estadísticas
+  statsContainer: { marginTop: 12, padding: 8, borderRadius: 8 },
+  statsRow: { flexDirection: 'row', gap: 16, marginBottom: 8 },
+  statItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  statText: { fontSize: 11, fontWeight: '600' },
+  progressWrapper: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  progressBarBg: { flex: 1, height: 6, borderRadius: 3, overflow: 'hidden' },
+  progressBarFill: { height: '100%', borderRadius: 3 },
+  progressText: { fontSize: 10, fontWeight: '700', width: 85, textAlign: 'right' },
 
   workoutList: { marginTop: 12, gap: 6 },
   workoutItem: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 8 },
