@@ -59,12 +59,12 @@ class WorkoutCreate(BaseModel):
     title: str
     exercises: List[dict]
     notes: Optional[str] = ""
-    microciclo_id: Optional[str] = None  # NUEVO CAMPO: Para enlazar al calendario
+    microciclo_id: Optional[str] = None
 
 class TestCreate(BaseModel):
     athlete_id: str
-    test_type: str  # strength, plyometrics, or max_force
-    test_name: str  # e.g. squat_rm, cmj, sj, dj, bench_rm, deadlift_rm, hamstring, calf, quadriceps, tibialis, custom
+    test_type: str
+    test_name: str
     value: float
     unit: str
     date: str
@@ -86,9 +86,9 @@ class SettingsUpdate(BaseModel):
     notifications_enabled: Optional[bool] = None
     notifications_workouts: Optional[bool] = None
     notifications_tests: Optional[bool] = None
-    weight_unit: Optional[str] = None  # kg or lb
-    height_unit: Optional[str] = None  # cm or ft
-    language: Optional[str] = None  # es or en
+    weight_unit: Optional[str] = None
+    height_unit: Optional[str] = None
+    language: Optional[str] = None
 
 class TestUpdate(BaseModel):
     value: Optional[float] = None
@@ -104,7 +104,7 @@ class WorkoutUpdate(BaseModel):
     completed: Optional[bool] = None
     completion_data: Optional[dict] = None
     observations: Optional[str] = None
-    microciclo_id: Optional[str] = None  # NUEVO CAMPO
+    microciclo_id: Optional[str] = None
 
 # NUEVOS MODELOS DE PERIODIZACIÓN
 class MacrocicloCreate(BaseModel):
@@ -118,11 +118,26 @@ class MacrocicloCreate(BaseModel):
 class MicrocicloCreate(BaseModel):
     macrociclo_id: str
     nombre: str
-    tipo: str = "CARGA"  # CARGA, RECUPERACION, TEST, COMPETICION
+    tipo: str = "CARGA"
     fecha_inicio: str
     fecha_fin: str
     color: Optional[str] = "#34C759"
     notas: Optional[str] = ""
+
+class MacrocicloUpdate(BaseModel):
+    nombre: Optional[str] = None
+    fecha_inicio: Optional[str] = None
+    fecha_fin: Optional[str] = None
+    color: Optional[str] = None
+    objetivo: Optional[str] = None
+
+class MicrocicloUpdate(BaseModel):
+    nombre: Optional[str] = None
+    tipo: Optional[str] = None
+    fecha_inicio: Optional[str] = None
+    fecha_fin: Optional[str] = None
+    color: Optional[str] = None
+    notas: Optional[str] = None
 
 
 # --- Auth Helpers ---
@@ -223,7 +238,6 @@ async def login(data: UserLogin):
 
 @api_router.get("/auth/me")
 async def get_me(user=Depends(get_current_user)):
-    # Also load settings
     settings = await db.settings.find_one({"user_id": user['id']}, {"_id": 0})
     user_data = {k: v for k, v in user.items() if k != 'password'}
     user_data['settings'] = settings or {
@@ -367,9 +381,39 @@ async def create_macrociclo(data: MacrocicloCreate, trainer=Depends(require_trai
     await db.macrociclos.insert_one(macro)
     return {k: v for k, v in macro.items() if k != '_id'}
 
+@api_router.put("/macrociclos/{macro_id}")
+async def update_macrociclo(macro_id: str, data: MacrocicloUpdate, trainer=Depends(require_trainer)):
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No hay datos para actualizar")
+    
+    result = await db.macrociclos.update_one({"id": macro_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Macrociclo no encontrado")
+        
+    updated = await db.macrociclos.find_one({"id": macro_id}, {"_id": 0})
+    return updated
+
+@api_router.delete("/macrociclos/{macro_id}")
+async def delete_macrociclo(macro_id: str, trainer=Depends(require_trainer)):
+    result = await db.macrociclos.delete_one({"id": macro_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Macrociclo no encontrado")
+        
+    micros = await db.microciclos.find({"macrociclo_id": macro_id}).to_list(1000)
+    micro_ids = [m['id'] for m in micros]
+    
+    if micro_ids:
+        await db.workouts.update_many(
+            {"microciclo_id": {"$in": micro_ids}}, 
+            {"$set": {"microciclo_id": None}}
+        )
+        
+    await db.microciclos.delete_many({"macrociclo_id": macro_id})
+    return {"message": "Macrociclo y microciclos eliminados. Entrenamientos protegidos."}
+
 @api_router.post("/microciclos")
 async def create_microciclo(data: MicrocicloCreate, trainer=Depends(require_trainer)):
-    # Verificamos que el macrociclo exista
     macro = await db.macrociclos.find_one({"id": data.macrociclo_id})
     if not macro:
         raise HTTPException(status_code=404, detail="Macrociclo no encontrado")
@@ -389,20 +433,41 @@ async def create_microciclo(data: MicrocicloCreate, trainer=Depends(require_trai
     await db.microciclos.insert_one(micro)
     return {k: v for k, v in micro.items() if k != '_id'}
 
+@api_router.put("/microciclos/{micro_id}")
+async def update_microciclo(micro_id: str, data: MicrocicloUpdate, trainer=Depends(require_trainer)):
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    if not update_data:
+        raise HTTPException(status_code=400, detail="No hay datos para actualizar")
+        
+    result = await db.microciclos.update_one({"id": micro_id}, {"$set": update_data})
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Microciclo no encontrado")
+        
+    updated = await db.microciclos.find_one({"id": micro_id}, {"_id": 0})
+    return updated
+
+@api_router.delete("/microciclos/{micro_id}")
+async def delete_microciclo(micro_id: str, trainer=Depends(require_trainer)):
+    result = await db.microciclos.delete_one({"id": micro_id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Microciclo no encontrado")
+        
+    await db.workouts.update_many(
+        {"microciclo_id": micro_id}, 
+        {"$set": {"microciclo_id": None}}
+    )
+    return {"message": "Microciclo eliminado. Entrenamientos protegidos."}
+
 @api_router.get("/periodization/tree/{athlete_id}")
 async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
-    # 1. Obtener todos los macrociclos del deportista
-    macrociclos = await db.macrociclos.find({"athlete_id": athlete_id}, {"_id": 0}).to_list(100)
+    macrociclos = await db.macrociclos.find({"athlete_id": athlete_id}, {"_id": 0}).sort("fecha_inicio", 1).to_list(100)
     macro_ids = [m['id'] for m in macrociclos]
 
-    # 2. Obtener los microciclos que pertenecen a esos macrociclos
-    microciclos = await db.microciclos.find({"macrociclo_id": {"$in": macro_ids}}, {"_id": 0}).to_list(500)
+    microciclos = await db.microciclos.find({"macrociclo_id": {"$in": macro_ids}}, {"_id": 0}).sort("fecha_inicio", 1).to_list(500)
     micro_ids = [m['id'] for m in microciclos]
 
-    # 3. Obtener los entrenamientos asignados a esos microciclos
     workouts = await db.workouts.find({"microciclo_id": {"$in": micro_ids}}, {"_id": 0}).sort("date", 1).to_list(1000)
 
-    # 4. Construir el árbol de datos anidado
     tree = []
     for macro in macrociclos:
         micros_in_macro = [m for m in microciclos if m['macrociclo_id'] == macro['id']]
@@ -422,7 +487,7 @@ async def create_workout(data: WorkoutCreate, trainer=Depends(require_trainer)):
         "id": workout_id,
         "trainer_id": trainer['id'],
         "athlete_id": data.athlete_id,
-        "microciclo_id": data.microciclo_id,  # Lazo al calendario
+        "microciclo_id": data.microciclo_id,
         "date": data.date,
         "title": data.title,
         "exercises": data.exercises,
@@ -439,10 +504,8 @@ async def upload_csv_workouts(athlete_id: str, file: UploadFile = File(...), tra
     text = content.decode('utf-8')
     reader = csv.DictReader(io.StringIO(text))
     
-    # Expected columns: dia, ejercicio, repeticiones, series
     workouts_by_date: dict = {}
     for row in reader:
-        # Normalize column names (strip whitespace, lowercase)
         row = {k.strip().lower(): v.strip() for k, v in row.items()}
         date = row.get('dia', row.get('date', datetime.now(timezone.utc).strftime('%Y-%m-%d')))
         exercise_name = row.get('ejercicio', row.get('exercise', ''))
@@ -623,7 +686,6 @@ async def analytics_summary(
     completed_workouts = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
     total_tests = await db.physical_tests.count_documents({"athlete_id": target_id})
     
-    # Get latest test for each test_name
     latest_tests = {}
     test_names = await db.physical_tests.distinct("test_name", {"athlete_id": target_id})
     for tn in test_names:
@@ -635,7 +697,6 @@ async def analytics_summary(
         if latest:
             latest_tests[tn] = latest
 
-    # Week workouts
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime('%Y-%m-%d')
     week_workouts = await db.workouts.count_documents({"athlete_id": target_id, "date": {"$gte": week_ago}})
 
@@ -653,7 +714,6 @@ async def analytics_progress(
     athlete_id: str,
     user=Depends(get_current_user)
 ):
-    # Get all tests grouped by test_name with their history
     test_names = await db.physical_tests.distinct("test_name", {"athlete_id": athlete_id})
     progress = {}
     for tn in test_names:
