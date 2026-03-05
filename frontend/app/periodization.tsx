@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
+
+const MACRO_COLORS = ['#4A90E2', '#FF3B30', '#34C759', '#FF9500', '#AF52DE'];
 
 export default function PeriodizationScreen() {
   const { colors } = useTheme();
@@ -13,6 +15,17 @@ export default function PeriodizationScreen() {
   
   const [tree, setTree] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Estados para el Modal del Macrociclo
+  const [macroModalVisible, setMacroModalVisible] = useState(false);
+  const [savingMacro, setSavingMacro] = useState(false);
+  const [macroForm, setMacroForm] = useState({
+    nombre: '',
+    fecha_inicio: '',
+    fecha_fin: '',
+    objetivo: '',
+    color: MACRO_COLORS[0]
+  });
 
   const loadTree = async () => {
     try {
@@ -26,6 +39,27 @@ export default function PeriodizationScreen() {
   };
 
   useEffect(() => { loadTree(); }, []);
+
+  const handleCreateMacro = async () => {
+    if (!macroForm.nombre || !macroForm.fecha_inicio || !macroForm.fecha_fin) {
+      alert('Por favor, completa el nombre y las fechas.');
+      return;
+    }
+    setSavingMacro(true);
+    try {
+      await api.createMacrociclo({
+        ...macroForm,
+        athlete_id: params.athlete_id
+      });
+      setMacroModalVisible(false);
+      setMacroForm({ nombre: '', fecha_inicio: '', fecha_fin: '', objetivo: '', color: MACRO_COLORS[0] });
+      loadTree(); // Recargamos el calendario para ver el nuevo bloque
+    } catch (e) {
+      alert('Error al guardar el macrociclo');
+    } finally {
+      setSavingMacro(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -42,7 +76,7 @@ export default function PeriodizationScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Calendario - {params.name}</Text>
-        <TouchableOpacity onPress={() => {/* Abrir modal nuevo macrociclo */}}>
+        <TouchableOpacity onPress={() => setMacroModalVisible(true)}>
           <Ionicons name="add-circle" size={28} color={colors.primary} />
         </TouchableOpacity>
       </View>
@@ -55,7 +89,6 @@ export default function PeriodizationScreen() {
         ) : (
           tree.map((macro, i) => (
             <View key={i} style={[styles.macroCard, { borderColor: macro.color || colors.border }]}>
-              {/* CABECERA MACROCICLO */}
               <View style={[styles.macroHeader, { backgroundColor: macro.color + '20' }]}>
                 <View>
                   <Text style={[styles.macroTitle, { color: macro.color }]}>{macro.nombre}</Text>
@@ -67,14 +100,11 @@ export default function PeriodizationScreen() {
                 </TouchableOpacity>
               </View>
 
-              {/* LISTA DE MICROCICLOS */}
               <View style={styles.microContainer}>
                 {macro.microciclos?.map((micro: any, j: number) => (
                   <View key={j} style={[styles.microCard, { borderLeftColor: micro.color }]}>
                     <Text style={styles.microTitle}>{micro.nombre} ({micro.tipo})</Text>
                     <Text style={styles.dateText}>{micro.fecha_inicio} al {micro.fecha_fin}</Text>
-                    
-                    {/* ENTRENAMIENTOS DEL MICROCICLO */}
                     <View style={styles.workoutList}>
                       {micro.workouts?.map((wk: any, k: number) => (
                         <View key={k} style={styles.workoutItem}>
@@ -90,6 +120,83 @@ export default function PeriodizationScreen() {
           ))
         )}
       </ScrollView>
+
+      {/* MODAL CREAR MACROCICLO */}
+      <Modal visible={macroModalVisible} animationType="slide" transparent>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nuevo Macrociclo</Text>
+              <TouchableOpacity onPress={() => setMacroModalVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE DEL BLOQUE</Text>
+              <TextInput
+                style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                placeholder="Ej: Temporada 2026, Pretemporada..."
+                placeholderTextColor={colors.textSecondary}
+                value={macroForm.nombre}
+                onChangeText={(t) => setMacroForm({ ...macroForm, nombre: t })}
+              />
+
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA INICIO</Text>
+                  <TextInput
+                    style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.textSecondary}
+                    value={macroForm.fecha_inicio}
+                    onChangeText={(t) => setMacroForm({ ...macroForm, fecha_inicio: t })}
+                  />
+                </View>
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA FIN</Text>
+                  <TextInput
+                    style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+                    placeholder="YYYY-MM-DD"
+                    placeholderTextColor={colors.textSecondary}
+                    value={macroForm.fecha_fin}
+                    onChangeText={(t) => setMacroForm({ ...macroForm, fecha_fin: t })}
+                  />
+                </View>
+              </View>
+
+              <Text style={[styles.label, { color: colors.textSecondary }]}>OBJETIVO PRINCIPAL (Opcional)</Text>
+              <TextInput
+                style={[styles.input, styles.textArea, { color: colors.textPrimary, borderColor: colors.border }]}
+                placeholder="Ej: Pico de forma para Mundial..."
+                placeholderTextColor={colors.textSecondary}
+                multiline
+                value={macroForm.objetivo}
+                onChangeText={(t) => setMacroForm({ ...macroForm, objetivo: t })}
+              />
+
+              <Text style={[styles.label, { color: colors.textSecondary }]}>COLOR IDENTIFICATIVO</Text>
+              <View style={styles.colorRow}>
+                {MACRO_COLORS.map(c => (
+                  <TouchableOpacity
+                    key={c}
+                    style={[styles.colorCircle, { backgroundColor: c, borderWidth: macroForm.color === c ? 3 : 0, borderColor: colors.textPrimary }]}
+                    onPress={() => setMacroForm({ ...macroForm, color: c })}
+                  />
+                ))}
+              </View>
+
+              <TouchableOpacity 
+                style={[styles.submitBtn, { backgroundColor: colors.primary }]}
+                onPress={handleCreateMacro}
+                disabled={savingMacro}
+              >
+                {savingMacro ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>GUARDAR MACROCICLO</Text>}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -113,5 +220,21 @@ const styles = StyleSheet.create({
   
   workoutList: { marginTop: 10, gap: 6 },
   workoutItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  workoutTitle: { fontSize: 13, fontWeight: '500' }
+  workoutTitle: { fontSize: 13, fontWeight: '500' },
+
+  // Estilos del Modal
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, maxHeight: '85%' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 20, fontWeight: '800' },
+  label: { fontSize: 12, fontWeight: '700', marginBottom: 6, marginTop: 12, letterSpacing: 0.5 },
+  input: { borderWidth: 1, borderRadius: 8, padding: 14, fontSize: 16 },
+  textArea: { height: 80, textAlignVertical: 'top' },
+  row: { flexDirection: 'row', justifyContent: 'space-between' },
+  
+  colorRow: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 24 },
+  colorCircle: { width: 40, height: 40, borderRadius: 20 },
+  
+  submitBtn: { padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 10, marginBottom: 20 },
+  submitBtnText: { color: '#FFF', fontWeight: '800', fontSize: 16, letterSpacing: 1 }
 });
