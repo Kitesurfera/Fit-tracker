@@ -18,16 +18,16 @@ export default function TutorialOverlay({ role, isVisible, onClose }: { role: st
   const [currentStep, setCurrentStep] = useState(0);
 
   const trainerSteps: Step[] = [
-    { title: "¡Hola Andre!", description: "Aquí verás el listado de tus deportistas y su actividad de hoy de un vistazo.", icon: "people" },
+    { title: "¡Hola!", description: "Aquí verás el listado de tus deportistas y su actividad de hoy de un vistazo.", icon: "people" },
     { title: "Planificación Pro", description: "Usa el botón '+' para añadir entrenos o el de 'copia' para duplicar rutinas rápidamente.", icon: "copy" },
-    { title: "Feedback en tiempo real", description: "En el Dashboard del deportista verás las notas y el RPE que Claudia te deje al terminar.", icon: "chatbubbles" },
+    { title: "Feedback en tiempo real", description: "En el Dashboard del deportista verás las notas y el RPE que tu cliente te deje al terminar.", icon: "chatbubbles" },
     { title: "Buscador de Progresión", description: "Filtra por nombre de ejercicio para ver cómo evolucionan las cargas sin perder tiempo.", icon: "search" },
   ];
 
   const athleteSteps: Step[] = [
-    { title: "¡A por todas, Claudia!", description: "Aquí tienes tus entrenos de hoy. Si te saltas uno, aparecerá como 'No realizado'.", icon: "barbell" },
+    { title: "¡A por todas!", description: "Aquí tienes tus entrenos de hoy. Si te saltas uno, aparecerá como 'No realizado'.", icon: "barbell" },
     { title: "Modo Entrenamiento", description: "Dale al 'Play' para empezar. Registra tus marcas reales y descansa con el cronómetro.", icon: "play-circle" },
-    { title: "Tu Bienestar", description: "Al acabar, dinos qué tal has dormido y el RPE (esfuerzo). ¡Andre lo verá al instante!", icon: "battery-charging" },
+    { title: "Tu Bienestar", description: "Al acabar, dinos qué tal has dormido y el RPE (esfuerzo). ¡Tu coach lo verá al instante!", icon: "battery-charging" },
     { title: "Récords Personales", description: "En la pestaña de Rendimiento verás tus PBs y gráficas de progreso sin duplicados.", icon: "trending-up" },
   ];
 
