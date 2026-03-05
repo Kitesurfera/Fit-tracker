@@ -121,6 +121,12 @@ export const api = {
 
   // --- PERIODIZACIÓN (MACRO/MICROCICLOS) ---
   createMacrociclo: (data: any) => request('/api/macrociclos', { method: 'POST', body: JSON.stringify(data) }),
+  updateMacrociclo: (id: string, data: any) => request(`/api/macrociclos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteMacrociclo: (id: string) => request(`/api/macrociclos/${id}`, { method: 'DELETE' }),
+  
   createMicrociclo: (data: any) => request('/api/microciclos', { method: 'POST', body: JSON.stringify(data) }),
+  updateMicrociclo: (id: string, data: any) => request(`/api/microciclos/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteMicrociclo: (id: string) => request(`/api/microciclos/${id}`, { method: 'DELETE' }),
+  
   getPeriodizationTree: (athleteId: string) => request(`/api/periodization/tree/${athleteId}`),
 };
