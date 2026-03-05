@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking
+  ActivityIndicator, Linking, Platform, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,6 +13,7 @@ import { api } from '../../src/api';
 const DAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+// Helpers de fechas
 function getMonthDays(year: number, month: number) {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
@@ -33,27 +34,32 @@ export default function CalendarScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
-  const today = new Date();
-  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-  const [currentYear, setCurrentYear] = useState(today.getFullYear());
-  const [selectedDate, setSelectedDate] = useState(formatDate(today.getFullYear(), today.getMonth(), today.getDate()));
+  
+  const todayObj = new Date();
+  const todayStr = formatDate(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate());
+  const todayYMD = todayStr; // Alias para lógica de comparación
+
+  const [currentMonth, setCurrentMonth] = useState(todayObj.getMonth());
+  const [currentYear, setCurrentYear] = useState(todayObj.getFullYear());
+  const [selectedDate, setSelectedDate] = useState(todayStr);
+  
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [tests, setTests] = useState<any[]>([]);
-  const [allWorkoutDates, setAllWorkoutDates] = useState<Set<string>>(new Set());
-  const [allTestDates, setAllTestDates] = useState<Set<string>>(new Set());
+  const [allWorkouts, setAllWorkouts] = useState<any[]>([]);
+  const [allTests, setAllTests] = useState<any[]>([]);
+  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
-  const [allWorkouts, setAllWorkouts] = useState<any[]>([]);
-  const [allTests, setAllTests] = useState<any[]>([]);
   const [athleteMap, setAthleteMap] = useState<Record<string, string>>({});
 
-  const tObj = new Date();
-  const todayYMD = `${tObj.getFullYear()}-${String(tObj.getMonth() + 1).padStart(2, '0')}-${String(tObj.getDate()).padStart(2, '0')}`;
+  useEffect(() => { loadAll(); }, []);
 
   const loadAll = async () => {
     try {
+      setLoading(true);
       const [wk, ts] = await Promise.all([api.getWorkouts(), api.getTests()]);
+      
       if (user?.role === 'trainer') {
         try {
           const athletes = await api.getAthletes();
@@ -62,10 +68,9 @@ export default function CalendarScreen() {
           setAthleteMap(map);
         } catch (e) { console.log(e); }
       }
+
       setAllWorkouts(wk);
       setAllTests(ts);
-      setAllWorkoutDates(new Set(wk.map((w: any) => w.date)));
-      setAllTestDates(new Set(ts.map((t: any) => t.date)));
       filterByDate(selectedDate, wk, ts);
     } catch (e) {
       console.log('Calendar load error:', e);
@@ -83,21 +88,10 @@ export default function CalendarScreen() {
     setExpandedWorkout(null);
   };
 
-  useEffect(() => { loadAll(); }, []);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadAll();
-  };
-
   const selectDate = (day: number) => {
     const date = formatDate(currentYear, currentMonth, day);
     setSelectedDate(date);
     filterByDate(date);
-  };
-
-  const toggleWorkout = (id: string) => {
-    setExpandedWorkout(expandedWorkout === id ? null : id);
   };
 
   const prevMonth = () => {
@@ -109,8 +103,24 @@ export default function CalendarScreen() {
     else setCurrentMonth(currentMonth + 1);
   };
 
+  // Lógica de color de puntos del calendario
+  const getDotColor = (dateStr: string) => {
+    const workoutsOnDate = allWorkouts.filter(w => w.date === dateStr);
+    if (workoutsOnDate.length === 0) return null;
+
+    // Si hay alguno pendiente y es pasado -> Rojo
+    const hasMissed = workoutsOnDate.some(w => !w.completed && w.date < todayYMD);
+    if (hasMissed) return colors.error;
+
+    // Si todos están completados -> Verde
+    const allDone = workoutsOnDate.every(w => w.completed);
+    if (allDone) return colors.success;
+
+    // Si hay pendientes para hoy o futuro -> Azul
+    return colors.primary;
+  };
+
   const days = getMonthDays(currentYear, currentMonth);
-  const todayStr = formatDate(today.getFullYear(), today.getMonth(), today.getDate());
   const selectedDayName = new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
   if (loading) {
@@ -123,49 +133,43 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* SCROLLVIEW LIMPIO, SIN REFRESHCONTROL */}
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
-        {/* CABECERA CON BOTÓN DE SINCRONIZACIÓN */}
+        {/* Cabecera dinámica */}
         <View style={styles.headerRow}>
-          <Text style={[styles.screenTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Calendario</Text>
-          <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
-            {refreshing ? (
-              <ActivityIndicator size="small" color={colors.primary} />
-            ) : (
-              <Ionicons name="sync-outline" size={24} color={colors.primary} />
-            )}
+          <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Calendario</Text>
+          <TouchableOpacity onPress={() => { setRefreshing(true); loadAll(); }} disabled={refreshing}>
+            {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={24} color={colors.primary} />}
           </TouchableOpacity>
         </View>
 
-        {/* Calendar grid */}
+        {/* Cuadrícula del Calendario */}
         <View style={[styles.calendarCard, { backgroundColor: colors.surface }]}>
           <View style={styles.monthNav}>
-            <TouchableOpacity onPress={prevMonth} testID="prev-month" activeOpacity={0.6} style={styles.navBtn}>
+            <TouchableOpacity onPress={prevMonth} style={styles.navBtn}>
               <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
             </TouchableOpacity>
             <Text style={[styles.monthTitle, { color: colors.textPrimary }]}>
               {MONTHS[currentMonth]} {currentYear}
             </Text>
-            <TouchableOpacity onPress={nextMonth} testID="next-month" activeOpacity={0.6} style={styles.navBtn}>
+            <TouchableOpacity onPress={nextMonth} style={styles.navBtn}>
               <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
 
           <View style={styles.weekRow}>
-            {DAYS.map(d => (
-              <Text key={d} style={[styles.weekDay, { color: colors.textSecondary }]}>{d}</Text>
-            ))}
+            {DAYS.map(d => <Text key={d} style={[styles.weekDay, { color: colors.textSecondary }]}>{d}</Text>)}
           </View>
 
           <View style={styles.daysGrid}>
             {days.map((day, i) => {
               if (!day) return <View key={`e-${i}`} style={styles.dayCell} />;
               const dateStr = formatDate(currentYear, currentMonth, day);
-              const isToday = dateStr === todayStr;
               const isSelected = dateStr === selectedDate;
-              const hasWorkout = allWorkoutDates.has(dateStr);
-              const hasTest = allTestDates.has(dateStr);
+              const isToday = dateStr === todayStr;
+              const dotColor = getDotColor(dateStr);
+              const hasTest = allTests.some(t => t.date === dateStr);
+
               return (
                 <TouchableOpacity
                   key={`d-${day}`}
@@ -175,142 +179,65 @@ export default function CalendarScreen() {
                     isToday && !isSelected && { borderWidth: 1.5, borderColor: colors.primary },
                   ]}
                   onPress={() => selectDate(day)}
-                  activeOpacity={0.6}
                 >
                   <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && { color: '#FFF', fontWeight: '700' }]}>
                     {day}
                   </Text>
-                  {(hasWorkout || hasTest) && (
-                    <View style={styles.dotRow}>
-                      {hasWorkout && <View style={[styles.dot, { backgroundColor: isSelected ? '#FFF' : colors.primary }]} />}
-                      {hasTest && <View style={[styles.dot, { backgroundColor: isSelected ? '#FFF' : colors.accent }]} />}
-                    </View>
-                  )}
+                  <View style={styles.dotRow}>
+                    {dotColor && <View style={[styles.dot, { backgroundColor: isSelected ? '#FFF' : dotColor }]} />}
+                    {hasTest && <View style={[styles.dot, { backgroundColor: isSelected ? '#FFF' : colors.accent }]} />}
+                  </View>
                 </TouchableOpacity>
               );
             })}
           </View>
         </View>
 
-        {/* Selected day header */}
         <Text style={[styles.dayLabel, { color: colors.textPrimary }]}>{selectedDayName}</Text>
 
-        {/* Workouts */}
-        {workouts.length > 0 && workouts.map((w) => {
+        {/* Lista de Entrenamientos con Lógica de Estado */}
+        {workouts.map((w) => {
           const isMissed = !w.completed && w.date < todayYMD;
+          const statusColor = w.completed ? colors.success : isMissed ? colors.error : colors.primary;
 
           return (
             <TouchableOpacity
               key={w.id}
-              testID={`cal-workout-${w.id}`}
               style={[styles.workoutCard, { backgroundColor: colors.surface }]}
-              onPress={() => toggleWorkout(w.id)}
-              activeOpacity={0.7}
+              onPress={() => setExpandedWorkout(expandedWorkout === w.id ? null : w.id)}
             >
               <View style={styles.workoutSummary}>
-                <View style={[styles.workoutDot, { backgroundColor: isMissed ? colors.error : colors.primary }]} />
+                <View style={[styles.workoutDot, { backgroundColor: statusColor }]} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
                   <Text style={[styles.workoutMeta, { color: colors.textSecondary }]}>
                     {user?.role === 'trainer' && athleteMap[w.athlete_id] ? `${athleteMap[w.athlete_id]} · ` : ''}
-                    {w.exercises?.length || 0} ejercicios{w.completed ? ' · Completado' : isMissed ? ' · No realizado' : ''}
+                    {w.exercises?.length || 0} ej. · {w.completed ? 'Completado' : isMissed ? 'No realizado' : 'Pendiente'}
                   </Text>
                 </View>
-                <View style={styles.expandRow}>
-                  {w.completed && <Ionicons name="checkmark-circle" size={18} color={colors.success} />}
-                  {isMissed && <Ionicons name="close-circle" size={18} color={colors.error} />}
-                  <Ionicons name={expandedWorkout === w.id ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
-                </View>
+                <Ionicons name={expandedWorkout === w.id ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
               </View>
 
               {expandedWorkout === w.id && (
                 <View style={[styles.expandedSection, { borderTopColor: colors.border }]}>
-                  {w.exercises?.map((ex: any, i: number) => {
-                    const exResult = w.completion_data?.exercise_results?.find((r: any) => r.exercise_index === i);
-                    return (
-                      <View key={i} style={[styles.exRow, i > 0 && { borderTopColor: colors.border, borderTopWidth: 0.5 }]}>
-                        <View style={[styles.exBadge, { backgroundColor: colors.primary + '12' }]}>
-                          <Text style={[styles.exBadgeText, { color: colors.primary }]}>{i + 1}</Text>
-                        </View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.exName, { color: colors.textPrimary }]}>{ex.name}</Text>
-                          <Text style={[styles.exDetails, { color: colors.textSecondary }]}>
-                            {[
-                              ex.sets && `${ex.sets} series`,
-                              ex.reps && `${ex.reps} reps`,
-                              ex.weight && `${ex.weight} kg`,
-                              ex.rest && `${ex.rest}s desc`,
-                            ].filter(Boolean).join(' · ') || 'Sin detalles'}
-                          </Text>
-                          {exResult && (
-                            <View style={styles.completionRow}>
-                              {exResult.set_details?.map((sd: any, si: number) => (
-                                <View key={si} style={[
-                                  styles.completionDot,
-                                  sd.status === 'completed' && { backgroundColor: colors.success },
-                                  sd.status === 'skipped' && { backgroundColor: colors.error },
-                                  sd.status === 'pending' && { backgroundColor: colors.border },
-                                ]} />
-                              ))}
-                              {exResult.skipped_sets > 0 && (
-                                <Text style={[styles.completionLabel, { color: colors.error }]}>
-                                  {exResult.skipped_sets} saltada{exResult.skipped_sets > 1 ? 's' : ''}
-                                </Text>
-                              )}
-                            </View>
-                          )}
-                          {ex.video_url ? (
-                            <TouchableOpacity
-                              style={styles.videoLink}
-                              onPress={() => Linking.openURL(ex.video_url)}
-                              activeOpacity={0.6}
-                            >
-                              <Ionicons name="play-circle-outline" size={16} color={colors.primary} />
-                              <Text style={[styles.videoLinkText, { color: colors.primary }]}>Ver video</Text>
-                            </TouchableOpacity>
-                          ) : null}
-                        </View>
-                      </View>
-                    );
-                  })}
-                  {w.notes ? (
-                    <View style={[styles.notesBox, { backgroundColor: colors.surfaceHighlight }]}>
-                      <Text style={[styles.notesText, { color: colors.textSecondary }]}>{w.notes}</Text>
+                  {w.exercises?.map((ex: any, i: number) => (
+                    <View key={i} style={[styles.exRow, i > 0 && { borderTopWidth: 0.5, borderTopColor: colors.border }]}>
+                      <Text style={[styles.exName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                      <Text style={[styles.exDetails, { color: colors.textSecondary }]}>
+                        {ex.sets}x{ex.reps} {ex.weight ? `· ${ex.weight}kg` : ''}
+                      </Text>
                     </View>
-                  ) : null}
-
-                  {user?.role === 'athlete' && !w.completed && !isMissed && (
+                  ))}
+                  
+                  {user?.role === 'athlete' && !w.completed && (
                     <TouchableOpacity
-                      testID={`start-training-${w.id}`}
-                      style={[styles.trainingBtn, { backgroundColor: colors.primary }]}
+                      style={[styles.trainingBtn, { backgroundColor: isMissed ? colors.error + '15' : colors.primary }]}
                       onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: w.id } })}
-                      activeOpacity={0.7}
                     >
-                      <Ionicons name="play" size={18} color="#FFF" />
-                      <Text style={styles.trainingBtnText}>Modo Entrenamiento</Text>
-                    </TouchableOpacity>
-                  )}
-                  {user?.role === 'athlete' && isMissed && (
-                    <TouchableOpacity
-                      testID={`start-training-late-${w.id}`}
-                      style={[styles.trainingBtn, { backgroundColor: colors.error + '15', borderWidth: 1, borderColor: colors.error }]}
-                      onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: w.id } })}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="play" size={18} color={colors.error} />
-                      <Text style={[styles.trainingBtnText, { color: colors.error }]}>Recuperar entrenamiento</Text>
-                    </TouchableOpacity>
-                  )}
-
-                  {user?.role === 'trainer' && (
-                    <TouchableOpacity
-                      testID={`edit-workout-cal-${w.id}`}
-                      style={[styles.editBtn, { borderColor: colors.primary }]}
-                      onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: w.id } })}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="create-outline" size={18} color={colors.primary} />
-                      <Text style={[styles.editBtnText, { color: colors.primary }]}>Editar entrenamiento</Text>
+                      <Ionicons name="play" size={16} color={isMissed ? colors.error : "#FFF"} />
+                      <Text style={[styles.trainingBtnText, { color: isMissed ? colors.error : "#FFF" }]}>
+                        {isMissed ? 'Recuperar Sesión' : 'Iniciar Entrenamiento'}
+                      </Text>
                     </TouchableOpacity>
                   )}
                 </View>
@@ -320,19 +247,12 @@ export default function CalendarScreen() {
         })}
 
         {/* Tests */}
-        {tests.length > 0 && tests.map((t) => (
+        {tests.map((t) => (
           <View key={t.id} style={[styles.testCard, { backgroundColor: colors.surface }]}>
             <View style={[styles.workoutDot, { backgroundColor: colors.accent }]} />
             <View style={{ flex: 1 }}>
-              <Text style={[styles.testName, { color: colors.textPrimary }]}>
-                {t.test_name === 'custom' ? t.custom_name : t.test_name}
-              </Text>
+              <Text style={[styles.testName, { color: colors.textPrimary }]}>{t.test_name === 'custom' ? t.custom_name : t.test_name}</Text>
               <Text style={[styles.testValue, { color: colors.accent }]}>{t.value} {t.unit}</Text>
-            </View>
-            <View style={[styles.testTypeBadge, { backgroundColor: t.test_type === 'strength' ? colors.primary + '12' : colors.accent + '12' }]}>
-              <Text style={[styles.testTypeText, { color: t.test_type === 'strength' ? colors.primary : colors.accent }]}>
-                {t.test_type === 'strength' ? 'Fuerza' : 'Plio'}
-              </Text>
             </View>
           </View>
         ))}
@@ -340,7 +260,7 @@ export default function CalendarScreen() {
         {workouts.length === 0 && tests.length === 0 && (
           <View style={styles.emptyState}>
             <Ionicons name="calendar-outline" size={40} color={colors.textSecondary} />
-            <Text style={[styles.emptyText, { color: colors.textSecondary }]}>Sin eventos este dia</Text>
+            <Text style={{ color: colors.textSecondary }}>No hay eventos programados</Text>
           </View>
         )}
       </ScrollView>
@@ -350,59 +270,34 @@ export default function CalendarScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 32 },
-  
-  // NUEVOS ESTILOS DE LA CABECERA
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  refreshBtn: { padding: 4 },
-  screenTitle: { fontSize: 24, fontWeight: '700' },
-  
-  calendarCard: { borderRadius: 14, padding: 16, marginBottom: 20 },
-  monthNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  navBtn: { padding: 6 },
-  monthTitle: { fontSize: 16, fontWeight: '600' },
-  weekRow: { flexDirection: 'row', marginBottom: 6 },
-  weekDay: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '600' },
+  scrollContent: { padding: 20, paddingBottom: 40 },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  screenTitle: { fontSize: 24, fontWeight: '800' },
+  calendarCard: { borderRadius: 20, padding: 16, marginBottom: 20, elevation: 2 },
+  monthNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
+  navBtn: { padding: 5 },
+  monthTitle: { fontSize: 17, fontWeight: '700' },
+  weekRow: { flexDirection: 'row', marginBottom: 10 },
+  weekDay: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', borderRadius: 10 },
-  dayText: { fontSize: 14, fontWeight: '500' },
-  dotRow: { flexDirection: 'row', gap: 3, position: 'absolute', bottom: 3 },
+  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
+  dayText: { fontSize: 14, fontWeight: '600' },
+  dotRow: { flexDirection: 'row', gap: 3, position: 'absolute', bottom: 5 },
   dot: { width: 4, height: 4, borderRadius: 2 },
-  dayLabel: { fontSize: 16, fontWeight: '600', textTransform: 'capitalize', marginBottom: 14 },
-  workoutCard: { borderRadius: 14, marginBottom: 10, overflow: 'hidden' },
-  workoutSummary: { flexDirection: 'row', alignItems: 'center', padding: 14, gap: 12 },
+  dayLabel: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', marginBottom: 15, letterSpacing: 1 },
+  workoutCard: { borderRadius: 16, marginBottom: 12, overflow: 'hidden' },
+  workoutSummary: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
   workoutDot: { width: 8, height: 8, borderRadius: 4 },
-  workoutTitle: { fontSize: 16, fontWeight: '600' },
-  workoutMeta: { fontSize: 13, marginTop: 2 },
-  expandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  expandedSection: { borderTopWidth: 0.5, paddingHorizontal: 14, paddingBottom: 14 },
-  exRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 12, gap: 10 },
-  exBadge: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginTop: 2 },
-  exBadgeText: { fontSize: 12, fontWeight: '700' },
-  exName: { fontSize: 15, fontWeight: '600' },
-  exDetails: { fontSize: 13, marginTop: 3 },
-  videoLink: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  videoLinkText: { fontSize: 13, fontWeight: '600' },
-  completionRow: { flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 6 },
-  completionDot: { width: 10, height: 10, borderRadius: 5 },
-  completionLabel: { fontSize: 11, fontWeight: '600', marginLeft: 4 },
-  notesBox: { borderRadius: 8, padding: 10, marginTop: 8 },
-  notesText: { fontSize: 13, fontStyle: 'italic' },
-  trainingBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    borderRadius: 10, paddingVertical: 14, marginTop: 12,
-  },
-  trainingBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
-  editBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    borderRadius: 10, paddingVertical: 12, marginTop: 10, borderWidth: 1.5,
-  },
-  editBtnText: { fontSize: 14, fontWeight: '600' },
-  testCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, padding: 14, marginBottom: 10, gap: 12 },
-  testName: { fontSize: 15, fontWeight: '600' },
-  testValue: { fontSize: 14, fontWeight: '700', marginTop: 2 },
-  testTypeBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
-  testTypeText: { fontSize: 11, fontWeight: '700' },
-  emptyState: { alignItems: 'center', paddingTop: 40, gap: 10 },
-  emptyText: { fontSize: 15 },
+  workoutTitle: { fontSize: 16, fontWeight: '700' },
+  workoutMeta: { fontSize: 12, marginTop: 2 },
+  expandedSection: { borderTopWidth: 0.5, padding: 16 },
+  exRow: { paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between' },
+  exName: { fontSize: 14, fontWeight: '600' },
+  exDetails: { fontSize: 13 },
+  trainingBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 12, marginTop: 15 },
+  trainingBtnText: { fontSize: 14, fontWeight: '700' },
+  testCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, padding: 16, marginBottom: 10, gap: 12 },
+  testName: { fontSize: 15, fontWeight: '700' },
+  testValue: { fontSize: 14, fontWeight: '800' },
+  emptyState: { alignItems: 'center', marginTop: 40, opacity: 0.5 },
 });
