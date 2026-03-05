@@ -7,6 +7,8 @@ import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
 const MACRO_COLORS = ['#4A90E2', '#FF3B30', '#34C759', '#FF9500', '#AF52DE'];
+const MICRO_COLORS = ['#34C759', '#5856D6', '#FF9500', '#FF2D55', '#32ADE6'];
+const MICRO_TIPOS = ['CARGA', 'RECUPERACION', 'TEST', 'COMPETICION'];
 
 export default function PeriodizationScreen() {
   const { colors } = useTheme();
@@ -16,16 +18,16 @@ export default function PeriodizationScreen() {
   const [tree, setTree] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Estados para el Modal del Macrociclo
+  // Estados Modal Macrociclo
   const [macroModalVisible, setMacroModalVisible] = useState(false);
   const [savingMacro, setSavingMacro] = useState(false);
-  const [macroForm, setMacroForm] = useState({
-    nombre: '',
-    fecha_inicio: '',
-    fecha_fin: '',
-    objetivo: '',
-    color: MACRO_COLORS[0]
-  });
+  const [macroForm, setMacroForm] = useState({ nombre: '', fecha_inicio: '', fecha_fin: '', objetivo: '', color: MACRO_COLORS[0] });
+
+  // Estados Modal Microciclo
+  const [microModalVisible, setMicroModalVisible] = useState(false);
+  const [savingMicro, setSavingMicro] = useState(false);
+  const [selectedMacroId, setSelectedMacroId] = useState('');
+  const [microForm, setMicroForm] = useState({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', notas: '', color: MICRO_COLORS[0] });
 
   const loadTree = async () => {
     try {
@@ -47,17 +49,32 @@ export default function PeriodizationScreen() {
     }
     setSavingMacro(true);
     try {
-      await api.createMacrociclo({
-        ...macroForm,
-        athlete_id: params.athlete_id
-      });
+      await api.createMacrociclo({ ...macroForm, athlete_id: params.athlete_id });
       setMacroModalVisible(false);
       setMacroForm({ nombre: '', fecha_inicio: '', fecha_fin: '', objetivo: '', color: MACRO_COLORS[0] });
-      loadTree(); // Recargamos el calendario para ver el nuevo bloque
+      loadTree();
     } catch (e) {
       alert('Error al guardar el macrociclo');
     } finally {
       setSavingMacro(false);
+    }
+  };
+
+  const handleCreateMicro = async () => {
+    if (!microForm.nombre || !microForm.fecha_inicio || !microForm.fecha_fin) {
+      alert('Por favor, completa el nombre y las fechas de la semana.');
+      return;
+    }
+    setSavingMicro(true);
+    try {
+      await api.createMicrociclo({ ...microForm, macrociclo_id: selectedMacroId });
+      setMicroModalVisible(false);
+      setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', notas: '', color: MICRO_COLORS[0] });
+      loadTree();
+    } catch (e) {
+      alert('Error al guardar el microciclo');
+    } finally {
+      setSavingMicro(false);
     }
   };
 
@@ -89,22 +106,39 @@ export default function PeriodizationScreen() {
         ) : (
           tree.map((macro, i) => (
             <View key={i} style={[styles.macroCard, { borderColor: macro.color || colors.border }]}>
+              {/* HEADER MACRO */}
               <View style={[styles.macroHeader, { backgroundColor: macro.color + '20' }]}>
                 <View>
                   <Text style={[styles.macroTitle, { color: macro.color }]}>{macro.nombre}</Text>
                   <Text style={styles.dateText}>{macro.fecha_inicio} al {macro.fecha_fin}</Text>
                 </View>
-                <TouchableOpacity style={styles.addMicroBtn} onPress={() => {/* Modal microciclo */}}>
+                <TouchableOpacity 
+                  style={styles.addMicroBtn} 
+                  onPress={() => {
+                    setSelectedMacroId(macro.id);
+                    setMicroModalVisible(true);
+                  }}
+                >
                   <Ionicons name="add" size={18} color={macro.color} />
                   <Text style={{ color: macro.color, fontSize: 12, fontWeight: '700' }}>Microciclo</Text>
                 </TouchableOpacity>
               </View>
 
+              {/* LISTA MICRO */}
               <View style={styles.microContainer}>
+                {macro.microciclos?.length === 0 && (
+                  <Text style={[styles.emptyText, { fontSize: 12, marginTop: 0 }]}>No hay semanas planificadas en este bloque.</Text>
+                )}
                 {macro.microciclos?.map((micro: any, j: number) => (
                   <View key={j} style={[styles.microCard, { borderLeftColor: micro.color }]}>
-                    <Text style={styles.microTitle}>{micro.nombre} ({micro.tipo})</Text>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={styles.microTitle}>{micro.nombre}</Text>
+                      <View style={[styles.typeBadge, { backgroundColor: micro.color + '20' }]}>
+                        <Text style={[styles.typeBadgeText, { color: micro.color }]}>{micro.tipo}</Text>
+                      </View>
+                    </View>
                     <Text style={styles.dateText}>{micro.fecha_inicio} al {micro.fecha_fin}</Text>
+                    
                     <View style={styles.workoutList}>
                       {micro.workouts?.map((wk: any, k: number) => (
                         <View key={k} style={styles.workoutItem}>
@@ -121,7 +155,7 @@ export default function PeriodizationScreen() {
         )}
       </ScrollView>
 
-      {/* MODAL CREAR MACROCICLO */}
+      {/* --- MODAL CREAR MACROCICLO --- */}
       <Modal visible={macroModalVisible} animationType="slide" transparent>
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -131,72 +165,86 @@ export default function PeriodizationScreen() {
                 <Ionicons name="close" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
-
             <ScrollView showsVerticalScrollIndicator={false}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE DEL BLOQUE</Text>
-              <TextInput
-                style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
-                placeholder="Ej: Temporada 2026, Pretemporada..."
-                placeholderTextColor={colors.textSecondary}
-                value={macroForm.nombre}
-                onChangeText={(t) => setMacroForm({ ...macroForm, nombre: t })}
-              />
-
+              <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: Pretemporada..." placeholderTextColor={colors.textSecondary} value={macroForm.nombre} onChangeText={(t) => setMacroForm({ ...macroForm, nombre: t })} />
               <View style={styles.row}>
                 <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA INICIO</Text>
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.textSecondary}
-                    value={macroForm.fecha_inicio}
-                    onChangeText={(t) => setMacroForm({ ...macroForm, fecha_inicio: t })}
-                  />
+                  <Text style={[styles.label, { color: colors.textSecondary }]}>INICIO</Text>
+                  <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={macroForm.fecha_inicio} onChangeText={(t) => setMacroForm({ ...macroForm, fecha_inicio: t })} />
                 </View>
                 <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA FIN</Text>
-                  <TextInput
-                    style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
-                    placeholder="YYYY-MM-DD"
-                    placeholderTextColor={colors.textSecondary}
-                    value={macroForm.fecha_fin}
-                    onChangeText={(t) => setMacroForm({ ...macroForm, fecha_fin: t })}
-                  />
+                  <Text style={[styles.label, { color: colors.textSecondary }]}>FIN</Text>
+                  <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={macroForm.fecha_fin} onChangeText={(t) => setMacroForm({ ...macroForm, fecha_fin: t })} />
                 </View>
               </View>
-
-              <Text style={[styles.label, { color: colors.textSecondary }]}>OBJETIVO PRINCIPAL (Opcional)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea, { color: colors.textPrimary, borderColor: colors.border }]}
-                placeholder="Ej: Pico de forma para Mundial..."
-                placeholderTextColor={colors.textSecondary}
-                multiline
-                value={macroForm.objetivo}
-                onChangeText={(t) => setMacroForm({ ...macroForm, objetivo: t })}
-              />
-
-              <Text style={[styles.label, { color: colors.textSecondary }]}>COLOR IDENTIFICATIVO</Text>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>COLOR</Text>
               <View style={styles.colorRow}>
                 {MACRO_COLORS.map(c => (
-                  <TouchableOpacity
-                    key={c}
-                    style={[styles.colorCircle, { backgroundColor: c, borderWidth: macroForm.color === c ? 3 : 0, borderColor: colors.textPrimary }]}
-                    onPress={() => setMacroForm({ ...macroForm, color: c })}
-                  />
+                  <TouchableOpacity key={c} style={[styles.colorCircle, { backgroundColor: c, borderWidth: macroForm.color === c ? 3 : 0, borderColor: colors.textPrimary }]} onPress={() => setMacroForm({ ...macroForm, color: c })} />
                 ))}
               </View>
-
-              <TouchableOpacity 
-                style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-                onPress={handleCreateMacro}
-                disabled={savingMacro}
-              >
-                {savingMacro ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>GUARDAR MACROCICLO</Text>}
+              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleCreateMacro} disabled={savingMacro}>
+                {savingMacro ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>GUARDAR</Text>}
               </TouchableOpacity>
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      {/* --- MODAL CREAR MICROCICLO --- */}
+      <Modal visible={microModalVisible} animationType="slide" transparent>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nueva Semana (Microciclo)</Text>
+              <TouchableOpacity onPress={() => setMicroModalVisible(false)}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE</Text>
+              <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: Semana 1 - Adaptación" placeholderTextColor={colors.textSecondary} value={microForm.nombre} onChangeText={(t) => setMicroForm({ ...microForm, nombre: t })} />
+              
+              <Text style={[styles.label, { color: colors.textSecondary }]}>TIPO DE CARGA</Text>
+              <View style={styles.chipsRow}>
+                {MICRO_TIPOS.map(tipo => (
+                  <TouchableOpacity 
+                    key={tipo} 
+                    style={[styles.chip, { backgroundColor: microForm.tipo === tipo ? colors.primary : colors.surfaceHighlight }]}
+                    onPress={() => setMicroForm({ ...microForm, tipo })}
+                  >
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: microForm.tipo === tipo ? '#FFF' : colors.textSecondary }}>{tipo}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <View style={styles.row}>
+                <View style={{ flex: 1, marginRight: 8 }}>
+                  <Text style={[styles.label, { color: colors.textSecondary }]}>INICIO</Text>
+                  <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={microForm.fecha_inicio} onChangeText={(t) => setMicroForm({ ...microForm, fecha_inicio: t })} />
+                </View>
+                <View style={{ flex: 1, marginLeft: 8 }}>
+                  <Text style={[styles.label, { color: colors.textSecondary }]}>FIN</Text>
+                  <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={microForm.fecha_fin} onChangeText={(t) => setMicroForm({ ...microForm, fecha_fin: t })} />
+                </View>
+              </View>
+              
+              <Text style={[styles.label, { color: colors.textSecondary }]}>COLOR</Text>
+              <View style={styles.colorRow}>
+                {MICRO_COLORS.map(c => (
+                  <TouchableOpacity key={c} style={[styles.colorCircle, { backgroundColor: c, borderWidth: microForm.color === c ? 3 : 0, borderColor: colors.textPrimary }]} onPress={() => setMicroForm({ ...microForm, color: c })} />
+                ))}
+              </View>
+
+              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleCreateMicro} disabled={savingMicro}>
+                {savingMicro ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>GUARDAR MICROCICLO</Text>}
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -206,7 +254,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#eee' },
   headerTitle: { fontSize: 18, fontWeight: '800' },
   content: { padding: 16 },
-  emptyText: { textAlign: 'center', marginTop: 40, fontSize: 15 },
+  emptyText: { textAlign: 'center', marginTop: 40, fontSize: 15, color: '#888' },
   
   macroCard: { borderWidth: 2, borderRadius: 12, marginBottom: 20, overflow: 'hidden' },
   macroHeader: { padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -218,20 +266,25 @@ const styles = StyleSheet.create({
   microCard: { backgroundColor: '#FFF', padding: 12, borderRadius: 8, borderLeftWidth: 6, marginBottom: 10, elevation: 1 },
   microTitle: { fontSize: 15, fontWeight: '700' },
   
+  typeBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  typeBadgeText: { fontSize: 10, fontWeight: '800' },
+
   workoutList: { marginTop: 10, gap: 6 },
   workoutItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   workoutTitle: { fontSize: 13, fontWeight: '500' },
 
-  // Estilos del Modal
+  // Estilos de los Modales
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, maxHeight: '85%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800' },
   label: { fontSize: 12, fontWeight: '700', marginBottom: 6, marginTop: 12, letterSpacing: 0.5 },
   input: { borderWidth: 1, borderRadius: 8, padding: 14, fontSize: 16 },
-  textArea: { height: 80, textAlignVertical: 'top' },
   row: { flexDirection: 'row', justifyContent: 'space-between' },
   
+  chipsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 },
+  chip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20 },
+
   colorRow: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 24 },
   colorCircle: { width: 40, height: 40, borderRadius: 20 },
   
