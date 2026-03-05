@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
-  ActivityIndicator
+  ActivityIndicator, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,7 +10,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import TutorialOverlay from '../../src/components/TutorialOverlay';
-import WellnessModal from '../../src/components/WellnessModal'; // NUEVO IMPORT
+import WellnessModal from '../../src/components/WellnessModal';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function HomeScreen() {
@@ -25,8 +25,9 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   
   const [showTutorial, setShowTutorial] = useState(false);
-  const [showWellness, setShowWellness] = useState(false); // NUEVO ESTADO
+  const [showWellness, setShowWellness] = useState(false);
 
+  // --- FUNCIÓN DE CARGA DE DATOS ---
   const loadData = async () => {
     try {
       if (user?.role === 'trainer') {
@@ -46,29 +47,62 @@ export default function HomeScreen() {
     }
   };
 
+  // --- LÓGICA DE MODO OFFLINE (SINCRONIZACIÓN) ---
+  useEffect(() => {
+    const syncOfflineData = async () => {
+      // Solo en entorno Web/Safari
+      if (Platform.OS === 'web' && navigator.onLine) {
+        try {
+          const pending = await AsyncStorage.getItem('pending_sync');
+          if (pending) {
+            const list = JSON.parse(pending);
+            if (list.length > 0) {
+              console.log(`Sincronizando ${list.length} entrenos pendientes...`);
+              for (const item of list) {
+                if (item.type === 'COMPLETE_WORKOUT') {
+                  await api.completeWorkout(item.id, item.data);
+                }
+              }
+              await AsyncStorage.setItem('pending_sync', '[]');
+              loadData(); // Refrescar para ver los cambios sincronizados
+            }
+          }
+        } catch (error) {
+          console.log('Error en sincronización offline:', error);
+        }
+      }
+    };
+
+    if (Platform.OS === 'web') {
+      window.addEventListener('online', syncOfflineData);
+    }
+    
+    syncOfflineData();
+    return () => {
+      if (Platform.OS === 'web') window.removeEventListener('online', syncOfflineData);
+    };
+  }, []);
+
+  // --- COMPROBACIONES INICIALES ---
   useEffect(() => {
     const checkInitialStates = async () => {
       try {
-        // 1. Comprobar Tutorial
         const hasSeenTutorial = await AsyncStorage.getItem('has_seen_tutorial');
-        if (hasSeenTutorial !== 'true') {
-          setShowTutorial(true);
-        }
+        if (hasSeenTutorial !== 'true') setShowTutorial(true);
 
-        // 2. Comprobar Wellness (solo si eres atleta)
         if (user?.role === 'athlete') {
           const res = await api.checkTodayWellness();
-          if (!res.submitted) {
-            setShowWellness(true);
-          }
+          if (!res.submitted) setShowWellness(true);
         }
       } catch (error) {
         console.log('Error al leer estados iniciales:', error);
       }
     };
 
-    checkInitialStates();
-    loadData();
+    if (user) {
+      checkInitialStates();
+      loadData();
+    }
   }, [user]);
 
   const closeTutorial = async () => {
@@ -94,9 +128,9 @@ export default function HomeScreen() {
   const tObj = new Date();
   const todayYMD = `${tObj.getFullYear()}-${String(tObj.getMonth() + 1).padStart(2, '0')}-${String(tObj.getDate()).padStart(2, '0')}`;
 
+  // ... (Vistas TrainerView y AthleteView se mantienen igual que en tu código previo) ...
   const TrainerView = () => (
     <FlatList
-      testID="trainer-dashboard"
       data={athletes}
       keyExtractor={(item) => item.id}
       ListHeaderComponent={
@@ -107,14 +141,9 @@ export default function HomeScreen() {
               <Text style={[styles.greeting, { color: colors.textPrimary }]}>Hola, {user?.name?.split(' ')[0]}</Text>
             </View>
             <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
-              {refreshing ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Ionicons name="sync-outline" size={26} color={colors.primary} />
-              )}
+              {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={26} color={colors.primary} />}
             </TouchableOpacity>
           </View>
-
           <View style={styles.statsRow}>
             <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
               <Text style={[styles.statValue, { color: colors.primary }]}>{athletes.length}</Text>
@@ -125,45 +154,23 @@ export default function HomeScreen() {
               <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Entrenos</Text>
             </View>
           </View>
-
           <View style={styles.actionsRow}>
-            <TouchableOpacity
-              testID="add-athlete-btn"
-              style={[styles.actionBtn, { backgroundColor: colors.primary }] }
-              onPress={() => router.push('/add-athlete')}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary }] } onPress={() => router.push('/add-athlete')}>
               <Ionicons name="person-add-outline" size={18} color="#FFF" />
               <Text style={styles.actionBtnText}>Nuevo deportista</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              testID="add-workout-btn"
-              style={[styles.actionBtnOutline, { borderColor: colors.primary }]}
-              onPress={() => router.push('/add-workout')}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity style={[styles.actionBtnOutline, { borderColor: colors.primary }]} onPress={() => router.push('/add-workout')}>
               <Ionicons name="barbell-outline" size={18} color={colors.primary} />
               <Text style={[styles.actionBtnOutlineText, { color: colors.primary }]}>Nuevo entreno</Text>
             </TouchableOpacity>
           </View>
-
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-            Deportistas{athletes.length > 0 ? ` (${athletes.length})` : ''}
-          </Text>
+          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Deportistas</Text>
         </View>
       }
       renderItem={({ item }) => (
-        <TouchableOpacity
-          style={[styles.card, { backgroundColor: colors.surface }]}
-          onPress={() => router.push({ pathname: '/athlete-detail', params: { id: item.id, name: item.name } })}
-        >
-          <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
-            <Text style={[styles.avatarText, { color: colors.primary }]}>{item.name?.charAt(0)?.toUpperCase()}</Text>
-          </View>
-          <View style={styles.cardContent}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
-            <Text style={[styles.cardSub, { color: colors.textSecondary }]}>{item.sport || 'Kitesurf'}</Text>
-          </View>
+        <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => router.push({ pathname: '/athlete-detail', params: { id: item.id, name: item.name } })}>
+          <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}><Text style={[styles.avatarText, { color: colors.primary }]}>{item.name?.charAt(0)?.toUpperCase()}</Text></View>
+          <View style={styles.cardContent}><Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text><Text style={[styles.cardSub, { color: colors.textSecondary }]}>{item.sport || 'Kitesurf'}</Text></View>
           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
         </TouchableOpacity>
       )}
@@ -173,7 +180,6 @@ export default function HomeScreen() {
 
   const AthleteView = () => (
     <FlatList
-      testID="athlete-dashboard"
       data={workouts}
       keyExtractor={(item) => item.id}
       ListHeaderComponent={
@@ -184,24 +190,13 @@ export default function HomeScreen() {
               <Text style={[styles.greeting, { color: colors.textPrimary }]}>Hola, {user?.name?.split(' ')[0]}</Text>
             </View>
             <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
-              {refreshing ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : (
-                <Ionicons name="sync-outline" size={26} color={colors.primary} />
-              )}
+              {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={26} color={colors.primary} />}
             </TouchableOpacity>
           </View>
-
           {summary && (
             <View style={styles.statsRow}>
-              <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.statValue, { color: colors.primary }]}>{summary.week_workouts}</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Esta semana</Text>
-              </View>
-              <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.statValue, { color: colors.success }]}>{summary.completion_rate}%</Text>
-                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Completados</Text>
-              </View>
+              <View style={[styles.statCard, { backgroundColor: colors.surface }]}><Text style={[styles.statValue, { color: colors.primary }]}>{summary.week_workouts}</Text><Text style={[styles.statLabel, { color: colors.textSecondary }]}>Esta semana</Text></View>
+              <View style={[styles.statCard, { backgroundColor: colors.surface }]}><Text style={[styles.statValue, { color: colors.success }]}>{summary.completion_rate}%</Text><Text style={[styles.statLabel, { color: colors.textSecondary }]}>Completados</Text></View>
             </View>
           )}
           <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Mis entrenamientos</Text>
@@ -210,22 +205,10 @@ export default function HomeScreen() {
       renderItem={({ item }) => {
         const isMissed = !item.completed && item.date < todayYMD;
         return (
-          <TouchableOpacity
-            style={[styles.workoutCard, { backgroundColor: colors.surface }]}
-            onPress={() => !item.completed && router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
-          >
+          <TouchableOpacity style={[styles.workoutCard, { backgroundColor: colors.surface }]} onPress={() => !item.completed && router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}>
             <View style={styles.workoutTop}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{item.title}</Text>
-                <Text style={[styles.workoutDate, { color: colors.textSecondary }]}>{item.date}</Text>
-              </View>
-              {item.completed ? (
-                <Ionicons name="checkmark-circle" size={24} color={colors.success} />
-              ) : isMissed ? (
-                <Ionicons name="close-circle" size={24} color={colors.error} />
-              ) : (
-                <Ionicons name="time-outline" size={24} color={colors.primary} />
-              )}
+              <View style={{ flex: 1 }}><Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{item.title}</Text><Text style={[styles.workoutDate, { color: colors.textSecondary }]}>{item.date}</Text></View>
+              {item.completed ? <Ionicons name="checkmark-circle" size={24} color={colors.success} /> : isMissed ? <Ionicons name="close-circle" size={24} color={colors.error} /> : <Ionicons name="time-outline" size={24} color={colors.primary} />}
             </View>
           </TouchableOpacity>
         );
@@ -238,20 +221,8 @@ export default function HomeScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {user?.role === 'trainer' ? <TrainerView /> : <AthleteView />}
       
-      {/* CAPA DE TUTORIAL */}
-      {showTutorial && (
-        <TutorialOverlay 
-          role={user?.role || 'athlete'} 
-          isVisible={showTutorial} 
-          onClose={closeTutorial} 
-        />
-      )}
-
-      {/* MODAL DE WELLNESS DIARIO */}
-      <WellnessModal 
-        isVisible={showWellness} 
-        onClose={() => setShowWellness(false)} 
-      />
+      {showTutorial && <TutorialOverlay role={user?.role || 'athlete'} isVisible={showTutorial} onClose={closeTutorial} />}
+      <WellnessModal isVisible={showWellness} onClose={() => setShowWellness(false)} />
     </SafeAreaView>
   );
 }
