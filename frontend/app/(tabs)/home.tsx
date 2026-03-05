@@ -1,257 +1,163 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View, Text, TouchableOpacity, StyleSheet, FlatList,
-  ActivityIndicator, Platform
+import { 
+  View, Text, StyleSheet, FlatList, TouchableOpacity, 
+  ActivityIndicator, RefreshControl, ScrollView 
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
-import TutorialOverlay from '../../src/components/TutorialOverlay';
 import WellnessModal from '../../src/components/WellnessModal';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function HomeScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
-  
-  const [athletes, setAthletes] = useState<any[]>([]);
-  const [workouts, setWorkouts] = useState<any[]>([]);
-  const [summary, setSummary] = useState<any>(null);
+
+  const [workouts, setWorkouts] = useState([]);
+  const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  
-  const [showTutorial, setShowTutorial] = useState(false);
   const [showWellness, setShowWellness] = useState(false);
 
-  // --- FUNCIÓN DE CARGA DE DATOS ---
+  const today = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
   const loadData = async () => {
     try {
-      if (user?.role === 'trainer') {
-        const [ath, wk] = await Promise.all([api.getAthletes(), api.getWorkouts()]);
-        setAthletes(ath);
-        setWorkouts(wk.slice(0, 5));
-      } else {
-        const [wk, sum] = await Promise.all([api.getWorkouts(), api.getSummary()]);
-        setWorkouts(wk.slice(0, 10));
-        setSummary(sum);
-      }
+      const [wData, sData] = await Promise.all([
+        api.getWorkouts(),
+        api.getSummary()
+      ]);
+      setWorkouts(wData);
+      setSummary(sData);
     } catch (e) {
-      console.log('Load error:', e);
+      console.log("Error cargando dashboard", e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  // --- LÓGICA DE MODO OFFLINE (SINCRONIZACIÓN) ---
-  useEffect(() => {
-    const syncOfflineData = async () => {
-      // Solo en entorno Web/Safari
-      if (Platform.OS === 'web' && navigator.onLine) {
-        try {
-          const pending = await AsyncStorage.getItem('pending_sync');
-          if (pending) {
-            const list = JSON.parse(pending);
-            if (list.length > 0) {
-              console.log(`Sincronizando ${list.length} entrenos pendientes...`);
-              for (const item of list) {
-                if (item.type === 'COMPLETE_WORKOUT') {
-                  await api.completeWorkout(item.id, item.data);
-                }
-              }
-              await AsyncStorage.setItem('pending_sync', '[]');
-              loadData(); // Refrescar para ver los cambios sincronizados
-            }
-          }
-        } catch (error) {
-          console.log('Error en sincronización offline:', error);
-        }
-      }
-    };
-
-    if (Platform.OS === 'web') {
-      window.addEventListener('online', syncOfflineData);
-    }
-    
-    syncOfflineData();
-    return () => {
-      if (Platform.OS === 'web') window.removeEventListener('online', syncOfflineData);
-    };
-  }, []);
-
-  // --- COMPROBACIONES INICIALES ---
-  useEffect(() => {
-    const checkInitialStates = async () => {
-      try {
-        const hasSeenTutorial = await AsyncStorage.getItem('has_seen_tutorial');
-        if (hasSeenTutorial !== 'true') setShowTutorial(true);
-
-        if (user?.role === 'athlete') {
-          const res = await api.checkTodayWellness();
-          if (!res.submitted) setShowWellness(true);
-        }
-      } catch (error) {
-        console.log('Error al leer estados iniciales:', error);
-      }
-    };
-
-    if (user) {
-      checkInitialStates();
-      loadData();
-    }
-  }, [user]);
-
-  const closeTutorial = async () => {
-    try {
-      await AsyncStorage.setItem('has_seen_tutorial', 'true');
-      setShowTutorial(false);
-    } catch (error) {
-      setShowTutorial(false);
-    }
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData();
   };
-
-  const onRefresh = () => { setRefreshing(true); loadData(); };
-
-  if (loading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 50 }} />
-      </SafeAreaView>
-    );
-  }
-
-  const today = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-  const tObj = new Date();
-  const todayYMD = `${tObj.getFullYear()}-${String(tObj.getMonth() + 1).padStart(2, '0')}-${String(tObj.getDate()).padStart(2, '0')}`;
-
-  // ... (Vistas TrainerView y AthleteView se mantienen igual que en tu código previo) ...
-  const TrainerView = () => (
-    <FlatList
-      data={athletes}
-      keyExtractor={(item) => item.id}
-      ListHeaderComponent={
-        <View>
-          <View style={styles.headerTopRow}>
-            <View>
-              <Text style={[styles.date, { color: colors.textSecondary }]}>{today}</Text>
-              <Text style={[styles.greeting, { color: colors.textPrimary }]}>Hola, {user?.name?.split(' ')[0]}</Text>
-            </View>
-            <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
-              {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={26} color={colors.primary} />}
-            </TouchableOpacity>
-          </View>
-          <View style={styles.statsRow}>
-            <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
-              <Text style={[styles.statValue, { color: colors.primary }]}>{athletes.length}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Deportistas</Text>
-            </View>
-            <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
-              <Text style={[styles.statValue, { color: colors.textPrimary }]}>{workouts.length}</Text>
-              <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Entrenos</Text>
-            </View>
-          </View>
-          <View style={styles.actionsRow}>
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary }] } onPress={() => router.push('/add-athlete')}>
-              <Ionicons name="person-add-outline" size={18} color="#FFF" />
-              <Text style={styles.actionBtnText}>Nuevo deportista</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionBtnOutline, { borderColor: colors.primary }]} onPress={() => router.push('/add-workout')}>
-              <Ionicons name="barbell-outline" size={18} color={colors.primary} />
-              <Text style={[styles.actionBtnOutlineText, { color: colors.primary }]}>Nuevo entreno</Text>
-            </TouchableOpacity>
-          </View>
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Deportistas</Text>
-        </View>
-      }
-      renderItem={({ item }) => (
-        <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => router.push({ pathname: '/athlete-detail', params: { id: item.id, name: item.name } })}>
-          <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}><Text style={[styles.avatarText, { color: colors.primary }]}>{item.name?.charAt(0)?.toUpperCase()}</Text></View>
-          <View style={styles.cardContent}><Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text><Text style={[styles.cardSub, { color: colors.textSecondary }]}>{item.sport || 'Kitesurf'}</Text></View>
-          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-        </TouchableOpacity>
-      )}
-      contentContainerStyle={styles.listContent}
-    />
-  );
 
   const AthleteView = () => (
     <FlatList
-      data={workouts}
+      data={workouts.slice(0, 3)} // Solo los 3 más recientes
       keyExtractor={(item) => item.id}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       ListHeaderComponent={
-        <View>
-          <View style={styles.headerTopRow}>
+        <View style={styles.container}>
+          {/* CABECERA */}
+          <View style={styles.header}>
             <View>
-              <Text style={[styles.date, { color: colors.textSecondary }]}>{today}</Text>
-              <Text style={[styles.greeting, { color: colors.textPrimary }]}>Hola, {user?.name?.split(' ')[0]}</Text>
+              <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{today}</Text>
+              <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, Claudia 🤙</Text>
             </View>
-            <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={styles.refreshBtn}>
-              {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={26} color={colors.primary} />}
+            <TouchableOpacity onPress={() => router.push('/settings')} style={[styles.avatarBtn, { backgroundColor: colors.surfaceHighlight }]}>
+              <Text style={{ color: colors.primary, fontWeight: '700' }}>{user?.name?.charAt(0)}</Text>
             </TouchableOpacity>
           </View>
-          {summary && (
-            <View style={styles.statsRow}>
-              <View style={[styles.statCard, { backgroundColor: colors.surface }]}><Text style={[styles.statValue, { color: colors.primary }]}>{summary.week_workouts}</Text><Text style={[styles.statLabel, { color: colors.textSecondary }]}>Esta semana</Text></View>
-              <View style={[styles.statCard, { backgroundColor: colors.surface }]}><Text style={[styles.statValue, { color: colors.success }]}>{summary.completion_rate}%</Text><Text style={[styles.statLabel, { color: colors.textSecondary }]}>Completados</Text></View>
+
+          {/* MÉTRICAS DE SALUD (STRAVA / APPLE WATCH) */}
+          <View style={styles.metricsRow}>
+            <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
+              <Ionicons name="heart" size={24} color={colors.error} />
+              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
+                {summary?.latest_tests?.hr_rest?.value || '--'} <Text style={styles.metricUnit}>bpm</Text>
+              </Text>
+              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PULSO REPOSO</Text>
+            </View>
+            <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
+              <Ionicons name="footsteps" size={24} color={colors.primary} />
+              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
+                {summary?.latest_wellness?.steps || '0'}
+              </Text>
+              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PASOS HOY</Text>
+            </View>
+          </View>
+
+          {/* ACCESOS RÁPIDOS */}
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>ACCESO RÁPIDO</Text>
+          <View style={styles.quickActions}>
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
+              <Ionicons name="add-circle" size={20} color={colors.success} />
+              <Text style={[styles.actionText, { color: colors.textPrimary }]}>Wellness</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => router.push('/analytics')}>
+              <Ionicons name="stats-chart" size={20} color={colors.primary} />
+              <Text style={[styles.actionText, { color: colors.textPrimary }]}>Progreso</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>PRÓXIMOS ENTRENOS</Text>
+
+          {/* ESTADO VACÍO */}
+          {workouts.length === 0 && (
+            <View style={[styles.emptyCard, { backgroundColor: colors.surface }]}>
+              <Ionicons name="sunny-outline" size={40} color={colors.textSecondary} />
+              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
+                ¡Día libre! Aprovecha para recuperar o Andreina subirá pronto tu sesión.
+              </Text>
             </View>
           )}
-          <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Mis entrenamientos</Text>
         </View>
       }
-      renderItem={({ item }) => {
-        const isMissed = !item.completed && item.date < todayYMD;
-        return (
-          <TouchableOpacity style={[styles.workoutCard, { backgroundColor: colors.surface }]} onPress={() => !item.completed && router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}>
-            <View style={styles.workoutTop}>
-              <View style={{ flex: 1 }}><Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{item.title}</Text><Text style={[styles.workoutDate, { color: colors.textSecondary }]}>{item.date}</Text></View>
-              {item.completed ? <Ionicons name="checkmark-circle" size={24} color={colors.success} /> : isMissed ? <Ionicons name="close-circle" size={24} color={colors.error} /> : <Ionicons name="time-outline" size={24} color={colors.primary} />}
-            </View>
-          </TouchableOpacity>
-        );
-      }}
-      contentContainerStyle={styles.listContent}
+      renderItem={({ item }) => (
+        <TouchableOpacity 
+          style={[styles.workoutCard, { backgroundColor: colors.surface }]}
+          onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
+        >
+          <View style={styles.workoutIcon}>
+            <Ionicons name="barbell" size={24} color={colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{item.title}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.border} />
+        </TouchableOpacity>
+      )}
+      contentContainerStyle={{ paddingBottom: 100 }}
     />
   );
 
+  if (loading) return <View style={{ flex: 1, justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" color={colors.primary} /></View>;
+
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {user?.role === 'trainer' ? <TrainerView /> : <AthleteView />}
-      
-      {showTutorial && <TutorialOverlay role={user?.role || 'athlete'} isVisible={showTutorial} onClose={closeTutorial} />}
-      <WellnessModal isVisible={showWellness} onClose={() => setShowWellness(false)} />
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      <AthleteView />
+      <WellnessModal isVisible={showWellness} onClose={() => { setShowWellness(false); loadData(); }} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  listContent: { padding: 20, paddingBottom: 32 },
-  headerTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 },
-  refreshBtn: { padding: 8 },
-  date: { fontSize: 13, fontWeight: '500', textTransform: 'capitalize', marginBottom: 4 },
-  greeting: { fontSize: 26, fontWeight: '700' },
-  statsRow: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-  statCard: { flex: 1, borderRadius: 14, padding: 18, alignItems: 'center' },
-  statValue: { fontSize: 26, fontWeight: '700' },
-  statLabel: { fontSize: 12, fontWeight: '500', marginTop: 4 },
-  actionsRow: { flexDirection: 'row', gap: 10, marginBottom: 28 },
-  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 10, paddingVertical: 14 },
-  actionBtnText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
-  actionBtnOutline: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 10, paddingVertical: 14, borderWidth: 1.5 },
-  actionBtnOutlineText: { fontSize: 14, fontWeight: '600' },
-  sectionTitle: { fontSize: 18, fontWeight: '700', marginBottom: 14 },
-  card: { flexDirection: 'row', alignItems: 'center', borderRadius: 14, padding: 14, marginBottom: 10 },
-  avatar: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  avatarText: { fontSize: 17, fontWeight: '700' },
-  cardContent: { flex: 1, marginLeft: 12 },
-  cardTitle: { fontSize: 16, fontWeight: '600' },
-  cardSub: { fontSize: 13, marginTop: 2 },
-  workoutCard: { borderRadius: 14, padding: 16, marginBottom: 12 },
-  workoutTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  workoutTitle: { fontSize: 16, fontWeight: '600' },
-  workoutDate: { fontSize: 13, marginTop: 2 },
+  container: { padding: 20 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
+  dateLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase' },
+  welcomeText: { fontSize: 24, fontWeight: '900' },
+  avatarBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  metricsRow: { flexDirection: 'row', gap: 15, marginBottom: 25 },
+  metricCard: { flex: 1, padding: 20, borderRadius: 20, alignItems: 'center', elevation: 2 },
+  metricValue: { fontSize: 22, fontWeight: '900', marginTop: 10 },
+  metricUnit: { fontSize: 12, fontWeight: '400' },
+  metricLabel: { fontSize: 10, fontWeight: '700', marginTop: 5, letterSpacing: 1 },
+  sectionTitle: { fontSize: 11, fontWeight: '800', marginBottom: 15, marginTop: 10, letterSpacing: 1 },
+  quickActions: { flexDirection: 'row', gap: 15, marginBottom: 30 },
+  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 15, borderRadius: 15 },
+  actionText: { fontWeight: '700' },
+  workoutCard: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 18, marginHorizontal: 20, marginBottom: 12 },
+  workoutIcon: { width: 45, height: 45, borderRadius: 12, backgroundColor: '#4A90E215', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  workoutTitle: { fontSize: 16, fontWeight: '700' },
+  emptyCard: { padding: 30, borderRadius: 20, alignItems: 'center', borderStyle: 'dashed', borderWidth: 1, borderColor: '#ccc' },
+  emptyText: { textAlign: 'center', marginTop: 15, fontSize: 14, lineHeight: 20 }
 });
