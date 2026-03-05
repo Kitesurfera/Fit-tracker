@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, RefreshControl, ScrollView 
+  ActivityIndicator, RefreshControl
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,7 +16,6 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
 
-  // Estados
   const [workouts, setWorkouts] = useState([]);
   const [athletes, setAthletes] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -24,28 +23,23 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [showWellness, setShowWellness] = useState(false);
 
-  // Lógica de roles
   const isTrainer = user?.role === 'trainer';
   const firstName = user?.name?.split(' ')[0] || 'Usuario';
-  const today = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  const todayStr = new Date().toISOString().split('T')[0];
+  const todayLabel = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  useEffect(() => { loadData(); }, []);
 
   const loadData = async () => {
     try {
       if (isTrainer) {
-        // Carga para Andreina
         const athletesData = await api.getAthletes();
         setAthletes(athletesData);
       } else {
-        // Carga para Claudia o deportistas
-        const [wData, sData] = await Promise.all([
-          api.getWorkouts(),
-          api.getSummary()
-        ]);
-        setWorkouts(wData);
+        const [wData, sData] = await Promise.all([api.getWorkouts(), api.getSummary()]);
+        // Ordenamos por fecha: los más recientes arriba
+        const sortedWorkouts = wData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setWorkouts(sortedWorkouts);
         setSummary(sData);
       }
     } catch (e) {
@@ -61,7 +55,7 @@ export default function HomeScreen() {
     loadData();
   };
 
-  // --- VISTA ENTRENADOR (Panel de Gestión) ---
+  // --- VISTA ENTRENADOR ---
   const TrainerView = () => (
     <FlatList
       data={athletes}
@@ -69,149 +63,110 @@ export default function HomeScreen() {
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       ListHeaderComponent={
         <View style={styles.container}>
-          <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{today}</Text>
-          <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>
-            Hola, {firstName} 📋
-          </Text>
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary, marginTop: 25 }]}>
-            MIS DEPORTISTAS BAJO CONTROL
-          </Text>
+          <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
+          <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 📋</Text>
+          <Text style={styles.sectionTitle}>MIS DEPORTISTAS</Text>
         </View>
       }
       renderItem={({ item }) => (
-        <TouchableOpacity 
-          style={[styles.card, { backgroundColor: colors.surface }]}
-          onPress={() => router.push(`/athletes/${item.id}`)}
-        >
-          <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '15' }]}>
-            <Text style={{ color: colors.primary, fontWeight: '800' }}>{item.name.charAt(0)}</Text>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.sport || 'Especialidad'}</Text>
-          </View>
+        <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => router.push(`/athletes/${item.id}`)}>
+          <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '15' }]}><Text style={{ color: colors.primary, fontWeight: '800' }}>{item.name.charAt(0)}</Text></View>
+          <View style={{ flex: 1 }}><Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text><Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.sport || 'Kitesurf'}</Text></View>
           <Ionicons name="chevron-forward" size={18} color={colors.border} />
         </TouchableOpacity>
       )}
-      contentContainerStyle={{ paddingBottom: 40 }}
     />
   );
 
-  // --- VISTA DEPORTISTA (Panel de Rendimiento) ---
-  const AthleteView = () => (
-    <FlatList
-      data={workouts}
-      keyExtractor={(item) => item.id}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
-      ListHeaderComponent={
-        <View style={styles.container}>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{today}</Text>
-              <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>
-                Hola, {firstName} 🤙
-              </Text>
-            </View>
-          </View>
+  // --- VISTA DEPORTISTA ---
+  const AthleteView = () => {
+    // Separamos lo pendiente de lo realizado
+    const pending = workouts.filter(w => !w.completed);
+    const completed = workouts.filter(w => w.completed);
 
-          {/* MÉTRICAS DE SALUD (STRAVA / APPLE WATCH) */}
-          <View style={styles.metricsGrid}>
-            <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="heart" size={20} color={colors.error} />
-              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
-                {summary?.latest_tests?.hr_rest?.value || '--'} <Text style={styles.metricUnit}>bpm</Text>
-              </Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PULSO REPOSO</Text>
-            </View>
-            <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="footsteps" size={20} color={colors.primary} />
-              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
-                {summary?.latest_wellness?.steps || '0'}
-              </Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PASOS HOY</Text>
-            </View>
-          </View>
-
-          {/* ACCESOS RÁPIDOS */}
-          <View style={styles.quickActions}>
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
-              <Ionicons name="pulse-outline" size={20} color={colors.success} />
-              <Text style={[styles.actionText, { color: colors.textPrimary }]}>Wellness</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => router.push('/analytics')}>
-              <Ionicons name="analytics-outline" size={20} color={colors.primary} />
-              <Text style={[styles.actionText, { color: colors.textPrimary }]}>Progreso</Text>
-            </TouchableOpacity>
-          </View>
-
-          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>TUS SESIONES PROGRAMADAS</Text>
-          
-          {workouts.length === 0 && (
-            <View style={[styles.emptyCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="cafe-outline" size={30} color={colors.textSecondary} />
-              <Text style={[styles.emptyText, { color: colors.textSecondary }]}>
-                No hay entrenos programados. ¡Buen momento para recuperar!
-              </Text>
-            </View>
-          )}
-        </View>
-      }
-      renderItem={({ item }) => (
-        <TouchableOpacity 
-          style={[styles.card, { backgroundColor: colors.surface }]}
-          onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
-        >
-          <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '10' }]}>
-            <Ionicons name="barbell-outline" size={20} color={colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.title}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
-          </View>
-          <Ionicons name="play-circle-outline" size={24} color={colors.primary} />
-        </TouchableOpacity>
-      )}
-      contentContainerStyle={{ paddingBottom: 40 }}
-    />
-  );
-
-  if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
+      <FlatList
+        data={[...pending, ...completed]} // Mostramos todos, pero los pendientes arriba
+        keyExtractor={(item) => item.id}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+        ListHeaderComponent={
+          <View style={styles.container}>
+            <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
+            <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 🤙</Text>
+
+            {/* MÉTRICAS SALUD */}
+            <View style={styles.metricsGrid}>
+              <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
+                <Ionicons name="heart" size={20} color={colors.error} />
+                <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.latest_tests?.hr_rest?.value || '--'} <Text style={styles.metricUnit}>bpm</Text></Text>
+                <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>REPOSO</Text>
+              </View>
+              <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
+                <Ionicons name="footsteps" size={20} color={colors.primary} />
+                <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.latest_wellness?.steps || '0'}</Text>
+                <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PASOS</Text>
+              </View>
+            </View>
+
+            <View style={styles.quickActions}>
+              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
+                <Ionicons name="pulse" size={20} color={colors.success} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Wellness</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => router.push('/analytics')}>
+                <Ionicons name="analytics" size={20} color={colors.primary} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Progreso</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.sectionTitle}>{pending.length > 0 ? 'PENDIENTES' : 'SESIONES REALIZADAS'}</Text>
+          </View>
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity 
+            style={[styles.card, { backgroundColor: colors.surface, opacity: item.completed ? 0.7 : 1 }]}
+            onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
+          >
+            <View style={[styles.avatarCircle, { backgroundColor: item.completed ? colors.success + '15' : colors.primary + '15' }]}>
+              <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? colors.success : colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
+            </View>
+            {item.completed ? (
+              <Text style={{ color: colors.success, fontSize: 10, fontWeight: '700' }}>HECHO</Text>
+            ) : (
+              <Ionicons name="play" size={18} color={colors.primary} />
+            )}
+          </TouchableOpacity>
+        )}
+      />
     );
-  }
+  };
+
+  if (loading) return <View style={{ flex: 1, justifyContent: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" color={colors.primary} /></View>;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       {isTrainer ? <TrainerView /> : <AthleteView />}
-      
-      <WellnessModal 
-        isVisible={showWellness} 
-        onClose={() => { setShowWellness(false); loadData(); }} 
-      />
+      <WellnessModal isVisible={showWellness} onClose={() => { setShowWellness(false); loadData(); }} />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { padding: 20 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5 },
-  welcomeText: { fontSize: 28, fontWeight: '900', marginTop: 4 },
-  metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 },
-  metricCard: { flex: 1, padding: 18, borderRadius: 24, alignItems: 'center', elevation: 2 },
-  metricValue: { fontSize: 22, fontWeight: '900', marginTop: 8 },
+  dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
+  welcomeText: { fontSize: 28, fontWeight: '900', marginTop: 5 },
+  metricsGrid: { flexDirection: 'row', gap: 15, marginVertical: 20 },
+  metricCard: { flex: 1, padding: 15, borderRadius: 20, alignItems: 'center' },
+  metricValue: { fontSize: 20, fontWeight: '900', marginTop: 5 },
   metricUnit: { fontSize: 12, fontWeight: '400' },
-  metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 4, letterSpacing: 1 },
+  metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 },
   quickActions: { flexDirection: 'row', gap: 12, marginBottom: 25 },
-  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 16, elevation: 1 },
-  actionText: { fontWeight: '700', fontSize: 14 },
-  sectionTitle: { fontSize: 11, fontWeight: '800', marginBottom: 15, marginLeft: 5, letterSpacing: 1.2 },
-  card: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginHorizontal: 20, marginBottom: 12, elevation: 1 },
-  avatarCircle: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  cardTitle: { fontSize: 16, fontWeight: '700' },
-  emptyCard: { padding: 40, borderRadius: 24, borderStyle: 'dashed', borderWidth: 1, borderColor: '#ccc', alignItems: 'center' },
-  emptyText: { textAlign: 'center', marginTop: 10, fontSize: 13, lineHeight: 18 }
+  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 15 },
+  actionText: { fontWeight: '700' },
+  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1, paddingLeft: 20 },
+  card: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 18, marginHorizontal: 20, marginBottom: 10, elevation: 1 },
+  avatarCircle: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  cardTitle: { fontSize: 16, fontWeight: '700' }
 });
