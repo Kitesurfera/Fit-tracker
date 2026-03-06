@@ -15,16 +15,15 @@ export default function TrainingModeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { workoutId } = useLocalSearchParams<{ workoutId: string }>();
+  
   const [workout, setWorkout] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [currentExIndex, setCurrentExIndex] = useState(0);
   const [setsStatus, setSetsStatus] = useState<Record<number, SetStatus[]>>({});
   const [finished, setFinished] = useState(false);
   
-  // Registro de cargas, reps reales
   const [logs, setLogs] = useState<Record<number, {weight: string, reps: string}>>({});
   
-  // NUEVO: Registro de Bienestar (Wellness)
   const [rpe, setRpe] = useState<number | null>(null);
   const [sleep, setSleep] = useState<'bien' | 'regular' | 'mal' | null>(null);
   
@@ -34,17 +33,48 @@ export default function TrainingModeScreen() {
   const [observations, setObservations] = useState('');
 
   useEffect(() => {
-    if (workoutId) {
-      api.getWorkout(workoutId).then((w) => {
-        setWorkout(w);
-        const initial: Record<number, SetStatus[]> = {};
-        (w.exercises || []).forEach((ex: any, i: number) => {
-          const total = parseInt(ex.sets) || 1;
-          initial[i] = Array(total).fill('pending');
-        });
-        setSetsStatus(initial);
-      }).catch(console.log).finally(() => setLoading(false));
-    }
+    const fetchWorkoutDetail = async () => {
+      try {
+        // En lugar de getWorkout (que no existía en api.ts), buscamos en getWorkouts
+        const allWorkouts = await api.getWorkouts();
+        const currentWorkout = allWorkouts.find((w: any) => w.id === workoutId);
+        
+        if (currentWorkout) {
+          setWorkout(currentWorkout);
+          
+          // Si el entreno ya estaba completado, pasamos directamente a la pantalla final
+          if (currentWorkout.completed) {
+            setFinished(true);
+            setObservations(currentWorkout.observations || '');
+            if (currentWorkout.completion_data) {
+              setRpe(currentWorkout.completion_data.rpe || null);
+              setSleep(currentWorkout.completion_data.sleep || null);
+              
+              // Precargamos los logs si existen
+              const savedLogs: Record<number, {weight: string, reps: string}> = {};
+              currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
+                savedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '' };
+              });
+              setLogs(savedLogs);
+            }
+          } else {
+            // Inicializamos las series pendientes
+            const initial: Record<number, SetStatus[]> = {};
+            (currentWorkout.exercises || []).forEach((ex: any, i: number) => {
+              const total = parseInt(ex.sets) || 1;
+              initial[i] = Array(total).fill('pending');
+            });
+            setSetsStatus(initial);
+          }
+        }
+      } catch (e) {
+        console.error("Error cargando entrenamiento:", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    if (workoutId) fetchWorkoutDetail();
   }, [workoutId]);
 
   useEffect(() => {
@@ -63,10 +93,23 @@ export default function TrainingModeScreen() {
     return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
   }, [isResting]);
 
-  if (loading || !workout) {
+  if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 60 }} />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 15, color: colors.textSecondary }}>Cargando sesión...</Text>
+      </SafeAreaView>
+    );
+  }
+
+  if (!workout) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <Ionicons name="warning-outline" size={40} color={colors.error} />
+        <Text style={[styles.errorText, { color: colors.textPrimary }]}>No se pudo encontrar el entrenamiento.</Text>
+        <TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.primary }]} onPress={() => router.back()}>
+          <Text style={styles.backBtnText}>Volver al Inicio</Text>
+        </TouchableOpacity>
       </SafeAreaView>
     );
   }
@@ -156,10 +199,14 @@ export default function TrainingModeScreen() {
 
   const buildCompletionData = () => {
     return {
-      // AQUÍ GUARDAMOS EL RPE Y EL SUEÑO EN LA CAJA FUERTE DEL BACKEND
       rpe: rpe,
       sleep: sleep,
       exercise_results: exercises.map((ex: any, i: number) => {
+        // Si ya estaba completado, usamos los datos guardados
+        if (workout.completed && workout.completion_data) {
+          return workout.completion_data.exercise_results[i] || {};
+        }
+        
         const sets = setsStatus[i] || [];
         return {
           exercise_index: i,
@@ -176,6 +223,12 @@ export default function TrainingModeScreen() {
   };
 
   const handleFinish = async () => {
+    // Si ya estaba completado, simplemente volvemos (es modo solo lectura)
+    if (workout.completed) {
+      router.back();
+      return;
+    }
+
     const completionData = buildCompletionData();
     try {
       const updateData: any = {
@@ -196,34 +249,40 @@ export default function TrainingModeScreen() {
       router.back();
     } catch (e) { 
       console.log(e); 
-      alert("Hubo un error al guardar. Asegúrate de tener conexión.");
+      Alert.alert("Error", "Hubo un error al guardar. Asegúrate de tener conexión.");
     }
   };
 
   const handleExit = () => router.back();
 
-  if (finished) {
-    const completionData = buildCompletionData();
-    const totalSkipped = completionData.exercise_results.reduce((s: number, r: any) => s + r.skipped_sets, 0);
+  if (finished || workout.completed) {
+    const completionData = workout.completed && workout.completion_data ? workout.completion_data : buildCompletionData();
+    const totalSkipped = completionData.exercise_results ? completionData.exercise_results.reduce((s: number, r: any) => s + (r.skipped_sets || 0), 0) : 0;
     const hasSkips = totalSkipped > 0;
 
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={handleExit} testID="exit-training" activeOpacity={0.6}>
+            <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text>
+          <View style={{ width: 26 }} />
+        </View>
+
         <ScrollView contentContainerStyle={styles.finishedContainer} keyboardShouldPersistTaps="handled">
           <View style={[styles.finishedIcon, { backgroundColor: hasSkips ? colors.warning + '15' : colors.success + '15' }]}>
             <Ionicons name={hasSkips ? 'alert-circle' : 'checkmark-circle'} size={64} color={hasSkips ? colors.warning : colors.success} />
           </View>
           <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>
-            {hasSkips ? 'Entrenamiento finalizado' : '¡Entrenamiento completado!'}
+            {workout.completed ? 'Resumen de la Sesión' : hasSkips ? 'Entrenamiento finalizado' : '¡Entrenamiento completado!'}
           </Text>
 
-          {/* NUEVO: SECCIÓN DE BIENESTAR (RPE Y SUEÑO) */}
           <View style={[styles.wellnessCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.wellnessTitle, { color: colors.textPrimary }]}>¿Cómo de duro ha sido? (RPE)</Text>
             <View style={styles.rpeGrid}>
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
                 const isSelected = rpe === num;
-                // Colores dinámicos según el esfuerzo
                 let rpeColor = colors.success; 
                 if (num > 4) rpeColor = colors.warning;
                 if (num > 7) rpeColor = colors.error;
@@ -236,8 +295,8 @@ export default function TrainingModeScreen() {
                       { borderColor: colors.border },
                       isSelected && { backgroundColor: rpeColor, borderColor: rpeColor }
                     ]}
-                    onPress={() => setRpe(num)}
-                    activeOpacity={0.7}
+                    onPress={() => !workout.completed && setRpe(num)}
+                    activeOpacity={workout.completed ? 1 : 0.7}
                   >
                     <Text style={[styles.rpeText, { color: colors.textPrimary }, isSelected && { color: '#FFF' }]}>{num}</Text>
                   </TouchableOpacity>
@@ -249,19 +308,22 @@ export default function TrainingModeScreen() {
             <View style={styles.sleepGrid}>
               <TouchableOpacity 
                 style={[styles.sleepBtn, { borderColor: colors.border }, sleep === 'bien' && { backgroundColor: colors.success, borderColor: colors.success }]}
-                onPress={() => setSleep('bien')}
+                onPress={() => !workout.completed && setSleep('bien')}
+                activeOpacity={workout.completed ? 1 : 0.7}
               >
                 <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === 'bien' && { color: '#FFF' }]}>Bien</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.sleepBtn, { borderColor: colors.border }, sleep === 'regular' && { backgroundColor: colors.warning, borderColor: colors.warning }]}
-                onPress={() => setSleep('regular')}
+                onPress={() => !workout.completed && setSleep('regular')}
+                activeOpacity={workout.completed ? 1 : 0.7}
               >
                 <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === 'regular' && { color: '#FFF' }]}>Regular</Text>
               </TouchableOpacity>
               <TouchableOpacity 
                 style={[styles.sleepBtn, { borderColor: colors.border }, sleep === 'mal' && { backgroundColor: colors.error, borderColor: colors.error }]}
-                onPress={() => setSleep('mal')}
+                onPress={() => !workout.completed && setSleep('mal')}
+                activeOpacity={workout.completed ? 1 : 0.7}
               >
                 <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === 'mal' && { color: '#FFF' }]}>Mal</Text>
               </TouchableOpacity>
@@ -269,11 +331,11 @@ export default function TrainingModeScreen() {
           </View>
 
           <Text style={[styles.finishedSub, { color: colors.textSecondary, marginTop: 10 }]}>
-            Anota tus marcas reales de hoy
+            {workout.completed ? 'Marcas registradas' : 'Anota tus marcas reales de hoy'}
           </Text>
 
           <View style={styles.summaryList}>
-            {completionData.exercise_results.map((r: any, i: number) => {
+            {completionData.exercise_results && completionData.exercise_results.map((r: any, i: number) => {
               const allDone = r.skipped_sets === 0;
               const allSkipped = r.completed_sets === 0;
               return (
@@ -288,7 +350,7 @@ export default function TrainingModeScreen() {
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.summaryName, { color: colors.textPrimary }]}>{r.name}</Text>
                       <View style={styles.summaryDots}>
-                        {r.set_details.map((sd: any, si: number) => (
+                        {r.set_details && r.set_details.map((sd: any, si: number) => (
                           <View key={si} style={[
                             styles.miniDot,
                             sd.status === 'completed' && { backgroundColor: colors.success },
@@ -306,22 +368,24 @@ export default function TrainingModeScreen() {
                         <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Kilos reales</Text>
                         <TextInput
                           style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                          placeholder="Ej: 60"
+                          placeholder={workout.completed ? "-" : "Ej: 60"}
                           placeholderTextColor={colors.textSecondary}
                           keyboardType="numeric"
                           value={logs[i]?.weight || ''}
-                          onChangeText={(w) => setLogs(prev => ({...prev, [i]: {...prev[i], weight: w}}))}
+                          onChangeText={(w) => !workout.completed && setLogs(prev => ({...prev, [i]: {...prev[i], weight: w}}))}
+                          editable={!workout.completed}
                         />
                       </View>
                       <View style={styles.logInputWrapper}>
                         <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Reps reales</Text>
                         <TextInput
                           style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                          placeholder="Ej: 10"
+                          placeholder={workout.completed ? "-" : "Ej: 10"}
                           placeholderTextColor={colors.textSecondary}
                           keyboardType="numeric"
                           value={logs[i]?.reps || ''}
-                          onChangeText={(rep) => setLogs(prev => ({...prev, [i]: {...prev[i], reps: rep}}))}
+                          onChangeText={(rep) => !workout.completed && setLogs(prev => ({...prev, [i]: {...prev[i], reps: rep}}))}
+                          editable={!workout.completed}
                         />
                       </View>
                     </View>
@@ -336,10 +400,12 @@ export default function TrainingModeScreen() {
             <TextInput
               testID="workout-observations-input"
               style={[styles.observationsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-              value={observations} onChangeText={setObservations}
-              placeholder="¿Algo a destacar de hoy?"
+              value={observations} 
+              onChangeText={(t) => !workout.completed && setObservations(t)}
+              placeholder={workout.completed ? "Sin observaciones" : "¿Algo a destacar de hoy?"}
               placeholderTextColor={colors.textSecondary}
               multiline numberOfLines={3}
+              editable={!workout.completed}
             />
           </View>
 
@@ -347,17 +413,15 @@ export default function TrainingModeScreen() {
             testID="finish-training-btn" style={[styles.finishBtn, { backgroundColor: colors.primary }]}
             onPress={handleFinish} activeOpacity={0.7}
           >
-            <Ionicons name="checkmark" size={20} color="#FFF" />
-            <Text style={styles.finishBtnText}>Guardar entreno</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.exitLink} onPress={handleExit} activeOpacity={0.6}>
-            <Text style={[styles.exitLinkText, { color: colors.textSecondary }]}>Volver sin guardar</Text>
+            <Ionicons name={workout.completed ? "arrow-back" : "checkmark"} size={20} color="#FFF" />
+            <Text style={styles.finishBtnText}>{workout.completed ? "Volver al resumen" : "Guardar entreno"}</Text>
           </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
     );
   }
 
+  // --- MODO DE ENTRENAMIENTO ACTIVO ---
   if (!currentEx) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -520,6 +584,11 @@ export default function TrainingModeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  errorText: { fontSize: 18, fontWeight: '700', marginTop: 15, textAlign: 'center' },
+  backBtn: { marginTop: 20, paddingHorizontal: 25, paddingVertical: 12, borderRadius: 12 },
+  backBtnText: { color: '#FFF', fontWeight: '800' },
+  
   topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 },
   topTitle: { fontSize: 16, fontWeight: '600' },
   topProgress: { fontSize: 14, fontWeight: '500' },
@@ -558,6 +627,8 @@ const styles = StyleSheet.create({
   bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 28, borderTopWidth: 0.5 },
   navBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 },
   navBtnText: { fontSize: 15, fontWeight: '500' },
+  exCounter: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  exCounterText: { fontSize: 14, fontWeight: '600' },
   
   // ESTILOS DE LA PANTALLA FINAL
   finishedContainer: { flexGrow: 1, padding: 24, gap: 12, alignItems: 'center' },
@@ -592,8 +663,6 @@ const styles = StyleSheet.create({
   
   finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16, marginTop: 8, width: '100%' },
   finishBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
-  exitLink: { paddingVertical: 12 },
-  exitLinkText: { fontSize: 15 },
   emptyContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 16 },
   emptyText: { fontSize: 16 },
   exitBtn: { borderRadius: 10, borderWidth: 1, paddingVertical: 12, paddingHorizontal: 24 },
