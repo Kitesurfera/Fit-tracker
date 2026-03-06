@@ -2,7 +2,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
-// Helper para obtener el token de forma limpia
 const getAuthHeaders = async () => {
   const token = await AsyncStorage.getItem('auth_token');
   return {
@@ -12,7 +11,6 @@ const getAuthHeaders = async () => {
 };
 
 export const api = {
-  // --- AUTH ---
   login: async (email, password) => {
     const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
@@ -23,7 +21,6 @@ export const api = {
     return res.json();
   },
 
-  // --- WELLNESS (Lo que faltaba) ---
   postWellness: async (data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/wellness`, {
@@ -47,7 +44,6 @@ export const api = {
     return res.json();
   },
 
-  // --- ATLETAS Y ENTRENAMIENTOS ---
   getSummary: async (athleteId?: string) => {
     const headers = await getAuthHeaders();
     const url = athleteId 
