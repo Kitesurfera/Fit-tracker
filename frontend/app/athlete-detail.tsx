@@ -19,7 +19,7 @@ export default function AthleteDetailScreen() {
   const [athlete, setAthlete] = useState<any>(null);
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
-  const [history, setHistory] = useState<any[]>([]); // Estado para la gráfica
+  const [history, setHistory] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'workouts' | 'progression'>('dashboard');
   const [loading, setLoading] = useState(true);
 
@@ -31,7 +31,7 @@ export default function AthleteDetailScreen() {
         api.getAthlete(params.id!),
         api.getWorkouts({ athlete_id: params.id! }),
         api.getSummary(params.id!),
-        api.getWellnessHistory(params.id!) // Historial para la gráfica
+        api.getWellnessHistory(params.id!)
       ]);
       setAthlete(ath);
       setWorkouts(wk || []);
@@ -44,24 +44,22 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  // Ayudante visual: Colores según nivel (1-5)
   const getLevelColor = (val: number, inverse = false) => {
     if (!val) return colors.border;
-    if (!inverse) { // Fatiga, Estrés, Dolor (Bajo es mejor)
+    if (!inverse) { 
       if (val <= 2) return colors.success;
-      if (val === 3) return '#EAB308'; // Amarillo
+      if (val === 3) return '#EAB308';
       return colors.error;
-    } else { // Calidad de Sueño (Alto es mejor)
+    } else { 
       if (val >= 4) return colors.success;
       if (val === 3) return '#EAB308';
       return colors.error;
     }
   };
 
+  // --- 1. PESTAÑA: DASHBOARD (Resumen y Fatiga) ---
   const renderDashboard = () => (
     <View style={styles.tabContainer}>
-      
-      {/* ALERTA DE LESIÓN (Prioridad alta) */}
       {summary?.is_injured && (
         <View style={[styles.alert, { backgroundColor: colors.error + '10', borderColor: colors.error }]}>
           <Ionicons name="warning" size={22} color={colors.error} />
@@ -72,7 +70,6 @@ export default function AthleteDetailScreen() {
         </View>
       )}
 
-      {/* GRÁFICA DE TENDENCIA (FATIGA SEMANAL) */}
       <Text style={styles.sectionTitle}>EVOLUCIÓN SEMANAL (FATIGA)</Text>
       <View style={[styles.chartCard, { backgroundColor: colors.surface }]}>
         <View style={styles.barsContainer}>
@@ -90,12 +87,11 @@ export default function AthleteDetailScreen() {
               <Text style={styles.barDate}>{day.date.split('-')[2]}</Text>
             </View>
           )) : (
-            <Text style={{color: colors.textSecondary, fontSize: 12}}>Esperando datos del deportista...</Text>
+            <Text style={{color: colors.textSecondary, fontSize: 12}}>Esperando datos de Claudia...</Text>
           )}
         </View>
       </View>
 
-      {/* MÉTRICAS DE HOY (SENSACIONES) */}
       <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
       <View style={[styles.mainCard, { backgroundColor: colors.surface }]}>
         <View style={styles.wellnessRow}>
@@ -127,38 +123,131 @@ export default function AthleteDetailScreen() {
         )}
       </View>
 
-      {/* EQUIPAMIENTO Y MATERIAL */}
-      <View style={[styles.infoCard, { backgroundColor: colors.surface, marginTop: 20 }]}>
-        <Text style={styles.infoLabel}>NOTAS DE EQUIPAMIENTO / MATERIAL</Text>
-        <Text style={[styles.infoText, { color: colors.textPrimary }]}>
-          {summary?.equipment || 'No se ha registrado material específico.'}
-        </Text>
-      </View>
-
-      {/* BOTONES DE ACCIÓN */}
-      <View style={{ gap: 12, marginTop: 25 }}>
-        <TouchableOpacity 
-          style={[styles.actionBtn, { backgroundColor: colors.primary }]}
-          onPress={() => router.push({ pathname: '/periodization', params: { athlete_id: params.id, name: params.name } })}
-        >
-          <Ionicons name="calendar" size={20} color="#FFF" />
-          <Text style={styles.actionBtnText}>PLANIFICACIÓN (MACRO/MICRO)</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity 
-          style={[styles.actionBtn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}
-          onPress={() => router.push({ pathname: '/progress', params: { athlete_id: params.id, name: params.name } })}
-        >
-          <Ionicons name="stats-chart" size={20} color={colors.primary} />
-          <Text style={[styles.actionBtnText, { color: colors.textPrimary }]}>VER GRÁFICAS DE EVOLUCIÓN</Text>
-        </TouchableOpacity>
-      </View>
+      <TouchableOpacity 
+        style={[styles.actionBtn, { backgroundColor: colors.primary, marginTop: 25 }]}
+        onPress={() => router.push({ pathname: '/periodization', params: { athlete_id: params.id, name: params.name } })}
+      >
+        <Ionicons name="calendar" size={20} color="#FFF" />
+        <Text style={styles.actionBtnText}>PLANIFICACIÓN (MACRO/MICRO)</Text>
+      </TouchableOpacity>
     </View>
   );
 
+  // --- 2. PESTAÑA: HISTORIAL DE ENTRENAMIENTOS ---
+  const renderWorkouts = () => (
+    <View style={styles.tabContainer}>
+      <Text style={styles.sectionTitle}>HISTORIAL DE SESIONES</Text>
+      {workouts.length > 0 ? workouts.map((wk) => (
+        <TouchableOpacity 
+          key={wk.id} 
+          style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: wk.completed ? 0.8 : 1 }]} 
+          onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: wk.id } })}
+        >
+          <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '15' }]}>
+            <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? colors.success : colors.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>
+              {wk.title}
+            </Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+              {wk.date} • {wk.completed ? 'Completado' : 'Pendiente'}
+            </Text>
+          </View>
+          <Ionicons name="chevron-forward" size={20} color={colors.border} />
+        </TouchableOpacity>
+      )) : (
+        <View style={{ alignItems: 'center', padding: 30 }}>
+          <Ionicons name="folder-open-outline" size={40} color={colors.border} />
+          <Text style={{ color: colors.textSecondary, marginTop: 10 }}>No hay sesiones registradas.</Text>
+        </View>
+      )}
+    </View>
+  );
+
+  // --- 3. PESTAÑA: GRÁFICAS DE EVOLUCIÓN (PROGRESIÓN) ---
+  const renderProgression = () => {
+    // Filtramos solo los completados y los ordenamos de más antiguo a más nuevo
+    const completed = workouts.filter(w => w.completed).reverse();
+    
+    // Calculamos el volumen total por sesión (Series * Reps * Peso)
+    const progressionData = completed.map(wk => {
+      let totalVolume = 0;
+      if (wk.completion_data?.exercise_results) {
+        wk.completion_data.exercise_results.forEach((ex: any) => {
+          const weight = parseFloat(ex.logged_weight) || 0;
+          const reps = parseInt(ex.logged_reps) || 0;
+          const sets = parseInt(ex.completed_sets) || 0;
+          totalVolume += (weight * reps * sets);
+        });
+      }
+      return {
+        date: wk.date.split('-').slice(1).join('/'), // MM/DD
+        volume: totalVolume,
+        rpe: wk.completion_data?.rpe || 0
+      };
+    }).slice(-7); // Mostrar solo los últimos 7 entrenos
+
+    const maxVolume = Math.max(...progressionData.map(d => d.volume), 100); // Para escalar la gráfica
+
+    return (
+      <View style={styles.tabContainer}>
+        <Text style={styles.sectionTitle}>VOLUMEN DE CARGA (KILOS TOTALES)</Text>
+        
+        <View style={[styles.progressionCard, { backgroundColor: colors.surface }]}>
+          {progressionData.length > 0 ? (
+            <View style={styles.barsContainer}>
+              {progressionData.map((data, idx) => {
+                const heightPercentage = (data.volume / maxVolume) * 100;
+                return (
+                  <View key={idx} style={styles.barWrapper}>
+                    <Text style={[styles.barValue, { color: colors.primary }]}>
+                      {data.volume > 0 ? `${(data.volume/1000).toFixed(1)}k` : '0'}
+                    </Text>
+                    <View style={[styles.bar, styles.progressionBar, { height: heightPercentage, backgroundColor: colors.primary }]} />
+                    <Text style={styles.barDate}>{data.date}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 20 }}>
+              Completa sesiones con pesos registrados para ver la evolución.
+            </Text>
+          )}
+        </View>
+
+        <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ESFUERZO PERCIBIDO (RPE)</Text>
+        <View style={[styles.progressionCard, { backgroundColor: colors.surface }]}>
+          {progressionData.length > 0 ? (
+            <View style={styles.barsContainer}>
+              {progressionData.map((data, idx) => {
+                const rpeHeight = (data.rpe / 10) * 100;
+                let rpeColor = colors.success;
+                if (data.rpe > 6) rpeColor = colors.warning;
+                if (data.rpe > 8) rpeColor = colors.error;
+
+                return (
+                  <View key={idx} style={styles.barWrapper}>
+                    <Text style={[styles.barValue, { color: rpeColor }]}>{data.rpe}</Text>
+                    <View style={[styles.bar, styles.progressionBar, { height: rpeHeight, backgroundColor: rpeColor }]} />
+                    <Text style={styles.barDate}>{data.date}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          ) : (
+            <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>Sin datos de esfuerzo.</Text>
+          )}
+        </View>
+      </View>
+    );
+  };
+
   const activeContent = () => {
     if (activeTab === 'dashboard') return renderDashboard();
-    return <View style={{padding: 40, alignItems: 'center'}}><Text style={{color: colors.textSecondary}}>Cargando historial de sesiones...</Text></View>;
+    if (activeTab === 'workouts') return renderWorkouts();
+    if (activeTab === 'progression') return renderProgression();
   };
 
   if (loading) return <SafeAreaView style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}><ActivityIndicator size="large" color={colors.primary}/></SafeAreaView>;
@@ -172,13 +261,19 @@ export default function AthleteDetailScreen() {
       </View>
 
       <View style={styles.tabsRow}>
-        {['dashboard', 'workouts', 'progression'].map(tab => (
+        {[
+          { id: 'dashboard', label: 'RESUMEN' },
+          { id: 'workouts', label: 'SESIONES' },
+          { id: 'progression', label: 'EVOLUCIÓN' }
+        ].map(tab => (
           <TouchableOpacity 
-            key={tab} 
-            style={[styles.tab, activeTab === tab && { borderBottomColor: colors.primary, borderBottomWidth: 3 }]} 
-            onPress={() => setActiveTab(tab as any)}
+            key={tab.id} 
+            style={[styles.tab, activeTab === tab.id && { borderBottomColor: colors.primary, borderBottomWidth: 3 }]} 
+            onPress={() => setActiveTab(tab.id as any)}
           >
-            <Text style={[styles.tabText, { color: activeTab === tab ? colors.primary : colors.textSecondary }]}>{tab.toUpperCase()}</Text>
+            <Text style={[styles.tabText, { color: activeTab === tab.id ? colors.primary : colors.textSecondary }]}>
+              {tab.label}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -193,20 +288,20 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' },
   headerTitle: { fontSize: 22, fontWeight: '900' },
   tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  tab: { paddingVertical: 15 },
+  tab: { paddingVertical: 15, flex: 1, alignItems: 'center' },
   tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  tabContainer: { padding: 20 },
+  tabContainer: { padding: 20, paddingBottom: 50 },
   
   alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 },
-  
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 },
   
-  // Gráfica
-  chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
+  // Dashboard Styles
+  chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 },
   barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' },
-  barWrapper: { alignItems: 'center' },
-  bar: { width: 16, borderRadius: 8, minHeight: 10 },
+  barWrapper: { alignItems: 'center', flex: 1 },
+  bar: { width: 16, borderRadius: 8, minHeight: 5 },
   barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' },
+  barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 },
 
   mainCard: { padding: 20, borderRadius: 25, elevation: 2 },
   wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 },
@@ -216,10 +311,15 @@ const styles = StyleSheet.create({
   noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 },
   noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 },
 
-  infoCard: { padding: 20, borderRadius: 20 },
-  infoLabel: { fontSize: 9, fontWeight: '800', color: '#888', letterSpacing: 1 },
-  infoText: { fontSize: 14, marginTop: 8, fontWeight: '600' },
-
   actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 },
-  actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }
+  actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
+
+  // Workouts Styles
+  sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginBottom: 12, elevation: 1 },
+  avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  cardTitle: { fontSize: 15, fontWeight: '800' },
+
+  // Progression Styles
+  progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 },
+  progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } // Barras más anchas y con base recta para la evolución
 });
