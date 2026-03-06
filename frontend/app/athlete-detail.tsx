@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, FlatList,
   ActivityIndicator, Dimensions
-} from 'react-router-native';
+} from 'react-native'; // <--- CORREGIDO AQUÍ
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,13 +40,12 @@ export default function AthleteDetailScreen() {
       setWorkouts(wk || []);
       setTests(ts || []);
       setSummary(sum);
-    } catch (e) { console.log(e); }
+    } catch (e) { console.log("Error al cargar detalle:", e); }
     finally { setLoading(false); setRefreshing(false); }
   };
 
   const renderDashboard = () => (
     <View style={styles.tabContainer}>
-      
       {/* ESTADO WELLNESS (MANUAL) */}
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Estado Wellness (Hoy)</Text>
       <View style={[styles.mainCard, { backgroundColor: colors.surface, marginBottom: 24, flexDirection: 'row', padding: 20, gap: 10, elevation: 2 }]}>
@@ -84,7 +83,6 @@ export default function AthleteDetailScreen() {
         <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '800', letterSpacing: 1 }}>VER GRÁFICAS Y EVOLUCIÓN</Text>
       </TouchableOpacity>
 
-      {/* Próximas sesiones */}
       <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Próximas sesiones</Text>
       {workouts.filter(w => !w.completed && w.date >= todayYMD).slice(0, 3).map(w => (
         <View key={w.id} style={[styles.miniCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
