@@ -9,8 +9,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
-const { width } = Dimensions.get('window');
-
 export default function AthleteDetailScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -18,9 +16,8 @@ export default function AthleteDetailScreen() {
   
   const [athlete, setAthlete] = useState<any>(null);
   const [workouts, setWorkouts] = useState<any[]>([]);
-  const [tests, setTests] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'workouts' | 'tests' | 'progression'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'workouts' | 'progression'>('dashboard');
   const [loading, setLoading] = useState(true);
 
   const todayYMD = new Date().toISOString().split('T')[0];
@@ -29,15 +26,13 @@ export default function AthleteDetailScreen() {
 
   const loadData = async () => {
     try {
-      const [ath, wk, ts, sum] = await Promise.all([
+      const [ath, wk, sum] = await Promise.all([
         api.getAthlete(params.id!),
         api.getWorkouts({ athlete_id: params.id! }),
-        api.getTests({ athlete_id: params.id! }),
         api.getSummary(params.id!)
       ]);
       setAthlete(ath);
       setWorkouts(wk || []);
-      setTests(ts || []);
       setSummary(sum);
     } catch (e) { console.log(e); }
     finally { setLoading(false); }
@@ -45,27 +40,43 @@ export default function AthleteDetailScreen() {
 
   const renderDashboard = () => (
     <View style={styles.tabContainer}>
-      <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
       
-      {/* BOTÓN PERIODIZACIÓN */}
+      {/* ALERTA DE LESIÓN */}
+      {summary?.is_injured && (
+        <View style={[styles.alert, { backgroundColor: colors.error + '10', borderColor: colors.error }]}>
+          <Ionicons name="warning" size={20} color={colors.error} />
+          <View style={{flex:1, marginLeft: 10}}>
+            <Text style={{color: colors.error, fontWeight: '900', fontSize: 12}}>ATLETA CON MOLESTIAS / LESIÓN</Text>
+            <Text style={{color: colors.textPrimary, fontSize: 13, marginTop: 2}}>{summary.injury_notes}</Text>
+          </View>
+        </View>
+      )}
+
+      {/* NOTAS DE EQUIPAMIENTO */}
+      <View style={[styles.infoCard, { backgroundColor: colors.surface }]}>
+        <Text style={styles.infoLabel}>EQUIPAMIENTO RELEVANTE</Text>
+        <Text style={[styles.infoText, { color: colors.textPrimary }]}>
+          {summary?.equipment || 'Sin material específico registrado'}
+        </Text>
+      </View>
+
       <TouchableOpacity 
-        style={[styles.mainCard, { backgroundColor: colors.primary, marginBottom: 12 }]}
+        style={[styles.actionBtn, { backgroundColor: colors.primary }]}
         onPress={() => router.push({ pathname: '/periodization', params: { athlete_id: params.id, name: params.name } })}
       >
-        <Ionicons name="calendar" size={24} color="#FFF" />
-        <Text style={styles.mainCardText}>PLANIFICACIÓN (MACRO/MICRO)</Text>
+        <Ionicons name="calendar" size={20} color="#FFF" />
+        <Text style={styles.actionBtnText}>PLANIFICACIÓN (MACRO/MICRO)</Text>
       </TouchableOpacity>
 
-      {/* BOTÓN GRÁFICOS */}
       <TouchableOpacity 
-        style={[styles.mainCard, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}
+        style={[styles.actionBtn, { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }]}
         onPress={() => router.push({ pathname: '/progress', params: { athlete_id: params.id, name: params.name } })}
       >
-        <Ionicons name="stats-chart" size={24} color={colors.primary} />
-        <Text style={[styles.mainCardText, { color: colors.textPrimary }]}>VER GRÁFICAS Y EVOLUCIÓN</Text>
+        <Ionicons name="stats-chart" size={20} color={colors.primary} />
+        <Text style={[styles.actionBtnText, { color: colors.textPrimary }]}>VER GRÁFICAS DE EVOLUCIÓN</Text>
       </TouchableOpacity>
 
-      <Text style={[styles.sectionTitle, { marginTop: 24 }]}>Estado Wellness (Hoy)</Text>
+      <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Estado Wellness (Hoy)</Text>
       <View style={[styles.wellnessGrid, { backgroundColor: colors.surface }]}>
         <View style={styles.wellItem}>
           <Text style={[styles.wellVal, { color: colors.primary }]}>{summary?.latest_wellness?.hr_rest || '--'}</Text>
@@ -79,31 +90,9 @@ export default function AthleteDetailScreen() {
     </View>
   );
 
-  const renderWorkouts = () => (
-    <View style={styles.tabContainer}>
-      <TouchableOpacity 
-        style={[styles.addBtn, { backgroundColor: colors.primary }]}
-        onPress={() => router.push({ pathname: '/create-workout', params: { athlete_id: params.id } })}
-      >
-        <Ionicons name="add" size={24} color="#FFF" />
-        <Text style={{color:'#FFF', fontWeight:'700'}}>Nuevo Entrenamiento</Text>
-      </TouchableOpacity>
-      {workouts.map(w => (
-        <TouchableOpacity key={w.id} style={[styles.miniCard, { backgroundColor: colors.surface }]}>
-          <View style={{flex:1}}>
-            <Text style={{fontWeight:'700', color: colors.textPrimary}}>{w.title}</Text>
-            <Text style={{fontSize:12, color: colors.textSecondary}}>{w.date}</Text>
-          </View>
-          {w.completed && <Ionicons name="checkmark-circle" size={20} color={colors.success} />}
-        </TouchableOpacity>
-      ))}
-    </View>
-  );
-
   const activeContent = () => {
     if (activeTab === 'dashboard') return renderDashboard();
-    if (activeTab === 'workouts') return renderWorkouts();
-    return <Text style={{textAlign:'center', marginTop: 40}}>Cargando datos...</Text>;
+    return <Text style={{textAlign:'center', marginTop: 40}}>Sección en desarrollo...</Text>;
   };
 
   if (loading) return <SafeAreaView style={{flex:1, justifyContent:'center', alignItems:'center'}}><ActivityIndicator size="large" color={colors.primary}/></SafeAreaView>;
@@ -117,7 +106,7 @@ export default function AthleteDetailScreen() {
       </View>
 
       <View style={styles.tabsRow}>
-        {['dashboard', 'workouts', 'tests', 'progression'].map(tab => (
+        {['dashboard', 'workouts', 'progression'].map(tab => (
           <TouchableOpacity 
             key={tab} 
             style={[styles.tab, activeTab === tab && { borderBottomColor: colors.primary, borderBottomWidth: 3 }]} 
@@ -141,13 +130,15 @@ const styles = StyleSheet.create({
   tab: { paddingVertical: 15 },
   tabText: { fontSize: 10, fontWeight: '800' },
   tabContainer: { padding: 20 },
-  sectionTitle: { fontSize: 14, fontWeight: '800', marginBottom: 15, letterSpacing: 0.5 },
-  mainCard: { borderRadius: 18, padding: 20, flexDirection: 'row', alignItems: 'center', gap: 15 },
-  mainCardText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
+  alert: { flexDirection: 'row', padding: 15, borderRadius: 15, marginBottom: 20, borderLeftWidth: 5 },
+  infoCard: { padding: 15, borderRadius: 15, marginBottom: 20 },
+  infoLabel: { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 1 },
+  infoText: { fontSize: 14, marginTop: 5, fontWeight: '600' },
+  sectionTitle: { fontSize: 14, fontWeight: '800', marginBottom: 15 },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 18, marginBottom: 12, gap: 10 },
+  actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
   wellnessGrid: { flexDirection: 'row', padding: 20, borderRadius: 20 },
   wellItem: { flex: 1, alignItems: 'center' },
   wellVal: { fontSize: 22, fontWeight: '900' },
-  wellSub: { fontSize: 9, fontWeight: '700', marginTop: 4 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 15, marginBottom: 20, gap: 10 },
-  miniCard: { flexDirection: 'row', padding: 18, borderRadius: 15, marginBottom: 10, alignItems: 'center' }
+  wellSub: { fontSize: 9, fontWeight: '700', marginTop: 4 }
 });
