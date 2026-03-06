@@ -22,11 +22,17 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
   const handleSave = async () => {
     setLoading(true);
     try {
+      // Llamada a la función que acabamos de crear en api.ts
       await api.postWellness(form);
-      Alert.alert("¡Hecho!", "Tu estado ha sido enviado a Andreina.");
-      onClose();
-    } catch (e) {
-      Alert.alert("Error", "No se pudo enviar el feedback.");
+      
+      Alert.alert(
+        "¡Hecho!", 
+        "Tu estado ha sido enviado a Andreina correctamente.",
+        [{ text: "Entendido", onPress: onClose }]
+      );
+    } catch (e: any) {
+      console.error("Error guardando wellness:", e);
+      Alert.alert("Error de envío", e.message || "No se pudo conectar con el servidor.");
     } finally {
       setLoading(false);
     }
@@ -39,7 +45,7 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
         {[1, 2, 3, 4, 5].map((num) => (
           <TouchableOpacity 
             key={num} 
-            onPress={() => setForm({...form, [field]: num})}
+            onPress={() => setForm(prev => ({ ...prev, [field]: num }))}
             style={[
               styles.optionCircle, 
               { borderColor: colors.border },
@@ -79,15 +85,23 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
             <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>OBSERVACIONES PARA ANDREINA</Text>
             <TextInput 
               style={[styles.input, styles.textArea, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-              placeholder="¿Cómo te has sentido hoy?" placeholderTextColor="#888" multiline
-              value={form.notes} onChangeText={(t) => setForm({...form, notes: t})}
+              placeholder="¿Cómo te has sentido hoy?" 
+              placeholderTextColor="#888" 
+              multiline
+              value={form.notes} 
+              onChangeText={(t) => setForm(prev => ({ ...prev, notes: t }))}
             />
 
             <TouchableOpacity 
-              style={[styles.saveBtn, { backgroundColor: colors.primary }]} 
-              onPress={handleSave} disabled={loading}
+              style={[styles.saveBtn, { backgroundColor: colors.primary, opacity: loading ? 0.7 : 1 }]} 
+              onPress={handleSave} 
+              disabled={loading}
             >
-              {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>GUARDAR ESTADO</Text>}
+              {loading ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={styles.saveBtnText}>GUARDAR ESTADO</Text>
+              )}
             </TouchableOpacity>
           </ScrollView>
         </View>
