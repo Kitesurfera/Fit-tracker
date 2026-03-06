@@ -45,7 +45,6 @@ export default function HomeScreen() {
         setWorkouts(wData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         setSummary(sData);
 
-        // Lógica de Microciclo
         let foundMicro = null;
         if (treeData && Array.isArray(treeData)) {
           treeData.forEach(macro => {
@@ -59,7 +58,7 @@ export default function HomeScreen() {
         setActiveMicro(foundMicro);
       }
     } catch (e) {
-      console.log("Error cargando home:", e);
+      console.log("Error:", e);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -74,7 +73,7 @@ export default function HomeScreen() {
       ListHeaderComponent={
         <View style={styles.container}>
           <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
-          <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Panel Entrenador 📋</Text>
+          <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 📋</Text>
           <Text style={styles.sectionTitle}>MIS DEPORTISTAS</Text>
         </View>
       }
@@ -88,7 +87,7 @@ export default function HomeScreen() {
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.sport || 'Kitesurf'}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Planificación activa</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color={colors.border} />
         </TouchableOpacity>
@@ -104,19 +103,19 @@ export default function HomeScreen() {
       ListHeaderComponent={
         <View style={styles.container}>
           <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
-          <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 🤙</Text>
+          <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 💪</Text>
 
-          {/* MICROCICLO */}
+          {/* TARJETA DE MICROCICLO */}
           <View style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
             <View style={styles.phaseInfo}>
-              <Text style={styles.phaseLabel}>FASE ACTUAL</Text>
+              <Text style={styles.phaseLabel}>MICROCICLO ACTUAL</Text>
               <Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Sin fase activa'}</Text>
-              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Planificación abierta'}</Text>
+              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Preparación física'}</Text>
             </View>
-            <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'REPOSO'}</Text></View>
+            <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'BASE'}</Text></View>
           </View>
 
-          {/* WELLNESS MANUAL */}
+          {/* MÉTRICAS */}
           <View style={styles.metricsGrid}>
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
               <Ionicons name="pulse" size={22} color={colors.success} />
@@ -124,15 +123,18 @@ export default function HomeScreen() {
               <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PULSO REPOSO</Text>
             </View>
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="calendar-outline" size={22} color={colors.primary} />
+              <Ionicons name="ribbon-outline" size={22} color={colors.primary} />
               <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.completion_rate || '0'}%</Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>CUMPLIMIENTO</Text>
+              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>ADHERENCIA</Text>
             </View>
           </View>
 
           <View style={styles.quickActions}>
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
               <Ionicons name="add-circle" size={20} color={colors.success} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Wellness</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => router.push('/analytics')}>
+              <Ionicons name="analytics" size={20} color={colors.primary} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Progreso</Text>
             </TouchableOpacity>
           </View>
 
@@ -145,13 +147,13 @@ export default function HomeScreen() {
           onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
         >
           <View style={[styles.avatarCircle, { backgroundColor: item.completed ? colors.success + '15' : colors.primary + '15' }]}>
-            <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? colors.success : colors.primary} />
+            <Ionicons name={item.completed ? "checkmark" : "barbell"} size={20} color={item.completed ? colors.success : colors.primary} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
             <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
           </View>
-          {item.completed ? <Text style={{ color: colors.success, fontSize: 10, fontWeight: '700' }}>HECHO</Text> : <Ionicons name="play" size={18} color={colors.primary} />}
+          {item.completed ? <Ionicons name="checkmark-circle" size={20} color={colors.success} /> : <Ionicons name="chevron-forward" size={18} color={colors.border} />}
         </TouchableOpacity>
       )}
     />
@@ -171,7 +173,7 @@ const styles = StyleSheet.create({
   container: { padding: 20 },
   dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   welcomeText: { fontSize: 28, fontWeight: '900', marginTop: 5, marginBottom: 15 },
-  phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 20, alignItems: 'center', elevation: 2 },
+  phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 20, alignItems: 'center' },
   phaseInfo: { flex: 1 },
   phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 },
