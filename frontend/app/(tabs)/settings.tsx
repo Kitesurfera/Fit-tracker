@@ -9,10 +9,9 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SettingsScreen() {
-  const { user, logout, updateUser } = useAuth();
+  const { user, logout, updateUser, loading: authLoading } = useAuth();
   const { colors, themeMode, updateTheme } = useTheme();
   const router = useRouter();
   
@@ -42,24 +41,29 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleLogout = async () => {
-    Alert.alert("Cerrar Sesión", "¿Segura que quieres salir de Fit Tracker?", [
+  // FIX: Cierre de sesión delegado totalmente al contexto para evitar desincronización
+  const handleConfirmLogout = () => {
+    Alert.alert("Fit Tracker", "¿Segura que quieres salir?", [
       { text: "Cancelar", style: "cancel" },
       { 
-        text: "Salir", 
+        text: "Cerrar Sesión", 
         style: "destructive", 
         onPress: async () => {
-          try {
-            await AsyncStorage.multiRemove(['auth_token', 'user_data']);
-            await logout();
-            router.replace('/'); 
-          } catch (e) {
-            console.error("Error logout:", e);
-          }
+          await logout();
+          // router.replace('/') se puede omitir si el AuthProvider redirige solo
+          router.replace('/'); 
         } 
       }
     ]);
   };
+
+  if (authLoading) {
+    return (
+      <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -72,7 +76,7 @@ export default function SettingsScreen() {
           <View style={styles.profileRow}>
             <View style={[styles.avatar, { backgroundColor: colors.primary + '20' }]}>
               <Text style={{ color: colors.primary, fontSize: 24, fontWeight: '900' }}>
-                {user?.name?.charAt(0).toUpperCase()}
+                {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
               </Text>
             </View>
             <View style={{ flex: 1, marginLeft: 15 }}>
@@ -85,16 +89,22 @@ export default function SettingsScreen() {
                     autoFocus 
                   />
                   <TouchableOpacity onPress={handleUpdateProfile} disabled={saving}>
-                    {saving ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="checkmark-circle" size={28} color={colors.success} />}
+                    {saving ? (
+                      <ActivityIndicator size="small" color={colors.primary} />
+                    ) : (
+                      <Ionicons name="checkmark-circle" size={28} color={colors.success} />
+                    )}
                   </TouchableOpacity>
                 </View>
               ) : (
                 <TouchableOpacity style={styles.nameRow} onPress={() => setEditing(true)}>
-                  <Text style={[styles.nameText, { color: colors.textPrimary }]}>{user?.name}</Text>
+                  <Text style={[styles.nameText, { color: colors.textPrimary }]}>
+                    {user?.name || 'Cargando...'}
+                  </Text>
                   <Ionicons name="pencil" size={14} color={colors.primary} style={{marginLeft: 8}} />
                 </TouchableOpacity>
               )}
-              <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{user?.email}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{user?.email || ''}</Text>
               <View style={[styles.roleBadge, { backgroundColor: colors.primary + '10' }]}>
                 <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }}>
                   {user?.role || 'Deportista'}
@@ -122,8 +132,14 @@ export default function SettingsScreen() {
                   themeMode === mode.id && { backgroundColor: colors.primary, borderColor: colors.primary }
                 ]}
               >
-                <Ionicons name={mode.icon as any} size={20} color={themeMode === mode.id ? '#FFF' : colors.textPrimary} />
-                <Text style={[styles.themeLabel, { color: themeMode === mode.id ? '#FFF' : colors.textPrimary }]}>{mode.label}</Text>
+                <Ionicons 
+                  name={mode.icon as any} 
+                  size={20} 
+                  color={themeMode === mode.id ? '#FFF' : colors.textPrimary} 
+                />
+                <Text style={[styles.themeLabel, { color: themeMode === mode.id ? '#FFF' : colors.textPrimary }]}>
+                  {mode.label}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -141,7 +157,9 @@ export default function SettingsScreen() {
                   onPress={() => setWeightUnit(u)}
                   style={[styles.unitBtn, weightUnit === u && { backgroundColor: colors.primary }]}
                 >
-                  <Text style={{ color: weightUnit === u ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{u.toUpperCase()}</Text>
+                  <Text style={{ color: weightUnit === u ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>
+                    {u.toUpperCase()}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -156,17 +174,19 @@ export default function SettingsScreen() {
                   onPress={() => setHeightUnit(u)}
                   style={[styles.unitBtn, heightUnit === u && { backgroundColor: colors.primary }]}
                 >
-                  <Text style={{ color: heightUnit === u ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{u.toUpperCase()}</Text>
+                  <Text style={{ color: heightUnit === u ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>
+                    {u.toUpperCase()}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </View>
           </View>
         </View>
 
-        {/* CERRAR SESIÓN */}
+        {/* BOTÓN CERRAR SESIÓN */}
         <TouchableOpacity 
           style={[styles.logoutBtn, { backgroundColor: colors.error + '10' }]} 
-          onPress={handleLogout}
+          onPress={handleConfirmLogout}
         >
           <Ionicons name="log-out-outline" size={22} color={colors.error} />
           <Text style={{ color: colors.error, fontWeight: '800', marginLeft: 10 }}>CERRAR SESIÓN</Text>
@@ -180,6 +200,7 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   scroll: { padding: 25, paddingBottom: 50 },
   title: { fontSize: 32, fontWeight: '900', marginBottom: 25 },
   sectionHeader: { fontSize: 11, fontWeight: '800', color: '#888', letterSpacing: 1.5, marginBottom: 12, marginTop: 10, textTransform: 'uppercase' },
