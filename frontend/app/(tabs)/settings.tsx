@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, ScrollView, 
-  Alert, TextInput, ActivityIndicator 
+  Alert, TextInput, ActivityIndicator, Platform 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,22 +40,30 @@ export default function SettingsScreen() {
     }
   };
 
-  // FIX DEFINITIVO: Timeout para evitar el bloqueo del Alert en iOS/Android
-  const handleConfirmLogout = () => {
-    Alert.alert("Fit Tracker", "¿Segura que quieres salir?", [
-      { text: "Cancelar", style: "cancel" },
-      { 
-        text: "Cerrar Sesión", 
-        style: "destructive", 
-        onPress: async () => {
-          await logout();
-          // Esperamos 150ms a que la animación de la alerta termine antes de redirigir
-          setTimeout(() => {
-            router.replace('/'); 
-          }, 150);
-        } 
+  const handleConfirmLogout = async () => {
+    if (Platform.OS === 'web') {
+      // FIX PARA VERCEL / NAVEGADOR WEB
+      const confirmLogout = window.confirm("¿Segura que quieres salir de Fit Tracker?");
+      if (confirmLogout) {
+        await logout();
+        router.replace('/');
       }
-    ]);
+    } else {
+      // FIX PARA MÓVIL (iOS / Android)
+      Alert.alert("Fit Tracker", "¿Segura que quieres salir?", [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Cerrar Sesión", 
+          style: "destructive", 
+          onPress: async () => {
+            await logout();
+            setTimeout(() => {
+              router.replace('/'); 
+            }, 100);
+          } 
+        }
+      ]);
+    }
   };
 
   if (authLoading) {
