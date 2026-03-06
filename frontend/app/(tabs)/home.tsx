@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, RefreshControl, Alert 
+  ActivityIndicator, RefreshControl 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,7 +22,6 @@ export default function HomeScreen() {
   const [activeMicro, setActiveMicro] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [showWellness, setShowWellness] = useState(false);
 
   const isTrainer = user?.role === 'trainer';
@@ -64,19 +63,6 @@ export default function HomeScreen() {
     }
   };
 
-  const handleManualSync = async () => {
-    setSyncing(true);
-    try {
-      await api.syncStrava();
-      await loadData();
-      Alert.alert("¡Sincronizado!", "Datos de tu Apple Watch actualizados.");
-    } catch (e) {
-      Alert.alert("Error", "No se pudo sincronizar. Verifica tu conexión con Strava en Ajustes.");
-    } finally {
-      setSyncing(false);
-    }
-  };
-
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
@@ -97,7 +83,7 @@ export default function HomeScreen() {
       renderItem={({ item }) => (
         <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => router.push(`/athletes/${item.id}`)}>
           <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '15' }]}><Text style={{ color: colors.primary, fontWeight: '800' }}>{item.name.charAt(0)}</Text></View>
-          <View style={{ flex: 1 }}><Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text><Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.sport || 'Kitesurf'}</Text></View>
+          <View style={{ flex: 1 }}><Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text><Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.sport || 'Deportista'}</Text></View>
           <Ionicons name="chevron-forward" size={18} color={colors.border} />
         </TouchableOpacity>
       )}
@@ -118,45 +104,37 @@ export default function HomeScreen() {
           <View style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
             <View style={styles.phaseInfo}>
               <Text style={styles.phaseLabel}>FASE ACTUAL</Text>
-              <Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Sin fase activa'}</Text>
-              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Habla con Andre para tu plan'}</Text>
+              <Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Descanso / Sin fase'}</Text>
+              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Sin planificación activa'}</Text>
             </View>
             <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'REPOSO'}</Text></View>
           </View>
 
-          {/* MÉTRICAS DE RENDIMIENTO REAL */}
-          <View style={styles.metricsHeader}>
-             <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>ÚLTIMO REGISTRO (APPLE WATCH)</Text>
-             <TouchableOpacity onPress={handleManualSync} disabled={syncing}>
-               {syncing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-circle" size={28} color={colors.primary} />}
-             </TouchableOpacity>
-          </View>
-          
+          {/* RESUMEN WELLNESS MANUAL */}
+          <Text style={styles.sectionTitle}>TU ESTADO (REGISTRO MANUAL)</Text>
           <View style={styles.metricsGrid}>
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
               <Ionicons name="heart" size={22} color={colors.error} />
               <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
-                {summary?.last_workout?.hr || '--'} <Text style={styles.metricUnit}>bpm</Text>
+                {summary?.latest_wellness?.hr_rest || '--'} <Text style={styles.metricUnit}>bpm</Text>
               </Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PULSO MEDIO</Text>
+              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PULSO REPOSO</Text>
             </View>
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="timer" size={22} color={colors.primary} />
+              <Ionicons name="footsteps" size={22} color={colors.primary} />
               <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
-                {summary?.last_workout?.duration || '0'} <Text style={styles.metricUnit}>min</Text>
+                {summary?.latest_wellness?.steps || '0'}
               </Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary, textAlign: 'center' }]}>
-                {summary?.last_workout?.name || 'SIN SESIÓN'}
-              </Text>
+              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PASOS HOY</Text>
             </View>
           </View>
 
           <View style={styles.quickActions}>
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
-              <Ionicons name="pulse" size={20} color={colors.success} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Wellness</Text>
+              <Ionicons name="add-circle" size={20} color={colors.success} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Registrar Wellness</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => router.push('/analytics')}>
-              <Ionicons name="analytics" size={20} color={colors.primary} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Progreso</Text>
+              <Ionicons name="analytics" size={20} color={colors.primary} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Ver Progreso</Text>
             </TouchableOpacity>
           </View>
 
@@ -195,16 +173,15 @@ const styles = StyleSheet.create({
   container: { padding: 20 },
   dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   welcomeText: { fontSize: 28, fontWeight: '900', marginTop: 5, marginBottom: 15 },
-  phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 20, alignItems: 'center', elevation: 4 },
+  phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 20, alignItems: 'center', elevation: 2 },
   phaseInfo: { flex: 1 },
   phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 },
   macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 },
   phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
-  metricsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingHorizontal: 5 },
   metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 },
-  metricCard: { flex: 1, padding: 18, borderRadius: 24, alignItems: 'center', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
+  metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center', elevation: 1 },
   metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 },
   metricUnit: { fontSize: 12, fontWeight: '400' },
   metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 },
