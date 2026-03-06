@@ -104,7 +104,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return user
 
 # --- Rutas ---
-
 @api_router.get("/wellness/history/{athlete_id}")
 async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer' and user['id'] != athlete_id:
@@ -112,7 +111,7 @@ async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
     
     history = await db.wellness.find(
         {"athlete_id": athlete_id}, 
-        {"_id": 0}
+        {"_id": 0} # EXTREMADAMENTE IMPORTANTE PARA QUE NO FALLE
     ).sort("date", -1).to_list(7)
     
     return history[::-1]
@@ -163,19 +162,21 @@ async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
 @api_router.get("/analytics/summary")
 async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
     target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
-    target_user = await db.users.find_one({"id": target_id})
+    
+    # EL FIX ESTÁ AQUÍ: Añadido {"_id": 0} para evitar el error silencioso de serialización
+    target_user = await db.users.find_one({"id": target_id}, {"_id": 0})
     total = await db.workouts.count_documents({"athlete_id": target_id})
     completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
-    latest_well = await db.wellness.find_one({"athlete_id": target_id}, sort=[("date", -1)])
+    latest_well = await db.wellness.find_one({"athlete_id": target_id}, {"_id": 0}, sort=[("date", -1)])
 
     return {
         "total_workouts": total,
         "completed_workouts": completed,
-        "latest_wellness": latest_well or {"fatigue": 0},
+        "latest_wellness": latest_well or {"fatigue": 0, "stress": 0, "sleep_quality": 0, "soreness": 0, "notes": ""},
         "completion_rate": round((completed / total * 100) if total > 0 else 0, 1),
-        "is_injured": target_user.get("is_injured", False),
-        "injury_notes": target_user.get("injury_notes", ""),
-        "equipment": target_user.get("equipment", "")
+        "is_injured": target_user.get("is_injured", False) if target_user else False,
+        "injury_notes": target_user.get("injury_notes", "") if target_user else "",
+        "equipment": target_user.get("equipment", "") if target_user else ""
     }
 
 @api_router.get("/athletes")
