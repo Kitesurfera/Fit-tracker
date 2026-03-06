@@ -88,6 +88,19 @@ class WorkoutUpdate(BaseModel):
     observations: Optional[str] = None
     microciclo_id: Optional[str] = None
 
+class AthleteCreate(BaseModel):
+    email: str
+    password: str
+    name: str
+    gender: str # Nuevo: 'Masculino', 'Femenino', 'Otro'
+    sport: Optional[str] = "Preparación Física"
+
+class AthleteUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    gender: Optional[str] = None
+    sport: Optional[str] = None
+
 # --- Auth Helpers ---
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -172,6 +185,39 @@ async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
     update_data = {k: v for k, v in data.dict().items() if v is not None}
     await db.users.update_one({"id": user['id']}, {"$set": update_data})
     return {"status": "success"}
+
+@api_router.post("/athletes")
+async def create_athlete(data: AthleteCreate, trainer=Depends(get_current_user)):
+    if trainer['role'] != 'trainer': raise HTTPException(status_code=403)
+    existing = await db.users.find_one({"email": data.email})
+    if existing: raise HTTPException(status_code=400, detail="Email ya registrado")
+    
+    athlete_id = str(uuid.uuid4())
+    athlete = {
+        "id": athlete_id,
+        "email": data.email,
+        "password": hash_password(data.password),
+        "name": data.name,
+        "gender": data.gender,
+        "role": "athlete",
+        "trainer_id": trainer['id'],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(athlete)
+    return {"id": athlete_id, "status": "success"}
+
+@api_router.put("/athletes/{athlete_id}")
+async def update_athlete(athlete_id: str, data: AthleteUpdate, trainer=Depends(get_current_user)):
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    await db.users.update_one({"id": athlete_id, "trainer_id": trainer['id']}, {"$set": update_data})
+    return {"status": "updated"}
+
+@api_router.delete("/athletes/{athlete_id}")
+async def delete_athlete(athlete_id: str, trainer=Depends(get_current_user)):
+    await db.users.delete_one({"id": athlete_id, "trainer_id": trainer['id']})
+    # Limpiamos sus entrenos
+    await db.workouts.delete_many({"athlete_id": athlete_id})
+    return {"status": "deleted"}
 
 @api_router.get("/workouts")
 async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = None, user=Depends(get_current_user)):
