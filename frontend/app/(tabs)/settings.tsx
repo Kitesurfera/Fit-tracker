@@ -19,7 +19,6 @@ export default function SettingsScreen() {
   const [name, setName] = useState(user?.name || '');
   const [saving, setSaving] = useState(false);
 
-  // Unidades de medida
   const [weightUnit, setWeightUnit] = useState('kg');
   const [heightUnit, setHeightUnit] = useState('cm');
 
@@ -41,17 +40,16 @@ export default function SettingsScreen() {
     }
   };
 
-  // FIX: Cierre de sesión delegado totalmente al contexto para evitar desincronización
-  const handleConfirmLogout = () => {
-    Alert.alert("Fit Tracker", "¿Segura que quieres salir?", [
+  const handleLogout = () => {
+    Alert.alert("Fit Tracker", "¿Segura que quieres cerrar sesión?", [
       { text: "Cancelar", style: "cancel" },
       { 
-        text: "Cerrar Sesión", 
+        text: "Salir", 
         style: "destructive", 
         onPress: async () => {
           await logout();
-          // router.replace('/') se puede omitir si el AuthProvider redirige solo
-          router.replace('/'); 
+          // Importante: Reemplazamos toda la pila de navegación para volver al index
+          router.replace('/');
         } 
       }
     ]);
@@ -70,7 +68,6 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Text style={[styles.title, { color: colors.textPrimary }]}>Ajustes</Text>
 
-        {/* SECCIÓN PERFIL */}
         <Text style={styles.sectionHeader}>MI CUENTA</Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           <View style={styles.profileRow}>
@@ -105,16 +102,16 @@ export default function SettingsScreen() {
                 </TouchableOpacity>
               )}
               <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{user?.email || ''}</Text>
-              <View style={[styles.roleBadge, { backgroundColor: colors.primary + '10' }]}>
-                <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }}>
-                  {user?.role || 'Deportista'}
+              
+              <View style={[styles.roleBadge, { backgroundColor: user?.role === 'trainer' ? '#EAB308' + '20' : colors.primary + '20' }]}>
+                <Text style={{ color: user?.role === 'trainer' ? '#EAB308' : colors.primary, fontSize: 10, fontWeight: '800', textTransform: 'uppercase' }}>
+                  {user?.role === 'trainer' ? 'ENTRENADORA' : 'DEPORTISTA'}
                 </Text>
               </View>
             </View>
           </View>
         </View>
 
-        {/* SECCIÓN APARIENCIA */}
         <Text style={styles.sectionHeader}>APARIENCIA</Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           <View style={styles.themeGrid}>
@@ -145,7 +142,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* SECCIÓN UNIDADES */}
         <Text style={styles.sectionHeader}>UNIDADES DE MEDIDA</Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
           <View style={styles.row}>
@@ -183,16 +179,15 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* BOTÓN CERRAR SESIÓN */}
         <TouchableOpacity 
           style={[styles.logoutBtn, { backgroundColor: colors.error + '10' }]} 
-          onPress={handleConfirmLogout}
+          onPress={handleLogout}
         >
           <Ionicons name="log-out-outline" size={22} color={colors.error} />
           <Text style={{ color: colors.error, fontWeight: '800', marginLeft: 10 }}>CERRAR SESIÓN</Text>
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>Fit Tracker Pro v2.3 • Elite Performance</Text>
+        <Text style={styles.versionText}>Fit Tracker Pro v2.4 • Elite Performance</Text>
       </ScrollView>
     </SafeAreaView>
   );
@@ -211,7 +206,7 @@ const styles = StyleSheet.create({
   nameText: { fontSize: 20, fontWeight: '800' },
   editRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   input: { flex: 1, fontSize: 20, fontWeight: '800', borderBottomWidth: 2, marginRight: 10, padding: 0 },
-  roleBadge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, marginTop: 8 },
+  roleBadge: { alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginTop: 8 },
   themeGrid: { flexDirection: 'row', gap: 10 },
   themeOption: { flex: 1, alignItems: 'center', padding: 12, borderRadius: 16, borderWidth: 1 },
   themeLabel: { fontSize: 11, fontWeight: '700', marginTop: 8 },
