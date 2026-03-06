@@ -1,7 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  KeyboardAvoidingView,
+  Platform,
+  ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
@@ -13,24 +20,20 @@ export default function LoginScreen() {
   const { user, loading, login, register } = useAuth();
   const router = useRouter();
   const { colors } = useTheme();
-  
+
   const [isLogin, setIsLogin] = useState(true);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false); // Mejora sorpresa
+  const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  React.useEffect(() => {
-    React.useEffect(() => {
-  // Si ya no está cargando y hay un usuario, muévelo a la Home
-  if (!loading && user) {
-    console.log("Usuario detectado, redirigiendo...");
-    // Intentamos ir a home. Si falla la ruta, Expo Router nos avisará
-    router.replace('/home'); 
-  }
-}, [user, loading]);
+  useEffect(() => {
+    if (!loading && user) {
+      router.replace('/home');
+    }
+  }, [user, loading]);
 
   if (loading) {
     return (
@@ -53,6 +56,7 @@ export default function LoginScreen() {
       if (isLogin) {
         await login(email, password);
       } else {
+        // Por defecto, el registro desde aquí es para 'trainer'
         await register(name, email, password);
       }
     } catch (e: any) {
@@ -68,31 +72,31 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.flex}
       >
-        <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          
-          {/* SECCIÓN DE LOGO Y NOMBRE */}
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent} 
+          keyboardShouldPersistTaps="handled"
+        >
+          {/* SECCIÓN DEL LOGO Y NOMBRE APP */}
           <View style={styles.header}>
-            <View style={[styles.logoWrapper, { backgroundColor: colors.primary }]}>
-              <View style={styles.logoInner}>
-                <Ionicons name="fitness" size={42} color="#FFFFFF" />
-              </View>
+            <View style={[styles.logoBadge, { backgroundColor: colors.primary }]}>
+              <Ionicons name="fitness" size={40} color="#FFFFFF" />
             </View>
-            <Text style={[styles.brandName, { color: colors.textPrimary }]}>FIT TRACKER</Text>
-            <View style={[styles.taglineBadge, { backgroundColor: colors.primary + '15' }]}>
-              <Text style={[styles.taglineText, { color: colors.primary }]}>PREPARACIÓN FÍSICA</Text>
-            </View>
+            <Text style={[styles.brandTitle, { color: colors.textPrimary }]}>FIT TRACKER</Text>
+            <Text style={[styles.tagline, { color: colors.textSecondary }]}>
+              {isLogin ? 'GESTIÓN DE ALTO RENDIMIENTO' : 'REGISTRO DE ENTRENADOR'}
+            </Text>
           </View>
 
           <View style={styles.form}>
             {!isLogin && (
               <View style={styles.inputGroup}>
-                <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE COMPLETO</Text>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE</Text>
                 <TextInput
                   style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
                   value={name}
                   onChangeText={setName}
-                  placeholder="Ej. Claudia ..."
-                  placeholderTextColor={colors.textSecondary}
+                  placeholder="Tu nombre completo"
+                  placeholderTextColor="#888"
                   autoCapitalize="words"
                 />
               </View>
@@ -105,25 +109,25 @@ export default function LoginScreen() {
                 value={email}
                 onChangeText={setEmail}
                 placeholder="atleta@fittracker.com"
-                placeholderTextColor={colors.textSecondary}
+                placeholderTextColor="#888"
                 keyboardType="email-address"
                 autoCapitalize="none"
               />
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>CONTRASEÑA</Text>
-              <View style={styles.passwordWrapper}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>PASSWORD</Text>
+              <View style={styles.passwordContainer}>
                 <TextInput
                   style={[styles.input, styles.passwordInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="••••••••"
-                  placeholderTextColor={colors.textSecondary}
+                  placeholder="********"
+                  placeholderTextColor="#888"
                   secureTextEntry={!showPassword}
                 />
                 <TouchableOpacity 
-                  style={styles.eyeIcon} 
+                  style={styles.eyeBtn} 
                   onPress={() => setShowPassword(!showPassword)}
                 >
                   <Ionicons 
@@ -136,13 +140,13 @@ export default function LoginScreen() {
             </View>
 
             {error ? (
-              <View style={[styles.errorBox, { backgroundColor: colors.error + '15' }]}>
+              <View style={[styles.errorContainer, { backgroundColor: colors.error + '15' }]}>
                 <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
               </View>
             ) : null}
 
             <TouchableOpacity
-              style={[styles.mainButton, { backgroundColor: colors.primary }]}
+              style={[styles.mainBtn, { backgroundColor: colors.primary }]}
               onPress={handleSubmit}
               disabled={submitting}
               activeOpacity={0.8}
@@ -150,7 +154,7 @@ export default function LoginScreen() {
               {submitting ? (
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
-                <Text style={styles.mainButtonText}>
+                <Text style={styles.mainBtnText}>
                   {isLogin ? 'INICIAR SESIÓN' : 'CREAR CUENTA'}
                 </Text>
               )}
@@ -159,12 +163,11 @@ export default function LoginScreen() {
             <TouchableOpacity
               onPress={() => { setIsLogin(!isLogin); setError(''); }}
               style={styles.toggleBtn}
-              activeOpacity={0.6}
             >
               <Text style={[styles.toggleText, { color: colors.textSecondary }]}>
-                {isLogin ? '¿No tienes cuenta? ' : '¿Ya eres miembro? '}
-                <Text style={{ color: colors.primary, fontWeight: '700' }}>
-                  {isLogin ? 'Regístrate aquí' : 'Inicia sesión'}
+                {isLogin ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
+                <Text style={{ color: colors.primary, fontWeight: '800' }}>
+                  {isLogin ? 'Regístrate' : 'Inicia sesión'}
                 </Text>
               </Text>
             </TouchableOpacity>
@@ -179,81 +182,52 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 28 },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 25 },
   header: { alignItems: 'center', marginBottom: 40 },
-  logoWrapper: {
-    width: 84,
-    height: 84,
-    borderRadius: 24,
+  logoBadge: {
+    width: 80,
+    height: 80,
+    borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    marginBottom: 20,
-    // Sombra para iOS
-    shadowColor: "#000",
+    marginBottom: 15,
+    elevation: 4,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    // Sombra para Android
-    elevation: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
   },
-  logoInner: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 24,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  brandName: { 
-    fontSize: 32, 
-    fontWeight: '900', 
-    letterSpacing: 3,
-    textAlign: 'center'
-  },
-  taglineBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginTop: 8,
-  },
-  taglineText: {
-    fontSize: 11,
-    fontWeight: '800',
-    letterSpacing: 1.5,
-  },
-  form: { gap: 18 },
+  brandTitle: { fontSize: 32, fontWeight: '900', letterSpacing: 2 },
+  tagline: { fontSize: 10, fontWeight: '800', letterSpacing: 1.5, marginTop: 5 },
+  form: { gap: 15 },
   inputGroup: { gap: 6 },
-  label: { fontSize: 11, fontWeight: '700', letterSpacing: 1 },
-  passwordWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  passwordInput: {
-    flex: 1,
-  },
-  eyeIcon: {
-    position: 'absolute',
-    right: 16,
-    height: '100%',
-    justifyContent: 'center',
-  },
+  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   input: {
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
     borderWidth: 1,
   },
-  errorBox: { borderRadius: 12, padding: 14 },
-  errorText: { fontSize: 13, fontWeight: '600', textAlign: 'center' },
-  mainButton: {
-    borderRadius: 14,
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  passwordInput: {
+    flex: 1,
+  },
+  eyeBtn: {
+    position: 'absolute',
+    right: 15,
+  },
+  errorContainer: { padding: 12, borderRadius: 10 },
+  errorText: { textAlign: 'center', fontSize: 13, fontWeight: '600' },
+  mainBtn: {
+    borderRadius: 15,
     padding: 18,
     alignItems: 'center',
     marginTop: 10,
-    elevation: 4,
   },
-  mainButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 1.5 },
+  mainBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 1 },
   toggleBtn: { alignItems: 'center', paddingVertical: 20 },
   toggleText: { fontSize: 14 },
 });
