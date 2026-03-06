@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, ScrollView, 
-  Switch, Alert, TextInput, ActivityIndicator 
+  Alert, TextInput, ActivityIndicator 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,44 +9,50 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuth();
-  const { colors, themeMode, setThemeMode } = useTheme();
+  const { colors, themeMode, updateTheme } = useTheme();
   const router = useRouter();
   
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [saving, setSaving] = useState(false);
 
-  // Estados para preferencias
-  const [units, setUnits] = useState({ weight: 'kg', height: 'cm' });
-
   const handleUpdateProfile = async () => {
-    if (name === user?.name) {
-      setEditing(false);
-      return;
-    }
     setSaving(true);
     try {
       await api.updateProfile({ name });
       setEditing(false);
-      Alert.alert("Éxito", "Perfil actualizado correctamente.");
+      Alert.alert("Éxito", "Perfil actualizado.");
     } catch (e) {
-      Alert.alert("Error", "No se pudo actualizar el perfil.");
-      setName(user?.name || '');
+      Alert.alert("Error", "No se pudo actualizar.");
     } finally {
       setSaving(false);
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert("Cerrar Sesión", "¿Estás segura de que quieres salir?", [
+  // FIX DEFINITIVO PARA CERRAR SESIÓN
+  const handleLogout = async () => {
+    Alert.alert("Cerrar Sesión", "¿Seguro que quieres salir de Fit Tracker?", [
       { text: "Cancelar", style: "cancel" },
-      { text: "Salir", style: "destructive", onPress: async () => {
-          await logout();
-          router.replace('/');
-      }}
+      { 
+        text: "Cerrar Sesión", 
+        style: "destructive", 
+        onPress: async () => {
+          try {
+            // 1. Limpiamos storage
+            await AsyncStorage.multiRemove(['auth_token', 'user_data']);
+            // 2. Ejecutamos la función del contexto (que pone el user a null)
+            await logout();
+            // 3. Redirección forzada a la raíz
+            router.replace('/'); 
+          } catch (e) {
+            console.error("Error al cerrar sesión:", e);
+          }
+        } 
+      }
     ]);
   };
 
@@ -55,127 +61,90 @@ export default function SettingsScreen() {
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={[styles.title, { color: colors.textPrimary }]}>Ajustes</Text>
 
-        {/* SECCIÓN PERFIL */}
+        {/* PERFIL */}
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
-          <Text style={styles.sectionLabel}>MI CUENTA</Text>
+          <Text style={styles.sectionLabel}>PERFIL DEL {user?.role?.toUpperCase()}</Text>
           <View style={styles.profileRow}>
             <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
-              <Text style={{ color: colors.primary, fontSize: 24, fontWeight: '800' }}>
-                {user?.name?.charAt(0)}
-              </Text>
+              <Text style={{ color: colors.primary, fontSize: 24, fontWeight: '800' }}>{user?.name?.charAt(0)}</Text>
             </View>
-            
             <View style={{ flex: 1, marginLeft: 15 }}>
               {editing ? (
-                <View style={styles.editInputRow}>
+                <View style={styles.editRow}>
                   <TextInput 
                     style={[styles.input, { color: colors.textPrimary, borderBottomColor: colors.primary }]} 
-                    value={name} 
-                    onChangeText={setName} 
-                    autoFocus
+                    value={name} onChangeText={setName} autoFocus 
                   />
-                  <TouchableOpacity onPress={handleUpdateProfile} disabled={saving}>
-                    {saving ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="checkmark-circle" size={24} color={colors.success} />}
+                  <TouchableOpacity onPress={handleUpdateProfile}>
+                    {saving ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="checkmark-circle" size={26} color={colors.success} />}
                   </TouchableOpacity>
                 </View>
               ) : (
                 <TouchableOpacity style={styles.nameRow} onPress={() => setEditing(true)}>
                   <Text style={[styles.nameText, { color: colors.textPrimary }]}>{user?.name}</Text>
-                  <Ionicons name="pencil-outline" size={14} color={colors.primary} style={{marginLeft: 5}} />
+                  <Ionicons name="pencil" size={14} color={colors.primary} style={{marginLeft: 8}} />
                 </TouchableOpacity>
               )}
               <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{user?.email}</Text>
-              <View style={[styles.roleBadge, { backgroundColor: colors.primary + '10' }]}>
-                <Text style={{ color: colors.primary, fontSize: 10, fontWeight: '800' }}>
-                  {user?.role?.toUpperCase()}
-                </Text>
-              </View>
             </View>
           </View>
         </View>
 
-        {/* PREFERENCIAS DE LA APP */}
-        <Text style={styles.sectionHeader}>PREFERENCIAS</Text>
+        {/* APARIENCIA (TEMA DEL SISTEMA) */}
+        <Text style={styles.sectionHeader}>APARIENCIA</Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
-          <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Ionicons name="moon-outline" size={20} color={colors.primary} />
-              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Modo Oscuro</Text>
-            </View>
-            <Switch 
-              value={themeMode === 'dark'} 
-              onValueChange={() => setThemeMode(themeMode === 'dark' ? 'light' : 'dark')}
-              trackColor={{ false: '#ddd', true: colors.primary }}
-            />
+          <View style={styles.themeGrid}>
+            {[
+              { id: 'light', label: 'Claro', icon: 'sunny' },
+              { id: 'dark', label: 'Oscuro', icon: 'moon' },
+              { id: 'system', label: 'Sistema', icon: 'settings-outline' }
+            ].map((mode) => (
+              <TouchableOpacity 
+                key={mode.id}
+                onPress={() => updateTheme(mode.id as any)}
+                style={[
+                  styles.themeOption, 
+                  { borderColor: colors.border },
+                  themeMode === mode.id && { backgroundColor: colors.primary, borderColor: colors.primary }
+                ]}
+              >
+                <Ionicons name={mode.icon as any} size={20} color={themeMode === mode.id ? '#FFF' : colors.textPrimary} />
+                <Text style={[styles.themeLabel, { color: themeMode === mode.id ? '#FFF' : colors.textPrimary }]}>{mode.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-
-          <View style={styles.divider} />
-
-          <TouchableOpacity style={styles.row} onPress={() => setUnits({...units, weight: units.weight === 'kg' ? 'lb' : 'kg'})}>
-            <View style={styles.rowLeft}>
-              <Ionicons name="speedometer-outline" size={20} color={colors.primary} />
-              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Unidad de peso</Text>
-            </View>
-            <Text style={{ color: colors.primary, fontWeight: '800' }}>{units.weight.toUpperCase()}</Text>
-          </TouchableOpacity>
-
-          <View style={styles.divider} />
-
-          <TouchableOpacity style={styles.row} onPress={() => setUnits({...units, height: units.height === 'cm' ? 'ft' : 'cm'})}>
-            <View style={styles.rowLeft}>
-              <Ionicons name="resize-outline" size={20} color={colors.primary} />
-              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Unidad de altura</Text>
-            </View>
-            <Text style={{ color: colors.primary, fontWeight: '800' }}>{units.height.toUpperCase()}</Text>
-          </TouchableOpacity>
         </View>
 
-        {/* ACCIONES CRÍTICAS */}
-        <Text style={styles.sectionHeader}>SOPORTE</Text>
-        <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]}>
-          <View style={styles.row}>
-            <View style={styles.rowLeft}>
-              <Ionicons name="help-buoy-outline" size={20} color={colors.primary} />
-              <Text style={[styles.rowText, { color: colors.textPrimary }]}>Centro de ayuda</Text>
-            </View>
-            <Ionicons name="chevron-forward" size={16} color="#ccc" />
-          </View>
-        </TouchableOpacity>
-
+        {/* CERRAR SESIÓN */}
         <TouchableOpacity 
           style={[styles.logoutBtn, { backgroundColor: colors.error + '10' }]} 
           onPress={handleLogout}
         >
-          <Ionicons name="log-out-outline" size={20} color={colors.error} />
+          <Ionicons name="log-out-outline" size={22} color={colors.error} />
           <Text style={{ color: colors.error, fontWeight: '800', marginLeft: 10 }}>CERRAR SESIÓN</Text>
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>Versión 2.0.4 - Built for Claudia</Text>
+        <Text style={styles.versionText}>Fit Tracker Pro v2.1 • Preparación Física</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  scroll: { padding: 25, paddingBottom: 50 },
+  scroll: { padding: 25 },
   title: { fontSize: 32, fontWeight: '900', marginBottom: 25 },
-  sectionHeader: { fontSize: 11, fontWeight: '800', color: '#888', letterSpacing: 1, marginBottom: 10, marginTop: 15 },
-  card: { padding: 20, borderRadius: 24, marginBottom: 15, elevation: 1 },
-  sectionLabel: { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 1, marginBottom: 20 },
-  
+  sectionHeader: { fontSize: 11, fontWeight: '800', color: '#888', letterSpacing: 1, marginBottom: 12, marginTop: 10 },
+  card: { padding: 20, borderRadius: 24, marginBottom: 20, elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
+  sectionLabel: { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 1, marginBottom: 15 },
   profileRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: { width: 64, height: 64, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  avatar: { width: 60, height: 60, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   nameRow: { flexDirection: 'row', alignItems: 'center' },
   nameText: { fontSize: 20, fontWeight: '800' },
-  editInputRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
-  input: { flex: 1, fontSize: 20, fontWeight: '800', padding: 0, borderBottomWidth: 1, marginRight: 10 },
-  roleBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 8 },
-
-  row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },
-  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  rowText: { fontSize: 16, fontWeight: '600' },
-  divider: { height: 1, backgroundColor: 'rgba(0,0,0,0.05)', marginVertical: 15 },
-
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginTop: 25 },
-  versionText: { textAlign: 'center', color: '#ccc', fontSize: 12, marginTop: 30 }
+  editRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  input: { flex: 1, fontSize: 20, fontWeight: '800', borderBottomWidth: 1, marginRight: 10, padding: 0 },
+  themeGrid: { flexDirection: 'row', gap: 10 },
+  themeOption: { flex: 1, alignItems: 'center', padding: 12, borderRadius: 15, borderWidth: 1 },
+  themeLabel: { fontSize: 11, fontWeight: '700', marginTop: 8 },
+  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 20, borderRadius: 20, marginTop: 20 },
+  versionText: { textAlign: 'center', color: '#ccc', fontSize: 11, marginTop: 40 }
 });
