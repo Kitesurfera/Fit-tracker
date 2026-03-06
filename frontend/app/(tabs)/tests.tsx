@@ -27,8 +27,8 @@ const TEST_LABELS: Record<string, string> = {
 const CATEGORIES = [
   { key: 'all', label: 'Todos' },
   { key: 'strength', label: 'Fuerza' },
-  { key: 'plyometrics', label: 'Pliometria' },
-  { key: 'max_force', label: 'F. Maxima' },
+  { key: 'plyometrics', label: 'Pliometría' },
+  { key: 'max_force', label: 'F. Máxima' },
 ];
 
 export default function TestsScreen() {
@@ -58,25 +58,30 @@ export default function TestsScreen() {
       if (selectedAthlete) params.athlete_id = selectedAthlete;
       
       const [ts, ath] = await Promise.all([
-        api.getTests(params).catch(() => []), // Seguro contra fallos de red
+        api.getTests(params).catch(() => []), 
         user?.role === 'trainer' ? api.getAthletes().catch(() => []) : Promise.resolve([]),
       ]);
       
-      // Nos aseguramos 100% de que siempre sean arrays (evita la pantalla blanca)
       setTests(Array.isArray(ts) ? ts : []);
       setAthletes(Array.isArray(ath) ? ath : []);
       
     } catch (e) {
-      console.log(e);
+      console.log("Error cargando tests:", e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => { loadData(); }, [selectedCategory, selectedAthlete]);
+  useEffect(() => { 
+    setLoading(true);
+    loadData(); 
+  }, [selectedCategory, selectedAthlete]);
 
-  const onRefresh = () => { setRefreshing(true); loadData(); };
+  const onRefresh = () => { 
+    setRefreshing(true); 
+    loadData(); 
+  };
 
   const deleteTest = (testId: string, testName: string) => {
     if (Platform.OS === 'web') {
@@ -87,7 +92,7 @@ export default function TestsScreen() {
           .catch(e => console.log(e));
       }
     } else {
-      Alert.alert('Eliminar test', `Eliminar "${testName}"?`, [
+      Alert.alert('Eliminar test', `¿Eliminar "${testName}"?`, [
         { text: 'Cancelar', style: 'cancel' },
         {
           text: 'Eliminar', style: 'destructive', onPress: async () => {
@@ -141,7 +146,7 @@ export default function TestsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {loading ? (
-        <View style={{ flex: 1, justifyContent: 'center' }}>
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <ActivityIndicator color={colors.primary} size="large" />
         </View>
       ) : (
@@ -149,11 +154,10 @@ export default function TestsScreen() {
           testID="tests-list"
           data={tests}
           keyExtractor={(item) => item.id}
-          // ELIMINADO REFRESHCONTROL
           contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
           ListHeaderComponent={
             <View style={{ marginBottom: 16 }}>
-              {/* NUEVA CABECERA CON BOTONES */}
               <View style={styles.headerRow}>
                 <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Tests Físicos</Text>
                 <View style={styles.headerActions}>
@@ -164,7 +168,12 @@ export default function TestsScreen() {
                       <Ionicons name="sync-outline" size={24} color={colors.primary} />
                     )}
                   </TouchableOpacity>
-                  <TouchableOpacity testID="add-test-btn" style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => router.push('/add-test')} activeOpacity={0.7}>
+                  <TouchableOpacity 
+                    testID="add-test-btn" 
+                    style={[styles.addBtn, { backgroundColor: colors.primary }]} 
+                    onPress={() => router.push('/add-test')} 
+                    activeOpacity={0.7}
+                  >
                     <Ionicons name="add" size={22} color="#FFF" />
                   </TouchableOpacity>
                 </View>
@@ -233,18 +242,20 @@ export default function TestsScreen() {
                 </View>
                 <View style={styles.testActions}>
                   <TouchableOpacity testID={`edit-test-${item.id}`} onPress={() => openEditModal(item)} activeOpacity={0.7}>
-                    <Ionicons name="create-outline" size={18} color={colors.primary} />
+                    <Ionicons name="create-outline" size={20} color={colors.primary} />
                   </TouchableOpacity>
                   <TouchableOpacity testID={`delete-test-${item.id}`}
                     onPress={() => deleteTest(item.id, item.test_name === 'custom' ? item.custom_name : (TEST_LABELS[item.test_name] || item.test_name))}
-                    activeOpacity={0.7}>
-                    <Ionicons name="trash-outline" size={18} color={colors.error} />
+                    activeOpacity={0.7}
+                    style={{ marginLeft: 10 }}>
+                    <Ionicons name="trash-outline" size={20} color={colors.error} />
                   </TouchableOpacity>
                 </View>
               </View>
               <Text style={[styles.testName, { color: colors.textPrimary }]}>
                 {item.test_name === 'custom' ? item.custom_name : (TEST_LABELS[item.test_name] || item.test_name)}
               </Text>
+              
               {item.value_left != null || item.value_right != null ? (
                 <View style={styles.bilateralValues}>
                   <View style={styles.bilateralSide}>
@@ -269,6 +280,7 @@ export default function TestsScreen() {
                   <Text style={[styles.testUnit, { color: colors.textSecondary }]}>{item.unit}</Text>
                 </View>
               )}
+              
               <Text style={[styles.testDate, { color: colors.textSecondary }]}>{item.date}</Text>
               {item.notes ? <Text style={[styles.testNotes, { color: colors.textSecondary }]}>{item.notes}</Text> : null}
             </View>
@@ -282,7 +294,7 @@ export default function TestsScreen() {
         />
       )}
 
-      {/* Edit Test Modal */}
+      {/* MODAL DE EDICIÓN */}
       <Modal visible={!!editTest} transparent animationType="fade" onRequestClose={() => setEditTest(null)}>
         <View style={styles.modalOverlay}>
           <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
@@ -368,48 +380,54 @@ export default function TestsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  // ESTILOS DE CABECERA ACTUALIZADOS
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingTop: 16 },
-  screenTitle: { fontSize: 24, fontWeight: '700' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  refreshBtn: { padding: 4 },
-  addBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10 },
+  screenTitle: { fontSize: 26, fontWeight: '900' },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 15 },
+  refreshBtn: { padding: 5 },
+  addBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
   
-  filterRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingTop: 16 },
-  filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
-  filterText: { fontSize: 13, fontWeight: '600' },
-  athleteFilter: { paddingHorizontal: 16, paddingTop: 12, gap: 8, paddingBottom: 4 },
-  athleteChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 16 },
-  athleteChipText: { fontSize: 13, fontWeight: '500' },
-  listContent: { paddingBottom: 32 },
-  testCard: { borderRadius: 12, padding: 16, marginHorizontal: 16, marginBottom: 12, borderWidth: 1 },
-  testHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  typeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  typeBadgeText: { fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
-  testName: { fontSize: 17, fontWeight: '600', marginBottom: 8 },
-  testValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginBottom: 4 },
-  testValue: { fontSize: 32, fontWeight: '700' },
-  testUnit: { fontSize: 16 },
-  bilateralValues: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  bilateralSide: { flex: 1, alignItems: 'center', gap: 4 },
-  sideBadge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
-  sideBadgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
-  bilateralDivider: { width: 1, height: 40, marginHorizontal: 8 },
-  testDate: { fontSize: 13, marginTop: 4 },
-  testNotes: { fontSize: 13, marginTop: 4, fontStyle: 'italic' },
-  emptyState: { alignItems: 'center', paddingTop: 48, gap: 12 },
-  emptyText: { fontSize: 16, fontWeight: '500' },
-  testActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
-  modalCard: { width: '100%', borderRadius: 16, padding: 24, gap: 14 },
-  modalTitle: { fontSize: 18, fontWeight: '700' },
-  modalSub: { fontSize: 14 },
-  modalField: { gap: 6 },
-  modalRow: { flexDirection: 'row', gap: 10 },
-  modalLabel: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
-  modalInput: { borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1 },
-  modalTextArea: { minHeight: 60, textAlignVertical: 'top' },
-  modalBtns: { flexDirection: 'row', gap: 10, marginTop: 4 },
-  modalBtn: { flex: 1, borderRadius: 10, padding: 14, alignItems: 'center' },
-  modalBtnText: { fontSize: 15, fontWeight: '600' },
+  filterRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, paddingTop: 20 },
+  filterChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
+  filterText: { fontSize: 13, fontWeight: '700' },
+  
+  athleteFilter: { paddingHorizontal: 20, paddingTop: 15, gap: 10, paddingBottom: 10 },
+  athleteChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 },
+  athleteChipText: { fontSize: 13, fontWeight: '600' },
+  
+  listContent: { paddingBottom: 40 },
+  testCard: { borderRadius: 20, padding: 20, marginHorizontal: 20, marginBottom: 15, borderWidth: 1, elevation: 1 },
+  testHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
+  typeBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  typeBadgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+  testName: { fontSize: 18, fontWeight: '800', marginBottom: 10 },
+  
+  testValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginBottom: 5 },
+  testValue: { fontSize: 36, fontWeight: '900' },
+  testUnit: { fontSize: 18, fontWeight: '600' },
+  
+  bilateralValues: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+  bilateralSide: { flex: 1, alignItems: 'center', gap: 5 },
+  sideBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  sideBadgeText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  bilateralDivider: { width: 1, height: 50, marginHorizontal: 10 },
+  
+  testDate: { fontSize: 13, marginTop: 5, fontWeight: '600' },
+  testNotes: { fontSize: 13, marginTop: 8, fontStyle: 'italic', lineHeight: 18 },
+  
+  emptyState: { alignItems: 'center', paddingTop: 60, gap: 15 },
+  emptyText: { fontSize: 16, fontWeight: '600' },
+  testActions: { flexDirection: 'row', alignItems: 'center' },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 25 },
+  modalCard: { width: '100%', borderRadius: 25, padding: 25, gap: 15 },
+  modalTitle: { fontSize: 22, fontWeight: '900' },
+  modalSub: { fontSize: 14, fontWeight: '600', marginBottom: 5 },
+  modalField: { gap: 8 },
+  modalRow: { flexDirection: 'row', gap: 15 },
+  modalLabel: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  modalInput: { borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1 },
+  modalTextArea: { minHeight: 80, textAlignVertical: 'top' },
+  modalBtns: { flexDirection: 'row', gap: 12, marginTop: 10 },
+  modalBtn: { flex: 1, borderRadius: 14, padding: 16, alignItems: 'center' },
+  modalBtnText: { fontSize: 15, fontWeight: '800' },
 });
