@@ -63,6 +63,22 @@ class AthleteCreate(BaseModel):
     sport: Optional[str] = ""
     position: Optional[str] = ""
 
+class WorkoutCreate(BaseModel):
+    athlete_id: str
+    date: str
+    title: str
+    exercises: List[dict]
+    notes: Optional[str] = ""
+    microciclo_id: Optional[str] = None
+
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    sport: Optional[str] = None
+    position: Optional[str] = None
+    is_injured: Optional[bool] = None
+    injury_notes: Optional[str] = None
+    equipment: Optional[str] = None
+
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
     exercises: Optional[List[dict]] = None
@@ -71,12 +87,6 @@ class WorkoutUpdate(BaseModel):
     completion_data: Optional[dict] = None
     observations: Optional[str] = None
     microciclo_id: Optional[str] = None
-
-class SettingsUpdate(BaseModel):
-    notifications_enabled: Optional[bool] = None
-    weight_unit: Optional[str] = None
-    height_unit: Optional[str] = None
-    language: Optional[str] = None
 
 # --- Auth Helpers ---
 def hash_password(password: str) -> str:
@@ -126,10 +136,11 @@ async def login(data: UserLogin):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
     return {"token": create_token(user['id'], user['role']), "user": {k: v for k, v in user.items() if k != 'password'}}
 
-# --- Analytics Summary (Simplificado) ---
+# --- Analytics Summary ---
 @api_router.get("/analytics/summary")
 async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
     target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
+    target_user = await db.users.find_one({"id": target_id})
     
     total = await db.workouts.count_documents({"athlete_id": target_id})
     completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
@@ -139,10 +150,29 @@ async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_c
         "total_workouts": total,
         "completed_workouts": completed,
         "latest_wellness": latest_well or {"steps": 0, "hr_rest": 0},
-        "completion_rate": round((completed / total * 100) if total > 0 else 0, 1)
+        "completion_rate": round((completed / total * 100) if total > 0 else 0, 1),
+        "is_injured": target_user.get("is_injured", False),
+        "injury_notes": target_user.get("injury_notes", ""),
+        "equipment": target_user.get("equipment", "")
     }
 
-# --- Workouts & Settings ---
+# --- Athletes, Workouts & Periodization ---
+@api_router.get("/athletes")
+async def list_athletes(user=Depends(get_current_user)):
+    if user['role'] == 'trainer':
+        return await db.users.find({"trainer_id": user['id'], "role": "athlete"}, {"_id": 0, "password": 0}).to_list(1000)
+    return []
+
+@api_router.get("/athletes/{athlete_id}")
+async def get_athlete(athlete_id: str, user=Depends(get_current_user)):
+    return await db.users.find_one({"id": athlete_id}, {"_id": 0, "password": 0})
+
+@api_router.put("/profile")
+async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    await db.users.update_one({"id": user['id']}, {"$set": update_data})
+    return {"status": "success"}
+
 @api_router.get("/workouts")
 async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = None, user=Depends(get_current_user)):
     query = {}
@@ -151,13 +181,13 @@ async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = 
     if date: query['date'] = date
     return await db.workouts.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
 
-@api_router.put("/settings")
-async def update_settings(data: SettingsUpdate, user=Depends(get_current_user)):
-    update_data = {k: v for k, v in data.dict().items() if v is not None}
-    await db.settings.update_one({"user_id": user['id']}, {"$set": update_data}, upsert=True)
-    return await db.settings.find_one({"user_id": user['id']}, {"_id": 0})
+@api_router.get("/periodization/tree/{athlete_id}")
+async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
+    macros = await db.macrociclos.find({"athlete_id": athlete_id}, {"_id": 0}).sort("fecha_inicio", 1).to_list(100)
+    for m in macros:
+        m['microciclos'] = await db.microciclos.find({"macrociclo_id": m['id']}, {"_id": 0}).sort("fecha_inicio", 1).to_list(100)
+    return macros
 
-# Middleware y Startup
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
