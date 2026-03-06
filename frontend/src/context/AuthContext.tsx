@@ -39,7 +39,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setToken(savedToken);
         setUser(JSON.parse(savedUser));
       } else {
-        // Si falta algo, limpiamos todo para evitar estados "buggeados"
         await AsyncStorage.multiRemove(['auth_token', 'user_data']);
       }
     } catch (e) {
@@ -70,10 +69,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    // Limpieza profunda y simultánea
-    setUser(null);
-    setToken(null);
+    // 1. Limpiamos el disco duro del móvil
     await AsyncStorage.multiRemove(['auth_token', 'user_data']);
+    // 2. Limpiamos la memoria local (estado)
+    setToken(null);
+    setUser(null);
   };
 
   const updateUser = (data: Partial<User>) => {
