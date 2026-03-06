@@ -38,13 +38,11 @@ api_router = APIRouter(prefix="/api")
 
 # --- Modelos Pydantic ---
 class WellnessCreate(BaseModel):
-    sleep: int
-    stress: int
     fatigue: int
+    stress: int
+    sleep_quality: int
+    soreness: int
     notes: Optional[str] = ""
-    hr_rest: Optional[int] = None
-    steps: Optional[int] = None
-    sleep_hours: Optional[float] = None
 
 class UserRegister(BaseModel):
     email: str
@@ -60,16 +58,8 @@ class AthleteCreate(BaseModel):
     email: str
     password: str
     name: str
-    sport: Optional[str] = ""
-    position: Optional[str] = ""
-
-class WorkoutCreate(BaseModel):
-    athlete_id: str
-    date: str
-    title: str
-    exercises: List[dict]
-    notes: Optional[str] = ""
-    microciclo_id: Optional[str] = None
+    gender: str
+    sport: Optional[str] = "Preparación Física"
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
@@ -87,19 +77,6 @@ class WorkoutUpdate(BaseModel):
     completion_data: Optional[dict] = None
     observations: Optional[str] = None
     microciclo_id: Optional[str] = None
-
-class AthleteCreate(BaseModel):
-    email: str
-    password: str
-    name: str
-    gender: str # Nuevo: 'Masculino', 'Femenino', 'Otro'
-    sport: Optional[str] = "Preparación Física"
-
-class AthleteUpdate(BaseModel):
-    name: Optional[str] = None
-    email: Optional[str] = None
-    gender: Optional[str] = None
-    sport: Optional[str] = None
 
 # --- Auth Helpers ---
 def hash_password(password: str) -> str:
@@ -129,7 +106,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return user
 
-# --- Rutas de Auth ---
+# --- Rutas ---
 @api_router.post("/auth/register")
 async def register(data: UserRegister):
     existing = await db.users.find_one({"email": data.email})
@@ -147,28 +124,36 @@ async def login(data: UserLogin):
     user = await db.users.find_one({"email": data.email})
     if not user or not verify_password(data.password, user['password']):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
-    
-    # Creamos el token
     token = create_token(user['id'], user['role'])
-    
-    # Devolvemos solo lo necesario para el frontend
     return {
         "token": token,
         "user": {
-            "id": user['id'],
-            "email": user['email'],
-            "name": user['name'],
-            "role": user['role'],
-            "is_injured": user.get("is_injured", False)
+            "id": user['id'], "email": user['email'], "name": user['name'],
+            "role": user['role'], "is_injured": user.get("is_injured", False)
         }
     }
 
-# --- Analytics Summary ---
+@api_router.post("/wellness")
+async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
+    today = datetime.now(timezone.utc).isoformat().split('T')[0]
+    wellness_entry = {
+        "id": str(uuid.uuid4()),
+        "athlete_id": user['id'],
+        "date": today,
+        "fatigue": data.fatigue,
+        "stress": data.stress,
+        "sleep_quality": data.sleep_quality,
+        "soreness": data.soreness,
+        "notes": data.notes,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.wellness.insert_one(wellness_entry)
+    return {"status": "success"}
+
 @api_router.get("/analytics/summary")
 async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
     target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
     target_user = await db.users.find_one({"id": target_id})
-    
     total = await db.workouts.count_documents({"athlete_id": target_id})
     completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
     latest_well = await db.wellness.find_one({"athlete_id": target_id}, sort=[("date", -1)])
@@ -176,14 +161,13 @@ async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_c
     return {
         "total_workouts": total,
         "completed_workouts": completed,
-        "latest_wellness": latest_well or {"steps": 0, "hr_rest": 0},
+        "latest_wellness": latest_well or {"fatigue": 0},
         "completion_rate": round((completed / total * 100) if total > 0 else 0, 1),
         "is_injured": target_user.get("is_injured", False),
         "injury_notes": target_user.get("injury_notes", ""),
         "equipment": target_user.get("equipment", "")
     }
 
-# --- Athletes, Workouts & Periodization ---
 @api_router.get("/athletes")
 async def list_athletes(user=Depends(get_current_user)):
     if user['role'] == 'trainer':
@@ -199,39 +183,6 @@ async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
     update_data = {k: v for k, v in data.dict().items() if v is not None}
     await db.users.update_one({"id": user['id']}, {"$set": update_data})
     return {"status": "success"}
-
-@api_router.post("/athletes")
-async def create_athlete(data: AthleteCreate, trainer=Depends(get_current_user)):
-    if trainer['role'] != 'trainer': raise HTTPException(status_code=403)
-    existing = await db.users.find_one({"email": data.email})
-    if existing: raise HTTPException(status_code=400, detail="Email ya registrado")
-    
-    athlete_id = str(uuid.uuid4())
-    athlete = {
-        "id": athlete_id,
-        "email": data.email,
-        "password": hash_password(data.password),
-        "name": data.name,
-        "gender": data.gender,
-        "role": "athlete",
-        "trainer_id": trainer['id'],
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.users.insert_one(athlete)
-    return {"id": athlete_id, "status": "success"}
-
-@api_router.put("/athletes/{athlete_id}")
-async def update_athlete(athlete_id: str, data: AthleteUpdate, trainer=Depends(get_current_user)):
-    update_data = {k: v for k, v in data.dict().items() if v is not None}
-    await db.users.update_one({"id": athlete_id, "trainer_id": trainer['id']}, {"$set": update_data})
-    return {"status": "updated"}
-
-@api_router.delete("/athletes/{athlete_id}")
-async def delete_athlete(athlete_id: str, trainer=Depends(get_current_user)):
-    await db.users.delete_one({"id": athlete_id, "trainer_id": trainer['id']})
-    # Limpiamos sus entrenos
-    await db.workouts.delete_many({"athlete_id": athlete_id})
-    return {"status": "deleted"}
 
 @api_router.get("/workouts")
 async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = None, user=Depends(get_current_user)):
