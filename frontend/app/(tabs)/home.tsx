@@ -22,7 +22,7 @@ export default function HomeScreen() {
   const [activeMicro, setActiveMicro] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [syncing, setSyncing] = useState(false); // Estado para el botón de Strava
+  const [syncing, setSyncing] = useState(false);
   const [showWellness, setShowWellness] = useState(false);
 
   const isTrainer = user?.role === 'trainer';
@@ -69,9 +69,9 @@ export default function HomeScreen() {
     try {
       await api.syncStrava();
       await loadData();
-      Alert.alert("¡Sincronizado!", "Datos de Apple Watch actualizados correctamente.");
+      Alert.alert("¡Sincronizado!", "Datos de tu Apple Watch actualizados.");
     } catch (e) {
-      Alert.alert("Error", "No se pudo sincronizar con Strava en este momento.");
+      Alert.alert("Error", "No se pudo sincronizar. Verifica tu conexión con Strava en Ajustes.");
     } finally {
       setSyncing(false);
     }
@@ -114,7 +114,7 @@ export default function HomeScreen() {
           <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
           <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 🤙</Text>
 
-          {/* TARJETA MICROCICLO */}
+          {/* MICROCICLO ACTUAL */}
           <View style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
             <View style={styles.phaseInfo}>
               <Text style={styles.phaseLabel}>FASE ACTUAL</Text>
@@ -124,24 +124,30 @@ export default function HomeScreen() {
             <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'REPOSO'}</Text></View>
           </View>
 
-          {/* MÉTRICAS CON BOTÓN DE SYNC */}
+          {/* MÉTRICAS DE RENDIMIENTO REAL */}
           <View style={styles.metricsHeader}>
-             <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>SALUD (APPLE WATCH)</Text>
+             <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>ÚLTIMO REGISTRO (APPLE WATCH)</Text>
              <TouchableOpacity onPress={handleManualSync} disabled={syncing}>
-               {syncing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh-circle" size={26} color={colors.primary} />}
+               {syncing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-circle" size={28} color={colors.primary} />}
              </TouchableOpacity>
           </View>
           
           <View style={styles.metricsGrid}>
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="heart" size={20} color={colors.error} />
-              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.latest_tests?.hr_rest?.value || '--'} <Text style={styles.metricUnit}>bpm</Text></Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>REPOSO</Text>
+              <Ionicons name="heart" size={22} color={colors.error} />
+              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
+                {summary?.last_workout?.hr || '--'} <Text style={styles.metricUnit}>bpm</Text>
+              </Text>
+              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PULSO MEDIO</Text>
             </View>
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="footsteps" size={20} color={colors.primary} />
-              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.latest_wellness?.steps || '0'}</Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PASOS HOY</Text>
+              <Ionicons name="timer" size={22} color={colors.primary} />
+              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
+                {summary?.last_workout?.duration || '0'} <Text style={styles.metricUnit}>min</Text>
+              </Text>
+              <Text style={[styles.metricLabel, { color: colors.textSecondary, textAlign: 'center' }]}>
+                {summary?.last_workout?.name || 'SIN SESIÓN'}
+              </Text>
             </View>
           </View>
 
@@ -154,7 +160,7 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.sectionTitle}>SESIONES RECIENTES</Text>
+          <Text style={styles.sectionTitle}>SESIONES PROGRAMADAS</Text>
         </View>
       }
       renderItem={({ item }) => (
@@ -196,17 +202,17 @@ const styles = StyleSheet.create({
   macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 },
   phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
-  metricsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, paddingHorizontal: 5 },
+  metricsHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, paddingHorizontal: 5 },
   metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 },
-  metricCard: { flex: 1, padding: 15, borderRadius: 20, alignItems: 'center' },
-  metricValue: { fontSize: 20, fontWeight: '900', marginTop: 5 },
+  metricCard: { flex: 1, padding: 18, borderRadius: 24, alignItems: 'center', elevation: 2, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10 },
+  metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 },
   metricUnit: { fontSize: 12, fontWeight: '400' },
   metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 },
   quickActions: { flexDirection: 'row', gap: 12, marginBottom: 25 },
-  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 12, borderRadius: 15 },
+  actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: 16 },
   actionText: { fontWeight: '700' },
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1 },
-  card: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 18, marginHorizontal: 20, marginBottom: 10 },
-  avatarCircle: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
+  card: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginHorizontal: 20, marginBottom: 10 },
+  avatarCircle: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   cardTitle: { fontSize: 16, fontWeight: '700' }
 });
