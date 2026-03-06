@@ -107,6 +107,21 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return user
 
 # --- Rutas ---
+
+@api_router.get("/wellness/history/{athlete_id}")
+async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
+    # Solo el entrenador o el propio atleta pueden ver este historial
+    if user['role'] != 'trainer' and user['id'] != athlete_id:
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    # Traemos los últimos 7 registros para la gráfica semanal
+    history = await db.wellness.find(
+        {"athlete_id": athlete_id}, 
+        {"_id": 0}
+    ).sort("date", -1).to_list(7)
+    
+    return history[::-1] # Invertimos para que salga de más antiguo a más nuevo
+
 @api_router.post("/auth/register")
 async def register(data: UserRegister):
     existing = await db.users.find_one({"email": data.email})
