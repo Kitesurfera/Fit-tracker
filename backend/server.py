@@ -144,10 +144,24 @@ async def register(data: UserRegister):
 
 @api_router.post("/auth/login")
 async def login(data: UserLogin):
-    user = await db.users.find_one({"email": data.email}, {"_id": 0})
+    user = await db.users.find_one({"email": data.email})
     if not user or not verify_password(data.password, user['password']):
-        raise HTTPException(status_code=401, detail="Credenciales inválidas")
-    return {"token": create_token(user['id'], user['role']), "user": {k: v for k, v in user.items() if k != 'password'}}
+        raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+    
+    # Creamos el token
+    token = create_token(user['id'], user['role'])
+    
+    # Devolvemos solo lo necesario para el frontend
+    return {
+        "token": token,
+        "user": {
+            "id": user['id'],
+            "email": user['email'],
+            "name": user['name'],
+            "role": user['role'],
+            "is_injured": user.get("is_injured", False)
+        }
+    }
 
 # --- Analytics Summary ---
 @api_router.get("/analytics/summary")
