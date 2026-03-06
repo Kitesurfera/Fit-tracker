@@ -40,16 +40,19 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert("Fit Tracker", "¿Segura que quieres cerrar sesión?", [
+  // FIX DEFINITIVO: Timeout para evitar el bloqueo del Alert en iOS/Android
+  const handleConfirmLogout = () => {
+    Alert.alert("Fit Tracker", "¿Segura que quieres salir?", [
       { text: "Cancelar", style: "cancel" },
       { 
-        text: "Salir", 
+        text: "Cerrar Sesión", 
         style: "destructive", 
         onPress: async () => {
           await logout();
-          // Importante: Reemplazamos toda la pila de navegación para volver al index
-          router.replace('/');
+          // Esperamos 150ms a que la animación de la alerta termine antes de redirigir
+          setTimeout(() => {
+            router.replace('/'); 
+          }, 150);
         } 
       }
     ]);
@@ -181,13 +184,13 @@ export default function SettingsScreen() {
 
         <TouchableOpacity 
           style={[styles.logoutBtn, { backgroundColor: colors.error + '10' }]} 
-          onPress={handleLogout}
+          onPress={handleConfirmLogout}
         >
           <Ionicons name="log-out-outline" size={22} color={colors.error} />
           <Text style={{ color: colors.error, fontWeight: '800', marginLeft: 10 }}>CERRAR SESIÓN</Text>
         </TouchableOpacity>
 
-        <Text style={styles.versionText}>Fit Tracker Pro v2.4 • Elite Performance</Text>
+        <Text style={styles.versionText}>Fit Tracker Pro v2.5 • Elite Performance</Text>
       </ScrollView>
     </SafeAreaView>
   );
