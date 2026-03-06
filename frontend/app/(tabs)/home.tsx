@@ -22,13 +22,11 @@ export default function HomeScreen() {
   const [activeMicro, setActiveMicro] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [updating, setUpdating] = useState(false); // Estado para el botón
   const [showWellness, setShowWellness] = useState(false);
 
-  // Estados para añadir deportista
   const [showAddModal, setShowAddModal] = useState(false);
-  const [newAthlete, setNewAthlete] = useState({ 
-    name: '', email: '', password: '', gender: 'Femenino' 
-  });
+  const [newAthlete, setNewAthlete] = useState({ name: '', email: '', password: '', gender: 'Femenino' });
 
   const isTrainer = user?.role === 'trainer';
   const firstName = user?.name?.split(' ')[0] || 'Usuario';
@@ -68,75 +66,48 @@ export default function HomeScreen() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setUpdating(false);
     }
+  };
+
+  const handleUpdate = () => {
+    setUpdating(true);
+    loadData();
   };
 
   const handleAddAthlete = async () => {
-    if (!newAthlete.name || !newAthlete.email || !newAthlete.password) {
-      Alert.alert("Error", "Rellena todos los campos obligatorios.");
-      return;
-    }
+    if (!newAthlete.name || !newAthlete.email || !newAthlete.password) return;
     try {
       await api.createAthlete(newAthlete);
       setShowAddModal(false);
-      setNewAthlete({ name: '', email: '', password: '', gender: 'Femenino' });
       loadData();
-      Alert.alert("Éxito", "Deportista registrado.");
-    } catch (e) {
-      Alert.alert("Error", "No se pudo registrar al deportista.");
-    }
-  };
-
-  const confirmDelete = (athlete: any) => {
-    Alert.alert("Eliminar", `¿Borrar a ${athlete.name}?`, [
-      { text: "Cancelar", style: "cancel" },
-      { text: "Eliminar", style: "destructive", onPress: async () => {
-          try {
-            await api.deleteAthlete(athlete.id);
-            loadData();
-          } catch (e) { Alert.alert("Error", "No se pudo eliminar."); }
-      }}
-    ]);
+    } catch (e) { Alert.alert("Error", "No se pudo añadir"); }
   };
 
   const TrainerView = () => (
-    <View style={{ flex: 1 }}>
-      <FlatList
-        data={athletes}
-        keyExtractor={(item) => item.id}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => {setRefreshing(true); loadData();}} />}
-        ListHeaderComponent={
-          <View style={styles.container}>
-            <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
-            <View style={styles.headerRow}>
-              <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Mis Atletas</Text>
-              <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => setShowAddModal(true)}>
-                <Ionicons name="person-add" size={20} color="#FFF" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        }
-        renderItem={({ item }) => (
-          <View style={[styles.athleteCard, { backgroundColor: colors.surface }]}>
-            <TouchableOpacity 
-              style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
-              onPress={() => router.push({ pathname: "/athlete-detail", params: { id: item.id, name: item.name } })}
-            >
-              <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
-                <Text style={{ color: colors.primary, fontWeight: '800' }}>{item.name.charAt(0)}</Text>
-              </View>
-              <View>
-                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.gender}</Text>
-              </View>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => confirmDelete(item)}>
-              <Ionicons name="trash-outline" size={20} color={colors.error} />
+    <FlatList
+      data={athletes}
+      keyExtractor={(item) => item.id}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => {setRefreshing(true); loadData();}} />}
+      ListHeaderComponent={
+        <View style={styles.container}>
+          <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
+          <View style={styles.headerRow}>
+            <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Mis Atletas</Text>
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary }]} onPress={() => setShowAddModal(true)}>
+              <Ionicons name="person-add" size={20} color="#FFF" />
             </TouchableOpacity>
           </View>
-        )}
-      />
-    </View>
+        </View>
+      }
+      renderItem={({ item }) => (
+        <TouchableOpacity style={[styles.athleteCard, { backgroundColor: colors.surface }]} onPress={() => router.push({ pathname: "/athlete-detail", params: { id: item.id, name: item.name } })}>
+          <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}><Text style={{color: colors.primary, fontWeight: '800'}}>{item.name.charAt(0)}</Text></View>
+          <View style={{flex: 1}}><Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text></View>
+          <Ionicons name="chevron-forward" size={18} color={colors.border} />
+        </TouchableOpacity>
+      )}
+    />
   );
 
   const AthleteView = () => (
@@ -147,13 +118,19 @@ export default function HomeScreen() {
       ListHeaderComponent={
         <View style={styles.container}>
           <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
-          <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 💪</Text>
+          <View style={styles.headerRow}>
+            <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 💪</Text>
+            {/* BOTÓN ACTUALIZAR DEPORTISTA */}
+            <TouchableOpacity onPress={handleUpdate} disabled={updating} style={styles.refreshBtn}>
+              {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={24} color={colors.primary} />}
+            </TouchableOpacity>
+          </View>
 
           <View style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
             <View style={styles.phaseInfo}>
               <Text style={styles.phaseLabel}>MICROCICLO ACTUAL</Text>
               <Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Sin fase activa'}</Text>
-              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Planificación abierta'}</Text>
+              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Periodización libre'}</Text>
             </View>
             <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'BASE'}</Text></View>
           </View>
@@ -171,7 +148,7 @@ export default function HomeScreen() {
             </View>
           </View>
 
-          <TouchableOpacity style={[styles.fullActionBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
+          <TouchableOpacity style={[styles.fullBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
             <Ionicons name="add-circle" size={22} color={colors.success} />
             <Text style={[styles.actionText, { color: colors.textPrimary }]}>Registrar Wellness</Text>
           </TouchableOpacity>
@@ -180,10 +157,7 @@ export default function HomeScreen() {
         </View>
       }
       renderItem={({ item }) => (
-        <TouchableOpacity 
-          style={[styles.card, { backgroundColor: colors.surface, opacity: item.completed ? 0.7 : 1 }]}
-          onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
-        >
+        <TouchableOpacity style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.7 : 1 }]} onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}>
           <View style={[styles.avatarCircle, { backgroundColor: item.completed ? colors.success + '15' : colors.primary + '15' }]}>
             <Ionicons name={item.completed ? "checkmark" : "barbell"} size={20} color={item.completed ? colors.success : colors.primary} />
           </View>
@@ -202,32 +176,7 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       {isTrainer ? <TrainerView /> : <AthleteView />}
-      
       <WellnessModal isVisible={showWellness} onClose={() => { setShowWellness(false); loadData(); }} />
-
-      <Modal visible={showAddModal} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nuevo Deportista</Text>
-            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Nombre" placeholderTextColor="#888" onChangeText={t => setNewAthlete({...newAthlete, name: t})} />
-            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Email" placeholderTextColor="#888" autoCapitalize="none" onChangeText={t => setNewAthlete({...newAthlete, email: t})} />
-            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Contraseña" placeholderTextColor="#888" secureTextEntry onChangeText={t => setNewAthlete({...newAthlete, password: t})} />
-            <View style={styles.genderRow}>
-              {['Masculino', 'Femenino'].map(g => (
-                <TouchableOpacity key={g} style={[styles.genderBtn, { borderColor: colors.border }, newAthlete.gender === g && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => setNewAthlete({...newAthlete, gender: g})}>
-                  <Text style={{ color: newAthlete.gender === g ? '#FFF' : colors.textPrimary, fontWeight: '700' }}>{g}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleAddAthlete}>
-              <Text style={{ color: '#FFF', fontWeight: '800' }}>CREAR CUENTA</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowAddModal(false)} style={{ marginTop: 15, alignItems: 'center' }}>
-              <Text style={{ color: colors.textSecondary }}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -237,8 +186,9 @@ const styles = StyleSheet.create({
   loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 5 },
   dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  welcomeText: { fontSize: 28, fontWeight: '900' },
-  addBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  welcomeText: { fontSize: 26, fontWeight: '900' },
+  refreshBtn: { padding: 5 },
+  actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
   athleteCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginHorizontal: 20, marginBottom: 12 },
   avatar: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   cardTitle: { fontSize: 16, fontWeight: '700' },
@@ -253,10 +203,10 @@ const styles = StyleSheet.create({
   metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' },
   metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 },
   metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 },
-  fullActionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 25, gap: 10 },
+  fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 25, gap: 10 },
   actionText: { fontWeight: '700', fontSize: 15 },
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1 },
-  card: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginHorizontal: 20, marginBottom: 10 },
+  sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginHorizontal: 20, marginBottom: 10 },
   avatarCircle: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 25 },
   modalContent: { borderRadius: 30, padding: 25 },
