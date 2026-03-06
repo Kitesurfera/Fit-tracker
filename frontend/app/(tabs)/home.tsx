@@ -104,14 +104,13 @@ export default function HomeScreen() {
           <View style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
             <View style={styles.phaseInfo}>
               <Text style={styles.phaseLabel}>FASE ACTUAL</Text>
-              <Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Descanso / Sin fase'}</Text>
-              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Sin planificación activa'}</Text>
+              <Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Sin fase activa'}</Text>
+              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Sin planificación'}</Text>
             </View>
             <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'REPOSO'}</Text></View>
           </View>
 
-          {/* RESUMEN WELLNESS MANUAL */}
-          <Text style={styles.sectionTitle}>TU ESTADO (REGISTRO MANUAL)</Text>
+          {/* ESTADO WELLNESS */}
           <View style={styles.metricsGrid}>
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
               <Ionicons name="heart" size={22} color={colors.error} />
@@ -181,7 +180,7 @@ const styles = StyleSheet.create({
   phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
   phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
   metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 },
-  metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center', elevation: 1 },
+  metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' },
   metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 },
   metricUnit: { fontSize: 12, fontWeight: '400' },
   metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 },
