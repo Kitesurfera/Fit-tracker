@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
-import { useTheme, ThemeMode } from '../../src/hooks/useTheme';
+import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -27,25 +27,13 @@ export default function SettingsScreen() {
     language: 'es',
   });
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-
-  const [editingProfile, setEditingProfile] = useState(false);
-  const [profileName, setProfileName] = useState(user?.name || '');
-
-  const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [passwordError, setPasswordError] = useState('');
-  const [changingPassword, setChangingPassword] = useState(false);
-
-  const [showUnitModal, setShowUnitModal] = useState<'weight' | 'height' | null>(null);
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showUnitModal, setShowUnitModal] = useState<'weight' | 'height' | null>(null);
 
   useEffect(() => {
     if (params.strava === 'success') {
-      Alert.alert("¡Éxito!", "Tu Apple Watch se ha vinculado correctamente.");
+      Alert.alert("¡Conectado!", "Tus entrenamientos del Apple Watch ahora se sincronizarán.");
       router.setParams({ strava: undefined });
     }
     loadSettings();
@@ -56,7 +44,7 @@ export default function SettingsScreen() {
       const s = await api.getSettings();
       if (s) setSettings(s);
     } catch (e) {
-      console.log('Load settings error:', e);
+      console.log('Error:', e);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -69,70 +57,40 @@ export default function SettingsScreen() {
     try { await api.updateSettings({ [key]: value }); } catch (e) { setSettings(settings); }
   };
 
-  const handleSaveProfile = async () => {
-    if (!profileName.trim()) return;
-    setSaving(true);
-    try {
-      await api.updateProfile({ name: profileName.trim() });
-      setEditingProfile(false);
-      Alert.alert('Perfil actualizado', 'Tu nombre se ha actualizado correctamente');
-    } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo actualizar');
-    } finally { setSaving(false); }
-  };
-
   const handleConnectStrava = async () => {
     const clientID = process.env.EXPO_PUBLIC_STRAVA_CLIENT_ID;
     const redirectURI = "https://fit-tracker-backend-rtx2.onrender.com/api/auth/strava/callback";
+    const scope = "read,activity:read_all"; // PERMISO CRÍTICO PARA EL PULSO
+    
     try {
       const token = await AsyncStorage.getItem('auth_token');
       if (!clientID || !token) {
-        Alert.alert("Error", "Faltan credenciales de acceso.");
+        Alert.alert("Error", "Falta configuración de cliente o sesión.");
         return;
       }
-      const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=read,activity:read_all&state=${token}`;
-      window.location.href = url;
+      const url = `https://www.strava.com/oauth/authorize?client_id=${clientID}&response_type=code&redirect_uri=${encodeURIComponent(redirectURI)}&scope=${scope}&state=${token}`;
+      
+      if (Platform.OS === 'web') {
+        window.location.href = url;
+      } else {
+        // Para móvil nativo usarías Linking o WebBrowser, pero aquí mantenemos el flujo web PWA
+        window.location.href = url;
+      }
     } catch (e) {
-      Alert.alert("Error", "No se pudo iniciar la conexión.");
+      Alert.alert("Error", "No se pudo iniciar la conexión con Strava.");
     }
   };
 
-  const handleChangePassword = async () => {
-    setPasswordError('');
-    if (!currentPassword || !newPassword || !confirmPassword) { setPasswordError('Completa todos los campos'); return; }
-    if (newPassword !== confirmPassword) { setPasswordError('Las contraseñas no coinciden'); return; }
-    setChangingPassword(true);
-    try {
-      await api.changePassword({ current_password: currentPassword, new_password: newPassword });
-      setShowPasswordModal(false);
-      setCurrentPassword(''); setNewPassword(''); setConfirmPassword('');
-      Alert.alert('Éxito', 'Contraseña actualizada');
-    } catch (e: any) { setPasswordError(e.message || 'Error'); }
-    finally { setChangingPassword(false); }
-  };
-
   const handleLogout = async () => {
-    const confirm = Platform.OS === 'web' ? window.confirm('¿Salir?') : true;
-    if (confirm) { await logout(); router.replace('/'); }
+    const confirm = Platform.OS === 'web' ? window.confirm('¿Cerrar sesión?') : true;
+    if (confirm) {
+      await logout();
+      router.replace('/');
+    }
   };
-
-  // Componentes auxiliares de filas
-  const ToggleRow = ({ icon, label, value, onToggle, disabled }: any) => (
-    <TouchableOpacity style={[styles.settingItem, { borderBottomColor: colors.border }]} onPress={() => !disabled && onToggle(!value)} activeOpacity={0.6}>
-      <View style={styles.settingLeft}>
-        <View style={[styles.settingIcon, { backgroundColor: colors.surfaceHighlight }]}>
-          <Ionicons name={icon} size={20} color={disabled ? colors.textSecondary : colors.primary} />
-        </View>
-        <Text style={[styles.settingLabel, { color: disabled ? colors.textSecondary : colors.textPrimary }]}>{label}</Text>
-      </View>
-      <View style={[styles.toggleTrack, { backgroundColor: value && !disabled ? colors.primary : colors.surfaceHighlight }]}>
-        <View style={[styles.toggleThumb, value && !disabled ? { transform: [{ translateX: 20 }] } : { transform: [{ translateX: 2 }] }]} />
-      </View>
-    </TouchableOpacity>
-  );
 
   const TapRow = ({ icon, label, value, onPress, danger }: any) => (
-    <TouchableOpacity style={[styles.settingItem, { borderBottomColor: colors.border }]} onPress={onPress} activeOpacity={0.6}>
+    <TouchableOpacity style={[styles.settingItem, { borderBottomColor: colors.border }]} onPress={onPress}>
       <View style={styles.settingLeft}>
         <View style={[styles.settingIcon, { backgroundColor: danger ? colors.error + '15' : colors.surfaceHighlight }]}>
           <Ionicons name={icon} size={20} color={danger ? colors.error : colors.primary} />
@@ -150,67 +108,41 @@ export default function SettingsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <ScrollView contentContainerStyle={styles.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadSettings} tintColor={colors.primary} />}>
-          
-          <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Ajustes</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadSettings} tintColor={colors.primary} />}>
+        <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Ajustes</Text>
 
-          {/* PERFIL */}
-          <View style={[styles.profileCard, { backgroundColor: colors.surface }]}>
-            <View style={[styles.profileAvatar, { backgroundColor: colors.primary + '15' }]}>
-              <Text style={{ color: colors.primary, fontSize: 22, fontWeight: '700' }}>{user?.name?.charAt(0).toUpperCase()}</Text>
-            </View>
-            <View style={{ flex: 1, marginLeft: 15 }}>
-              {editingProfile ? (
-                <View style={{ flexDirection: 'row', gap: 5 }}>
-                  <TextInput style={[styles.nameInput, { color: colors.textPrimary, borderColor: colors.primary }]} value={profileName} onChangeText={setProfileName} autoFocus />
-                  <TouchableOpacity onPress={handleSaveProfile} style={styles.iconBtn}><Ionicons name="checkmark" size={20} color={colors.primary} /></TouchableOpacity>
-                </View>
-              ) : (
-                <TouchableOpacity onPress={() => setEditingProfile(true)} style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                  <Text style={[styles.profileName, { color: colors.textPrimary }]}>{user?.name}</Text>
-                  <Ionicons name="pencil" size={14} color={colors.primary} />
-                </TouchableOpacity>
-              )}
-              <Text style={{ color: colors.textSecondary }}>{user?.email}</Text>
-            </View>
+        <View style={[styles.profileCard, { backgroundColor: colors.surface }]}>
+          <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
+            <Text style={{ color: colors.primary, fontSize: 20, fontWeight: '700' }}>{user?.name?.charAt(0)}</Text>
           </View>
-
-          {/* INTEGRACIONES */}
-          <Text style={styles.sectionTitle}>INTEGRACIONES</Text>
-          <View style={[styles.settingSection, { backgroundColor: colors.surface, padding: 15 }]}>
-            <TouchableOpacity style={styles.stravaBtn} onPress={handleConnectStrava}>
-              <Ionicons name="flash" size={20} color="#FFF" />
-              <Text style={{ color: '#FFF', fontWeight: '800' }}>CONECTAR CON STRAVA</Text>
-            </TouchableOpacity>
+          <View>
+            <Text style={[styles.name, { color: colors.textPrimary }]}>{user?.name}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 13 }}>{user?.email}</Text>
           </View>
+        </View>
 
-          {/* NOTIFICACIONES */}
-          <Text style={styles.sectionTitle}>NOTIFICACIONES</Text>
-          <View style={[styles.settingSection, { backgroundColor: colors.surface }]}>
-            <ToggleRow icon="notifications" label="Activar" value={settings.notifications_enabled} onToggle={(v: boolean) => updateSetting('notifications_enabled', v)} />
-            <ToggleRow icon="barbell" label="Entrenos" value={settings.notifications_workouts} onToggle={(v: boolean) => updateSetting('notifications_workouts', v)} disabled={!settings.notifications_enabled} />
-          </View>
+        <Text style={styles.sectionTitle}>DISPOSITIVOS Y SALUD</Text>
+        <View style={[styles.section, { backgroundColor: colors.surface }]}>
+          <TouchableOpacity style={styles.stravaBtn} onPress={handleConnectStrava}>
+            <Ionicons name="flash" size={20} color="#FFF" />
+            <Text style={styles.stravaText}>SINCRONIZAR APPLE WATCH (STRAVA)</Text>
+          </TouchableOpacity>
+        </View>
 
-          {/* UNIDADES Y APARIENCIA */}
-          <Text style={styles.sectionTitle}>PREFERENCIAS</Text>
-          <View style={[styles.settingSection, { backgroundColor: colors.surface }]}>
-            <TapRow icon="moon" label="Tema" value={themeMode} onPress={() => setShowThemeModal(true)} />
-            <TapRow icon="speedometer" label="Peso" value={settings.weight_unit} onPress={() => setShowUnitModal('weight')} />
-            <TapRow icon="resize" label="Altura" value={settings.height_unit} onPress={() => setShowUnitModal('height')} />
-          </View>
+        <Text style={styles.sectionTitle}>PREFERENCIAS</Text>
+        <View style={[styles.section, { backgroundColor: colors.surface }]}>
+          <TapRow icon="moon" label="Tema" value={themeMode} onPress={() => setShowThemeModal(true)} />
+          <TapRow icon="speedometer" label="Unidad de Peso" value={settings.weight_unit} onPress={() => setShowUnitModal('weight')} />
+          <TapRow icon="resize" label="Unidad de Altura" value={settings.height_unit} onPress={() => setShowUnitModal('height')} />
+        </View>
 
-          {/* SEGURIDAD */}
-          <Text style={styles.sectionTitle}>SEGURIDAD</Text>
-          <View style={[styles.settingSection, { backgroundColor: colors.surface }]}>
-            <TapRow icon="lock-closed" label="Cambiar Contraseña" onPress={() => setShowPasswordModal(true)} />
-            <TapRow icon="log-out" label="Cerrar Sesión" onPress={handleLogout} danger />
-          </View>
+        <Text style={styles.sectionTitle}>SESIÓN</Text>
+        <View style={[styles.section, { backgroundColor: colors.surface }]}>
+          <TapRow icon="log-out" label="Cerrar Sesión" onPress={handleLogout} danger />
+        </View>
+      </ScrollView>
 
-        </ScrollView>
-      </KeyboardAvoidingView>
-
-      {/* MODALES (Theme & Units) */}
+      {/* Modales de selección */}
       <Modal visible={showThemeModal} transparent animationType="fade">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowThemeModal(false)}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -222,44 +154,27 @@ export default function SettingsScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
-
-      <Modal visible={showUnitModal !== null} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowUnitModal(null)}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Unidades</Text>
-            {(showUnitModal === 'weight' ? ['kg', 'lb'] : ['cm', 'ft']).map(u => (
-              <TouchableOpacity key={u} style={styles.modalOption} onPress={() => { updateSetting(showUnitModal === 'weight' ? 'weight_unit' : 'height_unit', u); setShowUnitModal(null); }}>
-                <Text style={{ color: colors.textPrimary }}>{u.toUpperCase()}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 50 },
+  scrollContent: { padding: 20 },
   screenTitle: { fontSize: 28, fontWeight: '800', marginBottom: 25 },
-  profileCard: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 15, marginBottom: 20 },
-  profileAvatar: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center' },
-  profileName: { fontSize: 18, fontWeight: '700' },
-  nameInput: { borderBottomWidth: 1, flex: 1, fontSize: 16 },
-  iconBtn: { padding: 5 },
+  profileCard: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 20, marginBottom: 30, gap: 15 },
+  avatar: { width: 50, height: 50, borderRadius: 25, justifyContent: 'center', alignItems: 'center' },
+  name: { fontSize: 18, fontWeight: '700' },
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 10, marginTop: 15, letterSpacing: 1 },
-  settingSection: { borderRadius: 15, overflow: 'hidden', marginBottom: 15 },
+  section: { borderRadius: 15, overflow: 'hidden', marginBottom: 15 },
   settingItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 15, borderBottomWidth: 0.5 },
   settingLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   settingIcon: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   settingLabel: { fontSize: 15, fontWeight: '500' },
   valueRow: { flexDirection: 'row', alignItems: 'center' },
-  toggleTrack: { width: 46, height: 26, borderRadius: 13, justifyContent: 'center' },
-  toggleThumb: { width: 22, height: 22, borderRadius: 11, backgroundColor: '#FFF' },
-  stravaBtn: { backgroundColor: '#FC6100', padding: 15, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  stravaBtn: { backgroundColor: '#FC6100', padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10 },
+  stravaText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 40 },
   modalContent: { borderRadius: 20, padding: 20 },
-  modalOption: { padding: 15, borderBottomWidth: 0.5, borderBottomColor: '#eee' },
-  modalTitle: { fontWeight: '800', marginBottom: 15, textAlign: 'center' }
+  modalOption: { padding: 15, borderBottomWidth: 0.5, borderBottomColor: '#eee' }
 });
