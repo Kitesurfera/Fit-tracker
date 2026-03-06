@@ -1,303 +1,220 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, Platform, Alert
+  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  ActivityIndicator, ScrollView, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Calendar, LocaleConfig } from 'react-native-calendars';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 
-const DAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
-const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
-
-// Helpers de fechas
-function getMonthDays(year: number, month: number) {
-  const firstDay = new Date(year, month, 1);
-  const lastDay = new Date(year, month + 1, 0);
-  const daysInMonth = lastDay.getDate();
-  let startDay = firstDay.getDay() - 1;
-  if (startDay < 0) startDay = 6;
-  const days: (number | null)[] = [];
-  for (let i = 0; i < startDay; i++) days.push(null);
-  for (let i = 1; i <= daysInMonth; i++) days.push(i);
-  return days;
-}
-
-function formatDate(y: number, m: number, d: number) {
-  return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-}
+// Configuración en español
+LocaleConfig.locales['es'] = {
+  monthNames: ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'],
+  monthNamesShort: ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'],
+  dayNames: ['Domingo','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'],
+  dayNamesShort: ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'],
+  today: 'Hoy'
+};
+LocaleConfig.defaultLocale = 'es';
 
 export default function CalendarScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
-  const router = useRouter();
   
-  const todayObj = new Date();
-  const todayStr = formatDate(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate());
-  const todayYMD = todayStr; // Alias para lógica de comparación
-
-  const [currentMonth, setCurrentMonth] = useState(todayObj.getMonth());
-  const [currentYear, setCurrentYear] = useState(todayObj.getFullYear());
-  const [selectedDate, setSelectedDate] = useState(todayStr);
-  
-  const [workouts, setWorkouts] = useState<any[]>([]);
-  const [tests, setTests] = useState<any[]>([]);
-  const [allWorkouts, setAllWorkouts] = useState<any[]>([]);
-  const [allTests, setAllTests] = useState<any[]>([]);
-  
+  const [athletes, setAthletes] = useState<any[]>([]);
+  const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
+  const [periodization, setPeriodization] = useState<any[]>([]);
+  const [markedDates, setMarkedDates] = useState<any>({});
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [expandedWorkout, setExpandedWorkout] = useState<string | null>(null);
-  const [athleteMap, setAthleteMap] = useState<Record<string, string>>({});
+  const [showPicker, setShowPicker] = useState(false);
 
-  useEffect(() => { loadAll(); }, []);
+  const isTrainer = user?.role === 'trainer';
 
-  const loadAll = async () => {
+  useEffect(() => {
+    init();
+  }, []);
+
+  const init = async () => {
     try {
-      setLoading(true);
-      const [wk, ts] = await Promise.all([api.getWorkouts(), api.getTests()]);
-      
-      if (user?.role === 'trainer') {
-        try {
-          const athletes = await api.getAthletes();
-          const map: Record<string, string> = {};
-          athletes.forEach((a: any) => { map[a.id] = a.name; });
-          setAthleteMap(map);
-        } catch (e) { console.log(e); }
+      if (isTrainer) {
+        const data = await api.getAthletes();
+        setAthletes(data);
+        if (data.length > 0) {
+          handleSelectAthlete(data[0]);
+        }
+      } else {
+        handleSelectAthlete(user);
       }
-
-      setAllWorkouts(wk);
-      setAllTests(ts);
-      filterByDate(selectedDate, wk, ts);
     } catch (e) {
-      console.log('Calendar load error:', e);
+      console.log("Error inicializando calendario:", e);
     } finally {
       setLoading(false);
-      setRefreshing(false);
     }
   };
 
-  const filterByDate = (date: string, wk?: any[], ts?: any[]) => {
-    const w = wk || allWorkouts;
-    const t = ts || allTests;
-    setWorkouts(w.filter((item: any) => item.date === date));
-    setTests(t.filter((item: any) => item.date === date));
-    setExpandedWorkout(null);
+  const handleSelectAthlete = async (athlete: any) => {
+    setSelectedAthlete(athlete);
+    setShowPicker(false);
+    setLoading(true);
+    try {
+      const tree = await api.getPeriodizationTree(athlete.id);
+      setPeriodization(tree);
+      generateMarkedDates(tree);
+    } catch (e) {
+      console.log("Error cargando planificación:", e);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const selectDate = (day: number) => {
-    const date = formatDate(currentYear, currentMonth, day);
-    setSelectedDate(date);
-    filterByDate(date);
+  const generateMarkedDates = (tree: any[]) => {
+    const marks: any = {};
+    tree.forEach(macro => {
+      macro.microciclos?.forEach((micro: any) => {
+        // Marcamos el rango del microciclo con el color asignado
+        let start = new Date(micro.fecha_inicio);
+        let end = new Date(micro.fecha_fin);
+        
+        for (let d = start; d <= end; d.setDate(d.getDate() + 1)) {
+          const dateStr = d.toISOString().split('T')[0];
+          marks[dateStr] = {
+            color: micro.color || colors.primary,
+            textColor: 'white',
+            startingDay: dateStr === micro.fecha_inicio,
+            endingDay: dateStr === micro.fecha_fin,
+            periodType: micro.tipo // Guardamos el tipo para el detalle
+          };
+        }
+      });
+    });
+    setMarkedDates(marks);
   };
 
-  const prevMonth = () => {
-    if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1); }
-    else setCurrentMonth(currentMonth - 1);
-  };
-  const nextMonth = () => {
-    if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); }
-    else setCurrentMonth(currentMonth + 1);
-  };
+  // Encontrar qué microciclo corresponde al día seleccionado
+  const activeDetail = useMemo(() => {
+    for (const macro of periodization) {
+      const micro = macro.microciclos?.find((m: any) => 
+        selectedDate >= m.fecha_inicio && selectedDate <= m.fecha_fin
+      );
+      if (micro) return { macro, micro };
+    }
+    return null;
+  }, [selectedDate, periodization]);
 
-  // Lógica de color de puntos del calendario
-  const getDotColor = (dateStr: string) => {
-    const workoutsOnDate = allWorkouts.filter(w => w.date === dateStr);
-    if (workoutsOnDate.length === 0) return null;
-
-    // Si hay alguno pendiente y es pasado -> Rojo
-    const hasMissed = workoutsOnDate.some(w => !w.completed && w.date < todayYMD);
-    if (hasMissed) return colors.error;
-
-    // Si todos están completados -> Verde
-    const allDone = workoutsOnDate.every(w => w.completed);
-    if (allDone) return colors.success;
-
-    // Si hay pendientes para hoy o futuro -> Azul
-    return colors.primary;
-  };
-
-  const days = getMonthDays(currentYear, currentMonth);
-  const selectedDayName = new Date(selectedDate + 'T12:00:00').toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
-
-  if (loading) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 50 }} />
-      </SafeAreaView>
-    );
+  if (loading && athletes.length === 0) {
+    return <View style={{flex:1, justifyContent:'center', backgroundColor:colors.background}}><ActivityIndicator size="large" color={colors.primary}/></View>;
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        
-        {/* Cabecera dinámica */}
-        <View style={styles.headerRow}>
-          <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Calendario</Text>
-          <TouchableOpacity onPress={() => { setRefreshing(true); loadAll(); }} disabled={refreshing}>
-            {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={24} color={colors.primary} />}
-          </TouchableOpacity>
-        </View>
-
-        {/* Cuadrícula del Calendario */}
-        <View style={[styles.calendarCard, { backgroundColor: colors.surface }]}>
-          <View style={styles.monthNav}>
-            <TouchableOpacity onPress={prevMonth} style={styles.navBtn}>
-              <Ionicons name="chevron-back" size={20} color={colors.textPrimary} />
-            </TouchableOpacity>
-            <Text style={[styles.monthTitle, { color: colors.textPrimary }]}>
-              {MONTHS[currentMonth]} {currentYear}
+    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* SELECTOR DE DEPORTISTA (Solo para Andreina) */}
+      {isTrainer && (
+        <TouchableOpacity 
+          style={[styles.athleteSelector, { backgroundColor: colors.surface }]}
+          onPress={() => setShowPicker(true)}
+        >
+          <View style={styles.selectorInfo}>
+            <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '700' }}>DEPORTISTA</Text>
+            <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800' }}>
+              {selectedAthlete?.name || 'Seleccionar...'}
             </Text>
-            <TouchableOpacity onPress={nextMonth} style={styles.navBtn}>
-              <Ionicons name="chevron-forward" size={20} color={colors.textPrimary} />
-            </TouchableOpacity>
           </View>
+          <Ionicons name="people-circle" size={24} color={colors.primary} />
+        </TouchableOpacity>
+      )}
 
-          <View style={styles.weekRow}>
-            {DAYS.map(d => <Text key={d} style={[styles.weekDay, { color: colors.textSecondary }]}>{d}</Text>)}
-          </View>
+      <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        <Calendar
+          markingType={'period'}
+          markedDates={markedDates}
+          onDayPress={day => setSelectedDate(day.dateString)}
+          theme={{
+            calendarBackground: colors.background,
+            textSectionTitleColor: colors.textSecondary,
+            dayTextColor: colors.textPrimary,
+            todayTextColor: colors.primary,
+            monthTextColor: colors.textPrimary,
+            textDayFontWeight: '600',
+            textMonthFontWeight: '800',
+          }}
+        />
 
-          <View style={styles.daysGrid}>
-            {days.map((day, i) => {
-              if (!day) return <View key={`e-${i}`} style={styles.dayCell} />;
-              const dateStr = formatDate(currentYear, currentMonth, day);
-              const isSelected = dateStr === selectedDate;
-              const isToday = dateStr === todayStr;
-              const dotColor = getDotColor(dateStr);
-              const hasTest = allTests.some(t => t.date === dateStr);
+        {/* DETALLE DEL CICLO SELECCIONADO */}
+        <View style={styles.detailContainer}>
+          <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>PLANIFICACIÓN</Text>
+          
+          {activeDetail ? (
+            <View style={[styles.cycleCard, { borderLeftColor: activeDetail.micro.color || colors.primary }]}>
+              <View style={styles.cycleHeader}>
+                <Text style={[styles.macroLabel, { color: colors.textSecondary }]}>MACROCICLO: {activeDetail.macro.nombre}</Text>
+                <View style={[styles.badge, { backgroundColor: activeDetail.micro.color + '20' }]}>
+                  <Text style={{ color: activeDetail.micro.color, fontWeight: '800', fontSize: 10 }}>{activeDetail.micro.tipo}</Text>
+                </View>
+              </View>
+              <Text style={[styles.microName, { color: colors.textPrimary }]}>{activeDetail.micro.nombre}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>
+                Del {activeDetail.micro.fecha_inicio} al {activeDetail.micro.fecha_fin}
+              </Text>
+              {activeDetail.micro.notas && (
+                <Text style={[styles.cycleNotes, { color: colors.textPrimary }]}>"{activeDetail.micro.notas}"</Text>
+              )}
+            </View>
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="information-circle-outline" size={24} color={colors.border} />
+              <Text style={{ color: colors.textSecondary, marginTop: 8 }}>Sin ciclos definidos para este día</Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
 
-              return (
-                <TouchableOpacity
-                  key={`d-${day}`}
-                  style={[
-                    styles.dayCell,
-                    isSelected && { backgroundColor: colors.primary },
-                    isToday && !isSelected && { borderWidth: 1.5, borderColor: colors.primary },
-                  ]}
-                  onPress={() => selectDate(day)}
+      {/* MODAL SELECTOR DE DEPORTISTAS */}
+      <Modal visible={showPicker} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Selecciona un deportista</Text>
+            <FlatList
+              data={athletes}
+              keyExtractor={item => item.id}
+              renderItem={({ item }) => (
+                <TouchableOpacity 
+                  style={styles.athleteItem} 
+                  onPress={() => handleSelectAthlete(item)}
                 >
-                  <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && { color: '#FFF', fontWeight: '700' }]}>
-                    {day}
-                  </Text>
-                  <View style={styles.dotRow}>
-                    {dotColor && <View style={[styles.dot, { backgroundColor: isSelected ? '#FFF' : dotColor }]} />}
-                    {hasTest && <View style={[styles.dot, { backgroundColor: isSelected ? '#FFF' : colors.accent }]} />}
-                  </View>
+                  <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '600' }}>{item.name}</Text>
+                  {selectedAthlete?.id === item.id && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
                 </TouchableOpacity>
-              );
-            })}
+              )}
+            />
+            <TouchableOpacity style={styles.closeBtn} onPress={() => setShowPicker(false)}>
+              <Text style={{ color: colors.primary, fontWeight: '800' }}>CERRAR</Text>
+            </TouchableOpacity>
           </View>
         </View>
-
-        <Text style={[styles.dayLabel, { color: colors.textPrimary }]}>{selectedDayName}</Text>
-
-        {/* Lista de Entrenamientos con Lógica de Estado */}
-        {workouts.map((w) => {
-          const isMissed = !w.completed && w.date < todayYMD;
-          const statusColor = w.completed ? colors.success : isMissed ? colors.error : colors.primary;
-
-          return (
-            <TouchableOpacity
-              key={w.id}
-              style={[styles.workoutCard, { backgroundColor: colors.surface }]}
-              onPress={() => setExpandedWorkout(expandedWorkout === w.id ? null : w.id)}
-            >
-              <View style={styles.workoutSummary}>
-                <View style={[styles.workoutDot, { backgroundColor: statusColor }]} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
-                  <Text style={[styles.workoutMeta, { color: colors.textSecondary }]}>
-                    {user?.role === 'trainer' && athleteMap[w.athlete_id] ? `${athleteMap[w.athlete_id]} · ` : ''}
-                    {w.exercises?.length || 0} ej. · {w.completed ? 'Completado' : isMissed ? 'No realizado' : 'Pendiente'}
-                  </Text>
-                </View>
-                <Ionicons name={expandedWorkout === w.id ? 'chevron-up' : 'chevron-down'} size={18} color={colors.textSecondary} />
-              </View>
-
-              {expandedWorkout === w.id && (
-                <View style={[styles.expandedSection, { borderTopColor: colors.border }]}>
-                  {w.exercises?.map((ex: any, i: number) => (
-                    <View key={i} style={[styles.exRow, i > 0 && { borderTopWidth: 0.5, borderTopColor: colors.border }]}>
-                      <Text style={[styles.exName, { color: colors.textPrimary }]}>{ex.name}</Text>
-                      <Text style={[styles.exDetails, { color: colors.textSecondary }]}>
-                        {ex.sets}x{ex.reps} {ex.weight ? `· ${ex.weight}kg` : ''}
-                      </Text>
-                    </View>
-                  ))}
-                  
-                  {user?.role === 'athlete' && !w.completed && (
-                    <TouchableOpacity
-                      style={[styles.trainingBtn, { backgroundColor: isMissed ? colors.error + '15' : colors.primary }]}
-                      onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: w.id } })}
-                    >
-                      <Ionicons name="play" size={16} color={isMissed ? colors.error : "#FFF"} />
-                      <Text style={[styles.trainingBtnText, { color: isMissed ? colors.error : "#FFF" }]}>
-                        {isMissed ? 'Recuperar Sesión' : 'Iniciar Entrenamiento'}
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        })}
-
-        {/* Tests */}
-        {tests.map((t) => (
-          <View key={t.id} style={[styles.testCard, { backgroundColor: colors.surface }]}>
-            <View style={[styles.workoutDot, { backgroundColor: colors.accent }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.testName, { color: colors.textPrimary }]}>{t.test_name === 'custom' ? t.custom_name : t.test_name}</Text>
-              <Text style={[styles.testValue, { color: colors.accent }]}>{t.value} {t.unit}</Text>
-            </View>
-          </View>
-        ))}
-
-        {workouts.length === 0 && tests.length === 0 && (
-          <View style={styles.emptyState}>
-            <Ionicons name="calendar-outline" size={40} color={colors.textSecondary} />
-            <Text style={{ color: colors.textSecondary }}>No hay eventos programados</Text>
-          </View>
-        )}
-      </ScrollView>
+      </Modal>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scrollContent: { padding: 20, paddingBottom: 40 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  screenTitle: { fontSize: 24, fontWeight: '800' },
-  calendarCard: { borderRadius: 20, padding: 16, marginBottom: 20, elevation: 2 },
-  monthNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
-  navBtn: { padding: 5 },
-  monthTitle: { fontSize: 17, fontWeight: '700' },
-  weekRow: { flexDirection: 'row', marginBottom: 10 },
-  weekDay: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
-  dayText: { fontSize: 14, fontWeight: '600' },
-  dotRow: { flexDirection: 'row', gap: 3, position: 'absolute', bottom: 5 },
-  dot: { width: 4, height: 4, borderRadius: 2 },
-  dayLabel: { fontSize: 12, fontWeight: '800', textTransform: 'uppercase', marginBottom: 15, letterSpacing: 1 },
-  workoutCard: { borderRadius: 16, marginBottom: 12, overflow: 'hidden' },
-  workoutSummary: { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 12 },
-  workoutDot: { width: 8, height: 8, borderRadius: 4 },
-  workoutTitle: { fontSize: 16, fontWeight: '700' },
-  workoutMeta: { fontSize: 12, marginTop: 2 },
-  expandedSection: { borderTopWidth: 0.5, padding: 16 },
-  exRow: { paddingVertical: 8, flexDirection: 'row', justifyContent: 'space-between' },
-  exName: { fontSize: 14, fontWeight: '600' },
-  exDetails: { fontSize: 13 },
-  trainingBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 12, marginTop: 15 },
-  trainingBtnText: { fontSize: 14, fontWeight: '700' },
-  testCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, padding: 16, marginBottom: 10, gap: 12 },
-  testName: { fontSize: 15, fontWeight: '700' },
-  testValue: { fontSize: 14, fontWeight: '800' },
-  emptyState: { alignItems: 'center', marginTop: 40, opacity: 0.5 },
+  athleteSelector: { flexDirection: 'row', alignItems: 'center', padding: 15, margin: 20, borderRadius: 15, elevation: 2 },
+  selectorInfo: { flex: 1 },
+  detailContainer: { padding: 20 },
+  sectionTitle: { fontSize: 11, fontWeight: '800', letterSpacing: 1.2, marginBottom: 15 },
+  cycleCard: { padding: 20, backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: 20, borderLeftWidth: 6 },
+  cycleHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
+  macroLabel: { fontSize: 10, fontWeight: '700' },
+  microName: { fontSize: 20, fontWeight: '900' },
+  cycleNotes: { marginTop: 15, fontStyle: 'italic', fontSize: 13, opacity: 0.8 },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  emptyState: { alignItems: 'center', marginTop: 20, opacity: 0.5 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, maxHeight: '70%' },
+  modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 20, textAlign: 'center' },
+  athleteItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 18, borderBottomWidth: 0.5, borderBottomColor: '#eee' },
+  closeBtn: { marginTop: 20, alignItems: 'center', padding: 10 }
 });
