@@ -15,19 +15,16 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 
-# Configuración inicial
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# JWT Config
 JWT_SECRET = os.environ.get('JWT_SECRET', 'fitness-tracker-secret-key-2026')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 72
@@ -36,7 +33,7 @@ security = HTTPBearer()
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-# --- Modelos Pydantic ---
+# --- Modelos ---
 class WellnessCreate(BaseModel):
     fatigue: int
     stress: int
@@ -110,17 +107,15 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 @api_router.get("/wellness/history/{athlete_id}")
 async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
-    # Solo el entrenador o el propio atleta pueden ver este historial
     if user['role'] != 'trainer' and user['id'] != athlete_id:
         raise HTTPException(status_code=403, detail="No autorizado")
     
-    # Traemos los últimos 7 registros para la gráfica semanal
     history = await db.wellness.find(
         {"athlete_id": athlete_id}, 
         {"_id": 0}
     ).sort("date", -1).to_list(7)
     
-    return history[::-1] # Invertimos para que salga de más antiguo a más nuevo
+    return history[::-1]
 
 @api_router.post("/auth/register")
 async def register(data: UserRegister):
