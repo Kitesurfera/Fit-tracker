@@ -45,45 +45,51 @@ export default function HomeScreen() {
         setWorkouts(wData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
         setSummary(sData);
 
+        // Lógica de Microciclo
         let foundMicro = null;
-        treeData.forEach(macro => {
-          macro.microciclos.forEach(micro => {
-            if (todayStr >= micro.fecha_inicio && todayStr <= micro.fecha_fin) {
-              foundMicro = { ...micro, macroNombre: macro.nombre };
-            }
+        if (treeData && Array.isArray(treeData)) {
+          treeData.forEach(macro => {
+            macro.microciclos?.forEach(micro => {
+              if (todayStr >= micro.fecha_inicio && todayStr <= micro.fecha_fin) {
+                foundMicro = { ...micro, macroNombre: macro.nombre };
+              }
+            });
           });
-        });
+        }
         setActiveMicro(foundMicro);
       }
     } catch (e) {
-      console.log("Error cargando dashboard:", e);
+      console.log("Error cargando home:", e);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const onRefresh = () => {
-    setRefreshing(true);
-    loadData();
-  };
-
   const TrainerView = () => (
     <FlatList
       data={athletes}
       keyExtractor={(item) => item.id}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => {setRefreshing(true); loadData();}} tintColor={colors.primary} />}
       ListHeaderComponent={
         <View style={styles.container}>
           <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
-          <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 📋</Text>
+          <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Panel Entrenador 📋</Text>
           <Text style={styles.sectionTitle}>MIS DEPORTISTAS</Text>
         </View>
       }
       renderItem={({ item }) => (
-        <TouchableOpacity style={[styles.card, { backgroundColor: colors.surface }]} onPress={() => router.push(`/athletes/${item.id}`)}>
-          <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '15' }]}><Text style={{ color: colors.primary, fontWeight: '800' }}>{item.name.charAt(0)}</Text></View>
-          <View style={{ flex: 1 }}><Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text><Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.sport || 'Deportista'}</Text></View>
+        <TouchableOpacity 
+          style={[styles.card, { backgroundColor: colors.surface }]} 
+          onPress={() => router.push({ pathname: "/athlete-detail", params: { id: item.id, name: item.name } })}
+        >
+          <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '15' }]}>
+            <Text style={{ color: colors.primary, fontWeight: '800' }}>{item.name.charAt(0)}</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.sport || 'Kitesurf'}</Text>
+          </View>
           <Ionicons name="chevron-forward" size={18} color={colors.border} />
         </TouchableOpacity>
       )}
@@ -94,46 +100,39 @@ export default function HomeScreen() {
     <FlatList
       data={workouts}
       keyExtractor={(item) => item.id}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => {setRefreshing(true); loadData();}} tintColor={colors.primary} />}
       ListHeaderComponent={
         <View style={styles.container}>
           <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
           <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 🤙</Text>
 
-          {/* MICROCICLO ACTUAL */}
+          {/* MICROCICLO */}
           <View style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
             <View style={styles.phaseInfo}>
               <Text style={styles.phaseLabel}>FASE ACTUAL</Text>
               <Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Sin fase activa'}</Text>
-              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Sin planificación'}</Text>
+              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Planificación abierta'}</Text>
             </View>
             <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'REPOSO'}</Text></View>
           </View>
 
-          {/* ESTADO WELLNESS */}
+          {/* WELLNESS MANUAL */}
           <View style={styles.metricsGrid}>
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="heart" size={22} color={colors.error} />
-              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
-                {summary?.latest_wellness?.hr_rest || '--'} <Text style={styles.metricUnit}>bpm</Text>
-              </Text>
+              <Ionicons name="pulse" size={22} color={colors.success} />
+              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.latest_wellness?.hr_rest || '--'}</Text>
               <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PULSO REPOSO</Text>
             </View>
             <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="footsteps" size={22} color={colors.primary} />
-              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>
-                {summary?.latest_wellness?.steps || '0'}
-              </Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>PASOS HOY</Text>
+              <Ionicons name="calendar-outline" size={22} color={colors.primary} />
+              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.completion_rate || '0'}%</Text>
+              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>CUMPLIMIENTO</Text>
             </View>
           </View>
 
           <View style={styles.quickActions}>
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
-              <Ionicons name="add-circle" size={20} color={colors.success} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Registrar Wellness</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surface }]} onPress={() => router.push('/analytics')}>
-              <Ionicons name="analytics" size={20} color={colors.primary} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Ver Progreso</Text>
+              <Ionicons name="add-circle" size={20} color={colors.success} /><Text style={[styles.actionText, { color: colors.textPrimary }]}>Wellness</Text>
             </TouchableOpacity>
           </View>
 
@@ -182,7 +181,6 @@ const styles = StyleSheet.create({
   metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 },
   metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' },
   metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 },
-  metricUnit: { fontSize: 12, fontWeight: '400' },
   metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 },
   quickActions: { flexDirection: 'row', gap: 12, marginBottom: 25 },
   actionBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, padding: 14, borderRadius: 16 },
