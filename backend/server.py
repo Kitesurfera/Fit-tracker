@@ -589,6 +589,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+if __name__ == "__main__":
+    import uvicorn
+    import os
+    # Render asigna un puerto en la variable de entorno PORT
+    port = int(os.environ.get("PORT", 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
