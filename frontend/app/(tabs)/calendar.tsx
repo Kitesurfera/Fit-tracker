@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity,
   ActivityIndicator, ScrollView, Modal, Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -26,6 +26,7 @@ export default function CalendarScreen() {
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
   const [periodization, setPeriodization] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false); // Estado para el botón
   const [showPicker, setShowPicker] = useState(false);
 
   const isTrainer = user?.role === 'trainer';
@@ -42,7 +43,7 @@ export default function CalendarScreen() {
         handleSelectAthlete(user);
       }
     } catch (e) { console.log(e); }
-    finally { setLoading(false); }
+    finally { setLoading(false); setUpdating(false); }
   };
 
   const handleSelectAthlete = async (athlete: any) => {
@@ -53,16 +54,19 @@ export default function CalendarScreen() {
       const tree = await api.getPeriodizationTree(athlete.id);
       setPeriodization(tree);
     } catch (e) { console.log(e); }
-    finally { setLoading(false); }
+    finally { setLoading(false); setUpdating(false); }
   };
 
-  // --- Lógica del Calendario Nativo ---
+  const handleRefresh = () => {
+    setUpdating(true);
+    init();
+  };
+
   const daysInMonth = useMemo(() => {
     const firstDay = new Date(currentYear, currentMonth, 1);
     const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
-    let startDay = firstDay.getDay() - 1; // Ajuste para que empiece en Lunes
+    let startDay = firstDay.getDay() - 1;
     if (startDay < 0) startDay = 6;
-
     const days = [];
     for (let i = 0; i < startDay; i++) days.push(null);
     for (let i = 1; i <= lastDay; i++) days.push(i);
@@ -72,10 +76,9 @@ export default function CalendarScreen() {
   const getDayStatus = (day: number | null) => {
     if (!day) return null;
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    
     for (const macro of periodization) {
       const micro = macro.microciclos?.find((m: any) => dateStr >= m.fecha_inicio && dateStr <= m.fecha_fin);
-      if (micro) return { color: micro.color, type: micro.tipo, macro: macro.nombre, micro: micro.nombre, notes: micro.notas };
+      if (micro) return { color: micro.color, type: micro.tipo };
     }
     return null;
   };
@@ -102,21 +105,30 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* Selector de Deportista */}
-      {isTrainer && (
-        <TouchableOpacity style={[styles.selector, { backgroundColor: colors.surface }]} onPress={() => setShowPicker(true)}>
-          <View style={{flex:1}}>
-            <Text style={styles.selectorLabel}>DEPORTISTA SELECCIONADO</Text>
-            <Text style={[styles.selectorName, { color: colors.textPrimary }]}>{selectedAthlete?.name || 'Seleccionar...'}</Text>
-          </View>
-          <Ionicons name="chevron-down" size={20} color={colors.primary} />
-        </TouchableOpacity>
-      )}
+      
+      {/* CABECERA SUPERIOR CON BOTÓN REFRESCAR */}
+      <View style={styles.topHeader}>
+        <View style={{flex:1}}>
+          <Text style={styles.headerSubtitle}>{isTrainer ? 'GESTIÓN' : 'MI PLANIFICACIÓN'}</Text>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
+            {isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Calendario'}
+          </Text>
+        </View>
+        <View style={{flexDirection:'row', gap: 15}}>
+          {isTrainer && (
+            <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.iconBtn}>
+              <Ionicons name="people" size={22} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={handleRefresh} disabled={updating} style={styles.iconBtn}>
+            {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={22} color={colors.primary} />}
+          </TouchableOpacity>
+        </View>
+      </View>
 
-      {/* Cabecera Mes */}
-      <View style={styles.monthHeader}>
+      <View style={styles.monthSelector}>
         <TouchableOpacity onPress={() => changeMonth(-1)}><Ionicons name="chevron-back" size={24} color={colors.textPrimary}/></TouchableOpacity>
-        <Text style={[styles.monthTitle, { color: colors.textPrimary }]}>{MONTHS[currentMonth]} {currentYear}</Text>
+        <Text style={[styles.monthLabel, { color: colors.textPrimary }]}>{MONTHS[currentMonth]} {currentYear}</Text>
         <TouchableOpacity onPress={() => changeMonth(1)}><Ionicons name="chevron-forward" size={24} color={colors.textPrimary}/></TouchableOpacity>
       </View>
 
@@ -127,12 +139,13 @@ export default function CalendarScreen() {
         <View style={styles.daysGrid}>
           {daysInMonth.map((day, i) => {
             const status = getDayStatus(day);
-            const isSelected = day && selectedDate === `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+            const isSelected = day && selectedDate === dateStr;
             return (
               <TouchableOpacity 
                 key={i} 
                 style={[styles.dayCell, isSelected && { backgroundColor: colors.primary + '20', borderRadius: 10 }]}
-                onPress={() => day && setSelectedDate(`${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`)}
+                onPress={() => day && setSelectedDate(dateStr)}
               >
                 {day && <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && { color: colors.primary, fontWeight: '800' }]}>{day}</Text>}
                 {status && <View style={[styles.dot, { backgroundColor: status.color || colors.primary }]} />}
@@ -142,9 +155,8 @@ export default function CalendarScreen() {
         </View>
       </View>
 
-      {/* Detalle Ciclo */}
       <View style={styles.footer}>
-        <Text style={styles.footerTitle}>PLANIFICACIÓN DEL DÍA</Text>
+        <Text style={styles.footerLabel}>DETALLE DEL DÍA</Text>
         {activeDetail ? (
           <View style={[styles.detailCard, { borderLeftColor: activeDetail.micro.color }]}>
             <Text style={[styles.macroName, { color: colors.textSecondary }]}>{activeDetail.macro.nombre}</Text>
@@ -154,11 +166,12 @@ export default function CalendarScreen() {
             </View>
           </View>
         ) : (
-          <Text style={{ color: colors.textSecondary, fontStyle: 'italic', textAlign: 'center', marginTop: 20 }}>Sin ciclos activos.</Text>
+          <View style={styles.emptyCard}>
+            <Text style={{ color: colors.textSecondary, fontStyle: 'italic' }}>Sin planificación para hoy.</Text>
+          </View>
         )}
       </View>
 
-      {/* Modal Picker */}
       <Modal visible={showPicker} transparent animationType="fade">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPicker(false)}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -175,24 +188,26 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  selector: { flexDirection: 'row', alignItems: 'center', padding: 15, margin: 20, borderRadius: 15 },
-  selectorLabel: { fontSize: 9, fontWeight: '800', color: '#888', letterSpacing: 1 },
-  selectorName: { fontSize: 16, fontWeight: '800', marginTop: 2 },
-  monthHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 30, marginBottom: 20 },
-  monthTitle: { fontSize: 18, fontWeight: '800' },
+  topHeader: { flexDirection: 'row', alignItems: 'center', padding: 20, paddingTop: 10 },
+  headerSubtitle: { fontSize: 9, fontWeight: '800', color: '#888', letterSpacing: 1 },
+  headerTitle: { fontSize: 24, fontWeight: '900' },
+  iconBtn: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.03)', justifyContent: 'center', alignItems: 'center' },
+  monthSelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 30, marginBottom: 20 },
+  monthLabel: { fontSize: 18, fontWeight: '800' },
   calendarGrid: { paddingHorizontal: 15 },
   weekDays: { flexDirection: 'row', marginBottom: 10 },
   weekDayText: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700' },
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
   dayText: { fontSize: 15, fontWeight: '500' },
   dot: { width: 5, height: 5, borderRadius: 3, position: 'absolute', bottom: 8 },
   footer: { flex: 1, padding: 25, marginTop: 10 },
-  footerTitle: { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 1, marginBottom: 15 },
-  detailCard: { padding: 15, backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: 15, borderLeftWidth: 5 },
+  footerLabel: { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 1, marginBottom: 15 },
+  detailCard: { padding: 18, backgroundColor: 'rgba(0,0,0,0.02)', borderRadius: 20, borderLeftWidth: 6 },
   macroName: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  microName: { fontSize: 18, fontWeight: '900', marginTop: 2 },
-  badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, marginTop: 10 },
+  microName: { fontSize: 20, fontWeight: '900', marginTop: 2 },
+  badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 12 },
+  emptyCard: { alignItems: 'center', marginTop: 20 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 40 },
   modalContent: { borderRadius: 20, padding: 10 },
   athleteItem: { padding: 20, borderBottomWidth: 0.5, borderBottomColor: '#eee' }
