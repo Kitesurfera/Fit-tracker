@@ -23,10 +23,14 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
 
   React.useEffect(() => {
-    if (!loading && user) {
-      router.replace('/(tabs)/home');
-    }
-  }, [user, loading]);
+    React.useEffect(() => {
+  // Si ya no está cargando y hay un usuario, muévelo a la Home
+  if (!loading && user) {
+    console.log("Usuario detectado, redirigiendo...");
+    // Intentamos ir a home. Si falla la ruta, Expo Router nos avisará
+    router.replace('/home'); 
+  }
+}, [user, loading]);
 
   if (loading) {
     return (
