@@ -39,7 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setToken(savedToken);
         setUser(JSON.parse(savedUser));
       } else {
-        await AsyncStorage.multiRemove(['auth_token', 'user_data']);
+        await AsyncStorage.clear(); // Limpiamos todo rastro si hay fallo
       }
     } catch (e) {
       console.error("Error inicializando auth:", e);
@@ -69,9 +69,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    // 1. Limpiamos el disco duro del móvil
-    await AsyncStorage.multiRemove(['auth_token', 'user_data']);
-    // 2. Limpiamos la memoria local (estado)
+    try {
+      // Limpieza brutal: lo borra TODO del dispositivo
+      await AsyncStorage.clear();
+    } catch (e) {
+      console.log("Error menor limpiando storage", e);
+    }
     setToken(null);
     setUser(null);
   };
