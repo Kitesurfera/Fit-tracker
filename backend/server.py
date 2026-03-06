@@ -106,22 +106,6 @@ class SettingsUpdate(BaseModel):
     height_unit: Optional[str] = None
     language: Optional[str] = None
 
-class TestUpdate(BaseModel):
-    value: Optional[float] = None
-    unit: Optional[str] = None
-    notes: Optional[str] = None
-    value_left: Optional[float] = None
-    value_right: Optional[float] = None
-
-class WorkoutUpdate(BaseModel):
-    title: Optional[str] = None
-    exercises: Optional[List[dict]] = None
-    notes: Optional[str] = None
-    completed: Optional[bool] = None
-    completion_data: Optional[dict] = None
-    observations: Optional[str] = None
-    microciclo_id: Optional[str] = None
-
 class MacrocicloCreate(BaseModel):
     nombre: str
     fecha_inicio: str
@@ -216,50 +200,49 @@ async def strava_callback(code: str, state: str):
     )
     return RedirectResponse(url="https://fit-tracker-azure-iota.vercel.app/settings?strava=success")
 
-# --- Analytics & Sync ---
-@api_router.get("/analytics/summary")
-async def analytics_summary(user=Depends(get_current_user)):
-    target_id = user['id']
-    if "strava_token" in user:
-        try:
-            headers = {"Authorization": f"Bearer {user['strava_token']}"}
-            r = requests.get("https://www.strava.com/api/v3/athlete/activities?per_page=1", headers=headers)
-            if r.status_code == 200 and r.json():
-                last_act = r.json()[0]
-                await db.physical_tests.update_one(
-                    {"athlete_id": target_id, "test_name": "hr_rest"},
-                    {"$set": {"value": last_act.get("average_heartrate", 60), "date": datetime.now(timezone.utc).strftime('%Y-%m-%d'), "unit": "bpm"}},
-                    upsert=True
-                )
-        except Exception as e: logger.error(f"Sync error: {e}")
-
-    total = await db.workouts.count_documents({"athlete_id": target_id})
-    completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
-    latest_well = await db.wellness.find_one({"athlete_id": target_id}, sort=[("date", -1)])
-    hr_test = await db.physical_tests.find_one({"athlete_id": target_id, "test_name": "hr_rest"})
-
-    return {
-        "total_workouts": total, "completed_workouts": completed,
-        "latest_wellness": latest_well or {"steps": 0},
-        "latest_tests": {"hr_rest": hr_test or {"value": "--"}},
-        "completion_rate": round((completed / total * 100) if total > 0 else 0, 1)
-    }
-
+# --- Sync & Analytics (NUEVA LÓGICA DE RENDIMIENTO) ---
 @api_router.post("/auth/strava/sync")
 async def sync_strava_data(user=Depends(get_current_user)):
     if "strava_token" not in user: raise HTTPException(status_code=400, detail="Strava no conectado")
     try:
         headers = {"Authorization": f"Bearer {user['strava_token']}"}
-        r = requests.get("https://www.strava.com/api/v3/athlete/activities?per_page=1", headers=headers)
+        # Pedimos las 3 últimas actividades de cualquier tipo
+        r = requests.get("https://www.strava.com/api/v3/athlete/activities?per_page=3", headers=headers)
+        
         if r.status_code == 200 and r.json():
-            last_act = r.json()[0]
-            await db.physical_tests.update_one(
-                {"athlete_id": user['id'], "test_name": "hr_rest"},
-                {"$set": {"value": last_act.get("average_heartrate", 60), "date": datetime.now(timezone.utc).strftime('%Y-%m-%d'), "unit": "bpm"}},
-                upsert=True
-            )
-        return {"status": "success"}
-    except Exception as e: raise HTTPException(status_code=500, detail=str(e))
+            last = r.json()[0]
+            stats = {
+                "name": last.get("name"),
+                "hr": int(last.get("average_heartrate", 0)),
+                "duration": round(last.get("moving_time", 0) / 60, 1),
+                "date": last.get("start_date_local").split("T")[0],
+                "type": last.get("type")
+            }
+            # Guardamos la actividad real en el perfil del usuario
+            await db.users.update_one({"id": user['id']}, {"$set": {"last_workout": stats}})
+            return {"status": "success", "data": stats}
+        return {"status": "empty", "message": "No hay actividades registradas"}
+    except Exception as e:
+        logger.error(f"Sync error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@api_router.get("/analytics/summary")
+async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
+    # Si eres trainer, miras al athlete_id. Si eres athlete, te miras a ti.
+    target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
+    
+    target_user = await db.users.find_one({"id": target_id})
+    total = await db.workouts.count_documents({"athlete_id": target_id})
+    completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
+    latest_well = await db.wellness.find_one({"athlete_id": target_id}, sort=[("date", -1)])
+
+    return {
+        "total_workouts": total,
+        "completed_workouts": completed,
+        "last_workout": target_user.get("last_workout", None),
+        "latest_wellness": latest_well or {"steps": 0},
+        "completion_rate": round((completed / total * 100) if total > 0 else 0, 1)
+    }
 
 # --- Rutas de Gestión (Workouts, Athletes, etc) ---
 @api_router.get("/athletes")
@@ -288,6 +271,12 @@ async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)
             mi['workouts'] = [w for w in workouts if w.get('microciclo_id') == mi['id']]
     return macros
 
+@api_router.put("/settings")
+async def update_settings(data: SettingsUpdate, user=Depends(get_current_user)):
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    await db.settings.update_one({"user_id": user['id']}, {"$set": update_data}, upsert=True)
+    return await db.settings.find_one({"user_id": user['id']}, {"_id": 0})
+
 @api_router.get("/settings")
 async def get_settings(user=Depends(get_current_user)):
     s = await db.settings.find_one({"user_id": user['id']}, {"_id": 0})
@@ -296,9 +285,6 @@ async def get_settings(user=Depends(get_current_user)):
 # --- Middleware & Startup ---
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
-
-@app.on_event("shutdown")
-async def shutdown_db_client(): client.close()
 
 if __name__ == "__main__":
     import uvicorn
