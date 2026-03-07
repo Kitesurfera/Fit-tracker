@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, RefreshControl, Modal, TextInput, Alert 
+  ActivityIndicator, RefreshControl, Modal, TextInput, Alert, KeyboardAvoidingView, Platform 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -111,7 +111,7 @@ export default function HomeScreen() {
     setAthleteForm({ 
       name: athlete.name, 
       email: athlete.email, 
-      password: '', // Dejamos la contraseña en blanco por seguridad; el backend debería ignorarla si está vacía
+      password: '',
       gender: athlete.gender || 'Femenino' 
     });
     setShowAthleteModal(true);
@@ -124,7 +124,6 @@ export default function HomeScreen() {
     }
     try {
       if (editingAthleteId) {
-        // Asumiendo que crearás api.updateAthlete en api.ts
         if (api.updateAthlete) {
            await api.updateAthlete(editingAthleteId, athleteForm);
            Alert.alert("Éxito", "Deportista actualizado.");
@@ -132,8 +131,12 @@ export default function HomeScreen() {
            Alert.alert("Aviso", "Falta la función updateAthlete en api.ts");
         }
       } else {
-        await api.createAthlete(athleteForm); // Asumiendo que esta existe
-        Alert.alert("Éxito", "Deportista añadido.");
+        if (api.createAthlete) {
+           await api.createAthlete(athleteForm);
+           Alert.alert("Éxito", "Deportista añadido.");
+        } else {
+           Alert.alert("Aviso", "Falta la función createAthlete en api.ts");
+        }
       }
       setShowAthleteModal(false);
       loadData();
@@ -153,7 +156,6 @@ export default function HomeScreen() {
           style: "destructive", 
           onPress: async () => {
             try {
-               // Asumiendo que crearás api.deleteAthlete en api.ts
                if (api.deleteAthlete) {
                  await api.deleteAthlete(id);
                  loadData();
@@ -210,7 +212,6 @@ export default function HomeScreen() {
             <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Atleta de Fit Tracker</Text>
           </View>
           
-          {/* BOTONES ACCIÓN ENTRENADOR */}
           <View style={{ flexDirection: 'row', gap: 15, paddingRight: 5 }}>
             <TouchableOpacity onPress={() => openEditAthlete(item)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
               <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
@@ -298,7 +299,7 @@ export default function HomeScreen() {
 
       <Modal visible={showAthleteModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView behavior="padding" style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
               {editingAthleteId ? 'Editar Deportista' : 'Añadir Deportista'}
             </Text>
