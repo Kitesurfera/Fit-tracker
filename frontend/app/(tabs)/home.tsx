@@ -24,18 +24,20 @@ export default function HomeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
 
-  const [athletes, setAthletes] = useState([]);
-  const [workouts, setWorkouts] = useState([]);
-  const [summary, setSummary] = useState(null);
-  const [activeMicro, setActiveMicro] = useState(null);
+  const [athletes, setAthletes] = useState<any[]>([]);
+  const [workouts, setWorkouts] = useState<any[]>([]);
+  const [summary, setSummary] = useState<any>(null);
+  const [activeMicro, setActiveMicro] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showWellness, setShowWellness] = useState(false);
   const [tip] = useState(ELITE_TIPS[Math.floor(Math.random() * ELITE_TIPS.length)]);
 
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newAthlete, setNewAthlete] = useState({ name: '', email: '', password: '', gender: 'Femenino' });
+  // --- ESTADOS DEL MODAL DE ATLETAS ---
+  const [showAthleteModal, setShowAthleteModal] = useState(false);
+  const [editingAthleteId, setEditingAthleteId] = useState<string | null>(null);
+  const [athleteForm, setAthleteForm] = useState({ name: '', email: '', password: '', gender: 'Femenino' });
 
   const isTrainer = user?.role === 'trainer';
   const firstName = user?.name?.split(' ')[0] || 'Atleta';
@@ -48,20 +50,20 @@ export default function HomeScreen() {
     try {
       if (isTrainer) {
         const data = await api.getAthletes();
-        setAthletes(data);
+        setAthletes(data || []);
       } else {
         const [wData, sData, treeData] = await Promise.all([
           api.getWorkouts(),
           api.getSummary(),
           api.getPeriodizationTree(user.id)
         ]);
-        setWorkouts(wData.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+        setWorkouts(wData?.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()) || []);
         setSummary(sData);
 
         let foundMicro = null;
-        if (treeData && Array.isArray(treeData)) {
-          treeData.forEach(macro => {
-            macro.microciclos?.forEach(micro => {
+        if (treeData?.macros && Array.isArray(treeData.macros)) {
+          treeData.macros.forEach((macro: any) => {
+            macro.microciclos?.forEach((micro: any) => {
               if (todayStr >= micro.fecha_inicio && todayStr <= micro.fecha_fin) {
                 foundMicro = { ...micro, macroNombre: macro.nombre };
               }
@@ -69,7 +71,7 @@ export default function HomeScreen() {
           });
         }
         setActiveMicro(foundMicro);
-        return sData; // Devolvemos el sumario para el chequeo automático
+        return sData;
       }
     } catch (e) {
       console.log("Error cargando dashboard:", e);
@@ -80,12 +82,10 @@ export default function HomeScreen() {
     }
   };
 
-  // --- AUTO-REFRESCO Y AUTO-WELLNESS ---
   useFocusEffect(
     useCallback(() => {
       const init = async () => {
         const sData = await loadData(true);
-        // Si es deportista y no ha rellenado el wellness hoy, saltar modal
         if (!isTrainer && sData?.latest_wellness?.date !== todayStr) {
           setShowWellness(true);
         }
@@ -99,17 +99,74 @@ export default function HomeScreen() {
     loadData();
   };
 
-  const handleAddAthlete = async () => {
-    if (!newAthlete.name || !newAthlete.email || !newAthlete.password) {
-      Alert.alert("Campos incompletos", "Rellena todos los datos.");
+  // --- GESTIÓN DE ATLETAS (NUEVO / EDITAR / BORRAR) ---
+  const openNewAthlete = () => {
+    setEditingAthleteId(null);
+    setAthleteForm({ name: '', email: '', password: '', gender: 'Femenino' });
+    setShowAthleteModal(true);
+  };
+
+  const openEditAthlete = (athlete: any) => {
+    setEditingAthleteId(athlete.id);
+    setAthleteForm({ 
+      name: athlete.name, 
+      email: athlete.email, 
+      password: '', // Dejamos la contraseña en blanco por seguridad; el backend debería ignorarla si está vacía
+      gender: athlete.gender || 'Femenino' 
+    });
+    setShowAthleteModal(true);
+  };
+
+  const handleSaveAthlete = async () => {
+    if (!athleteForm.name || !athleteForm.email || (!editingAthleteId && !athleteForm.password)) {
+      Alert.alert("Campos incompletos", "Rellena todos los datos obligatorios.");
       return;
     }
     try {
-      await api.createAthlete(newAthlete);
-      setShowAddModal(false);
+      if (editingAthleteId) {
+        // Asumiendo que crearás api.updateAthlete en api.ts
+        if (api.updateAthlete) {
+           await api.updateAthlete(editingAthleteId, athleteForm);
+           Alert.alert("Éxito", "Deportista actualizado.");
+        } else {
+           Alert.alert("Aviso", "Falta la función updateAthlete en api.ts");
+        }
+      } else {
+        await api.createAthlete(athleteForm); // Asumiendo que esta existe
+        Alert.alert("Éxito", "Deportista añadido.");
+      }
+      setShowAthleteModal(false);
       loadData();
-      Alert.alert("Éxito", "Deportista añadido.");
-    } catch (e) { Alert.alert("Error", "No se pudo añadir."); }
+    } catch (e) { 
+      Alert.alert("Error", "No se pudo guardar la información del deportista."); 
+    }
+  };
+
+  const handleDeleteAthlete = (id: string, name: string) => {
+    Alert.alert(
+      "Eliminar Deportista",
+      `¿Estás segura de que quieres eliminar a ${name}? Esta acción no se puede deshacer y borrará todo su historial.`,
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "ELIMINAR", 
+          style: "destructive", 
+          onPress: async () => {
+            try {
+               // Asumiendo que crearás api.deleteAthlete en api.ts
+               if (api.deleteAthlete) {
+                 await api.deleteAthlete(id);
+                 loadData();
+               } else {
+                 Alert.alert("Aviso", "Falta la función deleteAthlete en api.ts");
+               }
+            } catch (e) {
+               Alert.alert("Error", "No se pudo eliminar al deportista.");
+            }
+          } 
+        }
+      ]
+    );
   };
 
   if (authLoading || (!user && !isTrainer)) {
@@ -134,7 +191,7 @@ export default function HomeScreen() {
               <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Panel Coach</Text>
               <Text style={{ color: colors.textSecondary, fontSize: 13 }}>Gestionando a {athletes.length} atletas</Text>
             </View>
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary }]} onPress={() => setShowAddModal(true)}>
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary }]} onPress={openNewAthlete}>
               <Ionicons name="person-add" size={20} color="#FFF" />
             </TouchableOpacity>
           </View>
@@ -152,7 +209,16 @@ export default function HomeScreen() {
             <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
             <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Atleta de Fit Tracker</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.border} />
+          
+          {/* BOTONES ACCIÓN ENTRENADOR */}
+          <View style={{ flexDirection: 'row', gap: 15, paddingRight: 5 }}>
+            <TouchableOpacity onPress={() => openEditAthlete(item)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+              <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => handleDeleteAthlete(item.id, item.name)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+              <Ionicons name="trash-outline" size={20} color={colors.error} />
+            </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       )}
     />
@@ -230,27 +296,38 @@ export default function HomeScreen() {
       {isTrainer ? <TrainerView /> : <AthleteView />}
       <WellnessModal isVisible={showWellness} onClose={() => { setShowWellness(false); loadData(true); }} />
 
-      <Modal visible={showAddModal} animationType="slide" transparent>
+      <Modal visible={showAthleteModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Añadir Deportista</Text>
-            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Nombre" placeholderTextColor="#888" onChangeText={t => setNewAthlete({...newAthlete, name: t})} />
-            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Email" placeholderTextColor="#888" autoCapitalize="none" onChangeText={t => setNewAthlete({...newAthlete, email: t})} />
-            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Contraseña" placeholderTextColor="#888" secureTextEntry onChangeText={t => setNewAthlete({...newAthlete, password: t})} />
+          <KeyboardAvoidingView behavior="padding" style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+              {editingAthleteId ? 'Editar Deportista' : 'Añadir Deportista'}
+            </Text>
+            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Nombre Completo" placeholderTextColor="#888" value={athleteForm.name} onChangeText={t => setAthleteForm({...athleteForm, name: t})} />
+            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Email" placeholderTextColor="#888" autoCapitalize="none" keyboardType="email-address" value={athleteForm.email} onChangeText={t => setAthleteForm({...athleteForm, email: t})} />
+            
+            <TextInput 
+              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} 
+              placeholder={editingAthleteId ? "Nueva Contraseña (Opcional)" : "Contraseña"} 
+              placeholderTextColor="#888" 
+              secureTextEntry 
+              value={athleteForm.password} 
+              onChangeText={t => setAthleteForm({...athleteForm, password: t})} 
+            />
+            
             <View style={styles.genderRow}>
               {['Masculino', 'Femenino'].map(g => (
-                <TouchableOpacity key={g} style={[styles.genderBtn, { borderColor: colors.border }, newAthlete.gender === g && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => setNewAthlete({...newAthlete, gender: g})}>
-                  <Text style={{ color: newAthlete.gender === g ? '#FFF' : colors.textPrimary, fontWeight: '700' }}>{g}</Text>
+                <TouchableOpacity key={g} style={[styles.genderBtn, { borderColor: colors.border }, athleteForm.gender === g && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => setAthleteForm({...athleteForm, gender: g})}>
+                  <Text style={{ color: athleteForm.gender === g ? '#FFF' : colors.textPrimary, fontWeight: '700' }}>{g}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleAddAthlete}>
-              <Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR PERFIL</Text>
+            <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleSaveAthlete}>
+              <Text style={{ color: '#FFF', fontWeight: '800' }}>{editingAthleteId ? 'ACTUALIZAR PERFIL' : 'GUARDAR PERFIL'}</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowAddModal(false)} style={{ marginTop: 20, alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => setShowAthleteModal(false)} style={{ marginTop: 20, alignItems: 'center' }}>
               <Text style={{ color: colors.textSecondary }}>Cerrar</Text>
             </TouchableOpacity>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
     </SafeAreaView>
@@ -259,7 +336,6 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 20 },
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
   dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
   welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 },
@@ -286,8 +362,8 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5, textTransform: 'uppercase' },
   sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 22, marginHorizontal: 20, marginBottom: 12 },
   avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 25 },
-  modalContent: { borderRadius: 30, padding: 25 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 },
   modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 25, textAlign: 'center' },
   input: { borderWidth: 1, padding: 16, borderRadius: 15, marginBottom: 15, fontSize: 16 },
   genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 },
