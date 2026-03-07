@@ -34,18 +34,18 @@ app = FastAPI()
 
 @app.get("/ping")
 async def ping():
-    return {"status": "awake", "message": "El servidor está activo."}
+    return {"status": "awake", "message": "El servidor está activo y listo para planificar."}
 
 api_router = APIRouter(prefix="/api")
 
-# --- MODELOS PYDANTIC ---
+# --- Modelos Pydantic ---
 class WellnessCreate(BaseModel):
     fatigue: int
     stress: int
     sleep_quality: int
     soreness: int
     notes: Optional[str] = ""
-    cycle_phase: Optional[str] = None 
+    cycle_phase: Optional[str] = None
 
 class UserRegister(BaseModel):
     email: str
@@ -112,7 +112,7 @@ class MicroCreate(BaseModel):
     tipo: str
     color: str
 
-# --- HELPERS ---
+# --- Auth Helpers ---
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
@@ -140,14 +140,74 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return user
 
-# --- RUTAS DE AUTENTICACIÓN Y BIENESTAR ---
+# --- Rutas de Wellness ---
 @api_router.get("/wellness/history/{athlete_id}")
 async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer' and user['id'] != athlete_id:
         raise HTTPException(status_code=403, detail="No autorizado")
-    history = await db.wellness.find({"athlete_id": athlete_id}, {"_id": 0}).sort("date", -1).to_list(7)
+    
+    history = await db.wellness.find(
+        {"athlete_id": athlete_id}, 
+        {"_id": 0} 
+    ).sort("date", -1).to_list(7)
     return history[::-1]
 
+@api_router.post("/wellness")
+async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
+    today = datetime.now(timezone.utc).isoformat().split('T')[0]
+    
+    wellness_data = {
+        "fatigue": data.fatigue,
+        "stress": data.stress,
+        "sleep_quality": data.sleep_quality,
+        "soreness": data.soreness,
+        "notes": data.notes,
+        "cycle_phase": data.cycle_phase,
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    # LÓGICA DE UPSERT: Buscamos si ya existe la ficha de hoy
+    existing = await db.wellness.find_one({"athlete_id": user['id'], "date": today})
+    
+    if existing:
+        # Si existe, actualizamos los datos (por ejemplo, la fase del ciclo)
+        await db.wellness.update_one({"_id": existing["_id"]}, {"$set": wellness_data})
+    else:
+        # Si no existe, creamos el documento nuevo
+        wellness_data["id"] = str(uuid.uuid4())
+        wellness_data["athlete_id"] = user['id']
+        wellness_data["date"] = today
+        wellness_data["created_at"] = wellness_data["updated_at"]
+        await db.wellness.insert_one(wellness_data)
+        
+    return {"status": "success"}
+
+@api_router.get("/analytics/summary")
+async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
+    target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
+    
+    target_user = await db.users.find_one({"id": target_id}, {"_id": 0})
+    total = await db.workouts.count_documents({"athlete_id": target_id})
+    completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
+    
+    # ORDEN MEJORADO: Por fecha y por actualización para evitar conflictos
+    latest_well = await db.wellness.find_one(
+        {"athlete_id": target_id}, 
+        {"_id": 0}, 
+        sort=[("date", -1), ("updated_at", -1)]
+    )
+
+    return {
+        "total_workouts": total,
+        "completed_workouts": completed,
+        "latest_wellness": latest_well or {"fatigue": 0, "stress": 0, "sleep_quality": 0, "soreness": 0, "notes": "", "cycle_phase": ""},
+        "completion_rate": round((completed / total * 100) if total > 0 else 0, 1),
+        "is_injured": target_user.get("is_injured", False) if target_user else False,
+        "injury_notes": target_user.get("injury_notes", "") if target_user else "",
+        "equipment": target_user.get("equipment", "") if target_user else ""
+    }
+
+# --- Rutas de Usuarios y Autenticación ---
 @api_router.post("/auth/register")
 async def register(data: UserRegister):
     existing = await db.users.find_one({"email": data.email})
@@ -175,49 +235,13 @@ async def login(data: UserLogin):
         }
     }
 
-@api_router.post("/wellness")
-async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
-    today = datetime.now(timezone.utc).isoformat().split('T')[0]
-    wellness_entry = {
-        "id": str(uuid.uuid4()),
-        "athlete_id": user['id'],
-        "date": today,
-        "fatigue": data.fatigue,
-        "stress": data.stress,
-        "sleep_quality": data.sleep_quality,
-        "soreness": data.soreness,
-        "notes": data.notes,
-        "cycle_phase": data.cycle_phase, 
-        "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.wellness.insert_one(wellness_entry)
-    return {"status": "success"}
-
-@api_router.get("/analytics/summary")
-async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
-    target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
-    target_user = await db.users.find_one({"id": target_id}, {"_id": 0})
-    total = await db.workouts.count_documents({"athlete_id": target_id})
-    completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
-    latest_well = await db.wellness.find_one({"athlete_id": target_id}, {"_id": 0}, sort=[("date", -1)])
-
-    return {
-        "total_workouts": total,
-        "completed_workouts": completed,
-        "latest_wellness": latest_well or {"fatigue": 0, "stress": 0, "sleep_quality": 0, "soreness": 0, "notes": "", "cycle_phase": ""},
-        "completion_rate": round((completed / total * 100) if total > 0 else 0, 1),
-        "is_injured": target_user.get("is_injured", False) if target_user else False,
-        "injury_notes": target_user.get("injury_notes", "") if target_user else "",
-        "equipment": target_user.get("equipment", "") if target_user else ""
-    }
-
 @api_router.put("/profile")
 async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
     update_data = {k: v for k, v in data.dict().items() if v is not None}
     await db.users.update_one({"id": user['id']}, {"$set": update_data})
     return {"status": "success"}
 
-# --- RUTAS DE GESTIÓN DE ATLETAS (AQUÍ ESTÁ LA MAGIA DEL BORRADO) ---
+# --- GESTIÓN DE ATLETAS POR EL ENTRENADOR ---
 @api_router.get("/athletes")
 async def list_athletes(user=Depends(get_current_user)):
     if user['role'] == 'trainer':
@@ -230,9 +254,12 @@ async def get_athlete(athlete_id: str, user=Depends(get_current_user)):
 
 @api_router.post("/athletes")
 async def create_athlete(data: AthleteCreate, user=Depends(get_current_user)):
-    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    if user['role'] != 'trainer':
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
     existing = await db.users.find_one({"email": data.email})
-    if existing: raise HTTPException(status_code=400, detail="Email ya registrado")
+    if existing: 
+        raise HTTPException(status_code=400, detail="Email ya registrado")
     
     athlete_id = str(uuid.uuid4())
     new_athlete = {
@@ -245,21 +272,26 @@ async def create_athlete(data: AthleteCreate, user=Depends(get_current_user)):
 
 @api_router.put("/athletes/{athlete_id}")
 async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_current_user)):
-    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    if user['role'] != 'trainer':
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
     update_data = {"name": data.name, "email": data.email, "gender": data.gender}
-    if data.password and len(data.password) > 0: update_data["password"] = hash_password(data.password)
+    if data.password and len(data.password) > 0:
+        update_data["password"] = hash_password(data.password)
+        
     await db.users.update_one({"id": athlete_id}, {"$set": update_data})
     return {"status": "success"}
 
 @api_router.delete("/athletes/{athlete_id}")
 async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
-    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    if user['role'] != 'trainer':
+        raise HTTPException(status_code=403, detail="No autorizado")
     
-    # Limpieza total del atleta
     await db.users.delete_one({"id": athlete_id})
     await db.workouts.delete_many({"athlete_id": athlete_id})
     await db.wellness.delete_many({"athlete_id": athlete_id})
     await db.macrociclos.delete_many({"athlete_id": athlete_id})
+    
     return {"status": "success"}
 
 # --- RUTAS DE ENTRENAMIENTOS Y PERIODIZACIÓN ---
@@ -269,6 +301,7 @@ async def create_workout(data: WorkoutCreate, user=Depends(get_current_user)):
     workout["id"] = str(uuid.uuid4())
     workout["completed"] = False 
     workout["completion_data"] = None
+    
     await db.workouts.insert_one(workout)
     workout.pop('_id', None) 
     return {"status": "success", "workout": workout}
@@ -282,9 +315,12 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, user=Depends(get_current
         workout["completed"] = False
         workout["completion_data"] = None
         new_workouts.append(workout)
+    
     if new_workouts:
         await db.workouts.insert_many(new_workouts)
-        for w in new_workouts: w.pop('_id', None) 
+        for w in new_workouts:
+            w.pop('_id', None) 
+            
     return {"status": "success", "inserted": len(new_workouts)}
 
 @api_router.get("/workouts")
@@ -311,7 +347,7 @@ async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
     macro = data.dict()
     macro["id"] = str(uuid.uuid4())
     await db.macrociclos.insert_one(macro)
-    macro.pop('_id', None)
+    macro.pop('_id', None) 
     return {"status": "success", "macro": macro}
 
 @api_router.put("/macrociclos/{id}")
@@ -322,7 +358,7 @@ async def update_macro(id: str, data: dict, user=Depends(get_current_user)):
 @api_router.delete("/macrociclos/{id}")
 async def delete_macro(id: str, user=Depends(get_current_user)):
     await db.macrociclos.delete_one({"id": id})
-    await db.microciclos.delete_many({"macrociclo_id": id})
+    await db.microciclos.delete_many({"macrociclo_id": id}) 
     return {"status": "success"}
 
 @api_router.post("/microciclos")
@@ -330,7 +366,7 @@ async def create_micro(data: MicroCreate, user=Depends(get_current_user)):
     micro = data.dict()
     micro["id"] = str(uuid.uuid4())
     await db.microciclos.insert_one(micro)
-    micro.pop('_id', None)
+    micro.pop('_id', None) 
     return {"status": "success", "micro": micro}
 
 @api_router.put("/microciclos/{id}")
@@ -341,25 +377,30 @@ async def update_micro(id: str, data: dict, user=Depends(get_current_user)):
 @api_router.delete("/microciclos/{id}")
 async def delete_micro(id: str, user=Depends(get_current_user)):
     await db.microciclos.delete_one({"id": id})
-    await db.workouts.update_many({"microciclo_id": id}, {"$set": {"microciclo_id": None}})
+    await db.workouts.update_many({"microciclo_id": id}, {"$set": {"microciclo_id": None}}) 
     return {"status": "success"}
 
 @api_router.get("/periodization/tree/{athlete_id}")
 async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
     try:
         macros = await db.macrociclos.find({"athlete_id": athlete_id}).to_list(100)
+        
         final_macros = []
         for m in macros:
             m_id = m.get("id")
             micros = await db.microciclos.find({"macrociclo_id": m_id}).to_list(100)
+            
             final_micros = []
             for mic in micros:
                 mic_id = mic.get("id")
                 workouts = await db.workouts.find({"microciclo_id": mic_id}).to_list(100)
+                
                 for w in workouts: w.pop('_id', None)
+                
                 mic["workouts"] = workouts
-                mic.pop('_id', None)
+                mic.pop('_id', None) 
                 final_micros.append(mic)
+            
             m["microciclos"] = final_micros
             m.pop('_id', None)
             final_macros.append(m)
@@ -370,12 +411,14 @@ async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)
         }).to_list(100)
         for u in unassigned: u.pop('_id', None)
 
-        return {"macros": final_macros, "unassigned_workouts": unassigned}
+        return {
+            "macros": final_macros,
+            "unassigned_workouts": unassigned
+        }
     except Exception as e:
         print(f"ERROR CRÍTICO: {str(e)}")
         return {"macros": [], "unassigned_workouts": [], "error": str(e)}
 
-# IMPORTANTE: Esto tiene que ir al final para que todas las rutas se registren correctamente
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
