@@ -136,4 +136,39 @@ export const api = {
     if (!res.ok) throw new Error('Error al actualizar el test');
     return res.json();
   }
+  // ... (debajo de tus funciones actuales en api.ts)
+
+  createMacro: async (data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/macrociclos`, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al crear macrociclo');
+    return res.json();
+  },
+
+  createMicro: async (data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/microciclos`, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al crear microciclo');
+    return res.json();
+  },
+
+  updateWorkout: async (id: string, data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/workouts/${id}`, {
+      method: 'PUT',
+      headers: headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('No se pudo guardar la sesión');
+    return res.json();
+  }
+
 };
