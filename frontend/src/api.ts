@@ -86,6 +86,17 @@ export const api = {
     if (!res.ok) throw new Error('Error al crear el entrenamiento');
     return res.json();
   },
+
+  createWorkoutsBulk: async (data: { workouts: any[] }) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/workouts/bulk`, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al importar la semana completa');
+    return res.json();
+  },
   
   updateWorkout: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
