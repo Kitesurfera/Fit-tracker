@@ -4,8 +4,6 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
@@ -74,33 +72,46 @@ export default function AddWorkoutScreen() {
     }
   };
 
-  // --- MANEJO DE CSV ---
-  const handleImportCSV = async () => {
-    try {
+  // --- MANEJO DE CSV (TRUCO NATIVO PARA WEB SIN DEPENDENCIAS) ---
+  const handleImportCSV = () => {
+    if (Platform.OS !== 'web') {
+      Alert.alert('Aviso', 'La importación de CSV actualmente está optimizada para la versión Web.');
+      return;
+    }
+
+    // Creamos un input de archivo invisible en el navegador
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv, text/csv';
+    
+    input.onchange = (e: any) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
       setCsvLoading(true);
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv', 'text/comma-separated-values', 'application/csv', 'application/vnd.ms-excel'],
-        copyToCacheDirectory: true
-      });
-
-      if (result.canceled) {
+      const reader = new FileReader();
+      
+      reader.onload = (event) => {
+        const csvText = event.target?.result as string;
+        procesarTextoCSV(csvText);
+      };
+      
+      reader.onerror = () => {
+        Alert.alert('Error', 'No se pudo leer el archivo.');
         setCsvLoading(false);
-        return;
-      }
+      };
 
-      const fileUri = result.assets[0].uri;
-      let csvText = '';
+      reader.readAsText(file);
+    };
 
-      // Leer el archivo dependiendo de la plataforma
-      if (Platform.OS === 'web') {
-        const response = await fetch(fileUri);
-        csvText = await response.text();
-      } else {
-        csvText = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.UTF8 });
-      }
+    // Simulamos un click para abrir el explorador de archivos
+    input.click();
+  };
 
-      // Separar por líneas
-      const lines = csvText.split('\n').filter(line => line.trim() !== '');
+  const procesarTextoCSV = (csvText: string) => {
+    try {
+      // Separar por líneas (soportando saltos de línea de Windows y Mac/Linux)
+      const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
       if (lines.length < 2) {
         Alert.alert('Error', 'El archivo CSV parece estar vacío o no tiene ejercicios.');
         setCsvLoading(false);
@@ -109,9 +120,8 @@ export default function AddWorkoutScreen() {
 
       // Mapear líneas a ejercicios (saltando la cabecera en la línea 0)
       const newExercises = lines.slice(1).map(line => {
-        // Detectar si el CSV usa comas o punto y coma (común en Excel europeo)
         const separator = line.includes(';') ? ';' : ',';
-        const columns = line.split(separator).map(item => item?.trim().replace(/^"|"$/g, '') || ''); // Limpia espacios y comillas
+        const columns = line.split(separator).map(item => item?.trim().replace(/^"|"$/g, '') || '');
         
         return {
           name: columns[0] || '',
@@ -129,14 +139,12 @@ export default function AddWorkoutScreen() {
       
       if (validExercises.length > 0) {
         setEjercicios(validExercises);
-        Alert.alert('Éxito', `Se han importado ${validExercises.length} ejercicios correctamente.`);
+        Alert.alert('Éxito', `Se han importado ${validExercises.length} ejercicios.`);
       } else {
-        Alert.alert('Aviso', 'No se detectaron ejercicios válidos. Revisa el formato del CSV.');
+        Alert.alert('Aviso', 'No se detectaron ejercicios válidos en el archivo.');
       }
-
     } catch (error) {
-      console.error("Error CSV:", error);
-      Alert.alert('Error', 'Hubo un problema al leer el archivo. Asegúrate de que sea un .csv válido.');
+      Alert.alert('Error', 'El formato del CSV no es válido.');
     } finally {
       setCsvLoading(false);
     }
@@ -144,11 +152,13 @@ export default function AddWorkoutScreen() {
 
   // --- MANEJO DE EJERCICIOS ---
   const addExercise = () => setEjercicios([...ejercicios, { name: '', sets: '', reps: '', weight: '', rest: '', exercise_notes: '', video_url: '', image_path: '' }]);
+  
   const updateExercise = (index: number, field: string, value: string) => {
     const updated = [...ejercicios];
     updated[index] = { ...updated[index], [field]: value };
     setEjercicios(updated);
   };
+  
   const removeExercise = (index: number) => setEjercicios(ejercicios.filter((_, i) => i !== index));
 
   // --- GUARDADO FINAL ---
@@ -218,15 +228,15 @@ export default function AddWorkoutScreen() {
 
             {showCsvFormat && (
               <View style={[styles.csvFormatBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>1. Crea un Excel con estas columnas (en este orden exacto):</Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>1. Crea un Excel con estas columnas (en este orden):</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginBottom: 10, backgroundColor: 'rgba(0,0,0,0.05)', padding: 6, borderRadius: 6 }}>
                   Nombre, Series, Reps, Kilos, Descanso, Notas, URL Video
                 </Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>2. Ejemplo de una fila de ejercicio:</Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>2. Ejemplo de fila:</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginBottom: 10, backgroundColor: 'rgba(0,0,0,0.05)', padding: 6, borderRadius: 6 }}>
-                  Sentadilla, 4, 8-10, 60, 90s, Bajar lento, https://youtube...
+                  Sentadilla, 4, 8-10, 60, 90s, Bajar lento, https://...
                 </Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700' }}>3. Guárdalo como "CSV (delimitado por comas)" y súbelo aquí.</Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700' }}>3. Guárdalo como "CSV delimitado por comas" y súbelo.</Text>
               </View>
             )}
           </View>
