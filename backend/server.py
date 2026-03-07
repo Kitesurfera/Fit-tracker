@@ -74,6 +74,20 @@ class WorkoutUpdate(BaseModel):
     completion_data: Optional[dict] = None
     observations: Optional[str] = None
     microciclo_id: Optional[str] = None
+    
+    class MacroCreate(BaseModel):
+    athlete_id: str
+    nombre: str
+    fecha_inicio: str
+    fecha_fin: str
+    
+    class MicroCreate(BaseModel):
+    macrociclo_id: str
+    nombre: str
+    fecha_inicio: str
+    fecha_fin: str
+    tipo: str
+    color: str
 
 # --- Auth Helpers ---
 def hash_password(password: str) -> str:
@@ -202,6 +216,25 @@ async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = 
     elif athlete_id: query['athlete_id'] = athlete_id
     if date: query['date'] = date
     return await db.workouts.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
+@api_router.put("/workouts/{workout_id}")
+async def update_workout(workout_id: str, data: WorkoutUpdate, user=Depends(get_current_user)):
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
+    return {"status": "success"}
+
+@api_router.post("/macrociclos")
+async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
+    macro = data.dict()
+    macro["id"] = str(uuid.uuid4())
+    await db.macrociclos.insert_one(macro)
+    return {"status": "success", "macro": macro}
+
+@api_router.post("/microciclos")
+async def create_micro(data: MicroCreate, user=Depends(get_current_user)):
+    micro = data.dict()
+    micro["id"] = str(uuid.uuid4())
+    await db.microciclos.insert_one(micro)
+    return {"status": "success", "micro": micro}
 
 @api_router.get("/periodization/tree/{athlete_id}")
 async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
