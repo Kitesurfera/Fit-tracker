@@ -197,5 +197,43 @@ export const api = {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/microciclos/${id}`, { method: 'DELETE', headers });
     return res.json();
+  },
+
+  // --- TESTS FÍSICOS ---
+  getTests: async (params?: { athlete_id?: string; test_type?: string }) => {
+    const headers = await getAuthHeaders();
+    let url = `${BACKEND_URL}/api/tests`;
+    if (params) {
+      const query = new URLSearchParams(params as any).toString();
+      url += `?${query}`;
+    }
+    const res = await fetch(url, { headers });
+    if (!res.ok) throw new Error('Error al obtener los tests');
+    return res.json();
+  },
+
+  createTest: async (data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/tests`, {
+      method: 'POST', headers, body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al registrar el test');
+    return res.json();
+  },
+
+  updateTest: async (id: string, data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/tests/${id}`, {
+      method: 'PUT', headers, body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al actualizar el test');
+    return res.json();
+  },
+
+  deleteTest: async (id: string) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/tests/${id}`, { method: 'DELETE', headers });
+    if (!res.ok) throw new Error('Error al eliminar el test');
+    return res.json();
   }
 };
