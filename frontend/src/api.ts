@@ -76,6 +76,17 @@ export const api = {
     return res.json();
   },
 
+  createWorkout: async (data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/workouts`, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al crear el entrenamiento');
+    return res.json();
+  },
+  
   updateWorkout: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/workouts/${id}`, {
