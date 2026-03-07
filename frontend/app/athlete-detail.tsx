@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, FlatList,
+  View, Text, TouchableOpacity, StyleSheet,
   ActivityIndicator, ScrollView, Dimensions
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
@@ -132,8 +132,8 @@ export default function AthleteDetailScreen() {
       </TouchableOpacity>
     </View>
   );
-  
-    // --- 2. PESTAÑA: HISTORIAL DE ENTRENAMIENTOS ---
+
+  // --- 2. PESTAÑA: HISTORIAL DE ENTRENAMIENTOS ---
   const renderWorkouts = () => (
     <View style={styles.tabContainer}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
@@ -175,15 +175,10 @@ export default function AthleteDetailScreen() {
     </View>
   );
 
-    </View>
-  );
-
   // --- 3. PESTAÑA: GRÁFICAS DE EVOLUCIÓN (PROGRESIÓN) ---
   const renderProgression = () => {
-    // Filtramos solo los completados y los ordenamos de más antiguo a más nuevo
     const completed = workouts.filter(w => w.completed).reverse();
     
-    // Calculamos el volumen total por sesión (Series * Reps * Peso)
     const progressionData = completed.map(wk => {
       let totalVolume = 0;
       if (wk.completion_data?.exercise_results) {
@@ -195,13 +190,13 @@ export default function AthleteDetailScreen() {
         });
       }
       return {
-        date: wk.date.split('-').slice(1).join('/'), // MM/DD
+        date: wk.date.split('-').slice(1).join('/'),
         volume: totalVolume,
         rpe: wk.completion_data?.rpe || 0
       };
-    }).slice(-7); // Mostrar solo los últimos 7 entrenos
+    }).slice(-7);
 
-    const maxVolume = Math.max(...progressionData.map(d => d.volume), 100); // Para escalar la gráfica
+    const maxVolume = Math.max(...progressionData.map(d => d.volume), 100);
 
     return (
       <View style={styles.tabContainer}>
@@ -308,7 +303,6 @@ const styles = StyleSheet.create({
   alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 },
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 },
   
-  // Dashboard Styles
   chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 },
   barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' },
   barWrapper: { alignItems: 'center', flex: 1 },
@@ -327,12 +321,10 @@ const styles = StyleSheet.create({
   actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 },
   actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
 
-  // Workouts Styles
   sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginBottom: 12, elevation: 1 },
   avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   cardTitle: { fontSize: 15, fontWeight: '800' },
 
-  // Progression Styles
   progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 },
-  progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 } // Barras más anchas y con base recta para la evolución
+  progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }
 });
