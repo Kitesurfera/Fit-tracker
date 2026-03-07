@@ -91,6 +91,9 @@ class WorkoutCreate(BaseModel):
     athlete_id: str
     microciclo_id: Optional[str] = None
     
+class WorkoutBulkCreate(BaseModel):
+    workouts: List[WorkoutCreate]
+    
 class MacroCreate(BaseModel):
     athlete_id: str
     nombre: str
@@ -235,6 +238,23 @@ async def create_workout(data: WorkoutCreate, user=Depends(get_current_user)):
     workout.pop('_id', None) # Limpiamos el ID de Mongo para no colapsar
     
     return {"status": "success", "workout": workout}
+
+@api_router.post("/workouts/bulk")
+async def create_workouts_bulk(data: WorkoutBulkCreate, user=Depends(get_current_user)):
+    new_workouts = []
+    for w in data.workouts:
+        workout = w.dict()
+        workout["id"] = str(uuid.uuid4())
+        workout["completed"] = False
+        workout["completion_data"] = None
+        new_workouts.append(workout)
+    
+    if new_workouts:
+        await db.workouts.insert_many(new_workouts)
+        for w in new_workouts:
+            w.pop('_id', None) # Limpiamos el ID interno
+            
+    return {"status": "success", "inserted": len(new_workouts)}
 
 @api_router.get("/workouts")
 async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = None, user=Depends(get_current_user)):
