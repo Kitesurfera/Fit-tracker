@@ -229,6 +229,7 @@ async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
     macro = data.dict()
     macro["id"] = str(uuid.uuid4())
     await db.macrociclos.insert_one(macro)
+    macro.pop('_id', None) # <-- Corrección
     return {"status": "success", "macro": macro}
 
 @api_router.put("/macrociclos/{id}")
@@ -247,6 +248,7 @@ async def create_micro(data: MicroCreate, user=Depends(get_current_user)):
     micro = data.dict()
     micro["id"] = str(uuid.uuid4())
     await db.microciclos.insert_one(micro)
+    micro.pop('_id', None) # <-- Corrección
     return {"status": "success", "micro": micro}
 
 @api_router.put("/microciclos/{id}")
