@@ -33,7 +33,7 @@ security = HTTPBearer()
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
-# --- Modelos ---
+# --- Modelos Pydantic ---
 class WellnessCreate(BaseModel):
     fatigue: int
     stress: int
@@ -222,6 +222,8 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, user=Depends(get_
     await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
     return {"status": "success"}
 
+# --- RUTAS DE PERIODIZACIÓN (Macrociclos y Microciclos) ---
+
 @api_router.post("/macrociclos")
 async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
     macro = data.dict()
@@ -229,12 +231,34 @@ async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
     await db.macrociclos.insert_one(macro)
     return {"status": "success", "macro": macro}
 
+@api_router.put("/macrociclos/{id}")
+async def update_macro(id: str, data: dict, user=Depends(get_current_user)):
+    await db.macrociclos.update_one({"id": id}, {"$set": data})
+    return {"status": "success"}
+
+@api_router.delete("/macrociclos/{id}")
+async def delete_macro(id: str, user=Depends(get_current_user)):
+    await db.macrociclos.delete_one({"id": id})
+    await db.microciclos.delete_many({"macrociclo_id": id}) # Borrado en cascada
+    return {"status": "success"}
+
 @api_router.post("/microciclos")
 async def create_micro(data: MicroCreate, user=Depends(get_current_user)):
     micro = data.dict()
     micro["id"] = str(uuid.uuid4())
     await db.microciclos.insert_one(micro)
     return {"status": "success", "micro": micro}
+
+@api_router.put("/microciclos/{id}")
+async def update_micro(id: str, data: dict, user=Depends(get_current_user)):
+    await db.microciclos.update_one({"id": id}, {"$set": data})
+    return {"status": "success"}
+
+@api_router.delete("/microciclos/{id}")
+async def delete_micro(id: str, user=Depends(get_current_user)):
+    await db.microciclos.delete_one({"id": id})
+    await db.workouts.update_many({"microciclo_id": id}, {"$set": {"microciclo_id": None}}) # Desasignar workouts
+    return {"status": "success"}
 
 @api_router.get("/periodization/tree/{athlete_id}")
 async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
