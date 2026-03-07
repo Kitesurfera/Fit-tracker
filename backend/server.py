@@ -75,13 +75,13 @@ class WorkoutUpdate(BaseModel):
     observations: Optional[str] = None
     microciclo_id: Optional[str] = None
     
-    class MacroCreate(BaseModel):
+class MacroCreate(BaseModel):
     athlete_id: str
     nombre: str
     fecha_inicio: str
     fecha_fin: str
     
-    class MicroCreate(BaseModel):
+class MicroCreate(BaseModel):
     macrociclo_id: str
     nombre: str
     fecha_inicio: str
@@ -125,7 +125,7 @@ async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
     
     history = await db.wellness.find(
         {"athlete_id": athlete_id}, 
-        {"_id": 0} # EXTREMADAMENTE IMPORTANTE PARA QUE NO FALLE
+        {"_id": 0} 
     ).sort("date", -1).to_list(7)
     
     return history[::-1]
@@ -177,7 +177,6 @@ async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
 async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
     target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
     
-    # EL FIX ESTÁ AQUÍ: Añadido {"_id": 0} para evitar el error silencioso de serialización
     target_user = await db.users.find_one({"id": target_id}, {"_id": 0})
     total = await db.workouts.count_documents({"athlete_id": target_id})
     completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
@@ -216,6 +215,7 @@ async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = 
     elif athlete_id: query['athlete_id'] = athlete_id
     if date: query['date'] = date
     return await db.workouts.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
+
 @api_router.put("/workouts/{workout_id}")
 async def update_workout(workout_id: str, data: WorkoutUpdate, user=Depends(get_current_user)):
     update_data = {k: v for k, v in data.dict().items() if v is not None}
