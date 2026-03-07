@@ -224,6 +224,68 @@ async def list_athletes(user=Depends(get_current_user)):
 async def get_athlete(athlete_id: str, user=Depends(get_current_user)):
     return await db.users.find_one({"id": athlete_id}, {"_id": 0, "password": 0})
 
+# --- NUEVAS RUTAS DE GESTIÓN DE ATLETAS PARA EL ENTRENADOR ---
+
+class AthleteUpdate(BaseModel):
+    name: str
+    email: str
+    gender: str
+    password: Optional[str] = None
+
+@api_router.post("/athletes")
+async def create_athlete(data: AthleteCreate, user=Depends(get_current_user)):
+    if user['role'] != 'trainer':
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    existing = await db.users.find_one({"email": data.email})
+    if existing: 
+        raise HTTPException(status_code=400, detail="Email ya registrado")
+    
+    athlete_id = str(uuid.uuid4())
+    new_athlete = {
+        "id": athlete_id,
+        "email": data.email,
+        "password": hash_password(data.password),
+        "name": data.name,
+        "gender": data.gender,
+        "role": "athlete",
+        "trainer_id": user['id'], # Vinculamos el atleta a Andreina
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.users.insert_one(new_athlete)
+    return {"status": "success", "id": athlete_id}
+
+@api_router.put("/athletes/{athlete_id}")
+async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_current_user)):
+    if user['role'] != 'trainer':
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    update_data = {
+        "name": data.name,
+        "email": data.email,
+        "gender": data.gender
+    }
+    # Si manda contraseña nueva, la encriptamos y la actualizamos
+    if data.password and len(data.password) > 0:
+        update_data["password"] = hash_password(data.password)
+        
+    await db.users.update_one({"id": athlete_id}, {"$set": update_data})
+    return {"status": "success"}
+
+@api_router.delete("/athletes/{athlete_id}")
+async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
+    if user['role'] != 'trainer':
+        raise HTTPException(status_code=403, detail="No autorizado")
+    
+    # 1. Borramos al usuario
+    await db.users.delete_one({"id": athlete_id})
+    # 2. Hacemos limpieza de su rastro en la base de datos
+    await db.workouts.delete_many({"athlete_id": athlete_id})
+    await db.wellness.delete_many({"athlete_id": athlete_id})
+    await db.macrociclos.delete_many({"athlete_id": athlete_id})
+    
+    return {"status": "success"}
+
 @api_router.put("/profile")
 async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
     update_data = {k: v for k, v in data.dict().items() if v is not None}
