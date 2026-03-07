@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -78,6 +78,7 @@ export default function PeriodizationScreen() {
       setMacroModalVisible(false);
       loadTree();
     } catch (e) {
+      console.log("Error macro:", e);
       Alert.alert('Error', 'Error al guardar el macrociclo');
     } finally {
       setSavingMacro(false);
@@ -301,94 +302,98 @@ export default function PeriodizationScreen() {
       </ScrollView>
 
       {/* --- MODAL MACROCICLO --- */}
-      <Modal visible={macroModalVisible} animationType="slide" transparent>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editingMacroId ? 'Editar Macrociclo' : 'Nuevo Macrociclo'}</Text>
-              <TouchableOpacity onPress={() => setMacroModalVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
+      {macroModalVisible && (
+        <View style={styles.modalOverlayFull}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editingMacroId ? 'Editar Macrociclo' : 'Nuevo Macrociclo'}</Text>
+                <TouchableOpacity onPress={() => setMacroModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE DEL BLOQUE</Text>
+                <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: Pretemporada..." placeholderTextColor={colors.textSecondary} value={macroForm.nombre} onChangeText={(t) => setMacroForm({ ...macroForm, nombre: t })} />
+                <View style={styles.row}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>INICIO</Text>
+                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={macroForm.fecha_inicio} onChangeText={(t) => setMacroForm({ ...macroForm, fecha_inicio: t })} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 8 }}>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>FIN</Text>
+                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={macroForm.fecha_fin} onChangeText={(t) => setMacroForm({ ...macroForm, fecha_fin: t })} />
+                  </View>
+                </View>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>COLOR</Text>
+                <View style={styles.colorRow}>
+                  {MACRO_COLORS.map(c => (
+                    <TouchableOpacity key={c} style={[styles.colorCircle, { backgroundColor: c, borderWidth: macroForm.color === c ? 3 : 0, borderColor: colors.textPrimary }]} onPress={() => setMacroForm({ ...macroForm, color: c })} />
+                  ))}
+                </View>
+                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleSaveMacro} disabled={savingMacro}>
+                  {savingMacro ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>GUARDAR</Text>}
+                </TouchableOpacity>
+              </ScrollView>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE DEL BLOQUE</Text>
-              <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: Pretemporada..." placeholderTextColor={colors.textSecondary} value={macroForm.nombre} onChangeText={(t) => setMacroForm({ ...macroForm, nombre: t })} />
-              <View style={styles.row}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.label, { color: colors.textSecondary }]}>INICIO</Text>
-                  <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={macroForm.fecha_inicio} onChangeText={(t) => setMacroForm({ ...macroForm, fecha_inicio: t })} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={[styles.label, { color: colors.textSecondary }]}>FIN</Text>
-                  <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={macroForm.fecha_fin} onChangeText={(t) => setMacroForm({ ...macroForm, fecha_fin: t })} />
-                </View>
-              </View>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>COLOR</Text>
-              <View style={styles.colorRow}>
-                {MACRO_COLORS.map(c => (
-                  <TouchableOpacity key={c} style={[styles.colorCircle, { backgroundColor: c, borderWidth: macroForm.color === c ? 3 : 0, borderColor: colors.textPrimary }]} onPress={() => setMacroForm({ ...macroForm, color: c })} />
-                ))}
-              </View>
-              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleSaveMacro} disabled={savingMacro}>
-                {savingMacro ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>GUARDAR</Text>}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          </KeyboardAvoidingView>
+        </View>
+      )}
 
       {/* --- MODAL MICROCICLO --- */}
-      <Modal visible={microModalVisible} animationType="slide" transparent>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <View style={styles.modalHeader}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editingMicroId ? 'Editar Semana' : 'Nueva Semana'}</Text>
-              <TouchableOpacity onPress={() => setMicroModalVisible(false)}>
-                <Ionicons name="close" size={24} color={colors.textSecondary} />
-              </TouchableOpacity>
+      {microModalVisible && (
+        <View style={styles.modalOverlayFull}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+              <View style={styles.modalHeader}>
+                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editingMicroId ? 'Editar Semana' : 'Nueva Semana'}</Text>
+                <TouchableOpacity onPress={() => setMicroModalVisible(false)}>
+                  <Ionicons name="close" size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE</Text>
+                <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: Semana 1 - Adaptación" placeholderTextColor={colors.textSecondary} value={microForm.nombre} onChangeText={(t) => setMicroForm({ ...microForm, nombre: t })} />
+                
+                <Text style={[styles.label, { color: colors.textSecondary }]}>TIPO DE CARGA</Text>
+                <View style={styles.chipsRow}>
+                  {MICRO_TIPOS.map(tipo => (
+                    <TouchableOpacity 
+                      key={tipo} 
+                      style={[styles.chip, { backgroundColor: microForm.tipo === tipo ? colors.primary : colors.surfaceHighlight }]}
+                      onPress={() => setMicroForm({ ...microForm, tipo })}
+                    >
+                      <Text style={{ fontSize: 12, fontWeight: '700', color: microForm.tipo === tipo ? '#FFF' : colors.textSecondary }}>{tipo}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={styles.row}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>INICIO</Text>
+                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={microForm.fecha_inicio} onChangeText={(t) => setMicroForm({ ...microForm, fecha_inicio: t })} />
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 8 }}>
+                    <Text style={[styles.label, { color: colors.textSecondary }]}>FIN</Text>
+                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={microForm.fecha_fin} onChangeText={(t) => setMicroForm({ ...microForm, fecha_fin: t })} />
+                  </View>
+                </View>
+                
+                <Text style={[styles.label, { color: colors.textSecondary }]}>COLOR</Text>
+                <View style={styles.colorRow}>
+                  {MICRO_COLORS.map(c => (
+                    <TouchableOpacity key={c} style={[styles.colorCircle, { backgroundColor: c, borderWidth: microForm.color === c ? 3 : 0, borderColor: colors.textPrimary }]} onPress={() => setMicroForm({ ...microForm, color: c })} />
+                  ))}
+                </View>
+
+                <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleSaveMicro} disabled={savingMicro}>
+                  {savingMicro ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>GUARDAR</Text>}
+                </TouchableOpacity>
+              </ScrollView>
             </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE</Text>
-              <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: Semana 1 - Adaptación" placeholderTextColor={colors.textSecondary} value={microForm.nombre} onChangeText={(t) => setMicroForm({ ...microForm, nombre: t })} />
-              
-              <Text style={[styles.label, { color: colors.textSecondary }]}>TIPO DE CARGA</Text>
-              <View style={styles.chipsRow}>
-                {MICRO_TIPOS.map(tipo => (
-                  <TouchableOpacity 
-                    key={tipo} 
-                    style={[styles.chip, { backgroundColor: microForm.tipo === tipo ? colors.primary : colors.surfaceHighlight }]}
-                    onPress={() => setMicroForm({ ...microForm, tipo })}
-                  >
-                    <Text style={{ fontSize: 12, fontWeight: '700', color: microForm.tipo === tipo ? '#FFF' : colors.textSecondary }}>{tipo}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              <View style={styles.row}>
-                <View style={{ flex: 1, marginRight: 8 }}>
-                  <Text style={[styles.label, { color: colors.textSecondary }]}>INICIO</Text>
-                  <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={microForm.fecha_inicio} onChangeText={(t) => setMicroForm({ ...microForm, fecha_inicio: t })} />
-                </View>
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                  <Text style={[styles.label, { color: colors.textSecondary }]}>FIN</Text>
-                  <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} value={microForm.fecha_fin} onChangeText={(t) => setMicroForm({ ...microForm, fecha_fin: t })} />
-                </View>
-              </View>
-              
-              <Text style={[styles.label, { color: colors.textSecondary }]}>COLOR</Text>
-              <View style={styles.colorRow}>
-                {MICRO_COLORS.map(c => (
-                  <TouchableOpacity key={c} style={[styles.colorCircle, { backgroundColor: c, borderWidth: microForm.color === c ? 3 : 0, borderColor: colors.textPrimary }]} onPress={() => setMicroForm({ ...microForm, color: c })} />
-                ))}
-              </View>
-
-              <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleSaveMicro} disabled={savingMicro}>
-                {savingMicro ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>GUARDAR</Text>}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+          </KeyboardAvoidingView>
+        </View>
+      )}
 
     </SafeAreaView>
   );
@@ -416,7 +421,6 @@ const styles = StyleSheet.create({
   typeBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start' },
   typeBadgeText: { fontSize: 10, fontWeight: '800' },
 
-  // Nuevos estilos para estadísticas
   statsContainer: { marginTop: 12, padding: 8, borderRadius: 8 },
   statsRow: { flexDirection: 'row', gap: 16, marginBottom: 8 },
   statItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
@@ -430,7 +434,8 @@ const styles = StyleSheet.create({
   workoutItem: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 8 },
   workoutTitle: { fontSize: 13, fontWeight: '600' },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalOverlayFull: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 1000, backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalOverlay: { flex: 1, justifyContent: 'flex-end' },
   modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 24, maxHeight: '85%' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   modalTitle: { fontSize: 20, fontWeight: '800' },
