@@ -112,6 +112,26 @@ class MicroCreate(BaseModel):
     tipo: str
     color: str
 
+# NUEVOS MODELOS PARA TESTS FÍSICOS
+class TestCreate(BaseModel):
+    athlete_id: str
+    test_type: str
+    test_name: str
+    custom_name: Optional[str] = ""
+    value: float
+    unit: str
+    date: str
+    notes: Optional[str] = ""
+    value_left: Optional[float] = None
+    value_right: Optional[float] = None
+
+class TestUpdate(BaseModel):
+    value: Optional[float] = None
+    value_left: Optional[float] = None
+    value_right: Optional[float] = None
+    unit: Optional[str] = None
+    notes: Optional[str] = None
+
 # --- Auth Helpers ---
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -166,14 +186,11 @@ async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
-    # LÓGICA DE UPSERT: Buscamos si ya existe la ficha de hoy
     existing = await db.wellness.find_one({"athlete_id": user['id'], "date": today})
     
     if existing:
-        # Si existe, actualizamos los datos (por ejemplo, la fase del ciclo)
         await db.wellness.update_one({"_id": existing["_id"]}, {"$set": wellness_data})
     else:
-        # Si no existe, creamos el documento nuevo
         wellness_data["id"] = str(uuid.uuid4())
         wellness_data["athlete_id"] = user['id']
         wellness_data["date"] = today
@@ -190,7 +207,6 @@ async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_c
     total = await db.workouts.count_documents({"athlete_id": target_id})
     completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
     
-    # ORDEN MEJORADO: Por fecha y por actualización para evitar conflictos
     latest_well = await db.wellness.find_one(
         {"athlete_id": target_id}, 
         {"_id": 0}, 
@@ -418,6 +434,67 @@ async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)
     except Exception as e:
         print(f"ERROR CRÍTICO: {str(e)}")
         return {"macros": [], "unassigned_workouts": [], "error": str(e)}
+
+# --- RUTAS DE TESTS FÍSICOS ---
+
+@api_router.post("/tests")
+async def create_test(data: TestCreate, user=Depends(get_current_user)):
+    if user['role'] == 'athlete' and data.athlete_id != user['id']:
+        raise HTTPException(status_code=403, detail="No puedes crear tests para otro deportista")
+        
+    test_doc = data.dict()
+    test_doc["id"] = str(uuid.uuid4())
+    test_doc["created_at"] = datetime.now(timezone.utc).isoformat()
+    
+    await db.tests.insert_one(test_doc)
+    test_doc.pop('_id', None)
+    return {"status": "success", "test": test_doc}
+
+@api_router.get("/tests")
+async def get_tests(athlete_id: Optional[str] = None, test_type: Optional[str] = None, user=Depends(get_current_user)):
+    query = {}
+    
+    if user['role'] == 'athlete':
+        query['athlete_id'] = user['id']
+    elif athlete_id:
+        query['athlete_id'] = athlete_id
+        
+    if test_type and test_type != 'all':
+        query['test_type'] = test_type
+        
+    tests = await db.tests.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
+    return tests
+
+@api_router.put("/tests/{test_id}")
+async def update_test(test_id: str, data: TestUpdate, user=Depends(get_current_user)):
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    
+    if not update_data:
+        return {"status": "success"}
+        
+    existing_test = await db.tests.find_one({"id": test_id})
+    if not existing_test:
+        raise HTTPException(status_code=404, detail="Test no encontrado")
+        
+    if user['role'] == 'athlete' and existing_test['athlete_id'] != user['id']:
+        raise HTTPException(status_code=403, detail="No autorizado")
+
+    await db.tests.update_one({"id": test_id}, {"$set": update_data})
+    
+    updated_test = await db.tests.find_one({"id": test_id}, {"_id": 0})
+    return updated_test
+
+@api_router.delete("/tests/{test_id}")
+async def delete_test(test_id: str, user=Depends(get_current_user)):
+    existing_test = await db.tests.find_one({"id": test_id})
+    if not existing_test:
+        raise HTTPException(status_code=404, detail="Test no encontrado")
+        
+    if user['role'] == 'athlete' and existing_test['athlete_id'] != user['id']:
+        raise HTTPException(status_code=403, detail="No autorizado")
+        
+    await db.tests.delete_one({"id": test_id})
+    return {"status": "success"}
 
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
