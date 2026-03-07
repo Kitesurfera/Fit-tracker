@@ -32,22 +32,20 @@ JWT_EXPIRATION_HOURS = 72
 security = HTTPBearer()
 app = FastAPI()
 
-# --- NUEVA RUTA PARA MANTENER DESPIERTO A RENDER ---
 @app.get("/ping")
 async def ping():
-    return {"status": "awake", "message": "El servidor está activo y listo para planificar."}
-# ---------------------------------------------------
+    return {"status": "awake", "message": "El servidor está activo."}
 
 api_router = APIRouter(prefix="/api")
 
-# --- Modelos Pydantic ---
+# --- MODELOS PYDANTIC ---
 class WellnessCreate(BaseModel):
     fatigue: int
     stress: int
     sleep_quality: int
     soreness: int
     notes: Optional[str] = ""
-    cycle_phase: Optional[str] = None  # <--- NUEVO CAMPO AÑADIDO
+    cycle_phase: Optional[str] = None 
 
 class UserRegister(BaseModel):
     email: str
@@ -66,6 +64,12 @@ class AthleteCreate(BaseModel):
     gender: str
     sport: Optional[str] = "Preparación Física"
 
+class AthleteUpdate(BaseModel):
+    name: str
+    email: str
+    gender: str
+    password: Optional[str] = None
+
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
     sport: Optional[str] = None
@@ -73,7 +77,6 @@ class ProfileUpdate(BaseModel):
     is_injured: Optional[bool] = None
     injury_notes: Optional[str] = None
     equipment: Optional[str] = None
-
 
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
@@ -109,7 +112,7 @@ class MicroCreate(BaseModel):
     tipo: str
     color: str
 
-# --- Auth Helpers ---
+# --- HELPERS ---
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
@@ -137,17 +140,12 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return user
 
-# --- Rutas ---
+# --- RUTAS DE AUTENTICACIÓN Y BIENESTAR ---
 @api_router.get("/wellness/history/{athlete_id}")
 async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer' and user['id'] != athlete_id:
         raise HTTPException(status_code=403, detail="No autorizado")
-    
-    history = await db.wellness.find(
-        {"athlete_id": athlete_id}, 
-        {"_id": 0} 
-    ).sort("date", -1).to_list(7)
-    
+    history = await db.wellness.find({"athlete_id": athlete_id}, {"_id": 0}).sort("date", -1).to_list(7)
     return history[::-1]
 
 @api_router.post("/auth/register")
@@ -173,7 +171,7 @@ async def login(data: UserLogin):
         "user": {
             "id": user['id'], "email": user['email'], "name": user['name'],
             "role": user['role'], "is_injured": user.get("is_injured", False),
-            "gender": user.get("gender") # <--- AÑADIDO PARA LA APP
+            "gender": user.get("gender")
         }
     }
 
@@ -189,7 +187,7 @@ async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
         "sleep_quality": data.sleep_quality,
         "soreness": data.soreness,
         "notes": data.notes,
-        "cycle_phase": data.cycle_phase,  # <--- NUEVO CAMPO AÑADIDO
+        "cycle_phase": data.cycle_phase, 
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.wellness.insert_one(wellness_entry)
@@ -198,7 +196,6 @@ async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
 @api_router.get("/analytics/summary")
 async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
     target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
-    
     target_user = await db.users.find_one({"id": target_id}, {"_id": 0})
     total = await db.workouts.count_documents({"athlete_id": target_id})
     completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
@@ -214,6 +211,13 @@ async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_c
         "equipment": target_user.get("equipment", "") if target_user else ""
     }
 
+@api_router.put("/profile")
+async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    await db.users.update_one({"id": user['id']}, {"$set": update_data})
+    return {"status": "success"}
+
+# --- RUTAS DE GESTIÓN DE ATLETAS (AQUÍ ESTÁ LA MAGIA DEL BORRADO) ---
 @api_router.get("/athletes")
 async def list_athletes(user=Depends(get_current_user)):
     if user['role'] == 'trainer':
@@ -224,84 +228,49 @@ async def list_athletes(user=Depends(get_current_user)):
 async def get_athlete(athlete_id: str, user=Depends(get_current_user)):
     return await db.users.find_one({"id": athlete_id}, {"_id": 0, "password": 0})
 
-# --- NUEVAS RUTAS DE GESTIÓN DE ATLETAS PARA EL ENTRENADOR ---
-
-class AthleteUpdate(BaseModel):
-    name: str
-    email: str
-    gender: str
-    password: Optional[str] = None
-
 @api_router.post("/athletes")
 async def create_athlete(data: AthleteCreate, user=Depends(get_current_user)):
-    if user['role'] != 'trainer':
-        raise HTTPException(status_code=403, detail="No autorizado")
-    
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
     existing = await db.users.find_one({"email": data.email})
-    if existing: 
-        raise HTTPException(status_code=400, detail="Email ya registrado")
+    if existing: raise HTTPException(status_code=400, detail="Email ya registrado")
     
     athlete_id = str(uuid.uuid4())
     new_athlete = {
-        "id": athlete_id,
-        "email": data.email,
-        "password": hash_password(data.password),
-        "name": data.name,
-        "gender": data.gender,
-        "role": "athlete",
-        "trainer_id": user['id'], # Vinculamos el atleta a Andreina
-        "created_at": datetime.now(timezone.utc).isoformat()
+        "id": athlete_id, "email": data.email, "password": hash_password(data.password),
+        "name": data.name, "gender": data.gender, "role": "athlete",
+        "trainer_id": user['id'], "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(new_athlete)
     return {"status": "success", "id": athlete_id}
 
 @api_router.put("/athletes/{athlete_id}")
 async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_current_user)):
-    if user['role'] != 'trainer':
-        raise HTTPException(status_code=403, detail="No autorizado")
-    
-    update_data = {
-        "name": data.name,
-        "email": data.email,
-        "gender": data.gender
-    }
-    # Si manda contraseña nueva, la encriptamos y la actualizamos
-    if data.password and len(data.password) > 0:
-        update_data["password"] = hash_password(data.password)
-        
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    update_data = {"name": data.name, "email": data.email, "gender": data.gender}
+    if data.password and len(data.password) > 0: update_data["password"] = hash_password(data.password)
     await db.users.update_one({"id": athlete_id}, {"$set": update_data})
     return {"status": "success"}
 
 @api_router.delete("/athletes/{athlete_id}")
 async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
-    if user['role'] != 'trainer':
-        raise HTTPException(status_code=403, detail="No autorizado")
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
     
-    # 1. Borramos al usuario
+    # Limpieza total del atleta
     await db.users.delete_one({"id": athlete_id})
-    # 2. Hacemos limpieza de su rastro en la base de datos
     await db.workouts.delete_many({"athlete_id": athlete_id})
     await db.wellness.delete_many({"athlete_id": athlete_id})
     await db.macrociclos.delete_many({"athlete_id": athlete_id})
-    
     return {"status": "success"}
 
-@api_router.put("/profile")
-async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
-    update_data = {k: v for k, v in data.dict().items() if v is not None}
-    await db.users.update_one({"id": user['id']}, {"$set": update_data})
-    return {"status": "success"}
-
+# --- RUTAS DE ENTRENAMIENTOS Y PERIODIZACIÓN ---
 @api_router.post("/workouts")
 async def create_workout(data: WorkoutCreate, user=Depends(get_current_user)):
     workout = data.dict()
     workout["id"] = str(uuid.uuid4())
-    workout["completed"] = False # Por defecto, un entreno nuevo está pendiente
+    workout["completed"] = False 
     workout["completion_data"] = None
-    
     await db.workouts.insert_one(workout)
-    workout.pop('_id', None) # Limpiamos el ID de Mongo para no colapsar
-    
+    workout.pop('_id', None) 
     return {"status": "success", "workout": workout}
 
 @api_router.post("/workouts/bulk")
@@ -313,12 +282,9 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, user=Depends(get_current
         workout["completed"] = False
         workout["completion_data"] = None
         new_workouts.append(workout)
-    
     if new_workouts:
         await db.workouts.insert_many(new_workouts)
-        for w in new_workouts:
-            w.pop('_id', None) # Limpiamos el ID interno
-            
+        for w in new_workouts: w.pop('_id', None) 
     return {"status": "success", "inserted": len(new_workouts)}
 
 @api_router.get("/workouts")
@@ -335,14 +301,17 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, user=Depends(get_
     await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
     return {"status": "success"}
 
-# --- RUTAS DE PERIODIZACIÓN (Macrociclos y Microciclos) ---
+@api_router.delete("/workouts/{workout_id}")
+async def delete_workout(workout_id: str, user=Depends(get_current_user)):
+    await db.workouts.delete_one({"id": workout_id})
+    return {"status": "success"}
 
 @api_router.post("/macrociclos")
 async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
     macro = data.dict()
     macro["id"] = str(uuid.uuid4())
     await db.macrociclos.insert_one(macro)
-    macro.pop('_id', None) # <-- Corrección
+    macro.pop('_id', None)
     return {"status": "success", "macro": macro}
 
 @api_router.put("/macrociclos/{id}")
@@ -353,7 +322,7 @@ async def update_macro(id: str, data: dict, user=Depends(get_current_user)):
 @api_router.delete("/macrociclos/{id}")
 async def delete_macro(id: str, user=Depends(get_current_user)):
     await db.macrociclos.delete_one({"id": id})
-    await db.microciclos.delete_many({"macrociclo_id": id}) # Borrado en cascada
+    await db.microciclos.delete_many({"macrociclo_id": id})
     return {"status": "success"}
 
 @api_router.post("/microciclos")
@@ -361,7 +330,7 @@ async def create_micro(data: MicroCreate, user=Depends(get_current_user)):
     micro = data.dict()
     micro["id"] = str(uuid.uuid4())
     await db.microciclos.insert_one(micro)
-    micro.pop('_id', None) # <-- Corrección
+    micro.pop('_id', None)
     return {"status": "success", "micro": micro}
 
 @api_router.put("/microciclos/{id}")
@@ -372,58 +341,41 @@ async def update_micro(id: str, data: dict, user=Depends(get_current_user)):
 @api_router.delete("/microciclos/{id}")
 async def delete_micro(id: str, user=Depends(get_current_user)):
     await db.microciclos.delete_one({"id": id})
-    await db.workouts.update_many({"microciclo_id": id}, {"$set": {"microciclo_id": None}}) # Desasignar workouts
-    return {"status": "success"}
-
-@api_router.delete("/workouts/{workout_id}")
-async def delete_workout(workout_id: str, user=Depends(get_current_user)):
-    await db.workouts.delete_one({"id": workout_id})
+    await db.workouts.update_many({"microciclo_id": id}, {"$set": {"microciclo_id": None}})
     return {"status": "success"}
 
 @api_router.get("/periodization/tree/{athlete_id}")
 async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
     try:
-        # 1. Buscamos Macrociclos
         macros = await db.macrociclos.find({"athlete_id": athlete_id}).to_list(100)
-        
         final_macros = []
         for m in macros:
             m_id = m.get("id")
-            # 2. Buscamos Microciclos vinculados a este Macro
             micros = await db.microciclos.find({"macrociclo_id": m_id}).to_list(100)
-            
             final_micros = []
             for mic in micros:
                 mic_id = mic.get("id")
-                # 3. Buscamos entrenos vinculados a este Micro
                 workouts = await db.workouts.find({"microciclo_id": mic_id}).to_list(100)
-                
-                # Limpiamos cada workout de campos no serializables
                 for w in workouts: w.pop('_id', None)
-                
                 mic["workouts"] = workouts
-                mic.pop('_id', None) # Limpiamos ID interno de Mongo
+                mic.pop('_id', None)
                 final_micros.append(mic)
-            
             m["microciclos"] = final_micros
             m.pop('_id', None)
             final_macros.append(m)
             
-        # 4. Entrenos sueltos
         unassigned = await db.workouts.find({
             "athlete_id": athlete_id,
             "microciclo_id": {"$in": [None, ""]}
         }).to_list(100)
         for u in unassigned: u.pop('_id', None)
 
-        return {
-            "macros": final_macros,
-            "unassigned_workouts": unassigned
-        }
+        return {"macros": final_macros, "unassigned_workouts": unassigned}
     except Exception as e:
         print(f"ERROR CRÍTICO: {str(e)}")
         return {"macros": [], "unassigned_workouts": [], "error": str(e)}
 
+# IMPORTANTE: Esto tiene que ir al final para que todas las rutas se registren correctamente
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
