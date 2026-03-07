@@ -44,7 +44,6 @@ export default function HomeScreen() {
   const todayStr = new Date().toISOString().split('T')[0];
   const todayLabel = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
-  // --- FUNCIÓN DE CARGA ---
   const loadData = async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
     try {
@@ -99,7 +98,6 @@ export default function HomeScreen() {
     loadData();
   };
 
-  // --- GESTIÓN DE ATLETAS (NUEVO / EDITAR / BORRAR) ---
   const openNewAthlete = () => {
     setEditingAthleteId(null);
     setAthleteForm({ name: '', email: '', password: '', gender: 'Femenino' });
@@ -126,49 +124,50 @@ export default function HomeScreen() {
       if (editingAthleteId) {
         if (api.updateAthlete) {
            await api.updateAthlete(editingAthleteId, athleteForm);
-           Alert.alert("Éxito", "Deportista actualizado.");
-        } else {
-           Alert.alert("Aviso", "Falta la función updateAthlete en api.ts");
+           if (Platform.OS !== 'web') Alert.alert("Éxito", "Deportista actualizado.");
         }
       } else {
         if (api.createAthlete) {
            await api.createAthlete(athleteForm);
-           Alert.alert("Éxito", "Deportista añadido.");
-        } else {
-           Alert.alert("Aviso", "Falta la función createAthlete en api.ts");
+           if (Platform.OS !== 'web') Alert.alert("Éxito", "Deportista añadido.");
         }
       }
       setShowAthleteModal(false);
       loadData();
     } catch (e) { 
-      Alert.alert("Error", "No se pudo guardar la información del deportista."); 
+      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo guardar la información del deportista."); 
+    }
+  };
+
+  // --- NUEVA LÓGICA DE BORRADO (MÓVIL Y WEB) ---
+  const executeDelete = async (id: string) => {
+    try {
+      if (api.deleteAthlete) {
+        await api.deleteAthlete(id);
+        loadData();
+      }
+    } catch (e) {
+      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar al deportista.");
+      else console.error("Error al borrar", e);
     }
   };
 
   const handleDeleteAthlete = (id: string, name: string) => {
-    Alert.alert(
-      "Eliminar Deportista",
-      `¿Estás segura de que quieres eliminar a ${name}? Esta acción no se puede deshacer y borrará todo su historial.`,
-      [
-        { text: "Cancelar", style: "cancel" },
-        { 
-          text: "ELIMINAR", 
-          style: "destructive", 
-          onPress: async () => {
-            try {
-               if (api.deleteAthlete) {
-                 await api.deleteAthlete(id);
-                 loadData();
-               } else {
-                 Alert.alert("Aviso", "Falta la función deleteAthlete en api.ts");
-               }
-            } catch (e) {
-               Alert.alert("Error", "No se pudo eliminar al deportista.");
-            }
-          } 
-        }
-      ]
-    );
+    if (Platform.OS === 'web') {
+      const isConfirmed = window.confirm(`¿Seguro que quieres eliminar a ${name}?\nSe borrará todo su historial.`);
+      if (isConfirmed) {
+        executeDelete(id);
+      }
+    } else {
+      Alert.alert(
+        "Eliminar Deportista",
+        `¿Estás segura de que quieres eliminar a ${name}? Esta acción no se puede deshacer.`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "ELIMINAR", style: "destructive", onPress: () => executeDelete(id) }
+        ]
+      );
+    }
   };
 
   if (authLoading || (!user && !isTrainer)) {
@@ -200,27 +199,32 @@ export default function HomeScreen() {
         </View>
       }
       renderItem={({ item }) => (
-        <TouchableOpacity 
-          style={[styles.athleteCard, { backgroundColor: colors.surface }]} 
-          onPress={() => router.push({ pathname: "/athlete-detail", params: { id: item.id, name: item.name } })}
-        >
-          <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
-            <Text style={{color: colors.primary, fontWeight: '800'}}>{item.name.charAt(0)}</Text>
-          </View>
-          <View style={{flex: 1}}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Atleta de Fit Tracker</Text>
-          </View>
+        // --- CORRECCIÓN DE BOTONES: Ahora son un View, no un Touchable gigante ---
+        <View style={[styles.athleteCard, { backgroundColor: colors.surface }]}>
           
-          <View style={{ flexDirection: 'row', gap: 15, paddingRight: 5 }}>
-            <TouchableOpacity onPress={() => openEditAthlete(item)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+          <TouchableOpacity 
+            style={styles.athleteInfoArea}
+            onPress={() => router.push({ pathname: "/athlete-detail", params: { id: item.id, name: item.name } })}
+          >
+            <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
+              <Text style={{color: colors.primary, fontWeight: '800'}}>{item.name.charAt(0)}</Text>
+            </View>
+            <View style={{flex: 1}}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Atleta de Fit Tracker</Text>
+            </View>
+          </TouchableOpacity>
+          
+          <View style={styles.athleteActionsArea}>
+            <TouchableOpacity onPress={() => openEditAthlete(item)} style={styles.iconHitbox}>
               <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDeleteAthlete(item.id, item.name)} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+            <TouchableOpacity onPress={() => handleDeleteAthlete(item.id, item.name)} style={styles.iconHitbox}>
               <Ionicons name="trash-outline" size={20} color={colors.error} />
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
+
+        </View>
       )}
     />
   );
@@ -342,7 +346,13 @@ const styles = StyleSheet.create({
   welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 },
   refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' },
   actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-  athleteCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginHorizontal: 20, marginBottom: 12 },
+  
+  // CORRECCIONES EN LA TARJETA
+  athleteCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' },
+  athleteInfoArea: { flexDirection: 'row', alignItems: 'center', flex: 1, padding: 18 },
+  athleteActionsArea: { flexDirection: 'row', alignItems: 'center', paddingRight: 15, gap: 10 },
+  iconHitbox: { padding: 8 },
+  
   avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   cardTitle: { fontSize: 16, fontWeight: '700' },
   tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 },
