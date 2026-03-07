@@ -17,7 +17,7 @@ const CYCLE_PHASES = [
 
 export default function WellnessModal({ isVisible, onClose }: { isVisible: boolean, onClose: () => void }) {
   const { colors } = useTheme();
-  const { user } = useAuth(); // Necesitamos el user para saber el género
+  const { user } = useAuth(); 
   const [loading, setLoading] = useState(false);
   
   const [form, setForm] = useState({
@@ -26,10 +26,11 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
     sleep_quality: 3,
     soreness: 3,
     notes: '',
-    cycle_phase: '' // <-- NUEVO ESTADO
+    cycle_phase: ''
   });
 
-  const isFemale = user?.gender === 'female' || user?.gender === 'Mujer' || user?.gender === 'mujer';
+  // CORRECCIÓN: Detectamos 'Femenino', 'Mujer', 'female', ignorando mayúsculas
+  const isFemale = ['female', 'mujer', 'femenino'].includes(user?.gender?.toLowerCase() || '');
 
   const handleSave = async () => {
     setLoading(true);
@@ -54,7 +55,7 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
         {[1, 2, 3, 4, 5].map((num) => (
           <TouchableOpacity 
             key={num} 
-            onPress={() => setForm(prev => ({ ...prev, [field]: num }))}
+            onPress={() => setForm(prev => ({ ...prev, [field]: num as never }))}
             style={[
               styles.optionCircle, 
               { borderColor: colors.border },
@@ -89,7 +90,7 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
             <RatingScale label="Calidad de Sueño" field="sleep_quality" />
             <RatingScale label="Dolor Muscular" field="soreness" />
 
-            {/* --- SECCIÓN CICLO MENSTRUAL (SOLO MUJERES) --- */}
+            {/* SECCIÓN CICLO MENSTRUAL */}
             {isFemale && (
               <View style={{ marginTop: 10, marginBottom: 20 }}>
                 <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>
@@ -166,6 +167,5 @@ const styles = StyleSheet.create({
   textArea: { height: 80, textAlignVertical: 'top' },
   saveBtn: { padding: 20, borderRadius: 18, alignItems: 'center', marginTop: 15 },
   saveBtnText: { color: '#FFF', fontWeight: '900', letterSpacing: 1, fontSize: 16 },
-  
   phaseChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, marginRight: 8 }
 });
