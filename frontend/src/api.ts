@@ -87,6 +87,17 @@ export const api = {
     return res.json();
   },
 
+    deleteWorkout: async (id: string) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/workouts/${id}`, {
+      method: 'DELETE',
+      headers: headers,
+    });
+    if (!res.ok) throw new Error('Error al eliminar el entrenamiento');
+    return res.json();
+  },
+
+
   getPeriodizationTree: async (athleteId: string) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/periodization/tree/${athleteId}`, { headers });
