@@ -41,6 +41,37 @@ export const api = {
     const res = await fetch(`${BACKEND_URL}/api/athletes/${id}`, { headers });
     return res.json();
   },
+  createAthlete: async (data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/athletes`, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al crear deportista');
+    return res.json();
+  },
+
+  updateAthlete: async (id: string, data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/athletes/${id}`, {
+      method: 'PUT',
+      headers: headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error al actualizar deportista');
+    return res.json();
+  },
+
+  deleteAthlete: async (id: string) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/athletes/${id}`, {
+      method: 'DELETE',
+      headers: headers,
+    });
+    if (!res.ok) throw new Error('Error al eliminar deportista');
+    return res.json();
+  },
 
   // --- ENTRENAMIENTOS ---
   getWorkouts: async (params?: { athlete_id?: string; date?: string }) => {
