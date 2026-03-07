@@ -103,7 +103,6 @@ export const api = {
     return res.json();
   },
 
-  // --- FUNCIONES DE TESTS RECUPERADAS ---
   getTests: async (params?: { athlete_id?: string; test_type?: string }) => {
     const headers = await getAuthHeaders();
     let url = `${BACKEND_URL}/api/tests`;
@@ -135,8 +134,7 @@ export const api = {
     });
     if (!res.ok) throw new Error('Error al actualizar el test');
     return res.json();
-  }
-  // ... (debajo de tus funciones actuales en api.ts)
+  },
 
   createMacro: async (data: any) => {
     const headers = await getAuthHeaders();
@@ -158,17 +156,5 @@ export const api = {
     });
     if (!res.ok) throw new Error('Error al crear microciclo');
     return res.json();
-  },
-
-  updateWorkout: async (id: string, data: any) => {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/workouts/${id}`, {
-      method: 'PUT',
-      headers: headers,
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error('No se pudo guardar la sesión');
-    return res.json();
   }
-
 };
