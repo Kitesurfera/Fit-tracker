@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, TextInput
+  ActivityIndicator, Linking, TextInput, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,14 +35,12 @@ export default function TrainingModeScreen() {
   useEffect(() => {
     const fetchWorkoutDetail = async () => {
       try {
-        // En lugar de getWorkout (que no existía en api.ts), buscamos en getWorkouts
         const allWorkouts = await api.getWorkouts();
         const currentWorkout = allWorkouts.find((w: any) => w.id === workoutId);
         
         if (currentWorkout) {
           setWorkout(currentWorkout);
           
-          // Si el entreno ya estaba completado, pasamos directamente a la pantalla final
           if (currentWorkout.completed) {
             setFinished(true);
             setObservations(currentWorkout.observations || '');
@@ -50,7 +48,6 @@ export default function TrainingModeScreen() {
               setRpe(currentWorkout.completion_data.rpe || null);
               setSleep(currentWorkout.completion_data.sleep || null);
               
-              // Precargamos los logs si existen
               const savedLogs: Record<number, {weight: string, reps: string}> = {};
               currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
                 savedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '' };
@@ -58,7 +55,6 @@ export default function TrainingModeScreen() {
               setLogs(savedLogs);
             }
           } else {
-            // Inicializamos las series pendientes
             const initial: Record<number, SetStatus[]> = {};
             (currentWorkout.exercises || []).forEach((ex: any, i: number) => {
               const total = parseInt(ex.sets) || 1;
@@ -202,7 +198,6 @@ export default function TrainingModeScreen() {
       rpe: rpe,
       sleep: sleep,
       exercise_results: exercises.map((ex: any, i: number) => {
-        // Si ya estaba completado, usamos los datos guardados
         if (workout.completed && workout.completion_data) {
           return workout.completion_data.exercise_results[i] || {};
         }
@@ -223,7 +218,6 @@ export default function TrainingModeScreen() {
   };
 
   const handleFinish = async () => {
-    // Si ya estaba completado, simplemente volvemos (es modo solo lectura)
     if (workout.completed) {
       router.back();
       return;
@@ -275,63 +269,67 @@ export default function TrainingModeScreen() {
             <Ionicons name={hasSkips ? 'alert-circle' : 'checkmark-circle'} size={64} color={hasSkips ? colors.warning : colors.success} />
           </View>
           <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>
-            {workout.completed ? 'Resumen de la Sesión' : hasSkips ? 'Entrenamiento finalizado' : '¡Entrenamiento completado!'}
+            {workout.completed ? 'Reporte de Rendimiento' : hasSkips ? 'Entrenamiento finalizado' : '¡Entrenamiento completado!'}
           </Text>
 
+          {/* TARJETA DE BIENESTAR / ESFUERZO */}
           <View style={[styles.wellnessCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.wellnessTitle, { color: colors.textPrimary }]}>¿Cómo de duro ha sido? (RPE)</Text>
-            <View style={styles.rpeGrid}>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
-                const isSelected = rpe === num;
-                let rpeColor = colors.success; 
-                if (num > 4) rpeColor = colors.warning;
-                if (num > 7) rpeColor = colors.error;
+            <Text style={[styles.wellnessTitle, { color: colors.textPrimary }]}>Esfuerzo Percibido (RPE)</Text>
+            
+            {workout.completed ? (
+              // VISTA REPORTE (SOLO LECTURA)
+              <View style={styles.readOnlyReportBox}>
+                <View style={[styles.rpeBtn, { backgroundColor: (rpe || 0) > 7 ? colors.error : (rpe || 0) > 4 ? colors.warning : colors.success, borderColor: 'transparent', width: 60, height: 60 }]}>
+                  <Text style={{ color: '#FFF', fontSize: 28, fontWeight: '900' }}>{rpe || '-'}</Text>
+                </View>
+                <View style={{ marginLeft: 20 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>DESCANSO PREVIO:</Text>
+                  <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '800', textTransform: 'uppercase', marginTop: 2 }}>{sleep || 'NO REGISTRADO'}</Text>
+                </View>
+              </View>
+            ) : (
+              // VISTA DE FORMULARIO (PARA RELLENAR)
+              <>
+                <View style={styles.rpeGrid}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
+                    const isSelected = rpe === num;
+                    let rpeColor = colors.success; 
+                    if (num > 4) rpeColor = colors.warning;
+                    if (num > 7) rpeColor = colors.error;
 
-                return (
-                  <TouchableOpacity
-                    key={num}
-                    style={[
-                      styles.rpeBtn, 
-                      { borderColor: colors.border },
-                      isSelected && { backgroundColor: rpeColor, borderColor: rpeColor }
-                    ]}
-                    onPress={() => !workout.completed && setRpe(num)}
-                    activeOpacity={workout.completed ? 1 : 0.7}
-                  >
-                    <Text style={[styles.rpeText, { color: colors.textPrimary }, isSelected && { color: '#FFF' }]}>{num}</Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 20 }]}>¿Cómo has descansado hoy?</Text>
-            <View style={styles.sleepGrid}>
-              <TouchableOpacity 
-                style={[styles.sleepBtn, { borderColor: colors.border }, sleep === 'bien' && { backgroundColor: colors.success, borderColor: colors.success }]}
-                onPress={() => !workout.completed && setSleep('bien')}
-                activeOpacity={workout.completed ? 1 : 0.7}
-              >
-                <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === 'bien' && { color: '#FFF' }]}>Bien</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.sleepBtn, { borderColor: colors.border }, sleep === 'regular' && { backgroundColor: colors.warning, borderColor: colors.warning }]}
-                onPress={() => !workout.completed && setSleep('regular')}
-                activeOpacity={workout.completed ? 1 : 0.7}
-              >
-                <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === 'regular' && { color: '#FFF' }]}>Regular</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={[styles.sleepBtn, { borderColor: colors.border }, sleep === 'mal' && { backgroundColor: colors.error, borderColor: colors.error }]}
-                onPress={() => !workout.completed && setSleep('mal')}
-                activeOpacity={workout.completed ? 1 : 0.7}
-              >
-                <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === 'mal' && { color: '#FFF' }]}>Mal</Text>
-              </TouchableOpacity>
-            </View>
+                    return (
+                      <TouchableOpacity
+                        key={num}
+                        style={[
+                          styles.rpeBtn, 
+                          { borderColor: colors.border },
+                          isSelected && { backgroundColor: rpeColor, borderColor: rpeColor }
+                        ]}
+                        onPress={() => setRpe(num)}
+                      >
+                        <Text style={[styles.rpeText, { color: colors.textPrimary }, isSelected && { color: '#FFF' }]}>{num}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 20 }]}>¿Cómo has descansado hoy?</Text>
+                <View style={styles.sleepGrid}>
+                  {['bien', 'regular', 'mal'].map(opt => (
+                     <TouchableOpacity 
+                       key={opt}
+                       style={[styles.sleepBtn, { borderColor: colors.border }, sleep === opt && { backgroundColor: opt === 'bien' ? colors.success : opt === 'mal' ? colors.error : colors.warning, borderColor: opt === 'bien' ? colors.success : opt === 'mal' ? colors.error : colors.warning }]}
+                       onPress={() => setSleep(opt as any)}
+                     >
+                       <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === opt && { color: '#FFF' }]}>{opt.toUpperCase()}</Text>
+                     </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
           </View>
 
           <Text style={[styles.finishedSub, { color: colors.textSecondary, marginTop: 10 }]}>
-            {workout.completed ? 'Marcas registradas' : 'Anota tus marcas reales de hoy'}
+            {workout.completed ? 'Marcas levantadas' : 'Anota tus marcas reales de hoy'}
           </Text>
 
           <View style={styles.summaryList}>
@@ -364,30 +362,35 @@ export default function TrainingModeScreen() {
                   
                   {!allSkipped && (
                     <View style={styles.logRow}>
-                      <View style={styles.logInputWrapper}>
-                        <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Kilos reales</Text>
-                        <TextInput
-                          style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                          placeholder={workout.completed ? "-" : "Ej: 60"}
-                          placeholderTextColor={colors.textSecondary}
-                          keyboardType="numeric"
-                          value={logs[i]?.weight || ''}
-                          onChangeText={(w) => !workout.completed && setLogs(prev => ({...prev, [i]: {...prev[i], weight: w}}))}
-                          editable={!workout.completed}
-                        />
-                      </View>
-                      <View style={styles.logInputWrapper}>
-                        <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Reps reales</Text>
-                        <TextInput
-                          style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                          placeholder={workout.completed ? "-" : "Ej: 10"}
-                          placeholderTextColor={colors.textSecondary}
-                          keyboardType="numeric"
-                          value={logs[i]?.reps || ''}
-                          onChangeText={(rep) => !workout.completed && setLogs(prev => ({...prev, [i]: {...prev[i], reps: rep}}))}
-                          editable={!workout.completed}
-                        />
-                      </View>
+                      {workout.completed ? (
+                        // REPORTE DE PESOS
+                        <View style={styles.readOnlyLogBox}>
+                          <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '800' }}>Rendimiento Registrado:</Text>
+                          <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '900', marginTop: 4 }}>
+                            {logs[i]?.weight ? `${logs[i]?.weight} kg` : '- kg'}  <Text style={{ color: colors.primary }}>x</Text>  {logs[i]?.reps ? `${logs[i]?.reps} reps` : '- reps'}
+                          </Text>
+                        </View>
+                      ) : (
+                        // FORMULARIO DE PESOS
+                        <>
+                          <View style={styles.logInputWrapper}>
+                            <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Kilos reales</Text>
+                            <TextInput
+                              style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                              placeholder="Ej: 60" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
+                              value={logs[i]?.weight || ''} onChangeText={(w) => setLogs(prev => ({...prev, [i]: {...prev[i], weight: w}}))}
+                            />
+                          </View>
+                          <View style={styles.logInputWrapper}>
+                            <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Reps reales</Text>
+                            <TextInput
+                              style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                              placeholder="Ej: 10" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
+                              value={logs[i]?.reps || ''} onChangeText={(rep) => setLogs(prev => ({...prev, [i]: {...prev[i], reps: rep}}))}
+                            />
+                          </View>
+                        </>
+                      )}
                     </View>
                   )}
                 </View>
@@ -397,25 +400,25 @@ export default function TrainingModeScreen() {
 
           <View style={[styles.observationsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <Text style={[styles.observationsLabel, { color: colors.textPrimary }]}>Observaciones de la sesión</Text>
-            <TextInput
-              testID="workout-observations-input"
-              style={[styles.observationsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-              value={observations} 
-              onChangeText={(t) => !workout.completed && setObservations(t)}
-              placeholder={workout.completed ? "Sin observaciones" : "¿Algo a destacar de hoy?"}
-              placeholderTextColor={colors.textSecondary}
-              multiline numberOfLines={3}
-              editable={!workout.completed}
-            />
+            {workout.completed ? (
+               <Text style={{ color: colors.textPrimary, fontSize: 15, fontStyle: 'italic', marginTop: 10 }}>
+                 {observations || "No se dejaron notas en esta sesión."}
+               </Text>
+            ) : (
+              <TextInput
+                style={[styles.observationsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                value={observations} onChangeText={setObservations} placeholder="¿Algo a destacar de hoy?"
+                placeholderTextColor={colors.textSecondary} multiline numberOfLines={3}
+              />
+            )}
           </View>
 
-          <TouchableOpacity
-            testID="finish-training-btn" style={[styles.finishBtn, { backgroundColor: colors.primary }]}
-            onPress={handleFinish} activeOpacity={0.7}
-          >
-            <Ionicons name={workout.completed ? "arrow-back" : "checkmark"} size={20} color="#FFF" />
-            <Text style={styles.finishBtnText}>{workout.completed ? "Volver al resumen" : "Guardar entreno"}</Text>
-          </TouchableOpacity>
+          {!workout.completed && (
+            <TouchableOpacity testID="finish-training-btn" style={[styles.finishBtn, { backgroundColor: colors.primary }]} onPress={handleFinish} activeOpacity={0.7}>
+              <Ionicons name="checkmark" size={20} color="#FFF" />
+              <Text style={styles.finishBtnText}>Guardar entreno</Text>
+            </TouchableOpacity>
+          )}
         </ScrollView>
       </SafeAreaView>
     );
@@ -630,13 +633,11 @@ const styles = StyleSheet.create({
   exCounter: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   exCounterText: { fontSize: 14, fontWeight: '600' },
   
-  // ESTILOS DE LA PANTALLA FINAL
   finishedContainer: { flexGrow: 1, padding: 24, gap: 12, alignItems: 'center' },
   finishedIcon: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center' },
   finishedTitle: { fontSize: 22, fontWeight: '700', textAlign: 'center' },
   finishedSub: { fontSize: 15, textAlign: 'center', alignSelf: 'flex-start' },
   
-  // ESTILOS DEL RPE Y BIENESTAR
   wellnessCard: { width: '100%', borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 10 },
   wellnessTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
   rpeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
@@ -667,4 +668,7 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: 16 },
   exitBtn: { borderRadius: 10, borderWidth: 1, paddingVertical: 12, paddingHorizontal: 24 },
   exitBtnText: { fontSize: 15, fontWeight: '500' },
+  
+  readOnlyReportBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10 },
+  readOnlyLogBox: { flex: 1, backgroundColor: 'rgba(0,0,0,0.03)', padding: 12, borderRadius: 10, alignItems: 'center' },
 });
