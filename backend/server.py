@@ -33,6 +33,10 @@ security = HTTPBearer()
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
+@app.get("/ping")
+async def ping():
+    return {"status": "awake"}
+
 # --- Modelos Pydantic ---
 class WellnessCreate(BaseModel):
     fatigue: int
