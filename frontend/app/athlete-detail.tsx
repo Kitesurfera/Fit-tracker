@@ -71,10 +71,10 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  const isFemale = athlete?.gender === 'female' || athlete?.gender === 'Mujer' || athlete?.gender === 'mujer';
+  // CORRECCIÓN: Detectamos 'Femenino', 'Mujer', 'female' de forma segura
+  const isFemale = ['female', 'mujer', 'femenino'].includes(athlete?.gender?.toLowerCase() || '');
   const currentPhase = summary?.latest_wellness?.cycle_phase;
 
-  // --- 1. PESTAÑA: DASHBOARD (Resumen y Fatiga) ---
   const renderDashboard = () => (
     <View style={styles.tabContainer}>
       {summary?.is_injured && (
@@ -87,7 +87,7 @@ export default function AthleteDetailScreen() {
         </View>
       )}
 
-      {/* --- TARJETA INTELIGENTE: CICLO MENSTRUAL --- */}
+      {/* TARJETA INTELIGENTE: CICLO MENSTRUAL */}
       {isFemale && currentPhase && (
         <View style={[styles.cycleCard, { backgroundColor: CYCLE_COLORS[currentPhase] + '15', borderColor: CYCLE_COLORS[currentPhase] }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -122,7 +122,7 @@ export default function AthleteDetailScreen() {
               <Text style={styles.barDate}>{day.date.split('-')[2]}</Text>
             </View>
           )) : (
-            <Text style={{color: colors.textSecondary, fontSize: 12}}>Esperando datos de Claudia...</Text>
+            <Text style={{color: colors.textSecondary, fontSize: 12}}>Esperando datos del atleta...</Text>
           )}
         </View>
       </View>
@@ -168,7 +168,6 @@ export default function AthleteDetailScreen() {
     </View>
   );
 
-  // --- 2. PESTAÑA: HISTORIAL DE ENTRENAMIENTOS ---
   const renderWorkouts = () => (
     <View style={styles.tabContainer}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
@@ -210,7 +209,6 @@ export default function AthleteDetailScreen() {
     </View>
   );
 
-  // --- 3. PESTAÑA: GRÁFICAS DE EVOLUCIÓN (PROGRESIÓN) ---
   const renderProgression = () => {
     const completed = workouts.filter(w => w.completed).reverse();
     
@@ -334,20 +332,15 @@ const styles = StyleSheet.create({
   tab: { paddingVertical: 15, flex: 1, alignItems: 'center' },
   tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   tabContainer: { padding: 20, paddingBottom: 50 },
-  
   alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 },
-  
   cycleCard: { padding: 16, borderRadius: 20, marginBottom: 25, borderWidth: 1 },
-  
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 },
-  
   chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 },
   barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' },
   barWrapper: { alignItems: 'center', flex: 1 },
   bar: { width: 16, borderRadius: 8, minHeight: 5 },
   barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' },
   barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 },
-
   mainCard: { padding: 20, borderRadius: 25, elevation: 2 },
   wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 },
   wellBox: { alignItems: 'center' },
@@ -355,14 +348,11 @@ const styles = StyleSheet.create({
   wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 },
   noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 },
   noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 },
-
   actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 },
   actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
-
   sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginBottom: 12, elevation: 1 },
   avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   cardTitle: { fontSize: 15, fontWeight: '800' },
-
   progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 },
   progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }
 });
