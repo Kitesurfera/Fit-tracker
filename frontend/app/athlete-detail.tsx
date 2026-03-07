@@ -132,11 +132,21 @@ export default function AthleteDetailScreen() {
       </TouchableOpacity>
     </View>
   );
-
-  // --- 2. PESTAÑA: HISTORIAL DE ENTRENAMIENTOS ---
+  
+    // --- 2. PESTAÑA: HISTORIAL DE ENTRENAMIENTOS ---
   const renderWorkouts = () => (
     <View style={styles.tabContainer}>
-      <Text style={styles.sectionTitle}>HISTORIAL DE SESIONES</Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+        <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>HISTORIAL DE SESIONES</Text>
+        <TouchableOpacity 
+          style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+          onPress={() => router.push({ pathname: '/add-workout', params: { athlete_id: params.id, name: params.name } })}
+        >
+          <Ionicons name="add" size={16} color="#FFF" />
+          <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>NUEVO</Text>
+        </TouchableOpacity>
+      </View>
+
       {workouts.length > 0 ? workouts.map((wk) => (
         <TouchableOpacity 
           key={wk.id} 
@@ -162,6 +172,9 @@ export default function AthleteDetailScreen() {
           <Text style={{ color: colors.textSecondary, marginTop: 10 }}>No hay sesiones registradas.</Text>
         </View>
       )}
+    </View>
+  );
+
     </View>
   );
 
