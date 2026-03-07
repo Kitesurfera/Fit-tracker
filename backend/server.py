@@ -318,37 +318,46 @@ async def delete_workout(workout_id: str, user=Depends(get_current_user)):
 @api_router.get("/periodization/tree/{athlete_id}")
 async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
     try:
-        # 1. Traer Macrociclos
-        macros_cursor = db.macrociclos.find({"athlete_id": athlete_id}, {"_id": 0})
-        macros = await macros_cursor.sort("fecha_inicio", 1).to_list(100)
+        # 1. Buscamos Macrociclos
+        macros = await db.macrociclos.find({"athlete_id": athlete_id}).to_list(100)
         
+        final_macros = []
         for m in macros:
-            # 2. Traer Microciclos de cada Macro
-            micros_cursor = db.microciclos.find({"macrociclo_id": m['id']}, {"_id": 0})
-            micros = await micros_cursor.sort("fecha_inicio", 1).to_list(100)
+            m_id = m.get("id")
+            # 2. Buscamos Microciclos vinculados a este Macro
+            micros = await db.microciclos.find({"macrociclo_id": m_id}).to_list(100)
             
+            final_micros = []
             for mic in micros:
-                # 3. Traer Workouts de cada Micro
-                workouts_cursor = db.workouts.find({"microciclo_id": mic['id']}, {"_id": 0})
-                mic['workouts'] = await workouts_cursor.sort("date", 1).to_list(100)
+                mic_id = mic.get("id")
+                # 3. Buscamos entrenos vinculados a este Micro
+                workouts = await db.workouts.find({"microciclo_id": mic_id}).to_list(100)
+                
+                # Limpiamos cada workout de campos no serializables
+                for w in workouts: w.pop('_id', None)
+                
+                mic["workouts"] = workouts
+                mic.pop('_id', None) # Limpiamos ID interno de Mongo
+                final_micros.append(mic)
             
-            m['microciclos'] = micros
+            m["microciclos"] = final_micros
+            m.pop('_id', None)
+            final_macros.append(m)
             
-        # 4. Traer entrenos sin asignar (Sueltos)
-        unassigned_cursor = db.workouts.find({
-            "athlete_id": athlete_id, 
-            "$or": [{"microciclo_id": None}, {"microciclo_id": ""}]
-        }, {"_id": 0})
-        unassigned_workouts = await unassigned_cursor.sort("date", -1).to_list(100)
-        
+        # 4. Entrenos sueltos
+        unassigned = await db.workouts.find({
+            "athlete_id": athlete_id,
+            "microciclo_id": {"$in": [None, ""]}
+        }).to_list(100)
+        for u in unassigned: u.pop('_id', None)
+
         return {
-            "macros": macros,
-            "unassigned_workouts": unassigned_workouts
+            "macros": final_macros,
+            "unassigned_workouts": unassigned
         }
     except Exception as e:
-        print(f"Error en el árbol de periodización: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
+        print(f"ERROR CRÍTICO: {str(e)}")
+        return {"macros": [], "unassigned_workouts": [], "error": str(e)}
 
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
