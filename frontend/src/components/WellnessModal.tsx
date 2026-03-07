@@ -6,9 +6,18 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { api } from '../api';
+import { useAuth } from '../context/AuthContext';
+
+const CYCLE_PHASES = [
+  { id: 'menstrual', label: 'Menstruación', color: '#EF4444' },
+  { id: 'folicular', label: 'Folicular', color: '#10B981' },
+  { id: 'ovulatoria', label: 'Ovulación', color: '#F59E0B' },
+  { id: 'lutea', label: 'Fase Lútea', color: '#8B5CF6' }
+];
 
 export default function WellnessModal({ isVisible, onClose }: { isVisible: boolean, onClose: () => void }) {
   const { colors } = useTheme();
+  const { user } = useAuth(); // Necesitamos el user para saber el género
   const [loading, setLoading] = useState(false);
   
   const [form, setForm] = useState({
@@ -16,22 +25,22 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
     stress: 3,
     sleep_quality: 3,
     soreness: 3,
-    notes: ''
+    notes: '',
+    cycle_phase: '' // <-- NUEVO ESTADO
   });
+
+  const isFemale = user?.gender === 'female' || user?.gender === 'Mujer' || user?.gender === 'mujer';
 
   const handleSave = async () => {
     setLoading(true);
     try {
-      // Llamada a la función que acabamos de crear en api.ts
       await api.postWellness(form);
-      
       Alert.alert(
         "¡Hecho!", 
-        "Tu estado ha sido enviado a Andreina correctamente.",
+        "Tu estado ha sido enviado a tu entrenadora.",
         [{ text: "Entendido", onPress: onClose }]
       );
     } catch (e: any) {
-      console.error("Error guardando wellness:", e);
       Alert.alert("Error de envío", e.message || "No se pudo conectar con el servidor.");
     } finally {
       setLoading(false);
@@ -80,6 +89,36 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
             <RatingScale label="Calidad de Sueño" field="sleep_quality" />
             <RatingScale label="Dolor Muscular" field="soreness" />
 
+            {/* --- SECCIÓN CICLO MENSTRUAL (SOLO MUJERES) --- */}
+            {isFemale && (
+              <View style={{ marginTop: 10, marginBottom: 20 }}>
+                <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>
+                  <Ionicons name="water" size={12} color="#EF4444" /> FASE DEL CICLO MENSTRUAL
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
+                  {CYCLE_PHASES.map((phase) => (
+                    <TouchableOpacity
+                      key={phase.id}
+                      style={[
+                        styles.phaseChip,
+                        { borderColor: colors.border },
+                        form.cycle_phase === phase.id && { backgroundColor: phase.color + '20', borderColor: phase.color }
+                      ]}
+                      onPress={() => setForm(prev => ({ ...prev, cycle_phase: form.cycle_phase === phase.id ? '' : phase.id }))}
+                    >
+                      <Text style={{ 
+                        fontSize: 12, 
+                        fontWeight: form.cycle_phase === phase.id ? '800' : '600',
+                        color: form.cycle_phase === phase.id ? phase.color : colors.textSecondary 
+                      }}>
+                        {phase.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
             <View style={styles.divider} />
 
             <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>OBSERVACIONES PARA ANDREINA</Text>
@@ -122,9 +161,11 @@ const styles = StyleSheet.create({
   optionsRow: { flexDirection: 'row', justifyContent: 'space-between' },
   optionCircle: { width: 50, height: 50, borderRadius: 15, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   divider: { height: 1, backgroundColor: 'rgba(0,0,0,0.05)', marginVertical: 20 },
-  inputLabel: { fontSize: 11, fontWeight: '800', marginBottom: 8 },
+  inputLabel: { fontSize: 11, fontWeight: '800', marginBottom: 8, letterSpacing: 0.5 },
   input: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 15, fontSize: 16 },
   textArea: { height: 80, textAlignVertical: 'top' },
   saveBtn: { padding: 20, borderRadius: 18, alignItems: 'center', marginTop: 15 },
-  saveBtnText: { color: '#FFF', fontWeight: '900', letterSpacing: 1, fontSize: 16 }
+  saveBtnText: { color: '#FFF', fontWeight: '900', letterSpacing: 1, fontSize: 16 },
+  
+  phaseChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, marginRight: 8 }
 });
