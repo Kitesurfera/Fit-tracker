@@ -11,6 +11,20 @@ import { api } from '../src/api';
 
 const { width } = Dimensions.get('window');
 
+const CYCLE_COLORS: any = {
+  menstrual: '#EF4444',
+  folicular: '#10B981',
+  ovulatoria: '#F59E0B',
+  lutea: '#8B5CF6'
+};
+
+const CYCLE_LABELS: any = {
+  menstrual: 'Fase Menstrual (Baja Carga)',
+  folicular: 'Fase Folicular (Alta Energía)',
+  ovulatoria: 'Fase Ovulatoria (Pico de Fuerza)',
+  lutea: 'Fase Lútea (Posible Fatiga)'
+};
+
 export default function AthleteDetailScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -57,6 +71,9 @@ export default function AthleteDetailScreen() {
     }
   };
 
+  const isFemale = athlete?.gender === 'female' || athlete?.gender === 'Mujer' || athlete?.gender === 'mujer';
+  const currentPhase = summary?.latest_wellness?.cycle_phase;
+
   // --- 1. PESTAÑA: DASHBOARD (Resumen y Fatiga) ---
   const renderDashboard = () => (
     <View style={styles.tabContainer}>
@@ -70,7 +87,25 @@ export default function AthleteDetailScreen() {
         </View>
       )}
 
-      <Text style={styles.sectionTitle}>EVOLUCIÓN SEMANAL (FATIGA)</Text>
+      {/* --- TARJETA INTELIGENTE: CICLO MENSTRUAL --- */}
+      {isFemale && currentPhase && (
+        <View style={[styles.cycleCard, { backgroundColor: CYCLE_COLORS[currentPhase] + '15', borderColor: CYCLE_COLORS[currentPhase] }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <Ionicons name="water" size={24} color={CYCLE_COLORS[currentPhase]} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: CYCLE_COLORS[currentPhase], fontSize: 11, fontWeight: '900', letterSpacing: 1 }}>ESTADO FISIOLÓGICO</Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', marginTop: 2 }}>
+                {CYCLE_LABELS[currentPhase] || 'Fase Registrada'}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      <Text style={[styles.sectionTitle, { marginTop: (isFemale && currentPhase) ? 10 : 0 }]}>
+        EVOLUCIÓN SEMANAL (FATIGA)
+      </Text>
+      
       <View style={[styles.chartCard, { backgroundColor: colors.surface }]}>
         <View style={styles.barsContainer}>
           {history.length > 0 ? history.map((day, idx) => (
@@ -301,6 +336,9 @@ const styles = StyleSheet.create({
   tabContainer: { padding: 20, paddingBottom: 50 },
   
   alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 },
+  
+  cycleCard: { padding: 16, borderRadius: 20, marginBottom: 25, borderWidth: 1 },
+  
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 },
   
   chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 },
