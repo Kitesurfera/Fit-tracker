@@ -3,11 +3,15 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 const getAuthHeaders = async () => {
-  const token = await AsyncStorage.getItem('auth_token');
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  };
+  try {
+    const token = await AsyncStorage.getItem('auth_token');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    };
+  } catch (e) {
+    return { 'Content-Type': 'application/json' };
+  }
 };
 
 export const api = {
@@ -21,15 +25,33 @@ export const api = {
     return res.json();
   },
 
+  postWellness: async (data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/wellness`, {
+      method: 'POST', headers, body: JSON.stringify(data),
+    });
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.detail || 'Error al guardar el estado');
+    }
+    return res.json();
+  },
+
+  getWellnessHistory: async (athleteId: string) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/wellness/history/${athleteId}`, { headers });
+    if (!res.ok) throw new Error('No se pudo obtener el historial');
+    return res.json();
+  },
+
   getSummary: async (athleteId?: string) => {
     const headers = await getAuthHeaders();
-    const url = athleteId 
-      ? `${BACKEND_URL}/api/analytics/summary?athlete_id=${athleteId}`
-      : `${BACKEND_URL}/api/analytics/summary`;
+    const url = athleteId ? `${BACKEND_URL}/api/analytics/summary?athlete_id=${athleteId}` : `${BACKEND_URL}/api/analytics/summary`;
     const res = await fetch(url, { headers });
     return res.json();
   },
 
+  // --- ATLETAS ---
   getAthletes: async () => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/athletes`, { headers });
@@ -41,12 +63,11 @@ export const api = {
     const res = await fetch(`${BACKEND_URL}/api/athletes/${id}`, { headers });
     return res.json();
   },
+
   createAthlete: async (data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/athletes`, {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(data),
+      method: 'POST', headers, body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Error al crear deportista');
     return res.json();
@@ -55,9 +76,7 @@ export const api = {
   updateAthlete: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/athletes/${id}`, {
-      method: 'PUT',
-      headers: headers,
-      body: JSON.stringify(data),
+      method: 'PUT', headers, body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Error al actualizar deportista');
     return res.json();
@@ -66,10 +85,17 @@ export const api = {
   deleteAthlete: async (id: string) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/athletes/${id}`, {
-      method: 'DELETE',
-      headers: headers,
+      method: 'DELETE', headers,
     });
     if (!res.ok) throw new Error('Error al eliminar deportista');
+    return res.json();
+  },
+
+  updateProfile: async (data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/profile`, {
+      method: 'PUT', headers, body: JSON.stringify(data),
+    });
     return res.json();
   },
 
@@ -88,9 +114,7 @@ export const api = {
   createWorkout: async (data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/workouts`, {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(data),
+      method: 'POST', headers, body: JSON.stringify(data),
     });
     return res.json();
   },
@@ -98,36 +122,43 @@ export const api = {
   createWorkoutsBulk: async (data: { workouts: any[] }) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/workouts/bulk`, {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(data),
+      method: 'POST', headers, body: JSON.stringify(data),
     });
+    return res.json();
+  },
+
+  updateWorkout: async (id: string, data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/workouts/${id}`, {
+      method: 'PUT', headers, body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('No se pudo actualizar el entrenamiento');
     return res.json();
   },
 
   deleteWorkout: async (id: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/workouts/${id}`, {
-      method: 'DELETE',
-      headers: headers,
-    });
+    const res = await fetch(`${BACKEND_URL}/api/workouts/${id}`, { method: 'DELETE', headers });
     return res.json();
   },
 
-  // --- PERIODIZACIÓN (ESTO ES LO QUE FALTABA) ---
+  // --- PERIODIZACIÓN ---
   getPeriodizationTree: async (athleteId: string) => {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/periodization/tree/${athleteId}`, { headers });
-    if (!res.ok) return { macros: [], unassigned_workouts: [] };
-    return res.json();
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${BACKEND_URL}/api/periodization/tree/${athleteId}`, { headers });
+      if (!res.ok) return { macros: [], unassigned_workouts: [] };
+      return await res.json();
+    } catch (e) {
+      console.error("Error API Tree:", e);
+      return { macros: [], unassigned_workouts: [] };
+    }
   },
 
   createMacrociclo: async (data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/macrociclos`, {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(data),
+      method: 'POST', headers, body: JSON.stringify(data),
     });
     return res.json();
   },
@@ -135,28 +166,21 @@ export const api = {
   updateMacrociclo: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/macrociclos/${id}`, {
-      method: 'PUT',
-      headers: headers,
-      body: JSON.stringify(data),
+      method: 'PUT', headers, body: JSON.stringify(data),
     });
     return res.json();
   },
 
   deleteMacrociclo: async (id: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/macrociclos/${id}`, {
-      method: 'DELETE',
-      headers: headers,
-    });
+    const res = await fetch(`${BACKEND_URL}/api/macrociclos/${id}`, { method: 'DELETE', headers });
     return res.json();
   },
 
   createMicrociclo: async (data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/microciclos`, {
-      method: 'POST',
-      headers: headers,
-      body: JSON.stringify(data),
+      method: 'POST', headers, body: JSON.stringify(data),
     });
     return res.json();
   },
@@ -164,25 +188,14 @@ export const api = {
   updateMicrociclo: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/microciclos/${id}`, {
-      method: 'PUT',
-      headers: headers,
-      body: JSON.stringify(data),
+      method: 'PUT', headers, body: JSON.stringify(data),
     });
     return res.json();
   },
 
   deleteMicrociclo: async (id: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/microciclos/${id}`, {
-      method: 'DELETE',
-      headers: headers,
-    });
-    return res.json();
-  },
-
-  getWellnessHistory: async (athleteId: string) => {
-    const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/wellness/history/${athleteId}`, { headers });
+    const res = await fetch(`${BACKEND_URL}/api/microciclos/${id}`, { method: 'DELETE', headers });
     return res.json();
   }
 };
