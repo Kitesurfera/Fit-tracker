@@ -47,6 +47,7 @@ class WellnessCreate(BaseModel):
     sleep_quality: int
     soreness: int
     notes: Optional[str] = ""
+    cycle_phase: Optional[str] = None  # <--- NUEVO CAMPO AÑADIDO
 
 class UserRegister(BaseModel):
     email: str
@@ -171,7 +172,8 @@ async def login(data: UserLogin):
         "token": token,
         "user": {
             "id": user['id'], "email": user['email'], "name": user['name'],
-            "role": user['role'], "is_injured": user.get("is_injured", False)
+            "role": user['role'], "is_injured": user.get("is_injured", False),
+            "gender": user.get("gender") # <--- AÑADIDO PARA LA APP
         }
     }
 
@@ -187,6 +189,7 @@ async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
         "sleep_quality": data.sleep_quality,
         "soreness": data.soreness,
         "notes": data.notes,
+        "cycle_phase": data.cycle_phase,  # <--- NUEVO CAMPO AÑADIDO
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.wellness.insert_one(wellness_entry)
@@ -204,7 +207,7 @@ async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_c
     return {
         "total_workouts": total,
         "completed_workouts": completed,
-        "latest_wellness": latest_well or {"fatigue": 0, "stress": 0, "sleep_quality": 0, "soreness": 0, "notes": ""},
+        "latest_wellness": latest_well or {"fatigue": 0, "stress": 0, "sleep_quality": 0, "soreness": 0, "notes": "", "cycle_phase": ""},
         "completion_rate": round((completed / total * 100) if total > 0 else 0, 1),
         "is_injured": target_user.get("is_injured", False) if target_user else False,
         "injury_notes": target_user.get("injury_notes", "") if target_user else "",
