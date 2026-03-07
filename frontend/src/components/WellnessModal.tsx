@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, Modal, TouchableOpacity, 
-  TextInput, ScrollView, ActivityIndicator, Alert 
+  TextInput, ScrollView, ActivityIndicator, Alert, Platform 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
@@ -29,20 +29,16 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
     cycle_phase: ''
   });
 
-  // CORRECCIÓN: Detectamos 'Femenino', 'Mujer', 'female', ignorando mayúsculas
   const isFemale = ['female', 'mujer', 'femenino'].includes(user?.gender?.toLowerCase() || '');
 
   const handleSave = async () => {
     setLoading(true);
     try {
       await api.postWellness(form);
-      Alert.alert(
-        "¡Hecho!", 
-        "Tu estado ha sido enviado a tu entrenadora.",
-        [{ text: "Entendido", onPress: onClose }]
-      );
+      onClose(); // <-- CIERRE AUTOMÁTICO INMEDIATO
     } catch (e: any) {
-      Alert.alert("Error de envío", e.message || "No se pudo conectar con el servidor.");
+      if (Platform.OS !== 'web') Alert.alert("Error de envío", e.message || "No se pudo conectar con el servidor.");
+      else console.error("Error guardando wellness:", e);
     } finally {
       setLoading(false);
     }
@@ -90,7 +86,6 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
             <RatingScale label="Calidad de Sueño" field="sleep_quality" />
             <RatingScale label="Dolor Muscular" field="soreness" />
 
-            {/* SECCIÓN CICLO MENSTRUAL */}
             {isFemale && (
               <View style={{ marginTop: 10, marginBottom: 20 }}>
                 <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>
@@ -137,11 +132,7 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
               onPress={handleSave} 
               disabled={loading}
             >
-              {loading ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={styles.saveBtnText}>GUARDAR ESTADO</Text>
-              )}
+              {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>GUARDAR ESTADO</Text>}
             </TouchableOpacity>
           </ScrollView>
         </View>
