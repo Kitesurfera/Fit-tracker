@@ -73,6 +73,7 @@ class ProfileUpdate(BaseModel):
     injury_notes: Optional[str] = None
     equipment: Optional[str] = None
 
+
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
     exercises: Optional[List[dict]] = None
@@ -80,6 +81,14 @@ class WorkoutUpdate(BaseModel):
     completed: Optional[bool] = None
     completion_data: Optional[dict] = None
     observations: Optional[str] = None
+    microciclo_id: Optional[str] = None
+
+class WorkoutCreate(BaseModel):
+    title: str
+    date: str
+    exercises: List[dict]
+    notes: Optional[str] = ""
+    athlete_id: str
     microciclo_id: Optional[str] = None
     
 class MacroCreate(BaseModel):
@@ -214,6 +223,18 @@ async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
     update_data = {k: v for k, v in data.dict().items() if v is not None}
     await db.users.update_one({"id": user['id']}, {"$set": update_data})
     return {"status": "success"}
+
+@api_router.post("/workouts")
+async def create_workout(data: WorkoutCreate, user=Depends(get_current_user)):
+    workout = data.dict()
+    workout["id"] = str(uuid.uuid4())
+    workout["completed"] = False # Por defecto, un entreno nuevo está pendiente
+    workout["completion_data"] = None
+    
+    await db.workouts.insert_one(workout)
+    workout.pop('_id', None) # Limpiamos el ID de Mongo para no colapsar
+    
+    return {"status": "success", "workout": workout}
 
 @api_router.get("/workouts")
 async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = None, user=Depends(get_current_user)):
