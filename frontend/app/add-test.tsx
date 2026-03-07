@@ -3,7 +3,7 @@ import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../src/context/AuthContext';
@@ -35,6 +35,10 @@ export default function AddTestScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
+  
+  // Magia: Recibimos el ID del atleta si venimos con él pre-seleccionado
+  const { preselected_athlete } = useLocalSearchParams();
+  
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<string>('');
   const [testType, setTestType] = useState<TestType>('strength');
@@ -51,11 +55,20 @@ export default function AddTestScreen() {
 
   useEffect(() => {
     if (user?.role === 'trainer') {
-      api.getAthletes().then(setAthletes).catch(console.log);
+      api.getAthletes().then(data => {
+        setAthletes(data || []);
+        // Si hay un atleta preseleccionado en la ruta, lo marcamos
+        if (preselected_athlete && typeof preselected_athlete === 'string') {
+          setSelectedAthlete(preselected_athlete);
+        } else if (data && data.length > 0) {
+          // Si no, seleccionamos al primero por defecto para evitar errores
+          setSelectedAthlete(data[0].id);
+        }
+      }).catch(console.log);
     } else {
       setSelectedAthlete(user?.id || '');
     }
-  }, []);
+  }, [preselected_athlete]);
 
   const isBilateral = testType === 'max_force';
   const currentTests = testType === 'strength' ? STRENGTH_TESTS : testType === 'plyometrics' ? PLYO_TESTS : MAX_FORCE_TESTS;
@@ -132,7 +145,7 @@ export default function AddTestScreen() {
           <View style={{ width: 28 }} />
         </View>
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-          {/* Athlete selector (trainer only) */}
+          
           {user?.role === 'trainer' && (
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>DEPORTISTA *</Text>
@@ -143,8 +156,8 @@ export default function AddTestScreen() {
                       key={a.id}
                       style={[
                         styles.chip,
-                        { backgroundColor: colors.surfaceHighlight },
-                        selectedAthlete === a.id && { backgroundColor: colors.primary },
+                        { backgroundColor: colors.surfaceHighlight, borderWidth: 1, borderColor: colors.border },
+                        selectedAthlete === a.id && { backgroundColor: colors.primary, borderColor: colors.primary },
                       ]}
                       onPress={() => setSelectedAthlete(a.id)}
                       activeOpacity={0.7}
@@ -152,7 +165,7 @@ export default function AddTestScreen() {
                       <Text style={[
                         styles.chipText,
                         { color: colors.textPrimary },
-                        selectedAthlete === a.id && { color: '#FFF' },
+                        selectedAthlete === a.id && { color: '#FFF', fontWeight: '800' },
                       ]}>{a.name}</Text>
                     </TouchableOpacity>
                   ))}
@@ -161,7 +174,6 @@ export default function AddTestScreen() {
             </View>
           )}
 
-          {/* Test Type */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>TIPO DE TEST *</Text>
             <View style={styles.typeRow}>
@@ -179,7 +191,7 @@ export default function AddTestScreen() {
                 activeOpacity={0.7}
               >
                 <Ionicons name="flash-outline" size={16} color={testType === 'plyometrics' ? '#FFF' : colors.textPrimary} />
-                <Text style={[styles.typeText, { color: testType === 'plyometrics' ? '#FFF' : colors.textPrimary }]}>Pliometria</Text>
+                <Text style={[styles.typeText, { color: testType === 'plyometrics' ? '#FFF' : colors.textPrimary }]}>Pliometría</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.typeChip, { borderColor: colors.border }, testType === 'max_force' && { backgroundColor: '#E65100', borderColor: '#E65100' }]}
@@ -187,12 +199,11 @@ export default function AddTestScreen() {
                 activeOpacity={0.7}
               >
                 <Ionicons name="fitness-outline" size={16} color={testType === 'max_force' ? '#FFF' : colors.textPrimary} />
-                <Text style={[styles.typeText, { color: testType === 'max_force' ? '#FFF' : colors.textPrimary }]}>F. Maxima</Text>
+                <Text style={[styles.typeText, { color: testType === 'max_force' ? '#FFF' : colors.textPrimary }]}>F. Máxima</Text>
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* Test Selection */}
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>TEST *</Text>
             <View style={styles.testGrid}>
@@ -246,7 +257,6 @@ export default function AddTestScreen() {
             </View>
           )}
 
-          {/* Bilateral inputs for max_force */}
           {isBilateral ? (
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>VALORES ({unit}) *</Text>
@@ -282,7 +292,7 @@ export default function AddTestScreen() {
               {valueLeft && valueRight && (
                 <View style={[styles.asymmetryBox, { backgroundColor: colors.surfaceHighlight }]}>
                   <Text style={[styles.asymmetryText, { color: colors.textSecondary }]}>
-                    Asimetria: {Math.abs(((parseFloat(valueLeft) - parseFloat(valueRight)) / Math.max(parseFloat(valueLeft), parseFloat(valueRight))) * 100).toFixed(1)}%
+                    Asimetría: {Math.abs(((parseFloat(valueLeft) - parseFloat(valueRight)) / Math.max(parseFloat(valueLeft), parseFloat(valueRight))) * 100).toFixed(1)}%
                   </Text>
                 </View>
               )}
@@ -355,39 +365,33 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
-  headerTitle: { fontSize: 18, fontWeight: '600' },
-  form: { padding: 16, gap: 16, paddingBottom: 48 },
+  headerTitle: { fontSize: 18, fontWeight: '900' },
+  form: { padding: 16, gap: 20, paddingBottom: 48 },
   inputGroup: { gap: 8 },
-  label: { fontSize: 12, fontWeight: '600', letterSpacing: 0.5 },
-  input: { borderRadius: 8, padding: 16, fontSize: 16, borderWidth: 1 },
+  label: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
+  input: { borderRadius: 12, padding: 16, fontSize: 16, borderWidth: 1 },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
-  chipRow: { flexDirection: 'row', gap: 8 },
-  chip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
-  chipText: { fontSize: 14, fontWeight: '500' },
+  chipRow: { flexDirection: 'row', gap: 10, paddingVertical: 5 },
+  chip: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 20 },
+  chipText: { fontSize: 14, fontWeight: '600' },
   typeRow: { flexDirection: 'row', gap: 8 },
-  typeChip: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    gap: 4, paddingVertical: 12, borderRadius: 10, borderWidth: 1,
-  },
-  typeText: { fontSize: 13, fontWeight: '600' },
-  testGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  testOption: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 12, borderRadius: 10, borderWidth: 1,
-  },
-  testOptionText: { fontSize: 14 },
+  typeChip: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 14, borderRadius: 12, borderWidth: 1 },
+  typeText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.5 },
+  testGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  testOption: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1 },
+  testOptionText: { fontSize: 13, fontWeight: '600' },
   valueRow: { flexDirection: 'row', gap: 12 },
   bilateralRow: { flexDirection: 'row', alignItems: 'center', gap: 0 },
   bilateralSide: { flex: 1, alignItems: 'center', gap: 8 },
   sideLabel: { paddingHorizontal: 12, paddingVertical: 4, borderRadius: 6 },
-  sideLabelText: { fontSize: 11, fontWeight: '800', letterSpacing: 1 },
-  bilateralInput: { width: '90%', textAlign: 'center', borderRadius: 10, padding: 16, fontSize: 28, fontWeight: '700', borderWidth: 1 },
-  bilateralUnit: { fontSize: 13, fontWeight: '500' },
+  sideLabelText: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  bilateralInput: { width: '90%', textAlign: 'center', borderRadius: 12, padding: 16, fontSize: 28, fontWeight: '800', borderWidth: 1 },
+  bilateralUnit: { fontSize: 13, fontWeight: '600' },
   bilateralDivider: { width: 1, height: 60, marginHorizontal: 4 },
-  asymmetryBox: { borderRadius: 8, padding: 10, alignItems: 'center' },
-  asymmetryText: { fontSize: 13, fontWeight: '600' },
-  errorBox: { borderRadius: 8, padding: 12 },
-  errorText: { fontSize: 14, textAlign: 'center' },
-  submitBtn: { borderRadius: 8, padding: 16, alignItems: 'center', marginTop: 8 },
-  submitText: { color: '#FFF', fontSize: 16, fontWeight: '700', letterSpacing: 1 },
+  asymmetryBox: { borderRadius: 10, padding: 12, alignItems: 'center', marginTop: 10 },
+  asymmetryText: { fontSize: 13, fontWeight: '700' },
+  errorBox: { borderRadius: 10, padding: 14 },
+  errorText: { fontSize: 13, textAlign: 'center', fontWeight: '700' },
+  submitBtn: { borderRadius: 16, padding: 18, alignItems: 'center', marginTop: 10 },
+  submitText: { color: '#FFF', fontSize: 15, fontWeight: '900', letterSpacing: 1 },
 });
