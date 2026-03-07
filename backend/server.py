@@ -262,12 +262,35 @@ async def delete_micro(id: str, user=Depends(get_current_user)):
     await db.workouts.update_many({"microciclo_id": id}, {"$set": {"microciclo_id": None}}) # Desasignar workouts
     return {"status": "success"}
 
+@api_router.delete("/workouts/{workout_id}")
+async def delete_workout(workout_id: str, user=Depends(get_current_user)):
+    await db.workouts.delete_one({"id": workout_id})
+    return {"status": "success"}
+
 @api_router.get("/periodization/tree/{athlete_id}")
 async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
+    # 1. Obtenemos los macrociclos
     macros = await db.macrociclos.find({"athlete_id": athlete_id}, {"_id": 0}).sort("fecha_inicio", 1).to_list(100)
+    
     for m in macros:
-        m['microciclos'] = await db.microciclos.find({"macrociclo_id": m['id']}, {"_id": 0}).sort("fecha_inicio", 1).to_list(100)
-    return macros
+        # 2. Obtenemos los microciclos de cada macro
+        micros = await db.microciclos.find({"macrociclo_id": m['id']}, {"_id": 0}).sort("fecha_inicio", 1).to_list(100)
+        for mic in micros:
+            # 3. METEMOS LOS ENTRENAMIENTOS DENTRO DE SU MICROCICLO
+            mic['workouts'] = await db.workouts.find({"microciclo_id": mic['id']}, {"_id": 0}).sort("date", 1).to_list(100)
+        m['microciclos'] = micros
+        
+    # 4. Obtenemos los entrenamientos "sueltos" (sin asignar a ningún microciclo)
+    unassigned_workouts = await db.workouts.find({
+        "athlete_id": athlete_id, 
+        "$or": [{"microciclo_id": None}, {"microciclo_id": ""}]
+    }, {"_id": 0}).sort("date", -1).to_list(100)
+    
+    return {
+        "macros": macros,
+        "unassigned_workouts": unassigned_workouts
+    }
+
 
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
