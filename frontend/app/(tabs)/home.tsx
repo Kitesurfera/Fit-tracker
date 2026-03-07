@@ -19,6 +19,13 @@ const ELITE_TIPS = [
   "Pequeñas mejoras diarias crean resultados excepcionales."
 ];
 
+const CYCLE_PHASES = [
+  { id: 'menstrual', label: 'Menstrual', color: '#EF4444' },
+  { id: 'folicular', label: 'Folicular', color: '#10B981' },
+  { id: 'ovulatoria', label: 'Ovulatoria', color: '#F59E0B' },
+  { id: 'lutea', label: 'Lútea', color: '#8B5CF6' }
+];
+
 export default function HomeScreen() {
   const { user, loading: authLoading } = useAuth();
   const { colors } = useTheme();
@@ -34,7 +41,6 @@ export default function HomeScreen() {
   const [showWellness, setShowWellness] = useState(false);
   const [tip] = useState(ELITE_TIPS[Math.floor(Math.random() * ELITE_TIPS.length)]);
 
-  // --- ESTADOS DEL MODAL DE ATLETAS ---
   const [showAthleteModal, setShowAthleteModal] = useState(false);
   const [editingAthleteId, setEditingAthleteId] = useState<string | null>(null);
   const [athleteForm, setAthleteForm] = useState({ name: '', email: '', password: '', gender: 'Femenino' });
@@ -43,6 +49,8 @@ export default function HomeScreen() {
   const firstName = user?.name?.split(' ')[0] || 'Atleta';
   const todayStr = new Date().toISOString().split('T')[0];
   const todayLabel = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const isFemale = ['female', 'mujer', 'femenino'].includes(user?.gender?.toLowerCase() || '');
 
   const loadData = async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
@@ -107,10 +115,7 @@ export default function HomeScreen() {
   const openEditAthlete = (athlete: any) => {
     setEditingAthleteId(athlete.id);
     setAthleteForm({ 
-      name: athlete.name, 
-      email: athlete.email, 
-      password: '',
-      gender: athlete.gender || 'Femenino' 
+      name: athlete.name, email: athlete.email, password: '', gender: athlete.gender || 'Femenino' 
     });
     setShowAthleteModal(true);
   };
@@ -122,15 +127,9 @@ export default function HomeScreen() {
     }
     try {
       if (editingAthleteId) {
-        if (api.updateAthlete) {
-           await api.updateAthlete(editingAthleteId, athleteForm);
-           if (Platform.OS !== 'web') Alert.alert("Éxito", "Deportista actualizado.");
-        }
+        if (api.updateAthlete) await api.updateAthlete(editingAthleteId, athleteForm);
       } else {
-        if (api.createAthlete) {
-           await api.createAthlete(athleteForm);
-           if (Platform.OS !== 'web') Alert.alert("Éxito", "Deportista añadido.");
-        }
+        if (api.createAthlete) await api.createAthlete(athleteForm);
       }
       setShowAthleteModal(false);
       loadData();
@@ -139,7 +138,6 @@ export default function HomeScreen() {
     }
   };
 
-  // --- NUEVA LÓGICA DE BORRADO (MÓVIL Y WEB) ---
   const executeDelete = async (id: string) => {
     try {
       if (api.deleteAthlete) {
@@ -148,25 +146,38 @@ export default function HomeScreen() {
       }
     } catch (e) {
       if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar al deportista.");
-      else console.error("Error al borrar", e);
     }
   };
 
   const handleDeleteAthlete = (id: string, name: string) => {
     if (Platform.OS === 'web') {
       const isConfirmed = window.confirm(`¿Seguro que quieres eliminar a ${name}?\nSe borrará todo su historial.`);
-      if (isConfirmed) {
-        executeDelete(id);
-      }
+      if (isConfirmed) executeDelete(id);
     } else {
-      Alert.alert(
-        "Eliminar Deportista",
-        `¿Estás segura de que quieres eliminar a ${name}? Esta acción no se puede deshacer.`,
-        [
-          { text: "Cancelar", style: "cancel" },
-          { text: "ELIMINAR", style: "destructive", onPress: () => executeDelete(id) }
-        ]
-      );
+      Alert.alert("Eliminar", `¿Seguro que quieres borrar a ${name}?`, [
+        { text: "Cancelar", style: "cancel" },
+        { text: "ELIMINAR", style: "destructive", onPress: () => executeDelete(id) }
+      ]);
+    }
+  };
+
+  // --- GUARDADO RÁPIDO DE LA FASE DESDE EL DASHBOARD ---
+  const handleQuickPhaseUpdate = async (phaseId: string) => {
+    try {
+      setUpdating(true);
+      const baseData = summary?.latest_wellness || { fatigue: 3, stress: 3, sleep_quality: 3, soreness: 3, notes: '' };
+      const payload = {
+         fatigue: baseData.fatigue || 3,
+         stress: baseData.stress || 3,
+         sleep_quality: baseData.sleep_quality || 3,
+         soreness: baseData.soreness || 3,
+         notes: baseData.notes || '',
+         cycle_phase: phaseId
+      };
+      await api.postWellness(payload);
+      await loadData(true);
+    } catch (e) {
+      console.error("Error guardando fase", e);
     }
   };
 
@@ -174,7 +185,6 @@ export default function HomeScreen() {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 10, color: colors.textSecondary }}>Sincronizando perfil...</Text>
       </View>
     );
   }
@@ -199,13 +209,8 @@ export default function HomeScreen() {
         </View>
       }
       renderItem={({ item }) => (
-        // --- CORRECCIÓN DE BOTONES: Ahora son un View, no un Touchable gigante ---
         <View style={[styles.athleteCard, { backgroundColor: colors.surface }]}>
-          
-          <TouchableOpacity 
-            style={styles.athleteInfoArea}
-            onPress={() => router.push({ pathname: "/athlete-detail", params: { id: item.id, name: item.name } })}
-          >
+          <TouchableOpacity style={styles.athleteInfoArea} onPress={() => router.push({ pathname: "/athlete-detail", params: { id: item.id, name: item.name } })}>
             <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
               <Text style={{color: colors.primary, fontWeight: '800'}}>{item.name.charAt(0)}</Text>
             </View>
@@ -214,87 +219,116 @@ export default function HomeScreen() {
               <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Atleta de Fit Tracker</Text>
             </View>
           </TouchableOpacity>
-          
           <View style={styles.athleteActionsArea}>
-            <TouchableOpacity onPress={() => openEditAthlete(item)} style={styles.iconHitbox}>
-              <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDeleteAthlete(item.id, item.name)} style={styles.iconHitbox}>
-              <Ionicons name="trash-outline" size={20} color={colors.error} />
-            </TouchableOpacity>
+            <TouchableOpacity onPress={() => openEditAthlete(item)} style={styles.iconHitbox}><Ionicons name="pencil-outline" size={20} color={colors.textSecondary} /></TouchableOpacity>
+            <TouchableOpacity onPress={() => handleDeleteAthlete(item.id, item.name)} style={styles.iconHitbox}><Ionicons name="trash-outline" size={20} color={colors.error} /></TouchableOpacity>
           </View>
-
         </View>
       )}
     />
   );
 
-  const AthleteView = () => (
-    <FlatList
-      data={workouts}
-      keyExtractor={(item) => item.id}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.primary} />}
-      ListHeaderComponent={
-        <View style={styles.container}>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
-              <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 💪</Text>
+  const AthleteView = () => {
+    const currentPhase = summary?.latest_wellness?.cycle_phase;
+
+    return (
+      <FlatList
+        data={workouts}
+        keyExtractor={(item) => item.id}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.primary} />}
+        ListHeaderComponent={
+          <View style={styles.container}>
+            <View style={styles.headerRow}>
+              <View>
+                <Text style={[styles.dateLabel, { color: colors.textSecondary }]}>{todayLabel}</Text>
+                <Text style={[styles.welcomeText, { color: colors.textPrimary }]}>Hola, {firstName} 💪</Text>
+              </View>
+              <TouchableOpacity onPress={handleManualUpdate} disabled={updating} style={styles.refreshBtn}>
+                {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={24} color={colors.primary} />}
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity onPress={handleManualUpdate} disabled={updating} style={styles.refreshBtn}>
-              {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={24} color={colors.primary} />}
+
+            <View style={[styles.tipCard, { backgroundColor: colors.surfaceHighlight }]}>
+              <Ionicons name="bulb-outline" size={16} color={colors.primary} />
+              <Text style={[styles.tipText, { color: colors.textPrimary }]}>{tip}</Text>
+            </View>
+
+            {/* SECCIÓN CICLO MENSTRUAL DIRECTA EN EL DASHBOARD */}
+            {isFemale && (
+              <View style={{ marginBottom: 25 }}>
+                <Text style={styles.sectionTitle}>TU CICLO ACTUAL</Text>
+                <View style={styles.cycleChipsContainer}>
+                  {CYCLE_PHASES.map(phase => {
+                    const isActive = currentPhase === phase.id;
+                    return (
+                      <TouchableOpacity 
+                        key={phase.id}
+                        style={[
+                          styles.dashboardPhaseChip, 
+                          { borderColor: colors.border, backgroundColor: colors.surface },
+                          isActive && { backgroundColor: phase.color, borderColor: phase.color }
+                        ]}
+                        onPress={() => handleQuickPhaseUpdate(phase.id)}
+                      >
+                        <Text style={{ 
+                          color: isActive ? '#FFF' : colors.textSecondary, 
+                          fontWeight: isActive ? '800' : '600',
+                          fontSize: 12 
+                        }}>
+                          {phase.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </View>
+            )}
+
+            <View style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
+              <View style={styles.phaseInfo}>
+                <Text style={styles.phaseLabel}>PLANIFICACIÓN ACTUAL</Text>
+                <Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Periodización libre'}</Text>
+                <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Entrena con cabeza'}</Text>
+              </View>
+              <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'BASE'}</Text></View>
+            </View>
+
+            <View style={styles.metricsGrid}>
+              <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
+                <Ionicons name="flash-outline" size={22} color={colors.success} />
+                <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.latest_wellness?.fatigue || '-'}</Text>
+                <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>NIVEL FATIGA</Text>
+              </View>
+              <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
+                <Ionicons name="ribbon-outline" size={22} color={colors.primary} />
+                <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.completion_rate || '0'}%</Text>
+                <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>ADHERENCIA</Text>
+              </View>
+            </View>
+
+            <TouchableOpacity style={[styles.fullBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
+              <Ionicons name="fitness-outline" size={22} color={colors.success} />
+              <Text style={[styles.actionText, { color: colors.textPrimary }]}>Actualizar Wellness de Hoy</Text>
             </TouchableOpacity>
-          </View>
 
-          <View style={[styles.tipCard, { backgroundColor: colors.surfaceHighlight }]}>
-            <Ionicons name="bulb-outline" size={16} color={colors.primary} />
-            <Text style={[styles.tipText, { color: colors.textPrimary }]}>{tip}</Text>
+            <Text style={styles.sectionTitle}>SESIONES PROGRAMADAS</Text>
           </View>
-
-          <View style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
-            <View style={styles.phaseInfo}>
-              <Text style={styles.phaseLabel}>PLANIFICACIÓN ACTUAL</Text>
-              <Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Periodización libre'}</Text>
-              <Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Entrena con cabeza'}</Text>
+        }
+        renderItem={({ item }) => (
+          <TouchableOpacity style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.7 : 1 }]} onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}>
+            <View style={[styles.avatarCircle, { backgroundColor: item.completed ? colors.success + '15' : colors.primary + '15' }]}>
+              <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? colors.success : colors.primary} />
             </View>
-            <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'BASE'}</Text></View>
-          </View>
-
-          <View style={styles.metricsGrid}>
-            <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="flash-outline" size={22} color={colors.success} />
-              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.latest_wellness?.fatigue || '-'}</Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>NIVEL FATIGA</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
             </View>
-            <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-              <Ionicons name="ribbon-outline" size={22} color={colors.primary} />
-              <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.completion_rate || '0'}%</Text>
-              <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>ADHERENCIA</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={[styles.fullBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
-            <Ionicons name="fitness-outline" size={22} color={colors.success} />
-            <Text style={[styles.actionText, { color: colors.textPrimary }]}>Actualizar Wellness de Hoy</Text>
+            <Ionicons name="play" size={18} color={item.completed ? colors.border : colors.primary} />
           </TouchableOpacity>
-
-          <Text style={styles.sectionTitle}>SESIONES PROGRAMADAS</Text>
-        </View>
-      }
-      renderItem={({ item }) => (
-        <TouchableOpacity style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.7 : 1 }]} onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}>
-          <View style={[styles.avatarCircle, { backgroundColor: item.completed ? colors.success + '15' : colors.primary + '15' }]}>
-            <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? colors.success : colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
-          </View>
-          <Ionicons name="play" size={18} color={item.completed ? colors.border : colors.primary} />
-        </TouchableOpacity>
-      )}
-    />
-  );
+        )}
+      />
+    );
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -304,21 +338,10 @@ export default function HomeScreen() {
       <Modal visible={showAthleteModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
-              {editingAthleteId ? 'Editar Deportista' : 'Añadir Deportista'}
-            </Text>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editingAthleteId ? 'Editar Deportista' : 'Añadir Deportista'}</Text>
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Nombre Completo" placeholderTextColor="#888" value={athleteForm.name} onChangeText={t => setAthleteForm({...athleteForm, name: t})} />
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Email" placeholderTextColor="#888" autoCapitalize="none" keyboardType="email-address" value={athleteForm.email} onChangeText={t => setAthleteForm({...athleteForm, email: t})} />
-            
-            <TextInput 
-              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} 
-              placeholder={editingAthleteId ? "Nueva Contraseña (Opcional)" : "Contraseña"} 
-              placeholderTextColor="#888" 
-              secureTextEntry 
-              value={athleteForm.password} 
-              onChangeText={t => setAthleteForm({...athleteForm, password: t})} 
-            />
-            
+            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder={editingAthleteId ? "Nueva Contraseña (Opcional)" : "Contraseña"} placeholderTextColor="#888" secureTextEntry value={athleteForm.password} onChangeText={t => setAthleteForm({...athleteForm, password: t})} />
             <View style={styles.genderRow}>
               {['Masculino', 'Femenino'].map(g => (
                 <TouchableOpacity key={g} style={[styles.genderBtn, { borderColor: colors.border }, athleteForm.gender === g && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => setAthleteForm({...athleteForm, gender: g})}>
@@ -346,13 +369,10 @@ const styles = StyleSheet.create({
   welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 },
   refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' },
   actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-  
-  // CORRECCIONES EN LA TARJETA
   athleteCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' },
   athleteInfoArea: { flexDirection: 'row', alignItems: 'center', flex: 1, padding: 18 },
   athleteActionsArea: { flexDirection: 'row', alignItems: 'center', paddingRight: 15, gap: 10 },
   iconHitbox: { padding: 8 },
-  
   avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   cardTitle: { fontSize: 16, fontWeight: '700' },
   tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 },
@@ -379,5 +399,9 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, padding: 16, borderRadius: 15, marginBottom: 15, fontSize: 16 },
   genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 },
   genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
-  submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 }
+  submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 },
+  
+  // ESTILOS NUEVOS PARA LOS BOTONES RÁPIDOS DEL CICLO
+  cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }
 });
