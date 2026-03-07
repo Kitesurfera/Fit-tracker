@@ -4,13 +4,14 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
 export default function AddWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  // Añadimos microciclo_id a los parámetros esperados
   const params = useLocalSearchParams<{ athlete_id: string; name: string; microciclo_id?: string }>();
 
   // --- ESTADOS ORIGINALES DEL ENTRENAMIENTO ---
@@ -24,31 +25,28 @@ export default function AddWorkoutScreen() {
 
   // --- NUEVOS ESTADOS PARA PERIODIZACIÓN ---
   const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
-  // Si venimos del calendario, el microciclo ya vendrá pre-seleccionado
   const [selectedMicroId, setSelectedMicroId] = useState<string | null>(params.microciclo_id || null);
 
-  // --- ESTADOS PARA IMÁGENES ---
+  // --- ESTADOS PARA IMÁGENES y CSV ---
   const [imageUploading, setImageUploading] = useState<number | null>(null);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
+  const [csvLoading, setCsvLoading] = useState(false);
+  const [showCsvFormat, setShowCsvFormat] = useState(false);
 
-  // --- CARGAR MICROCICLOS DEL DEPORTISTA ---
+  // --- CARGAR MICROCICLOS ---
   const loadMicrociclos = async () => {
     try {
       if (!params.athlete_id) return;
       const tree = await api.getPeriodizationTree(params.athlete_id);
-      
       const todosLosMicros = tree.flatMap((macro: any) => macro.microciclos || []);
       todosLosMicros.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
-      
       setMicrociclosDisponibles(todosLosMicros);
     } catch (error) {
-      console.log("Error cargando microciclos para el selector:", error);
+      console.log("Error cargando microciclos:", error);
     }
   };
 
-  useEffect(() => {
-    loadMicrociclos();
-  }, [params.athlete_id]);
+  useEffect(() => { loadMicrociclos(); }, [params.athlete_id]);
 
   // --- MANEJO DE IMÁGENES ---
   const pickExerciseImage = async (exIndex: number) => {
@@ -76,21 +74,82 @@ export default function AddWorkoutScreen() {
     }
   };
 
-  // --- MANEJO DE EJERCICIOS ---
-  const addExercise = () => {
-    setEjercicios([...ejercicios, { name: '', sets: '', reps: '', weight: '', rest: '', exercise_notes: '', video_url: '', image_path: '' }]);
+  // --- MANEJO DE CSV ---
+  const handleImportCSV = async () => {
+    try {
+      setCsvLoading(true);
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/comma-separated-values', 'application/csv', 'application/vnd.ms-excel'],
+        copyToCacheDirectory: true
+      });
+
+      if (result.canceled) {
+        setCsvLoading(false);
+        return;
+      }
+
+      const fileUri = result.assets[0].uri;
+      let csvText = '';
+
+      // Leer el archivo dependiendo de la plataforma
+      if (Platform.OS === 'web') {
+        const response = await fetch(fileUri);
+        csvText = await response.text();
+      } else {
+        csvText = await FileSystem.readAsStringAsync(fileUri, { encoding: FileSystem.EncodingType.UTF8 });
+      }
+
+      // Separar por líneas
+      const lines = csvText.split('\n').filter(line => line.trim() !== '');
+      if (lines.length < 2) {
+        Alert.alert('Error', 'El archivo CSV parece estar vacío o no tiene ejercicios.');
+        setCsvLoading(false);
+        return;
+      }
+
+      // Mapear líneas a ejercicios (saltando la cabecera en la línea 0)
+      const newExercises = lines.slice(1).map(line => {
+        // Detectar si el CSV usa comas o punto y coma (común en Excel europeo)
+        const separator = line.includes(';') ? ';' : ',';
+        const columns = line.split(separator).map(item => item?.trim().replace(/^"|"$/g, '') || ''); // Limpia espacios y comillas
+        
+        return {
+          name: columns[0] || '',
+          sets: columns[1] || '',
+          reps: columns[2] || '',
+          weight: columns[3] || '',
+          rest: columns[4] || '',
+          exercise_notes: columns[5] || '',
+          video_url: columns[6] || '',
+          image_path: ''
+        };
+      });
+
+      const validExercises = newExercises.filter(ex => ex.name !== '');
+      
+      if (validExercises.length > 0) {
+        setEjercicios(validExercises);
+        Alert.alert('Éxito', `Se han importado ${validExercises.length} ejercicios correctamente.`);
+      } else {
+        Alert.alert('Aviso', 'No se detectaron ejercicios válidos. Revisa el formato del CSV.');
+      }
+
+    } catch (error) {
+      console.error("Error CSV:", error);
+      Alert.alert('Error', 'Hubo un problema al leer el archivo. Asegúrate de que sea un .csv válido.');
+    } finally {
+      setCsvLoading(false);
+    }
   };
 
+  // --- MANEJO DE EJERCICIOS ---
+  const addExercise = () => setEjercicios([...ejercicios, { name: '', sets: '', reps: '', weight: '', rest: '', exercise_notes: '', video_url: '', image_path: '' }]);
   const updateExercise = (index: number, field: string, value: string) => {
     const updated = [...ejercicios];
     updated[index] = { ...updated[index], [field]: value };
     setEjercicios(updated);
   };
-
-  const removeExercise = (index: number) => {
-    const updated = ejercicios.filter((_, i) => i !== index);
-    setEjercicios(updated);
-  };
+  const removeExercise = (index: number) => setEjercicios(ejercicios.filter((_, i) => i !== index));
 
   // --- GUARDADO FINAL ---
   const handleSave = async () => {
@@ -123,10 +182,6 @@ export default function AddWorkoutScreen() {
     }
   };
 
-  const handleImportCSV = () => {
-    Alert.alert('Importar CSV', 'La función de importar desde Excel/CSV está en desarrollo y se conectará en el próximo bloque. 🚀');
-  };
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
@@ -142,14 +197,39 @@ export default function AddWorkoutScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
           
-          {/* BOTÓN CSV */}
-          <TouchableOpacity 
-            style={[styles.csvBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}
-            onPress={handleImportCSV}
-          >
-             <Ionicons name="document-text-outline" size={20} color={colors.primary} />
-             <Text style={{ color: colors.primary, fontWeight: '800', letterSpacing: 0.5 }}>IMPORTAR DESDE CSV</Text>
-          </TouchableOpacity>
+          {/* SECCIÓN CSV */}
+          <View style={styles.csvSection}>
+            <TouchableOpacity 
+              style={[styles.csvBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}
+              onPress={handleImportCSV}
+              disabled={csvLoading}
+            >
+              {csvLoading ? <ActivityIndicator color={colors.primary} size="small" /> : <Ionicons name="document-text-outline" size={20} color={colors.primary} />}
+              <Text style={{ color: colors.primary, fontWeight: '800', letterSpacing: 0.5 }}>
+                {csvLoading ? 'IMPORTANDO...' : 'IMPORTAR DESDE CSV'}
+              </Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity onPress={() => setShowCsvFormat(!showCsvFormat)} style={{ alignSelf: 'center', marginBottom: showCsvFormat ? 10 : 24 }}>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, textDecorationLine: 'underline' }}>
+                {showCsvFormat ? 'Ocultar formato CSV' : '¿Cómo debe ser el archivo CSV?'}
+              </Text>
+            </TouchableOpacity>
+
+            {showCsvFormat && (
+              <View style={[styles.csvFormatBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>1. Crea un Excel con estas columnas (en este orden exacto):</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginBottom: 10, backgroundColor: 'rgba(0,0,0,0.05)', padding: 6, borderRadius: 6 }}>
+                  Nombre, Series, Reps, Kilos, Descanso, Notas, URL Video
+                </Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>2. Ejemplo de una fila de ejercicio:</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginBottom: 10, backgroundColor: 'rgba(0,0,0,0.05)', padding: 6, borderRadius: 6 }}>
+                  Sentadilla, 4, 8-10, 60, 90s, Bajar lento, https://youtube...
+                </Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700' }}>3. Guárdalo como "CSV (delimitado por comas)" y súbelo aquí.</Text>
+              </View>
+            )}
+          </View>
 
           {/* DATOS BÁSICOS */}
           <View style={styles.section}>
@@ -251,4 +331,121 @@ export default function AddWorkoutScreen() {
                     <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 4" placeholderTextColor={colors.textSecondary} value={ej.sets} onChangeText={(t) => updateExercise(index, 'sets', t)} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text
+                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Reps</Text>
+                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 8-10" placeholderTextColor={colors.textSecondary} value={ej.reps} onChangeText={(t) => updateExercise(index, 'reps', t)} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Descanso</Text>
+                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 90s" placeholderTextColor={colors.textSecondary} value={ej.rest} onChangeText={(t) => updateExercise(index, 'rest', t)} />
+                  </View>
+                </View>
+
+                {/* Extras: URL, Notas e Imagen */}
+                <View style={[styles.extrasContainer, { borderTopColor: colors.border }]}>
+                  <View style={styles.extraRow}>
+                    <Ionicons name="videocam-outline" size={16} color={colors.textSecondary} />
+                    <TextInput
+                      style={[styles.extraInput, { color: colors.textPrimary }]}
+                      placeholder="URL de video (YouTube, Drive...)"
+                      placeholderTextColor={colors.textSecondary}
+                      autoCapitalize="none"
+                      keyboardType="url"
+                      value={ej.video_url}
+                      onChangeText={(t) => updateExercise(index, 'video_url', t)}
+                    />
+                  </View>
+                  
+                  <View style={styles.extraRow}>
+                    <Ionicons name="chatbubble-outline" size={16} color={colors.textSecondary} />
+                    <TextInput
+                      style={[styles.extraInput, { color: colors.textPrimary }]}
+                      placeholder="Observaciones de la técnica..."
+                      placeholderTextColor={colors.textSecondary}
+                      value={ej.exercise_notes}
+                      onChangeText={(t) => updateExercise(index, 'exercise_notes', t)}
+                    />
+                  </View>
+
+                  <View style={styles.extraRow}>
+                    {imagePreviews[index] || ej.image_path ? (
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
+                        <Image source={{ uri: imagePreviews[index] || ej.image_path }} style={{ width: 40, height: 40, borderRadius: 6 }} />
+                        <Text style={{ flex: 1, color: colors.textSecondary, fontSize: 13 }}>Imagen adjunta</Text>
+                        <TouchableOpacity onPress={() => {
+                          updateExercise(index, 'image_path', '');
+                          setImagePreviews(prev => { const n = {...prev}; delete n[index]; return n; });
+                        }}>
+                          <Ionicons name="close-circle" size={20} color={colors.error} />
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}
+                        onPress={() => pickExerciseImage(index)}
+                        disabled={imageUploading === index}
+                      >
+                        {imageUploading === index ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="camera-outline" size={18} color={colors.primary} />}
+                        <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>
+                          {imageUploading === index ? 'Subiendo...' : 'Añadir imagen/dibujo'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+
+              </View>
+            ))}
+
+            <TouchableOpacity style={[styles.addBtn, { borderColor: colors.primary, borderStyle: 'dashed' }]} onPress={addExercise}>
+              <Ionicons name="add" size={20} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '700', marginLeft: 8 }}>AÑADIR EJERCICIO</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* NOTAS GENERALES */}
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS DEL ENTRENAMIENTO</Text>
+            <TextInput
+              style={[styles.input, styles.textArea, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}
+              placeholder="Instrucciones generales para la sesión..."
+              placeholderTextColor={colors.textSecondary}
+              multiline
+              value={notas}
+              onChangeText={setNotas}
+            />
+          </View>
+
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#eee' },
+  headerTitle: { fontSize: 18, fontWeight: '800' },
+  saveText: { fontSize: 16, fontWeight: '800' },
+  content: { padding: 16 },
+  
+  csvSection: { marginBottom: 10 },
+  csvBtn: { padding: 14, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 10, borderWidth: 1 },
+  csvFormatBox: { padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 24 },
+  
+  section: { marginBottom: 24 },
+  sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
+  label: { fontSize: 12, fontWeight: '700', marginBottom: 6, letterSpacing: 0.5 },
+  smallLabel: { fontSize: 11, fontWeight: '600', marginBottom: 4, letterSpacing: 0.5 },
+  
+  input: { borderWidth: 1, borderRadius: 8, padding: 14, fontSize: 15 },
+  textArea: { height: 100, textAlignVertical: 'top' },
+  
+  microChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, marginRight: 8, borderWidth: 1 },
+  
+  exerciseCard: { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16 },
+  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderWidth: 2, borderRadius: 12, marginTop: 8 },
+  
+  extrasContainer: { borderTopWidth: 0.5, paddingTop: 8, gap: 4 },
+  extraRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
+  extraInput: { flex: 1, fontSize: 14 }
+});
