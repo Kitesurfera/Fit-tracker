@@ -136,7 +136,7 @@ export const api = {
     return res.json();
   },
 
-  createMacro: async (data: any) => {
+  createMacrociclo: async (data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/macrociclos`, {
       method: 'POST',
@@ -147,7 +147,7 @@ export const api = {
     return res.json();
   },
 
-  createMicro: async (data: any) => {
+  createMicrociclo: async (data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/microciclos`, {
       method: 'POST',
@@ -157,4 +157,5 @@ export const api = {
     if (!res.ok) throw new Error('Error al crear microciclo');
     return res.json();
   }
+
 };
