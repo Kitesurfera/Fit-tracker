@@ -31,11 +31,14 @@ JWT_EXPIRATION_HOURS = 72
 
 security = HTTPBearer()
 app = FastAPI()
-api_router = APIRouter(prefix="/api")
 
+# --- NUEVA RUTA PARA MANTENER DESPIERTO A RENDER ---
 @app.get("/ping")
 async def ping():
-    return {"status": "awake"}
+    return {"status": "awake", "message": "El servidor está activo y listo para planificar."}
+# ---------------------------------------------------
+
+api_router = APIRouter(prefix="/api")
 
 # --- Modelos Pydantic ---
 class WellnessCreate(BaseModel):
