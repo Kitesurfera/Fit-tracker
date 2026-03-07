@@ -161,11 +161,20 @@ export default function HomeScreen() {
     }
   };
 
-  // --- GUARDADO RÁPIDO DE LA FASE DESDE EL DASHBOARD ---
+  // --- LÓGICA DE GUARDADO INSTANTÁNEO (OPTIMISTIC UI) ---
   const handleQuickPhaseUpdate = async (phaseId: string) => {
+    // 1. Cambiamos el color en pantalla AL INSTANTE
+    setSummary((prev: any) => ({
+      ...prev,
+      latest_wellness: {
+        ...(prev?.latest_wellness || { fatigue: 3, stress: 3, sleep_quality: 3, soreness: 3, notes: '' }),
+        cycle_phase: phaseId
+      }
+    }));
+
+    // 2. Mandamos la orden al servidor en segundo plano
     try {
-      setUpdating(true);
-      const baseData = summary?.latest_wellness || { fatigue: 3, stress: 3, sleep_quality: 3, soreness: 3, notes: '' };
+      const baseData = summary?.latest_wellness || {};
       const payload = {
          fatigue: baseData.fatigue || 3,
          stress: baseData.stress || 3,
@@ -175,9 +184,8 @@ export default function HomeScreen() {
          cycle_phase: phaseId
       };
       await api.postWellness(payload);
-      await loadData(true);
     } catch (e) {
-      console.error("Error guardando fase", e);
+      console.error("Error guardando fase en el servidor", e);
     }
   };
 
@@ -189,7 +197,8 @@ export default function HomeScreen() {
     );
   }
 
-  const TrainerView = () => (
+  // --- COMPONENTES DE VISTA COMO FUNCIONES ---
+  const renderTrainerView = () => (
     <FlatList
       data={athletes}
       keyExtractor={(item) => item.id}
@@ -228,7 +237,7 @@ export default function HomeScreen() {
     />
   );
 
-  const AthleteView = () => {
+  const renderAthleteView = () => {
     const currentPhase = summary?.latest_wellness?.cycle_phase;
 
     return (
@@ -253,7 +262,7 @@ export default function HomeScreen() {
               <Text style={[styles.tipText, { color: colors.textPrimary }]}>{tip}</Text>
             </View>
 
-            {/* SECCIÓN CICLO MENSTRUAL DIRECTA EN EL DASHBOARD */}
+            {/* SECCIÓN CICLO MENSTRUAL */}
             {isFemale && (
               <View style={{ marginBottom: 25 }}>
                 <Text style={styles.sectionTitle}>TU CICLO ACTUAL</Text>
@@ -330,9 +339,11 @@ export default function HomeScreen() {
     );
   };
 
+  // --- CORRECCIÓN EN EL RENDERIZADO PRINCIPAL ---
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-      {isTrainer ? <TrainerView /> : <AthleteView />}
+      {isTrainer ? renderTrainerView() : renderAthleteView()}
+      
       <WellnessModal isVisible={showWellness} onClose={() => { setShowWellness(false); loadData(true); }} />
 
       <Modal visible={showAthleteModal} animationType="slide" transparent>
@@ -400,8 +411,6 @@ const styles = StyleSheet.create({
   genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 },
   genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
   submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 },
-  
-  // ESTILOS NUEVOS PARA LOS BOTONES RÁPIDOS DEL CICLO
   cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }
 });
