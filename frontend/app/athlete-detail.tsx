@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, ScrollView, Dimensions
+  ActivityIndicator, ScrollView, Dimensions, Alert, Platform
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
+import { useAuth } from '../src/context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
@@ -27,6 +28,7 @@ const CYCLE_LABELS: any = {
 
 export default function AthleteDetailScreen() {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string; name: string }>();
   
@@ -58,6 +60,28 @@ export default function AthleteDetailScreen() {
     }
   };
 
+  // --- BORRADO DE ENTRENAMIENTOS PARA EL ENTRENADOR ---
+  const executeDeleteWorkout = async (id: string) => {
+    try {
+      await api.deleteWorkout(id);
+      loadData();
+    } catch (e) {
+      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar la sesión.");
+    }
+  };
+
+  const handleDeleteWorkout = (id: string, title: string) => {
+    if (Platform.OS === 'web') {
+      const isConfirmed = window.confirm(`¿Seguro que quieres eliminar "${title}"?`);
+      if (isConfirmed) executeDeleteWorkout(id);
+    } else {
+      Alert.alert("Eliminar Sesión", `¿Seguro que quieres borrar "${title}"?`, [
+        { text: "Cancelar", style: "cancel" },
+        { text: "ELIMINAR", style: "destructive", onPress: () => executeDeleteWorkout(id) }
+      ]);
+    }
+  };
+
   const getLevelColor = (val: number, inverse = false) => {
     if (!val) return colors.border;
     if (!inverse) { 
@@ -71,7 +95,6 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  // CORRECCIÓN: Detectamos 'Femenino', 'Mujer', 'female' de forma segura
   const isFemale = ['female', 'mujer', 'femenino'].includes(athlete?.gender?.toLowerCase() || '');
   const currentPhase = summary?.latest_wellness?.cycle_phase;
 
@@ -87,7 +110,6 @@ export default function AthleteDetailScreen() {
         </View>
       )}
 
-      {/* TARJETA INTELIGENTE: CICLO MENSTRUAL */}
       {isFemale && currentPhase && (
         <View style={[styles.cycleCard, { backgroundColor: CYCLE_COLORS[currentPhase] + '15', borderColor: CYCLE_COLORS[currentPhase] }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -122,7 +144,7 @@ export default function AthleteDetailScreen() {
               <Text style={styles.barDate}>{day.date.split('-')[2]}</Text>
             </View>
           )) : (
-            <Text style={{color: colors.textSecondary, fontSize: 12}}>Esperando datos del atleta...</Text>
+            <Text style={{color: colors.textSecondary, fontSize: 12}}>Esperando datos...</Text>
           )}
         </View>
       </View>
@@ -182,24 +204,70 @@ export default function AthleteDetailScreen() {
       </View>
 
       {workouts.length > 0 ? workouts.map((wk) => (
-        <TouchableOpacity 
-          key={wk.id} 
-          style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: wk.completed ? 0.8 : 1 }]} 
-          onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: wk.id } })}
-        >
-          <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '15' }]}>
-            <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? colors.success : colors.primary} />
+        <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface }]}>
+          
+          {/* CABECERA Y BOTONES DE EDICIÓN */}
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '15' }]}>
+              <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? colors.success : colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>
+                {wk.title}
+              </Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                {wk.date} • {wk.completed ? 'Completado' : 'Pendiente'}
+              </Text>
+            </View>
+            
+            {/* HERRAMIENTAS DE COACH */}
+            <View style={{ flexDirection: 'row', gap: 5 }}>
+              <TouchableOpacity 
+                style={styles.iconHitbox}
+                onPress={() => router.push({ pathname: '/add-workout', params: { athlete_id: params.id, name: params.name, edit_id: wk.id } })}
+              >
+                <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconHitbox} onPress={() => handleDeleteWorkout(wk.id, wk.title)}>
+                <Ionicons name="trash-outline" size={20} color={colors.error} />
+              </TouchableOpacity>
+            </View>
           </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>
-              {wk.title}
-            </Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
-              {wk.date} • {wk.completed ? 'Completado' : 'Pendiente'}
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color={colors.border} />
-        </TouchableOpacity>
+
+          {/* DETALLES DEL ENTRENAMIENTO REALIZADO (SOLO SI ESTÁ COMPLETADO) */}
+          {wk.completed && wk.completion_data && (
+            <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+                <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
+                  ESFUERZO (RPE): <Text style={{ color: colors.success, fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
+                </Text>
+              </View>
+              
+              {/* LISTA DE EJERCICIOS COMPLETADOS */}
+              {wk.completion_data.exercise_results && wk.completion_data.exercise_results.length > 0 && (
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 5 }}>REGISTRO DE CARGAS:</Text>
+                  {wk.completion_data.exercise_results.map((ex: any, idx: number) => (
+                    <Text key={idx} style={{ color: colors.textPrimary, fontSize: 12, marginBottom: 4 }}>
+                      • {ex.name}: <Text style={{ fontWeight: '700' }}>{ex.completed_sets || 0} series</Text> x {ex.logged_reps || 0} reps @ <Text style={{ color: colors.primary, fontWeight: '800' }}>{ex.logged_weight || 0}kg</Text>
+                    </Text>
+                  ))}
+                </View>
+              )}
+
+              {/* OBSERVACIONES DEL DEPORTISTA */}
+              {(wk.observations || wk.completion_data.observations) ? (
+                <View style={{ marginTop: 5, padding: 12, backgroundColor: colors.surfaceHighlight, borderRadius: 10 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 2 }}>OBSERVACIONES:</Text>
+                  <Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>
+                    "{wk.observations || wk.completion_data.observations}"
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          )}
+
+        </View>
       )) : (
         <View style={{ alignItems: 'center', padding: 30 }}>
           <Ionicons name="folder-open-outline" size={40} color={colors.border} />
@@ -350,7 +418,12 @@ const styles = StyleSheet.create({
   noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 },
   actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 },
   actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
-  sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 20, marginBottom: 12, elevation: 1 },
+  
+  // NUEVOS ESTILOS PARA LA SESIÓN DEL COACH
+  sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 },
+  iconHitbox: { padding: 8 },
+  completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 },
+  
   avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   cardTitle: { fontSize: 15, fontWeight: '800' },
   progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 },
