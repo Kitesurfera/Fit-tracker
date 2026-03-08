@@ -14,6 +14,7 @@ export default function EditWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { workoutId } = useLocalSearchParams<{ workoutId: string }>();
+  
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState('');
@@ -22,38 +23,55 @@ export default function EditWorkoutScreen() {
   const [exercises, setExercises] = useState<any[]>([]);
   const [error, setError] = useState('');
   
-  // --- NUEVOS ESTADOS DE PERIODIZACIÓN ---
+  // --- ESTADOS DE PERIODIZACIÓN ---
   const [athleteId, setAthleteId] = useState<string>('');
   const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
   const [selectedMicroId, setSelectedMicroId] = useState<string | null>(null);
 
+  // --- SOLUCIÓN AL PANTALLAZO NEGRO ---
   useEffect(() => {
-    if (workoutId) {
-      api.getWorkout(workoutId).then((w) => {
-        setTitle(w.title || '');
-        setNotes(w.notes || '');
-        setDate(w.date || '');
-        setAthleteId(w.athlete_id || ''); // Necesitamos el athlete_id para cargar sus ciclos
-        setSelectedMicroId(w.microciclo_id || null); // Marcamos el que ya tenía asignado
-        setExercises(
-          (w.exercises || []).map((ex: any) => ({
-            _key: Math.random().toString(),
-            name: ex.name || '',
-            sets: ex.sets || '',
-            reps: ex.reps || '',
-            weight: ex.weight || '',
-            rest: ex.rest || '',
-            video_url: ex.video_url || '',
-            exercise_notes: ex.exercise_notes || '',
-            image_path: ex.image_path || '',
-          }))
-        );
-      }).catch(() => setError('No se pudo cargar el entrenamiento'))
-        .finally(() => setLoading(false));
-    }
+    const fetchWorkoutData = async () => {
+      if (!workoutId) return;
+      
+      try {
+        // Usamos la función en plural que sí existe en nuestra API
+        const allWorkouts = await api.getWorkouts();
+        const w = allWorkouts.find((wk: any) => wk.id === workoutId);
+
+        if (w) {
+          setTitle(w.title || '');
+          setNotes(w.notes || '');
+          setDate(w.date || '');
+          setAthleteId(w.athlete_id || ''); 
+          setSelectedMicroId(w.microciclo_id || null); 
+          
+          setExercises(
+            (w.exercises || []).map((ex: any) => ({
+              _key: Math.random().toString(),
+              name: ex.name || '',
+              sets: ex.sets || '',
+              reps: ex.reps || '',
+              weight: ex.weight || '',
+              rest: ex.rest || '',
+              video_url: ex.video_url || '',
+              exercise_notes: ex.exercise_notes || '',
+              image_path: ex.image_path || '',
+            }))
+          );
+        } else {
+          setError('No se pudo encontrar el entrenamiento en la base de datos.');
+        }
+      } catch (err) {
+        setError('Error de conexión al cargar el entrenamiento.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchWorkoutData();
   }, [workoutId]);
 
-  // --- EFECTO PARA CARGAR MICROCICLOS UNA VEZ SABEMOS EL ATLETA ---
+  // --- EFECTO PARA CARGAR MICROCICLOS ---
   useEffect(() => {
     if (athleteId) {
       api.getPeriodizationTree(athleteId).then((tree) => {
@@ -154,7 +172,7 @@ export default function EditWorkoutScreen() {
         title: title.trim(), 
         notes: notes.trim(), 
         exercises: cleanExercises,
-        microciclo_id: selectedMicroId // <-- AQUÍ GUARDAMOS EL CAMBIO DE SEMANA
+        microciclo_id: selectedMicroId 
       });
       router.back();
     } catch (e: any) {
@@ -166,8 +184,8 @@ export default function EditWorkoutScreen() {
 
   if (loading) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <ActivityIndicator size="large" color={colors.primary} style={{ marginTop: 60 }} />
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </SafeAreaView>
     );
   }
@@ -191,7 +209,6 @@ export default function EditWorkoutScreen() {
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
           
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            {/* Date badge */}
             <View style={[styles.dateBadge, { backgroundColor: colors.surfaceHighlight }]}>
               <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
               <Text style={[styles.dateText, { color: colors.textSecondary }]}>{date}</Text>
@@ -215,7 +232,7 @@ export default function EditWorkoutScreen() {
             
             {microciclosDisponibles.length === 0 ? (
               <Text style={{ fontSize: 13, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 }}>
-                No hay microciclos disponibles.
+                No hay microciclos creados en la periodización.
               </Text>
             ) : (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
@@ -252,7 +269,6 @@ export default function EditWorkoutScreen() {
               </ScrollView>
             )}
           </View>
-          {/* --- FIN SELECTOR --- */}
 
           {/* Exercises */}
           <View style={styles.section}>
@@ -266,7 +282,6 @@ export default function EditWorkoutScreen() {
 
             {exercises.map((ex, i) => (
               <View key={ex._key || i} style={[styles.exerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                {/* Exercise header with name, reorder, delete */}
                 <View style={styles.exerciseHeader}>
                   <View style={styles.reorderBtns}>
                     <TouchableOpacity onPress={() => moveExercise(i, 'up')} disabled={i === 0}
@@ -290,7 +305,6 @@ export default function EditWorkoutScreen() {
                   )}
                 </View>
 
-                {/* Details row */}
                 <View style={[styles.exDetailsRow, { borderTopColor: colors.border }]}>
                   <View style={styles.exDetail}>
                     <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Series</Text>
@@ -329,7 +343,6 @@ export default function EditWorkoutScreen() {
                   </View>
                 </View>
 
-                {/* Video URL */}
                 <View style={[styles.videoUrlRow, { borderTopColor: colors.border }]}>
                   <Ionicons name="videocam-outline" size={16} color={colors.textSecondary} />
                   <TextInput
@@ -340,7 +353,7 @@ export default function EditWorkoutScreen() {
                     autoCapitalize="none" keyboardType="url"
                   />
                 </View>
-                {/* Exercise notes */}
+
                 <View style={[styles.videoUrlRow, { borderTopColor: colors.border }]}>
                   <Ionicons name="chatbubble-outline" size={16} color={colors.textSecondary} />
                   <TextInput
@@ -350,7 +363,7 @@ export default function EditWorkoutScreen() {
                     placeholderTextColor={colors.textSecondary}
                   />
                 </View>
-                {/* Image upload */}
+
                 <View style={[styles.videoUrlRow, { borderTopColor: colors.border }]}>
                   {imagePreviews[i] || (ex as any).image_path ? (
                     <View style={styles.imagePreviewRow}>
@@ -402,7 +415,6 @@ export default function EditWorkoutScreen() {
             </View>
           ) : null}
 
-          {/* Save button */}
           <TouchableOpacity
             testID="edit-workout-save"
             style={[styles.submitBtn, { backgroundColor: colors.primary }]}
