@@ -10,18 +10,21 @@ import { api } from '../src/api';
 export default function AddWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const params = useLocalSearchParams<{ athlete_id: string; name: string; microciclo_id?: string }>();
+  
+  // Magia de Expo Router: Atrapamos todos los parámetros posibles
+  const params = useLocalSearchParams<{ athlete_id: string; name: string; microciclo_id?: string; edit_id?: string }>();
 
-  // --- ESTADOS ORIGINALES DEL ENTRENAMIENTO ---
+  // --- ESTADOS DEL FORMULARIO ---
   const [titulo, setTitulo] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [notas, setNotas] = useState('');
-  const [ejercicios, setEjercicios] = useState([
+  const [ejercicios, setEjercicios] = useState<any[]>([
     { name: '', sets: '', reps: '', weight: '', rest: '', exercise_notes: '', video_url: '', image_path: '' }
   ]);
+  
+  // --- ESTADOS DE CONTROL ---
+  const [loading, setLoading] = useState(true); // Para que no parpadee al cargar datos de edición
   const [saving, setSaving] = useState(false);
-
-  // --- NUEVOS ESTADOS PARA PERIODIZACIÓN ---
   const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
   const [selectedMicroId, setSelectedMicroId] = useState<string | null>(params.microciclo_id || null);
 
@@ -31,20 +34,52 @@ export default function AddWorkoutScreen() {
   const [csvLoading, setCsvLoading] = useState(false);
   const [showCsvFormat, setShowCsvFormat] = useState(false);
 
-  // --- CARGAR MICROCICLOS ---
-  const loadMicrociclos = async () => {
-    try {
-      if (!params.athlete_id) return;
-      const tree = await api.getPeriodizationTree(params.athlete_id);
-      const todosLosMicros = tree.flatMap((macro: any) => macro.microciclos || []);
-      todosLosMicros.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
-      setMicrociclosDisponibles(todosLosMicros);
-    } catch (error) {
-      console.log("Error cargando microciclos:", error);
-    }
-  };
+  // --- INICIALIZACIÓN (AQUÍ ESTÁ LA CLAVE PARA EDITAR) ---
+  useEffect(() => {
+    const initData = async () => {
+      try {
+        setLoading(true);
+        // 1. Cargamos los microciclos disponibles para el selector
+        if (params.athlete_id) {
+          const tree = await api.getPeriodizationTree(params.athlete_id);
+          const todosLosMicros = tree.flatMap((macro: any) => macro.microciclos || []);
+          todosLosMicros.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+          setMicrociclosDisponibles(todosLosMicros);
+        }
 
-  useEffect(() => { loadMicrociclos(); }, [params.athlete_id]);
+        // 2. Si venimos a EDITAR, pedimos los datos del entrenamiento antiguo
+        if (params.edit_id && params.athlete_id) {
+          // Buscamos el entrenamiento específico en la lista del atleta
+          const wks = await api.getWorkouts({ athlete_id: params.athlete_id });
+          const workoutToEdit = wks.find((w: any) => w.id === params.edit_id);
+          
+          if (workoutToEdit) {
+            setTitulo(workoutToEdit.title || '');
+            setFecha(workoutToEdit.date || '');
+            setNotas(workoutToEdit.notes || '');
+            setSelectedMicroId(workoutToEdit.microciclo_id || null);
+            
+            if (workoutToEdit.exercises && workoutToEdit.exercises.length > 0) {
+              setEjercicios(workoutToEdit.exercises);
+              
+              // Precargar previsualizaciones de imágenes si las tienen
+              const previews: Record<number, string> = {};
+              workoutToEdit.exercises.forEach((ex: any, idx: number) => {
+                if (ex.image_path) previews[idx] = ex.image_path;
+              });
+              setImagePreviews(previews);
+            }
+          }
+        }
+      } catch (error) {
+        console.log("Error inicializando pantalla:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initData();
+  }, [params.athlete_id, params.edit_id]);
 
   // --- MANEJO DE IMÁGENES ---
   const pickExerciseImage = async (exIndex: number) => {
@@ -66,20 +101,19 @@ export default function AddWorkoutScreen() {
       
       updateExercise(exIndex, 'image_path', uploaded.storage_path);
     } catch (e: any) {
-      Alert.alert('Error', e.message || 'No se pudo subir la imagen');
+      if (Platform.OS !== 'web') Alert.alert('Error', e.message || 'No se pudo subir la imagen');
     } finally {
       setImageUploading(null);
     }
   };
 
-  // --- MANEJO DE CSV (TRUCO NATIVO PARA WEB SIN DEPENDENCIAS) ---
+  // --- MANEJO DE CSV ---
   const handleImportCSV = () => {
     if (Platform.OS !== 'web') {
       Alert.alert('Aviso', 'La importación de CSV actualmente está optimizada para la versión Web.');
       return;
     }
 
-    // Creamos un input de archivo invisible en el navegador
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.csv, text/csv';
@@ -97,28 +131,25 @@ export default function AddWorkoutScreen() {
       };
       
       reader.onerror = () => {
-        Alert.alert('Error', 'No se pudo leer el archivo.');
+        window.alert('No se pudo leer el archivo.');
         setCsvLoading(false);
       };
 
       reader.readAsText(file);
     };
 
-    // Simulamos un click para abrir el explorador de archivos
     input.click();
   };
 
   const procesarTextoCSV = (csvText: string) => {
     try {
-      // Separar por líneas (soportando saltos de línea de Windows y Mac/Linux)
       const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
       if (lines.length < 2) {
-        Alert.alert('Error', 'El archivo CSV parece estar vacío o no tiene ejercicios.');
+        window.alert('El archivo CSV parece estar vacío o no tiene ejercicios.');
         setCsvLoading(false);
         return;
       }
 
-      // Mapear líneas a ejercicios (saltando la cabecera en la línea 0)
       const newExercises = lines.slice(1).map(line => {
         const separator = line.includes(';') ? ';' : ',';
         const columns = line.split(separator).map(item => item?.trim().replace(/^"|"$/g, '') || '');
@@ -139,12 +170,12 @@ export default function AddWorkoutScreen() {
       
       if (validExercises.length > 0) {
         setEjercicios(validExercises);
-        Alert.alert('Éxito', `Se han importado ${validExercises.length} ejercicios.`);
+        window.alert(`Se han importado ${validExercises.length} ejercicios.`);
       } else {
-        Alert.alert('Aviso', 'No se detectaron ejercicios válidos en el archivo.');
+        window.alert('No se detectaron ejercicios válidos en el archivo.');
       }
     } catch (error) {
-      Alert.alert('Error', 'El formato del CSV no es válido.');
+      window.alert('El formato del CSV no es válido.');
     } finally {
       setCsvLoading(false);
     }
@@ -161,36 +192,57 @@ export default function AddWorkoutScreen() {
   
   const removeExercise = (index: number) => setEjercicios(ejercicios.filter((_, i) => i !== index));
 
-  // --- GUARDADO FINAL ---
+  // --- GUARDADO FINAL (CREAR O ACTUALIZAR) ---
   const handleSave = async () => {
     if (!titulo || !fecha) {
-      Alert.alert('Error', 'Por favor, completa el título y la fecha.');
+      if (Platform.OS !== 'web') Alert.alert('Error', 'Por favor, completa el título y la fecha.');
+      else window.alert('Por favor, completa el título y la fecha.');
       return;
     }
 
     const ejerciciosLimpios = ejercicios.filter(e => e.name.trim() !== '');
     if (ejerciciosLimpios.length === 0) {
-      Alert.alert('Error', 'Añade al menos un ejercicio con nombre.');
+      if (Platform.OS !== 'web') Alert.alert('Error', 'Añade al menos un ejercicio con nombre.');
+      else window.alert('Añade al menos un ejercicio con nombre.');
       return;
     }
 
     setSaving(true);
     try {
-      await api.createWorkout({
+      const payload = {
         title: titulo,
         date: fecha,
         exercises: ejerciciosLimpios,
         notes: notas,
         athlete_id: params.athlete_id,
         microciclo_id: selectedMicroId 
-      });
+      };
+
+      if (params.edit_id) {
+        // ACTUALIZAR EXISTENTE
+        await api.updateWorkout(params.edit_id, payload);
+      } else {
+        // CREAR NUEVO
+        await api.createWorkout(payload);
+      }
+      
       router.back();
     } catch (e) {
-      Alert.alert('Error', 'Hubo un problema al guardar el entrenamiento.');
+      if (Platform.OS !== 'web') Alert.alert('Error', 'Hubo un problema al guardar el entrenamiento.');
+      else console.error(e);
     } finally {
       setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 10, color: colors.textSecondary }}>Cargando planificación...</Text>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -198,9 +250,11 @@ export default function AddWorkoutScreen() {
         <TouchableOpacity onPress={() => router.back()}>
           <Ionicons name="close" size={28} color={colors.textPrimary} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nuevo Entrenamiento</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
+          {params.edit_id ? 'Editar Sesión' : 'Nueva Sesión'}
+        </Text>
         <TouchableOpacity onPress={handleSave} disabled={saving}>
-          {saving ? <ActivityIndicator color={colors.primary} /> : <Text style={[styles.saveText, { color: colors.primary }]}>Guardar</Text>}
+          {saving ? <ActivityIndicator color={colors.primary} /> : <Text style={[styles.saveText, { color: colors.primary }]}>{params.edit_id ? 'Actualizar' : 'Guardar'}</Text>}
         </TouchableOpacity>
       </View>
 
@@ -243,7 +297,7 @@ export default function AddWorkoutScreen() {
 
           {/* DATOS BÁSICOS */}
           <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>TÍTULO DEL ENTRENAMIENTO</Text>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>TÍTULO DEL ENTRENAMIENTO *</Text>
             <TextInput
               style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}
               placeholder="Ej: Torso Fuerza Máxima"
@@ -253,7 +307,7 @@ export default function AddWorkoutScreen() {
             />
 
             <View style={{ marginTop: 16 }}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA</Text>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA *</Text>
               <TextInput
                 style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}
                 placeholder="YYYY-MM-DD"
@@ -269,7 +323,7 @@ export default function AddWorkoutScreen() {
               
               {microciclosDisponibles.length === 0 ? (
                 <Text style={{ fontSize: 13, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 }}>
-                  No hay microciclos creados en el calendario.
+                  No hay microciclos creados en la periodización.
                 </Text>
               ) : (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
@@ -311,7 +365,7 @@ export default function AddWorkoutScreen() {
           {/* EJERCICIOS */}
           <View style={[styles.section, { marginTop: 10 }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Ejercicios</Text>
+              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Ejercicios *</Text>
             </View>
 
             {ejercicios.map((ej, index) => (
@@ -414,7 +468,7 @@ export default function AddWorkoutScreen() {
 
           {/* NOTAS GENERALES */}
           <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS DEL ENTRENAMIENTO</Text>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS GENERALES DEL ENTRENAMIENTO</Text>
             <TextInput
               style={[styles.input, styles.textArea, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}
               placeholder="Instrucciones generales para la sesión..."
@@ -444,15 +498,15 @@ const styles = StyleSheet.create({
   
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
-  label: { fontSize: 12, fontWeight: '700', marginBottom: 6, letterSpacing: 0.5 },
-  smallLabel: { fontSize: 11, fontWeight: '600', marginBottom: 4, letterSpacing: 0.5 },
+  label: { fontSize: 12, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
+  smallLabel: { fontSize: 11, fontWeight: '700', marginBottom: 4, letterSpacing: 0.5 },
   
-  input: { borderWidth: 1, borderRadius: 8, padding: 14, fontSize: 15 },
+  input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15 },
   textArea: { height: 100, textAlignVertical: 'top' },
   
   microChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, marginRight: 8, borderWidth: 1 },
   
-  exerciseCard: { borderWidth: 1, borderRadius: 12, padding: 16, marginBottom: 16 },
+  exerciseCard: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 16 },
   addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderWidth: 2, borderRadius: 12, marginTop: 8 },
   
   extrasContainer: { borderTopWidth: 0.5, paddingTop: 8, gap: 4 },
