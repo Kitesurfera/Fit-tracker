@@ -182,7 +182,7 @@ export default function AthleteDetailScreen() {
 
       <TouchableOpacity 
         style={[styles.actionBtn, { backgroundColor: colors.primary, marginTop: 25 }]}
-        onPress={() => router.push({ pathname: '/periodization', params: { athlete_id: params.id, name: params.name } })}
+        onPress={() => router.push(`/periodization?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
       >
         <Ionicons name="calendar" size={20} color="#FFF" />
         <Text style={styles.actionBtnText}>PLANIFICACIÓN (MACRO/MICRO)</Text>
@@ -196,7 +196,7 @@ export default function AthleteDetailScreen() {
         <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>HISTORIAL DE SESIONES</Text>
         <TouchableOpacity 
           style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}
-          onPress={() => router.push({ pathname: '/add-workout', params: { athlete_id: params.id, name: params.name } })}
+          onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
         >
           <Ionicons name="add" size={16} color="#FFF" />
           <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>NUEVO</Text>
@@ -224,7 +224,7 @@ export default function AthleteDetailScreen() {
             <View style={{ flexDirection: 'row', gap: 5 }}>
               <TouchableOpacity 
                 style={styles.iconHitbox}
-                onPress={() => router.push({ pathname: '/add-workout', params: { athlete_id: params.id, name: params.name, edit_id: wk.id } })}
+                onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}&edit_id=${wk.id}`)}
               >
                 <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
