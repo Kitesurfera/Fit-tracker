@@ -131,16 +131,15 @@ export default function CalendarScreen() {
     }
   };
 
-  // --- EL TRUCO DEL ENRUTADO ESTÁ AQUÍ ---
+
   const handleWorkoutPress = (workoutId: string) => {
     if (isTrainer) {
-      // Pasamos los parámetros de forma 100% explícita en la URL
-      router.push(`/add-workout?athlete_id=${selectedAthlete.id}&name=${encodeURIComponent(selectedAthlete.name)}&edit_id=${workoutId}`);
+      // Ahora sí, apuntamos al archivo correcto de edición
+      router.push({ pathname: '/edit-workout', params: { workoutId } });
     } else {
       router.push({ pathname: '/training-mode', params: { workoutId } });
     }
   };
-
   if (loading && athletes.length === 0) return <View style={{flex:1, justifyContent:'center', alignItems:'center'}}><ActivityIndicator size="large" color={colors.primary}/></View>;
 
   return (
