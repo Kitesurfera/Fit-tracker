@@ -27,7 +27,6 @@ export default function CalendarScreen() {
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
   
-  // Guardamos solo la lista de macros para iterar sin errores
   const [macros, setMacros] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
   
@@ -61,7 +60,6 @@ export default function CalendarScreen() {
     setShowPicker(false);
     setLoading(true);
     try {
-      // CORRECCIÓN: Extraemos específicamente la propiedad macros
       const res = await api.getPeriodizationTree(athlete.id);
       setMacros(res?.macros || []);
       
@@ -93,6 +91,7 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
+  // --- LÓGICA DE COLOR DE MICRO/MACROCICLO MEJORADA ---
   const getDayStatus = (day: number | null) => {
     if (!day) return null;
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -105,13 +104,14 @@ export default function CalendarScreen() {
       status.isCompleted = workoutForDay.completed;
     }
 
-    // CORRECCIÓN: Iteración segura sobre el array de macros
     if (Array.isArray(macros)) {
       for (const macro of macros) {
-        const micro = macro.microciclos?.find((m: any) => dateStr >= m.fecha_inicio && dateStr <= m.fecha_fin);
-        if (micro) {
-          status.phaseColor = micro.color;
-          break;
+        if (macro.microciclos && Array.isArray(macro.microciclos)) {
+          const micro = macro.microciclos.find((m: any) => dateStr >= m.fecha_inicio && dateStr <= m.fecha_fin);
+          if (micro) {
+            status.phaseColor = micro.color;
+            break; 
+          }
         }
       }
     }
@@ -145,6 +145,27 @@ export default function CalendarScreen() {
     } else {
       if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); }
       else setCurrentMonth(currentMonth + 1);
+    }
+  };
+
+  // --- ACCIÓN AL PULSAR UN ENTRENAMIENTO ---
+  const handleWorkoutPress = (workoutId: string) => {
+    if (isTrainer) {
+      // Si es la entrenadora, la mandamos al editor
+      router.push({ 
+        pathname: '/add-workout', 
+        params: { 
+          athlete_id: selectedAthlete.id, 
+          name: selectedAthlete.name, 
+          edit_id: workoutId 
+        } 
+      });
+    } else {
+      // Si eres tú (la deportista), te mandamos a entrenar
+      router.push({ 
+        pathname: '/training-mode', 
+        params: { workoutId } 
+      });
     }
   };
 
@@ -195,7 +216,9 @@ export default function CalendarScreen() {
                 key={i} 
                 style={[
                   styles.dayCell, 
-                  isSelected && { backgroundColor: colors.primary + '20', borderRadius: 12 },
+                  // Si tiene fase, le ponemos un fondo muy suavecito de su color
+                  status?.phaseColor && { backgroundColor: status.phaseColor + '15', borderRadius: 12 },
+                  isSelected && { backgroundColor: (status?.phaseColor || colors.primary) + '40', borderWidth: 2, borderColor: status?.phaseColor || colors.primary, borderRadius: 12 },
                   status?.hasWorkout && !isSelected && { borderWidth: 1, borderColor: status.isCompleted ? colors.success : colors.primary, borderRadius: 12 }
                 ]}
                 onPress={() => dateStr && setSelectedDate(dateStr)}
@@ -206,14 +229,16 @@ export default function CalendarScreen() {
                     <Text style={[
                       styles.dayText, 
                       { color: colors.textPrimary }, 
-                      isSelected && { color: colors.primary, fontWeight: '900' },
-                      isToday && !isSelected && { color: colors.error, fontWeight: '800' }
+                      status?.phaseColor && { color: status.phaseColor, fontWeight: '800' },
+                      isSelected && { color: status?.phaseColor || colors.primary, fontWeight: '900' },
+                      isToday && !isSelected && { color: colors.error, fontWeight: '900' }
                     ]}>
                       {day}
                     </Text>
-                    {status?.phaseColor && <View style={[styles.dot, { backgroundColor: status.phaseColor }]} />}
+                    {/* El puntito inferior lo dejamos por si acaso, pero el fondo ya da la info */}
+                    {status?.phaseColor && !isSelected && <View style={[styles.dot, { backgroundColor: status.phaseColor }]} />}
                     {status?.hasWorkout && status?.isCompleted && (
-                      <Ionicons name="checkmark-circle" size={10} color={colors.success} style={{ position: 'absolute', top: 4, right: 4 }} />
+                      <Ionicons name="checkmark-circle" size={12} color={colors.success} style={{ position: 'absolute', top: 2, right: 2 }} />
                     )}
                   </>
                 )}
@@ -231,16 +256,19 @@ export default function CalendarScreen() {
             <TouchableOpacity 
               key={wk.id} 
               style={[styles.workoutCard, { backgroundColor: colors.surface }]}
-              onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: wk.id } })}
+              // AQUÍ LLAMAMOS A LA NUEVA FUNCIÓN QUE DECIDE A DÓNDE IR
+              onPress={() => handleWorkoutPress(wk.id)}
             >
               <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '15' }]}>
                 <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? colors.success : colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{wk.title}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.completed ? 'Completado' : 'Sesión pendiente'}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                  {wk.completed ? 'Completado' : isTrainer ? 'Sesión asignada' : 'Sesión pendiente'}
+                </Text>
               </View>
-              <Ionicons name="chevron-forward" size={20} color={colors.border} />
+              <Ionicons name={isTrainer ? "pencil" : "chevron-forward"} size={20} color={colors.border} />
             </TouchableOpacity>
           ))
         ) : (
@@ -255,7 +283,7 @@ export default function CalendarScreen() {
             <Text style={[styles.macroName, { color: colors.textSecondary }]}>{activeDetail.macro?.nombre}</Text>
             <Text style={[styles.microName, { color: colors.textPrimary }]}>{activeDetail.micro?.nombre}</Text>
             <View style={[styles.badge, { backgroundColor: activeDetail.micro.color + '20' }]}>
-              <Text style={{ color: activeDetail.micro.color, fontSize: 10, fontWeight: '800' }}>{activeDetail.micro.tipo}</Text>
+              <Text style={{ color: activeDetail.micro.color, fontSize: 10, fontWeight: '900' }}>{activeDetail.micro.tipo}</Text>
             </View>
           </View>
         )}
@@ -268,7 +296,7 @@ export default function CalendarScreen() {
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text>
             {athletes.map(a => (
               <TouchableOpacity key={a.id} style={[styles.athleteItem, { borderBottomColor: colors.border }]} onPress={() => handleSelectAthlete(a)}>
-                <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{a.name}</Text>
+                <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -284,26 +312,26 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 24, fontWeight: '900' },
   iconBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.03)', justifyContent: 'center', alignItems: 'center' },
   monthSelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 15 },
-  monthLabel: { fontSize: 16, fontWeight: '900' },
+  monthLabel: { fontSize: 18, fontWeight: '900', textTransform: 'capitalize' },
   calendarGrid: { paddingHorizontal: 15 },
   weekDays: { flexDirection: 'row', marginBottom: 10 },
   weekDayText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '800' },
-  daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
-  dayText: { fontSize: 14, fontWeight: '600' },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 2 }, // Pequeño gap para que los fondos no se pisen
+  dayCell: { width: '13.5%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', margin: '0.35%' },
+  dayText: { fontSize: 15, fontWeight: '600' },
   dot: { width: 5, height: 5, borderRadius: 2.5, position: 'absolute', bottom: 4 },
   footer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
-  footerLabel: { fontSize: 10, fontWeight: '800', color: '#888', marginBottom: 15 },
-  workoutCard: { flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 18, marginBottom: 12 },
-  workoutIcon: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  workoutTitle: { fontSize: 15, fontWeight: '800' },
-  detailCard: { padding: 15, borderRadius: 18, borderLeftWidth: 4, marginBottom: 15 },
-  macroName: { fontSize: 9, fontWeight: '800' },
-  microName: { fontSize: 16, fontWeight: '900' },
-  badge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginTop: 10 },
-  emptyCard: { alignItems: 'center', paddingVertical: 20 },
+  footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1 },
+  workoutCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 18, marginBottom: 12 },
+  workoutIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  workoutTitle: { fontSize: 16, fontWeight: '800' },
+  detailCard: { padding: 18, borderRadius: 20, borderLeftWidth: 6, marginBottom: 25 },
+  macroName: { fontSize: 10, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
+  microName: { fontSize: 18, fontWeight: '900', marginTop: 2 },
+  badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 10 },
+  emptyCard: { alignItems: 'center', paddingVertical: 30 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { borderTopLeftRadius: 25, borderTopRightRadius: 25, padding: 20 },
-  modalTitle: { fontSize: 16, fontWeight: '900', marginBottom: 15 },
-  athleteItem: { paddingVertical: 15, borderBottomWidth: 1 }
+  modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
+  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20 },
+  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
 });
