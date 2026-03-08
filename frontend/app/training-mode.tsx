@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, TextInput, Alert
+  ActivityIndicator, Linking, TextInput, Alert, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +14,10 @@ type SetStatus = 'pending' | 'completed' | 'skipped';
 export default function TrainingModeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workoutId } = useLocalSearchParams<{ workoutId: string }>();
+  
+  // Extraemos de forma segura para evitar cuelgues de ruta
+  const params = useLocalSearchParams();
+  const currentWorkoutId = typeof params.workoutId === 'string' ? params.workoutId : params.workoutId?.[0];
   
   const [workout, setWorkout] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -33,12 +36,19 @@ export default function TrainingModeScreen() {
   const [observations, setObservations] = useState('');
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchWorkoutDetail = async () => {
+      if (!currentWorkoutId) {
+        if (isMounted) setLoading(false);
+        return;
+      }
+
       try {
         const allWorkouts = await api.getWorkouts();
-        const currentWorkout = allWorkouts.find((w: any) => w.id === workoutId);
+        const currentWorkout = allWorkouts.find((w: any) => w.id === currentWorkoutId);
         
-        if (currentWorkout) {
+        if (currentWorkout && isMounted) {
           setWorkout(currentWorkout);
           
           if (currentWorkout.completed) {
@@ -66,12 +76,14 @@ export default function TrainingModeScreen() {
       } catch (e) {
         console.error("Error cargando entrenamiento:", e);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
-    if (workoutId) fetchWorkoutDetail();
-  }, [workoutId]);
+    fetchWorkoutDetail();
+
+    return () => { isMounted = false; };
+  }, [currentWorkoutId]);
 
   useEffect(() => {
     if (isResting && restSeconds > 0) {
@@ -223,6 +235,8 @@ export default function TrainingModeScreen() {
       return;
     }
 
+    if (!currentWorkoutId) return;
+
     const completionData = buildCompletionData();
     try {
       const updateData: any = {
@@ -239,11 +253,11 @@ export default function TrainingModeScreen() {
       updateData.exercises = cleanExercises;
       updateData.title = workout.title;
 
-      await api.updateWorkout(workoutId!, updateData);
+      await api.updateWorkout(currentWorkoutId, updateData);
       router.back();
     } catch (e) { 
       console.log(e); 
-      Alert.alert("Error", "Hubo un error al guardar. Asegúrate de tener conexión.");
+      if (Platform.OS !== 'web') Alert.alert("Error", "Hubo un error al guardar. Asegúrate de tener conexión.");
     }
   };
 
@@ -264,162 +278,164 @@ export default function TrainingModeScreen() {
           <View style={{ width: 26 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.finishedContainer} keyboardShouldPersistTaps="handled">
-          <View style={[styles.finishedIcon, { backgroundColor: hasSkips ? colors.warning + '15' : colors.success + '15' }]}>
-            <Ionicons name={hasSkips ? 'alert-circle' : 'checkmark-circle'} size={64} color={hasSkips ? colors.warning : colors.success} />
-          </View>
-          <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>
-            {workout.completed ? 'Reporte de Rendimiento' : hasSkips ? 'Entrenamiento finalizado' : '¡Entrenamiento completado!'}
-          </Text>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={styles.finishedContainer} keyboardShouldPersistTaps="handled">
+            <View style={[styles.finishedIcon, { backgroundColor: hasSkips ? colors.warning + '15' : colors.success + '15' }]}>
+              <Ionicons name={hasSkips ? 'alert-circle' : 'checkmark-circle'} size={64} color={hasSkips ? colors.warning : colors.success} />
+            </View>
+            <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>
+              {workout.completed ? 'Reporte de Rendimiento' : hasSkips ? 'Entrenamiento finalizado' : '¡Entrenamiento completado!'}
+            </Text>
 
-          {/* TARJETA DE BIENESTAR / ESFUERZO */}
-          <View style={[styles.wellnessCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.wellnessTitle, { color: colors.textPrimary }]}>Esfuerzo Percibido (RPE)</Text>
-            
-            {workout.completed ? (
-              // VISTA REPORTE (SOLO LECTURA)
-              <View style={styles.readOnlyReportBox}>
-                <View style={[styles.rpeBtn, { backgroundColor: (rpe || 0) > 7 ? colors.error : (rpe || 0) > 4 ? colors.warning : colors.success, borderColor: 'transparent', width: 60, height: 60 }]}>
-                  <Text style={{ color: '#FFF', fontSize: 28, fontWeight: '900' }}>{rpe || '-'}</Text>
+            {/* TARJETA DE BIENESTAR / ESFUERZO */}
+            <View style={[styles.wellnessCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.wellnessTitle, { color: colors.textPrimary }]}>Esfuerzo Percibido (RPE)</Text>
+              
+              {workout.completed ? (
+                // VISTA REPORTE (SOLO LECTURA)
+                <View style={styles.readOnlyReportBox}>
+                  <View style={[styles.rpeBtn, { backgroundColor: (rpe || 0) > 7 ? colors.error : (rpe || 0) > 4 ? colors.warning : colors.success, borderColor: 'transparent', width: 60, height: 60 }]}>
+                    <Text style={{ color: '#FFF', fontSize: 28, fontWeight: '900' }}>{rpe || '-'}</Text>
+                  </View>
+                  <View style={{ marginLeft: 20 }}>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>DESCANSO PREVIO:</Text>
+                    <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '800', textTransform: 'uppercase', marginTop: 2 }}>{sleep || 'NO REGISTRADO'}</Text>
+                  </View>
                 </View>
-                <View style={{ marginLeft: 20 }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>DESCANSO PREVIO:</Text>
-                  <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '800', textTransform: 'uppercase', marginTop: 2 }}>{sleep || 'NO REGISTRADO'}</Text>
-                </View>
-              </View>
-            ) : (
-              // VISTA DE FORMULARIO (PARA RELLENAR)
-              <>
-                <View style={styles.rpeGrid}>
-                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
-                    const isSelected = rpe === num;
-                    let rpeColor = colors.success; 
-                    if (num > 4) rpeColor = colors.warning;
-                    if (num > 7) rpeColor = colors.error;
+              ) : (
+                // VISTA DE FORMULARIO (PARA RELLENAR)
+                <>
+                  <View style={styles.rpeGrid}>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
+                      const isSelected = rpe === num;
+                      let rpeColor = colors.success; 
+                      if (num > 4) rpeColor = colors.warning;
+                      if (num > 7) rpeColor = colors.error;
 
-                    return (
-                      <TouchableOpacity
-                        key={num}
-                        style={[
-                          styles.rpeBtn, 
-                          { borderColor: colors.border },
-                          isSelected && { backgroundColor: rpeColor, borderColor: rpeColor }
-                        ]}
-                        onPress={() => setRpe(num)}
-                      >
-                        <Text style={[styles.rpeText, { color: colors.textPrimary }, isSelected && { color: '#FFF' }]}>{num}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </View>
-                <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 20 }]}>¿Cómo has descansado hoy?</Text>
-                <View style={styles.sleepGrid}>
-                  {['bien', 'regular', 'mal'].map(opt => (
-                     <TouchableOpacity 
-                       key={opt}
-                       style={[styles.sleepBtn, { borderColor: colors.border }, sleep === opt && { backgroundColor: opt === 'bien' ? colors.success : opt === 'mal' ? colors.error : colors.warning, borderColor: opt === 'bien' ? colors.success : opt === 'mal' ? colors.error : colors.warning }]}
-                       onPress={() => setSleep(opt as any)}
-                     >
-                       <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === opt && { color: '#FFF' }]}>{opt.toUpperCase()}</Text>
-                     </TouchableOpacity>
-                  ))}
-                </View>
-              </>
-            )}
-          </View>
+                      return (
+                        <TouchableOpacity
+                          key={num}
+                          style={[
+                            styles.rpeBtn, 
+                            { borderColor: colors.border },
+                            isSelected && { backgroundColor: rpeColor, borderColor: rpeColor }
+                          ]}
+                          onPress={() => setRpe(num)}
+                        >
+                          <Text style={[styles.rpeText, { color: colors.textPrimary }, isSelected && { color: '#FFF' }]}>{num}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                  <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 24 }]}>¿Cómo has descansado hoy?</Text>
+                  <View style={styles.sleepGrid}>
+                    {['bien', 'regular', 'mal'].map(opt => (
+                       <TouchableOpacity 
+                         key={opt}
+                         style={[styles.sleepBtn, { borderColor: colors.border }, sleep === opt && { backgroundColor: opt === 'bien' ? colors.success : opt === 'mal' ? colors.error : colors.warning, borderColor: opt === 'bien' ? colors.success : opt === 'mal' ? colors.error : colors.warning }]}
+                         onPress={() => setSleep(opt as any)}
+                       >
+                         <Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === opt && { color: '#FFF' }]}>{opt.toUpperCase()}</Text>
+                       </TouchableOpacity>
+                    ))}
+                  </View>
+                </>
+              )}
+            </View>
 
-          <Text style={[styles.finishedSub, { color: colors.textSecondary, marginTop: 10 }]}>
-            {workout.completed ? 'Marcas levantadas' : 'Anota tus marcas reales de hoy'}
-          </Text>
+            <Text style={[styles.finishedSub, { color: colors.textSecondary, marginTop: 10 }]}>
+              {workout.completed ? 'Marcas levantadas' : 'Anota tus marcas reales de hoy'}
+            </Text>
 
-          <View style={styles.summaryList}>
-            {completionData.exercise_results && completionData.exercise_results.map((r: any, i: number) => {
-              const allDone = r.skipped_sets === 0;
-              const allSkipped = r.completed_sets === 0;
-              return (
-                <View key={i} style={[styles.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                    <View style={[styles.summaryIcon, { backgroundColor: allDone ? colors.success + '15' : allSkipped ? colors.error + '15' : colors.warning + '15' }]}>
-                      <Ionicons
-                        name={allDone ? 'checkmark-circle' : allSkipped ? 'close-circle' : 'remove-circle'}
-                        size={22} color={allDone ? colors.success : allSkipped ? colors.error : colors.warning}
-                      />
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.summaryName, { color: colors.textPrimary }]}>{r.name}</Text>
-                      <View style={styles.summaryDots}>
-                        {r.set_details && r.set_details.map((sd: any, si: number) => (
-                          <View key={si} style={[
-                            styles.miniDot,
-                            sd.status === 'completed' && { backgroundColor: colors.success },
-                            sd.status === 'skipped' && { backgroundColor: colors.error },
-                            sd.status === 'pending' && { backgroundColor: colors.border },
-                          ]} />
-                        ))}
+            <View style={styles.summaryList}>
+              {completionData.exercise_results && completionData.exercise_results.map((r: any, i: number) => {
+                const allDone = r.skipped_sets === 0;
+                const allSkipped = r.completed_sets === 0;
+                return (
+                  <View key={i} style={[styles.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                      <View style={[styles.summaryIcon, { backgroundColor: allDone ? colors.success + '15' : allSkipped ? colors.error + '15' : colors.warning + '15' }]}>
+                        <Ionicons
+                          name={allDone ? 'checkmark-circle' : allSkipped ? 'close-circle' : 'remove-circle'}
+                          size={22} color={allDone ? colors.success : allSkipped ? colors.error : colors.warning}
+                        />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.summaryName, { color: colors.textPrimary }]}>{r.name}</Text>
+                        <View style={styles.summaryDots}>
+                          {r.set_details && r.set_details.map((sd: any, si: number) => (
+                            <View key={si} style={[
+                              styles.miniDot,
+                              sd.status === 'completed' && { backgroundColor: colors.success },
+                              sd.status === 'skipped' && { backgroundColor: colors.error },
+                              sd.status === 'pending' && { backgroundColor: colors.border },
+                            ]} />
+                          ))}
+                        </View>
                       </View>
                     </View>
+                    
+                    {!allSkipped && (
+                      <View style={styles.logRow}>
+                        {workout.completed ? (
+                          // REPORTE DE PESOS
+                          <View style={styles.readOnlyLogBox}>
+                            <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '800' }}>Rendimiento Registrado:</Text>
+                            <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '900', marginTop: 4 }}>
+                              {logs[i]?.weight ? `${logs[i]?.weight} kg` : '- kg'}  <Text style={{ color: colors.primary }}>x</Text>  {logs[i]?.reps ? `${logs[i]?.reps} reps` : '- reps'}
+                            </Text>
+                          </View>
+                        ) : (
+                          // FORMULARIO DE PESOS
+                          <>
+                            <View style={styles.logInputWrapper}>
+                              <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Kilos reales</Text>
+                              <TextInput
+                                style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                                placeholder="Ej: 60" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
+                                value={logs[i]?.weight || ''} onChangeText={(w) => setLogs(prev => ({...prev, [i]: {...prev[i], weight: w}}))}
+                              />
+                            </View>
+                            <View style={styles.logInputWrapper}>
+                              <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Reps reales</Text>
+                              <TextInput
+                                style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                                placeholder="Ej: 10" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
+                                value={logs[i]?.reps || ''} onChangeText={(rep) => setLogs(prev => ({...prev, [i]: {...prev[i], reps: rep}}))}
+                              />
+                            </View>
+                          </>
+                        )}
+                      </View>
+                    )}
                   </View>
-                  
-                  {!allSkipped && (
-                    <View style={styles.logRow}>
-                      {workout.completed ? (
-                        // REPORTE DE PESOS
-                        <View style={styles.readOnlyLogBox}>
-                          <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '800' }}>Rendimiento Registrado:</Text>
-                          <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '900', marginTop: 4 }}>
-                            {logs[i]?.weight ? `${logs[i]?.weight} kg` : '- kg'}  <Text style={{ color: colors.primary }}>x</Text>  {logs[i]?.reps ? `${logs[i]?.reps} reps` : '- reps'}
-                          </Text>
-                        </View>
-                      ) : (
-                        // FORMULARIO DE PESOS
-                        <>
-                          <View style={styles.logInputWrapper}>
-                            <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Kilos reales</Text>
-                            <TextInput
-                              style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                              placeholder="Ej: 60" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
-                              value={logs[i]?.weight || ''} onChangeText={(w) => setLogs(prev => ({...prev, [i]: {...prev[i], weight: w}}))}
-                            />
-                          </View>
-                          <View style={styles.logInputWrapper}>
-                            <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Reps reales</Text>
-                            <TextInput
-                              style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                              placeholder="Ej: 10" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
-                              value={logs[i]?.reps || ''} onChangeText={(rep) => setLogs(prev => ({...prev, [i]: {...prev[i], reps: rep}}))}
-                            />
-                          </View>
-                        </>
-                      )}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-          </View>
+                );
+              })}
+            </View>
 
-          <View style={[styles.observationsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.observationsLabel, { color: colors.textPrimary }]}>Observaciones de la sesión</Text>
-            {workout.completed ? (
-               <Text style={{ color: colors.textPrimary, fontSize: 15, fontStyle: 'italic', marginTop: 10 }}>
-                 {observations || "No se dejaron notas en esta sesión."}
-               </Text>
-            ) : (
-              <TextInput
-                style={[styles.observationsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                value={observations} onChangeText={setObservations} placeholder="¿Algo a destacar de hoy?"
-                placeholderTextColor={colors.textSecondary} multiline numberOfLines={3}
-              />
+            <View style={[styles.observationsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.observationsLabel, { color: colors.textPrimary }]}>Observaciones de la sesión</Text>
+              {workout.completed ? (
+                 <Text style={{ color: colors.textPrimary, fontSize: 15, fontStyle: 'italic', marginTop: 10 }}>
+                   {observations || "No se dejaron notas en esta sesión."}
+                 </Text>
+              ) : (
+                <TextInput
+                  style={[styles.observationsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                  value={observations} onChangeText={setObservations} placeholder="¿Algo a destacar de hoy?"
+                  placeholderTextColor={colors.textSecondary} multiline numberOfLines={3}
+                />
+              )}
+            </View>
+
+            {!workout.completed && (
+              <TouchableOpacity testID="finish-training-btn" style={[styles.finishBtn, { backgroundColor: colors.primary }]} onPress={handleFinish} activeOpacity={0.7}>
+                <Ionicons name="checkmark" size={20} color="#FFF" />
+                <Text style={styles.finishBtnText}>Guardar entreno</Text>
+              </TouchableOpacity>
             )}
-          </View>
-
-          {!workout.completed && (
-            <TouchableOpacity testID="finish-training-btn" style={[styles.finishBtn, { backgroundColor: colors.primary }]} onPress={handleFinish} activeOpacity={0.7}>
-              <Ionicons name="checkmark" size={20} color="#FFF" />
-              <Text style={styles.finishBtnText}>Guardar entreno</Text>
-            </TouchableOpacity>
-          )}
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -640,12 +656,12 @@ const styles = StyleSheet.create({
   
   wellnessCard: { width: '100%', borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 10 },
   wellnessTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, textAlign: 'center' },
-  rpeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  rpeBtn: { width: 40, height: 40, borderRadius: 8, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  rpeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' },
+  rpeBtn: { width: 44, height: 44, borderRadius: 10, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   rpeText: { fontSize: 16, fontWeight: '700' },
   sleepGrid: { flexDirection: 'row', gap: 10, justifyContent: 'center' },
-  sleepBtn: { flex: 1, paddingVertical: 10, borderRadius: 8, borderWidth: 1, alignItems: 'center' },
-  sleepText: { fontSize: 14, fontWeight: '600' },
+  sleepBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center' },
+  sleepText: { fontSize: 14, fontWeight: '700' },
   
   summaryList: { width: '100%', gap: 8 },
   summaryRow: { flexDirection: 'column', gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 },
@@ -656,7 +672,7 @@ const styles = StyleSheet.create({
   logRow: { flexDirection: 'row', gap: 12, marginTop: 10, borderTopWidth: 0.5, borderTopColor: '#CCC', paddingTop: 12 },
   logInputWrapper: { flex: 1, gap: 4 },
   logInputLabel: { fontSize: 12, fontWeight: '600', marginLeft: 2 },
-  logInput: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14 },
+  logInput: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 },
   
   observationsCard: { width: '100%', borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 8, gap: 10 },
   observationsLabel: { fontSize: 16, fontWeight: '700' },
