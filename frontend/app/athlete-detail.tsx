@@ -224,7 +224,7 @@ export default function AthleteDetailScreen() {
             <View style={{ flexDirection: 'row', gap: 5 }}>
               <TouchableOpacity 
                 style={styles.iconHitbox}
-                onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}&edit_id=${wk.id}`)}
+                onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}
               >
                 <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
