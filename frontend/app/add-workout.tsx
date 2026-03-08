@@ -11,10 +11,9 @@ export default function AddWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   
-  // Magia de Expo Router: Atrapamos todos los parámetros posibles
-  const params = useLocalSearchParams<{ athlete_id: string; name: string; microciclo_id?: string; edit_id?: string }>();
+  // Extraemos las variables directamente para que React no se haga un lío
+  const { athlete_id, name, microciclo_id, edit_id } = useLocalSearchParams();
 
-  // --- ESTADOS DEL FORMULARIO ---
   const [titulo, setTitulo] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [notas, setNotas] = useState('');
@@ -22,38 +21,39 @@ export default function AddWorkoutScreen() {
     { name: '', sets: '', reps: '', weight: '', rest: '', exercise_notes: '', video_url: '', image_path: '' }
   ]);
   
-  // --- ESTADOS DE CONTROL ---
-  const [loading, setLoading] = useState(true); // Para que no parpadee al cargar datos de edición
+  const [loading, setLoading] = useState(true); // Inicialmente cargando para evitar parpadeos
   const [saving, setSaving] = useState(false);
+  
   const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
-  const [selectedMicroId, setSelectedMicroId] = useState<string | null>(params.microciclo_id || null);
+  const [selectedMicroId, setSelectedMicroId] = useState<string | null>(microciclo_id ? String(microciclo_id) : null);
 
-  // --- ESTADOS PARA IMÁGENES y CSV ---
   const [imageUploading, setImageUploading] = useState<number | null>(null);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
   const [csvLoading, setCsvLoading] = useState(false);
   const [showCsvFormat, setShowCsvFormat] = useState(false);
 
-  // --- INICIALIZACIÓN (AQUÍ ESTÁ LA CLAVE PARA EDITAR) ---
   useEffect(() => {
+    let isMounted = true;
+
     const initData = async () => {
       try {
         setLoading(true);
-        // 1. Cargamos los microciclos disponibles para el selector
-        if (params.athlete_id) {
-          const tree = await api.getPeriodizationTree(params.athlete_id);
+        const currentAthleteId = typeof athlete_id === 'string' ? athlete_id : null;
+        
+        // 1. Cargamos Microciclos
+        if (currentAthleteId) {
+          const tree = await api.getPeriodizationTree(currentAthleteId);
           const todosLosMicros = tree.flatMap((macro: any) => macro.microciclos || []);
           todosLosMicros.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
-          setMicrociclosDisponibles(todosLosMicros);
+          if (isMounted) setMicrociclosDisponibles(todosLosMicros);
         }
 
-        // 2. Si venimos a EDITAR, pedimos los datos del entrenamiento antiguo
-        if (params.edit_id && params.athlete_id) {
-          // Buscamos el entrenamiento específico en la lista del atleta
-          const wks = await api.getWorkouts({ athlete_id: params.athlete_id });
-          const workoutToEdit = wks.find((w: any) => w.id === params.edit_id);
+        // 2. Cargamos el entrenamiento si estamos editando
+        if (edit_id && currentAthleteId) {
+          const wks = await api.getWorkouts({ athlete_id: currentAthleteId });
+          const workoutToEdit = wks.find((w: any) => w.id === edit_id);
           
-          if (workoutToEdit) {
+          if (workoutToEdit && isMounted) {
             setTitulo(workoutToEdit.title || '');
             setFecha(workoutToEdit.date || '');
             setNotas(workoutToEdit.notes || '');
@@ -61,25 +61,25 @@ export default function AddWorkoutScreen() {
             
             if (workoutToEdit.exercises && workoutToEdit.exercises.length > 0) {
               setEjercicios(workoutToEdit.exercises);
-              
-              // Precargar previsualizaciones de imágenes si las tienen
-              const previews: Record<number, string> = {};
-              workoutToEdit.exercises.forEach((ex: any, idx: number) => {
-                if (ex.image_path) previews[idx] = ex.image_path;
-              });
-              setImagePreviews(previews);
             }
+          } else if (isMounted) {
+            if (Platform.OS !== 'web') Alert.alert("Aviso", "No se pudo recuperar la sesión antigua.");
           }
         }
       } catch (error) {
         console.log("Error inicializando pantalla:", error);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
 
     initData();
-  }, [params.athlete_id, params.edit_id]);
+    
+    return () => { isMounted = false; };
+  }, [athlete_id, edit_id]);
+
+  // ---> AQUÍ CONTINÚA TU CÓDIGO (pickExerciseImage, handleImportCSV, etc...) <---
+  // ...
 
   // --- MANEJO DE IMÁGENES ---
   const pickExerciseImage = async (exIndex: number) => {
