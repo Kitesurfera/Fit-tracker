@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, ScrollView, Modal, Dimensions, Alert
+  ActivityIndicator, ScrollView, Modal, Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,23 +10,24 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 
-const { width } = Dimensions.get('window');
 const DAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+// Calculamos "hoy" con la hora local exacta, evitando el bug del UTC
+const now = new Date();
+const localTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
 export default function CalendarScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
   
-  const today = new Date();
-  const [currentMonth, setCurrentMonth] = useState(today.getMonth());
-  const [currentYear, setCurrentYear] = useState(today.getFullYear());
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [currentMonth, setCurrentMonth] = useState(now.getMonth());
+  const [currentYear, setCurrentYear] = useState(now.getFullYear());
+  const [selectedDate, setSelectedDate] = useState(localTodayStr);
   
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
-  
   const [macros, setMacros] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
   
@@ -62,22 +63,14 @@ export default function CalendarScreen() {
     try {
       const res = await api.getPeriodizationTree(athlete.id);
       setMacros(res?.macros || []);
-      
       const wks = await api.getWorkouts({ athlete_id: athlete.id });
       setWorkouts(wks || []);
-      
     } catch (e) { 
-      console.log("Error cargando datos del atleta:", e); 
+      console.log("Error cargando datos:", e); 
     } finally { 
       setLoading(false); 
       setUpdating(false); 
     }
-  };
-
-  const handleRefresh = () => {
-    setUpdating(true);
-    if (selectedAthlete) handleSelectAthlete(selectedAthlete);
-    else init();
   };
 
   const daysInMonth = useMemo(() => {
@@ -91,11 +84,9 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
-  // --- LÓGICA DE COLOR DE MICRO/MACROCICLO MEJORADA ---
   const getDayStatus = (day: number | null) => {
     if (!day) return null;
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    
     let status: any = { hasWorkout: false, isCompleted: false, phaseColor: null };
 
     const workoutForDay = workouts?.find(w => w.date === dateStr);
@@ -108,14 +99,10 @@ export default function CalendarScreen() {
       for (const macro of macros) {
         if (macro.microciclos && Array.isArray(macro.microciclos)) {
           const micro = macro.microciclos.find((m: any) => dateStr >= m.fecha_inicio && dateStr <= m.fecha_fin);
-          if (micro) {
-            status.phaseColor = micro.color;
-            break; 
-          }
+          if (micro) { status.phaseColor = micro.color; break; }
         }
       }
     }
-
     return status;
   };
 
@@ -126,11 +113,7 @@ export default function CalendarScreen() {
     if (Array.isArray(macros)) {
       for (const macro of macros) {
         const micro = macro.microciclos?.find((m: any) => selectedDate >= m.fecha_inicio && selectedDate <= m.fecha_fin);
-        if (micro) {
-          details.macro = macro;
-          details.micro = micro;
-          break;
-        }
+        if (micro) { details.macro = macro; details.micro = micro; break; }
       }
     }
     return details;
@@ -148,47 +131,28 @@ export default function CalendarScreen() {
     }
   };
 
-  // --- ACCIÓN AL PULSAR UN ENTRENAMIENTO ---
+  // --- EL TRUCO DEL ENRUTADO ESTÁ AQUÍ ---
   const handleWorkoutPress = (workoutId: string) => {
     if (isTrainer) {
-      // Si es la entrenadora, la mandamos al editor
-      router.push({ 
-        pathname: '/add-workout', 
-        params: { 
-          athlete_id: selectedAthlete.id, 
-          name: selectedAthlete.name, 
-          edit_id: workoutId 
-        } 
-      });
+      // Pasamos los parámetros de forma 100% explícita en la URL
+      router.push(`/add-workout?athlete_id=${selectedAthlete.id}&name=${encodeURIComponent(selectedAthlete.name)}&edit_id=${workoutId}`);
     } else {
-      // Si eres tú (la deportista), te mandamos a entrenar
-      router.push({ 
-        pathname: '/training-mode', 
-        params: { workoutId } 
-      });
+      router.push({ pathname: '/training-mode', params: { workoutId } });
     }
   };
 
-  if (loading && athletes.length === 0) {
-    return <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor:colors.background}}><ActivityIndicator size="large" color={colors.primary}/></View>;
-  }
+  if (loading && athletes.length === 0) return <View style={{flex:1, justifyContent:'center', alignItems:'center'}}><ActivityIndicator size="large" color={colors.primary}/></View>;
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={styles.topHeader}>
         <View style={{flex:1}}>
           <Text style={styles.headerSubtitle}>{isTrainer ? 'AGENDA DEPORTISTA' : 'MI PLANIFICACIÓN'}</Text>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-            {selectedAthlete?.name || 'Calendario'}
-          </Text>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{selectedAthlete?.name || 'Calendario'}</Text>
         </View>
         <View style={{flexDirection:'row', gap: 15}}>
-          {isTrainer && (
-            <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.iconBtn}>
-              <Ionicons name="people" size={22} color={colors.primary} />
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity onPress={handleRefresh} disabled={updating} style={styles.iconBtn}>
+          {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.iconBtn}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
+          <TouchableOpacity onPress={() => { setUpdating(true); handleSelectAthlete(selectedAthlete); }} disabled={updating} style={styles.iconBtn}>
             {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={22} color={colors.primary} />}
           </TouchableOpacity>
         </View>
@@ -209,14 +173,13 @@ export default function CalendarScreen() {
             const status = getDayStatus(day);
             const dateStr = day ? `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
             const isSelected = dateStr && selectedDate === dateStr;
-            const isToday = dateStr && dateStr === today.toISOString().split('T')[0];
+            const isToday = dateStr && dateStr === localTodayStr;
             
             return (
               <TouchableOpacity 
                 key={i} 
                 style={[
                   styles.dayCell, 
-                  // Si tiene fase, le ponemos un fondo muy suavecito de su color
                   status?.phaseColor && { backgroundColor: status.phaseColor + '15', borderRadius: 12 },
                   isSelected && { backgroundColor: (status?.phaseColor || colors.primary) + '40', borderWidth: 2, borderColor: status?.phaseColor || colors.primary, borderRadius: 12 },
                   status?.hasWorkout && !isSelected && { borderWidth: 1, borderColor: status.isCompleted ? colors.success : colors.primary, borderRadius: 12 }
@@ -235,8 +198,6 @@ export default function CalendarScreen() {
                     ]}>
                       {day}
                     </Text>
-                    {/* El puntito inferior lo dejamos por si acaso, pero el fondo ya da la info */}
-                    {status?.phaseColor && !isSelected && <View style={[styles.dot, { backgroundColor: status.phaseColor }]} />}
                     {status?.hasWorkout && status?.isCompleted && (
                       <Ionicons name="checkmark-circle" size={12} color={colors.success} style={{ position: 'absolute', top: 2, right: 2 }} />
                     )}
@@ -256,7 +217,6 @@ export default function CalendarScreen() {
             <TouchableOpacity 
               key={wk.id} 
               style={[styles.workoutCard, { backgroundColor: colors.surface }]}
-              // AQUÍ LLAMAMOS A LA NUEVA FUNCIÓN QUE DECIDE A DÓNDE IR
               onPress={() => handleWorkoutPress(wk.id)}
             >
               <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '15' }]}>
@@ -289,7 +249,6 @@ export default function CalendarScreen() {
         )}
       </ScrollView>
 
-      {/* MODAL SELECTOR */}
       <Modal visible={showPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPicker(false)}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -316,10 +275,12 @@ const styles = StyleSheet.create({
   calendarGrid: { paddingHorizontal: 15 },
   weekDays: { flexDirection: 'row', marginBottom: 10 },
   weekDayText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '800' },
-  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 2 }, // Pequeño gap para que los fondos no se pisen
-  dayCell: { width: '13.5%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', margin: '0.35%' },
+  
+  // ¡AQUÍ ESTÁ LA CORRECCIÓN DE LA CUADRÍCULA! Adiós a los márgenes raros.
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
+  
   dayText: { fontSize: 15, fontWeight: '600' },
-  dot: { width: 5, height: 5, borderRadius: 2.5, position: 'absolute', bottom: 4 },
   footer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
   footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1 },
   workoutCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 18, marginBottom: 12 },
