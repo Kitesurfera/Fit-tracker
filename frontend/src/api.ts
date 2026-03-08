@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native'; // <-- Añadido para gestionar las rutas de archivos
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -234,6 +235,30 @@ export const api = {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/tests/${id}`, { method: 'DELETE', headers });
     if (!res.ok) throw new Error('Error al eliminar el test');
+    return res.json();
+  },
+
+  // --- SUBIDA DE ARCHIVOS (¡LA PIEZA QUE FALTABA!) ---
+  uploadFile: async (uri: string, fileName: string, fileType: string) => {
+    const headers: any = await getAuthHeaders();
+    // Es vital quitar el Content-Type para que el navegador/móvil genere el límite multipart automáticamente
+    delete headers['Content-Type']; 
+
+    const formData = new FormData();
+    formData.append('file', {
+      uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+      name: fileName,
+      type: fileType,
+    } as any);
+
+    // *Asegúrate de que tu backend tenga esta ruta habilitada*
+    const res = await fetch(`${BACKEND_URL}/api/upload`, { 
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+    
+    if (!res.ok) throw new Error('Error al subir el archivo al servidor');
     return res.json();
   }
 };
