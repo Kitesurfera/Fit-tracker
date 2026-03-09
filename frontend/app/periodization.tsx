@@ -19,7 +19,6 @@ export default function PeriodizationScreen() {
   const [unassigned, setUnassigned] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // --- ESTADOS DE LOS MODALES ---
   const [macroModal, setMacroModal] = useState(false);
   const [microModal, setMicroModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -41,37 +40,66 @@ export default function PeriodizationScreen() {
 
   useEffect(() => { loadTree(); }, [params.athlete_id]);
 
-  // --- ACCIONES MACRO ---
+  // --- NUEVA FUNCIÓN: Formatea las fechas al estándar de base de datos sí o sí ---
+  const formatDateForDB = (dateStr: string) => {
+    if (!dateStr) return '';
+    const cleanStr = dateStr.replace(/\//g, '-');
+    const parts = cleanStr.split('-');
+    // Si la persona escribió DD-MM-YYYY, le damos la vuelta a YYYY-MM-DD
+    if (parts.length === 3 && parts[0].length <= 2) {
+      return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
+    }
+    return cleanStr;
+  };
+
   const handleSaveMacro = async () => {
     if (!macroForm.nombre) return;
     try {
-      if (editingId) await api.updateMacrociclo(editingId, macroForm);
-      else await api.createMacrociclo({ ...macroForm, athlete_id: params.athlete_id });
+      // Disparamos en todas direcciones por si el backend necesita "start_date" o "fecha_inicio"
+      const payload = {
+        ...macroForm,
+        fecha_inicio: formatDateForDB(macroForm.fecha_inicio),
+        fecha_fin: formatDateForDB(macroForm.fecha_fin),
+        start_date: formatDateForDB(macroForm.fecha_inicio),
+        end_date: formatDateForDB(macroForm.fecha_fin),
+        athlete_id: params.athlete_id
+      };
+
+      if (editingId) await api.updateMacrociclo(editingId, payload);
+      else await api.createMacrociclo(payload);
+      
       setMacroModal(false); loadTree();
     } catch (e) { Alert.alert("Error", "No se pudo guardar"); }
   };
 
   const deleteMacro = (id: string) => {
     Alert.alert("Eliminar", "¿Borrar este bloque entero?", [
-      { text: "No" },
-      { text: "Sí", style: 'destructive', onPress: async () => { await api.deleteMacrociclo(id); loadTree(); } }
+      { text: "No" }, { text: "Sí", style: 'destructive', onPress: async () => { await api.deleteMacrociclo(id); loadTree(); } }
     ]);
   };
 
-  // --- ACCIONES MICRO ---
   const handleSaveMicro = async () => {
     if (!microForm.nombre) return;
     try {
-      if (editingId) await api.updateMicrociclo(editingId, microForm);
-      else await api.createMicrociclo({ ...microForm, macrociclo_id: selectedMacroId });
+      const payload = {
+        ...microForm,
+        fecha_inicio: formatDateForDB(microForm.fecha_inicio),
+        fecha_fin: formatDateForDB(microForm.fecha_fin),
+        start_date: formatDateForDB(microForm.fecha_inicio),
+        end_date: formatDateForDB(microForm.fecha_fin),
+        macrociclo_id: selectedMacroId
+      };
+
+      if (editingId) await api.updateMicrociclo(editingId, payload);
+      else await api.createMicrociclo(payload);
+      
       setMicroModal(false); loadTree();
     } catch (e) { Alert.alert("Error", "No se pudo guardar"); }
   };
 
   const deleteMicro = (id: string) => {
     Alert.alert("Eliminar", "¿Borrar esta semana?", [
-      { text: "No" },
-      { text: "Sí", style: 'destructive', onPress: async () => { await api.deleteMicrociclo(id); loadTree(); } }
+      { text: "No" }, { text: "Sí", style: 'destructive', onPress: async () => { await api.deleteMicrociclo(id); loadTree(); } }
     ]);
   };
 
@@ -86,22 +114,15 @@ export default function PeriodizationScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16 }}>
-        {/* BOTÓN AÑADIR MACRO */}
-        <TouchableOpacity 
-          style={[styles.addMacroMain, { backgroundColor: colors.primary }]}
-          onPress={() => { setEditingId(null); setMacroForm({ nombre: '', fecha_inicio: '', fecha_fin: '', color: MACRO_COLORS[0] }); setMacroModal(true); }}
-        >
+        <TouchableOpacity style={[styles.addMacroMain, { backgroundColor: colors.primary }]} onPress={() => { setEditingId(null); setMacroForm({ nombre: '', fecha_inicio: '', fecha_fin: '', color: MACRO_COLORS[0] }); setMacroModal(true); }}>
           <Ionicons name="add-circle" size={20} color="#FFF" />
           <Text style={styles.addMacroText}>NUEVO MACROCICLO</Text>
         </TouchableOpacity>
 
-        {macros.length === 0 && (
-          <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 30 }}>Aún no has creado ningún macrociclo.</Text>
-        )}
+        {macros.length === 0 && <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 30 }}>Aún no has creado ningún macrociclo.</Text>}
 
         {macros.map((macro) => (
           <View key={macro.id} style={[styles.macroCard, { borderColor: macro.color || colors.border }]}>
-            {/* CABECERA MACRO */}
             <View style={[styles.macroHeader, { backgroundColor: (macro.color || colors.primary) + '15' }]}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.macroTitle, { color: macro.color }]}>{macro.nombre}</Text>
@@ -110,16 +131,12 @@ export default function PeriodizationScreen() {
               <View style={styles.actionsRow}>
                 <TouchableOpacity onPress={() => { setEditingId(macro.id); setMacroForm({ ...macro }); setMacroModal(true); }}><Ionicons name="pencil" size={18} color={macro.color} /></TouchableOpacity>
                 <TouchableOpacity onPress={() => deleteMacro(macro.id)} style={{ marginLeft: 10 }}><Ionicons name="trash" size={18} color={colors.error} /></TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.addMicroSmall, { backgroundColor: macro.color }]}
-                  onPress={() => { setEditingId(null); setSelectedMacroId(macro.id); setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] }); setMicroModal(true); }}
-                >
+                <TouchableOpacity style={[styles.addMicroSmall, { backgroundColor: macro.color }]} onPress={() => { setEditingId(null); setSelectedMacroId(macro.id); setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] }); setMicroModal(true); }}>
                   <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>+ MICRO</Text>
                 </TouchableOpacity>
               </View>
             </View>
 
-            {/* MICROCICLOS */}
             <View style={{ padding: 12 }}>
               {macro.microciclos?.map((micro: any) => (
                 <View key={micro.id} style={[styles.microItem, { borderLeftColor: micro.color }]}>
@@ -131,11 +148,7 @@ export default function PeriodizationScreen() {
                     </View>
                   </View>
                   
-                  {/* BOTÓN AÑADIR SESIÓN A ESTE MICRO */}
-                  <TouchableOpacity 
-                    style={styles.addSessionBtn}
-                    onPress={() => router.push({ pathname: '/add-workout', params: { athlete_id: params.athlete_id, microciclo_id: micro.id } })}
-                  >
+                  <TouchableOpacity style={styles.addSessionBtn} onPress={() => router.push({ pathname: '/add-workout', params: { athlete_id: params.athlete_id, microciclo_id: micro.id } })}>
                     <Ionicons name="add-circle-outline" size={14} color={colors.primary} />
                     <Text style={{ color: colors.primary, fontSize: 11 }}>Añadir sesión</Text>
                   </TouchableOpacity>
@@ -153,7 +166,6 @@ export default function PeriodizationScreen() {
         ))}
       </ScrollView>
 
-      {/* MODAL MACROCICLO */}
       <Modal visible={macroModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior="padding" style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -169,18 +181,20 @@ export default function PeriodizationScreen() {
         </View>
       </Modal>
 
-      {/* MODAL MICROCICLO */}
       <Modal visible={microModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior="padding" style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editingId ? 'Editar Micro' : 'Nueva Semana'}</Text>
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Nombre de la semana" value={microForm.nombre} onChangeText={(t) => setMicroForm({...microForm, nombre: t})} />
+            <View style={{flexDirection:'row', gap:10, marginTop: 10}}>
+              <TextInput style={[styles.input, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Inicio (YYYY-MM-DD)" value={microForm.fecha_inicio} onChangeText={(t) => setMicroForm({...microForm, fecha_inicio: t})} />
+              <TextInput style={[styles.input, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Fin (YYYY-MM-DD)" value={microForm.fecha_fin} onChangeText={(t) => setMicroForm({...microForm, fecha_fin: t})} />
+            </View>
             <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSaveMicro}><Text style={styles.saveBtnText}>GUARDAR</Text></TouchableOpacity>
             <TouchableOpacity onPress={() => setMicroModal(false)}><Text style={{ textAlign: 'center', color: colors.error, marginTop: 15 }}>Cancelar</Text></TouchableOpacity>
           </KeyboardAvoidingView>
         </View>
       </Modal>
-
     </SafeAreaView>
   );
 }
