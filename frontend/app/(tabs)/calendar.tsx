@@ -72,7 +72,11 @@ export default function CalendarScreen() {
         api.getPeriodizationTree(athlete.id),
         api.getWorkouts({ athlete_id: athlete.id })
       ]);
-      setMacros(resTree?.macros || []);
+      
+      // EL PARCHE: Si la API devuelve el array directo, lo cogemos. Si viene dentro de .macros, también.
+      const macroList = Array.isArray(resTree) ? resTree : (resTree?.macros || []);
+      
+      setMacros(macroList);
       setWorkouts(resWorkouts || []);
     } catch (e) { 
       console.log("Error recargando datos:", e); 
@@ -101,7 +105,7 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
-  // --- NUEVA LÓGICA: Extraer todos los microciclos que caen en el mes actual ---
+  // --- LÓGICA: Extraer todos los microciclos que caen en el mes actual ---
   const microciclosDelMes = useMemo(() => {
     if (!Array.isArray(macros)) return [];
     const micros: any[] = [];
@@ -250,14 +254,15 @@ export default function CalendarScreen() {
 
       <ScrollView style={styles.footer} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
         
-        {/* CARRUSEL VISUAL DE MICROCICLOS */}
-        {microciclosDelMes.length > 0 && (
-          <View style={{ marginBottom: 25 }}>
-            <Text style={styles.footerLabel}>FASES DE ESTE MES</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
+        {/* CARRUSEL VISUAL DE MICROCICLOS (SE MUESTRA SIEMPRE PARA VERIFICAR) */}
+        <View style={{ marginBottom: 25 }}>
+          <Text style={styles.footerLabel}>FASES DE ESTE MES</Text>
+          
+          {microciclosDelMes.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20, marginTop: 10 }}>
               {microciclosDelMes.map((micro, idx) => (
                 <View key={idx} style={[styles.microCard, { backgroundColor: colors.surface, borderTopColor: micro.color, borderColor: colors.border }]}>
-                  <Text style={[styles.microMacroName, { color: colors.textSecondary }]} numberOfLines={1}>{micro.macroNombre}</Text>
+                  <Text style={[styles.microMacroName, { color: colors.textSecondary }]} numberOfLines={1}>{micro.macroNombre || 'Planificación'}</Text>
                   <Text style={[styles.microName, { color: colors.textPrimary }]} numberOfLines={1}>{micro.nombre}</Text>
                   <View style={[styles.microTypeBadge, { backgroundColor: micro.color + '15' }]}>
                     <Text style={{ color: micro.color, fontSize: 10, fontWeight: '800' }}>{micro.tipo}</Text>
@@ -268,8 +273,12 @@ export default function CalendarScreen() {
                 </View>
               ))}
             </ScrollView>
-          </View>
-        )}
+          ) : (
+            <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 10 }}>
+              No hay fases/microciclos planificados para este mes.
+            </Text>
+          )}
+        </View>
 
         <Text style={styles.footerLabel}>DETALLE DEL {selectedDate.split('-').reverse().join('/')}</Text>
         
@@ -296,17 +305,6 @@ export default function CalendarScreen() {
           <View style={styles.emptyCard}>
             <Ionicons name="calendar-clear-outline" size={32} color={colors.border} />
             <Text style={{ color: colors.textSecondary, marginTop: 10 }}>Día sin sesiones programadas.</Text>
-          </View>
-        )}
-
-        {/* MANTENEMOS EL DETALLE DEL MICRO ABAJO POR SI QUIERES REVISARLO RÁPIDO */}
-        {activeDetail.micro && (
-          <View style={[styles.detailCard, { borderLeftColor: activeDetail.micro.color, backgroundColor: colors.surface }]}>
-            <Text style={[styles.macroName, { color: colors.textSecondary }]}>{activeDetail.macro?.nombre}</Text>
-            <Text style={[styles.microName, { color: colors.textPrimary }]}>{activeDetail.micro?.nombre}</Text>
-            <View style={[styles.badge, { backgroundColor: activeDetail.micro.color + '20' }]}>
-              <Text style={{ color: activeDetail.micro.color, fontSize: 10, fontWeight: '900' }}>{activeDetail.micro.tipo}</Text>
-            </View>
           </View>
         )}
       </ScrollView>
