@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,7 +12,6 @@ import { api } from '../src/api';
 export default function EditWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  
   const params = useLocalSearchParams();
   const workoutId = typeof params.workoutId === 'string' ? params.workoutId : params.workoutId?.[0];
   
@@ -24,9 +23,6 @@ export default function EditWorkoutScreen() {
   const [error, setError] = useState('');
   
   const [athleteId, setAthleteId] = useState<string>('');
-  const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
-  const [selectedMicroId, setSelectedMicroId] = useState<string | null>(null);
-
   const [workoutType, setWorkoutType] = useState<'traditional' | 'hiit'>('traditional');
   
   const [exercises, setExercises] = useState<any[]>([]);
@@ -44,17 +40,21 @@ export default function EditWorkoutScreen() {
           setNotes(w.notes || '');
           setDate(w.date || '');
           setAthleteId(w.athlete_id || ''); 
-          setSelectedMicroId(w.microciclo_id || null); 
           
-          if (w.is_hiit) {
+          // DETECTAMOS SI ES HIIT LEYENDO LA ETIQUETA OCULTA
+          const isHiit = w.exercises && w.exercises.length > 0 && w.exercises[0].is_hiit_block === true;
+
+          if (isHiit) {
             setWorkoutType('hiit');
-            setHiitBlocks((w.hiit_blocks || []).map((b: any) => ({ ...b, _key: Math.random().toString(), exercises: b.exercises.map((e: any) => ({ ...e, _key: Math.random().toString() })) })));
+            setHiitBlocks(w.exercises.map((b: any) => ({ 
+              ...b, 
+              _key: Math.random().toString(), 
+              exercises: (b.hiit_exercises || []).map((e: any) => ({ ...e, _key: Math.random().toString() })) 
+            })));
           } else {
             setWorkoutType('traditional');
             setExercises((w.exercises || []).map((ex: any) => ({ ...ex, _key: Math.random().toString() })));
           }
-        } else {
-          setError('No se pudo encontrar el entrenamiento.');
         }
       } catch (err) { setError('Error de conexión.'); } 
       finally { setLoading(false); }
@@ -62,24 +62,12 @@ export default function EditWorkoutScreen() {
     fetchWorkoutData();
   }, [workoutId]);
 
-  useEffect(() => {
-    if (athleteId) {
-      api.getPeriodizationTree(athleteId).then((tree) => {
-        const todosLosMicros = Array.isArray(tree) ? tree.flatMap((macro: any) => macro.microciclos || []) : (tree?.macros || []).flatMap((macro: any) => macro.microciclos || []);
-        todosLosMicros.sort((a: any, b: any) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
-        setMicrociclosDisponibles(todosLosMicros);
-      }).catch((e) => console.log("Error cargando microciclos:", e));
-    }
-  }, [athleteId]);
-
-  // --- TRADICIONAL ---
   const updateExercise = (index: number, field: string, value: string) => {
     const updated = [...exercises]; updated[index] = { ...updated[index], [field]: value }; setExercises(updated);
   };
   const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', weight: '', rest: '', rest_exercise: '' }]);
   const removeExercise = (index: number) => setExercises(exercises.filter((_, i) => i !== index));
 
-  // --- HIIT ---
   const addHiitBlock = () => setHiitBlocks([...hiitBlocks, { _key: Math.random().toString(), name: `Bloque ${hiitBlocks.length + 1}`, sets: '3', rest_exercise: '15', rest_block: '60', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '' }] }]);
   const removeHiitBlock = (bIndex: number) => setHiitBlocks(hiitBlocks.filter((_, i) => i !== bIndex));
   const updateHiitBlock = (bIndex: number, field: string, value: string) => { const updated = [...hiitBlocks]; updated[bIndex] = { ...updated[bIndex], [field]: value }; setHiitBlocks(updated); };
@@ -91,18 +79,24 @@ export default function EditWorkoutScreen() {
     setError('');
     if (!title.trim()) { setError('El título es obligatorio'); return; }
     
-    let payloadData: any = { title: title.trim(), date: date.trim(), notes: notes.trim(), microciclo_id: selectedMicroId, is_hiit: workoutType === 'hiit' };
+    let payloadData: any = { title: title.trim(), date: date.trim(), notes: notes.trim() };
 
     if (workoutType === 'traditional') {
       const cleanExercises = exercises.filter(e => e.name.trim()).map(ex => ({ name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight, rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url }));
       if (cleanExercises.length === 0) { setError('Agrega al menos un ejercicio'); return; }
       payloadData.exercises = cleanExercises;
-      payloadData.hiit_blocks = [];
     } else {
-      const cleanBlocks = hiitBlocks.map(block => ({ name: block.name, sets: block.sets, rest_exercise: block.rest_exercise, rest_block: block.rest_block, exercises: block.exercises.filter((e: any) => e.name.trim()).map((e: any) => ({ name: e.name, duration_reps: e.duration_reps })) })).filter(b => b.exercises.length > 0);
+      const cleanBlocks = hiitBlocks.map(block => ({ 
+        is_hiit_block: true, 
+        name: block.name, 
+        sets: block.sets, 
+        rest_exercise: block.rest_exercise, 
+        rest_block: block.rest_block, 
+        hiit_exercises: block.exercises.filter((e: any) => e.name.trim()).map((e: any) => ({ name: e.name, duration_reps: e.duration_reps })) 
+      })).filter(b => b.hiit_exercises.length > 0);
+      
       if (cleanBlocks.length === 0) { setError('Añade al menos un bloque válido'); return; }
-      payloadData.hiit_blocks = cleanBlocks;
-      payloadData.exercises = [];
+      payloadData.exercises = cleanBlocks;
     }
 
     setSaving(true);
@@ -133,12 +127,8 @@ export default function EditWorkoutScreen() {
           </View>
 
           <View style={[styles.typeSelector, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
-            <TouchableOpacity style={[styles.typeBtn, workoutType === 'traditional' && { backgroundColor: colors.primary }]} onPress={() => setWorkoutType('traditional')}>
-              <Text style={{ color: workoutType === 'traditional' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Fuerza</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.typeBtn, workoutType === 'hiit' && { backgroundColor: colors.error }]} onPress={() => setWorkoutType('hiit')}>
-              <Text style={{ color: workoutType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito HIIT</Text>
-            </TouchableOpacity>
+            <TouchableOpacity style={[styles.typeBtn, workoutType === 'traditional' && { backgroundColor: colors.primary }]} onPress={() => setWorkoutType('traditional')}><Text style={{ color: workoutType === 'traditional' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Fuerza</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.typeBtn, workoutType === 'hiit' && { backgroundColor: colors.error }]} onPress={() => setWorkoutType('hiit')}><Text style={{ color: workoutType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito HIIT</Text></TouchableOpacity>
           </View>
 
           {workoutType === 'traditional' ? (
@@ -196,37 +186,5 @@ export default function EditWorkoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 },
-  headerBtn: { minWidth: 60 },
-  headerTitle: { fontSize: 17, fontWeight: '600' },
-  saveText: { fontSize: 16, fontWeight: '600', textAlign: 'right' },
-  form: { padding: 20, gap: 20, paddingBottom: 48 },
-  section: { gap: 10 },
-  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
-  input: { borderRadius: 10, padding: 14, fontSize: 15, borderWidth: 1 },
-  typeSelector: { flexDirection: 'row', borderRadius: 12, padding: 4, borderWidth: 1 },
-  typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
-  exerciseCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 10 },
-  exerciseHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
-  exNameInput: { flex: 1, fontSize: 16, fontWeight: '500' },
-  removeExBtn: { padding: 4 },
-  exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5 },
-  exDetail: { flex: 1, alignItems: 'center', padding: 8, borderRightWidth: 0.5, borderRightColor: 'rgba(0,0,0,0.1)' },
-  exDetailLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4 },
-  exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 8, fontSize: 14, fontWeight: '600' },
-  addExBtnBig: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)', gap: 8 },
-  hiitBlock: { borderRadius: 16, borderWidth: 2, overflow: 'hidden', marginBottom: 15 },
-  hiitHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, backgroundColor: 'rgba(0,0,0,0.02)' },
-  hiitNameInput: { fontSize: 18, fontWeight: '800', flex: 1 },
-  hiitConfigRow: { flexDirection: 'row', padding: 12, gap: 10, backgroundColor: 'rgba(0,0,0,0.01)' },
-  hiitConfigItem: { flex: 1 },
-  hiitConfigLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4, textAlign: 'center' },
-  hiitConfigInput: { borderWidth: 1, borderRadius: 8, padding: 8, textAlign: 'center', fontSize: 14, fontWeight: '600' },
-  hiitExList: { padding: 12, gap: 10 },
-  hiitExRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  hiitExNum: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
-  hiitExInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14 },
-  addHiitExBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, marginLeft: 20 },
-  errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 }
+  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 }, headerBtn: { minWidth: 60 }, headerTitle: { fontSize: 17, fontWeight: '600' }, saveText: { fontSize: 16, fontWeight: '600', textAlign: 'right' }, form: { padding: 20, gap: 20, paddingBottom: 48 }, section: { gap: 10 }, label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }, input: { borderRadius: 10, padding: 14, fontSize: 15, borderWidth: 1 }, typeSelector: { flexDirection: 'row', borderRadius: 12, padding: 4, borderWidth: 1 }, typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 }, exerciseCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 10 }, exerciseHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 }, exNameInput: { flex: 1, fontSize: 16, fontWeight: '500' }, removeExBtn: { padding: 4 }, exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5 }, exDetail: { flex: 1, alignItems: 'center', padding: 8, borderRightWidth: 0.5, borderRightColor: 'rgba(0,0,0,0.1)' }, exDetailLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4 }, exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 8, fontSize: 14, fontWeight: '600' }, addExBtnBig: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)', gap: 8 }, hiitBlock: { borderRadius: 16, borderWidth: 2, overflow: 'hidden', marginBottom: 15 }, hiitHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, backgroundColor: 'rgba(0,0,0,0.02)' }, hiitNameInput: { fontSize: 18, fontWeight: '800', flex: 1 }, hiitConfigRow: { flexDirection: 'row', padding: 12, gap: 10, backgroundColor: 'rgba(0,0,0,0.01)' }, hiitConfigItem: { flex: 1 }, hiitConfigLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4, textAlign: 'center' }, hiitConfigInput: { borderWidth: 1, borderRadius: 8, padding: 8, textAlign: 'center', fontSize: 14, fontWeight: '600' }, hiitExList: { padding: 12, gap: 10 }, hiitExRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, hiitExNum: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, hiitExInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14 }, addHiitExBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, marginLeft: 20 }, errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 }
 });
