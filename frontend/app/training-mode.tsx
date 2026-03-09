@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import * as ImagePicker from 'expo-image-picker'; // <-- Importación para los vídeos
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
@@ -24,14 +25,17 @@ export default function TrainingModeScreen() {
   const [setsStatus, setSetsStatus] = useState<Record<number, SetStatus[]>>({});
   const [finished, setFinished] = useState(false);
   
-  const [logs, setLogs] = useState<Record<number, {weight: string, reps: string}>>({});
+  const [logs, setLogs] = useState<Record<number, {weight: string, reps: string, coach_note?: string}>>({});
   
+  // --- NUEVO: Estados para la subida de vídeos de técnica ---
+  const [recordedVideos, setRecordedVideos] = useState<Record<number, string>>({});
+  const [videoUploading, setVideoUploading] = useState<number | null>(null);
+
   const [rpe, setRpe] = useState<number | null>(null);
   const [sleep, setSleep] = useState<'bien' | 'regular' | 'mal' | null>(null);
   
   const [restSeconds, setRestSeconds] = useState(0);
   const [isResting, setIsResting] = useState(false);
-  // Nuevo estado para saber qué tipo de descanso estamos haciendo
   const [restType, setRestType] = useState<'set' | 'exercise' | null>(null);
   
   const restIntervalRef = useRef<any>(null);
@@ -60,9 +64,13 @@ export default function TrainingModeScreen() {
               setRpe(currentWorkout.completion_data.rpe || null);
               setSleep(currentWorkout.completion_data.sleep || null);
               
-              const savedLogs: Record<number, {weight: string, reps: string}> = {};
+              const savedLogs: Record<number, {weight: string, reps: string, coach_note?: string}> = {};
               currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
-                savedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '' };
+                savedLogs[idx] = { 
+                  weight: res.logged_weight || '', 
+                  reps: res.logged_reps || '',
+                  coach_note: res.coach_note || '' // Recuperamos las notas de Andreina
+                };
               });
               setLogs(savedLogs);
             }
@@ -87,7 +95,6 @@ export default function TrainingModeScreen() {
     return () => { isMounted = false; };
   }, [currentWorkoutId]);
 
-  // CONTROL DEL TEMPORIZADOR
   useEffect(() => {
     if (isResting && restSeconds > 0) {
       restIntervalRef.current = setInterval(() => {
@@ -104,13 +111,37 @@ export default function TrainingModeScreen() {
     return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
   }, [isResting]);
 
-  // Si acabamos de terminar un descanso DE EJERCICIO, saltamos al siguiente
   useEffect(() => {
     if (!isResting && restType === 'exercise') {
        autoAdvance(currentExIndex);
        setRestType(null);
     }
   }, [isResting]);
+
+  // --- FUNCIÓN PARA SUBIR EL VÍDEO DE LA TÉCNICA ---
+  const pickAndUploadVideo = async (exIndex: number) => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['videos'],
+        allowsEditing: true,
+        quality: 0.7,
+      });
+      if (result.canceled) return;
+      
+      const asset = result.assets[0];
+      setVideoUploading(exIndex);
+      
+      const fileName = asset.uri.split('/').pop() || 'technique.mp4';
+      const fileType = asset.mimeType || 'video/mp4';
+      const uploaded = await api.uploadFile(asset.uri, fileName, fileType);
+      
+      setRecordedVideos(prev => ({ ...prev, [exIndex]: uploaded.storage_path }));
+    } catch (e: any) {
+      if (Platform.OS !== 'web') Alert.alert('Error', e.message || 'No se pudo subir el vídeo de la técnica');
+    } finally {
+      setVideoUploading(null);
+    }
+  };
 
   if (loading) {
     return (
@@ -157,7 +188,6 @@ export default function TrainingModeScreen() {
     if (restIntervalRef.current) clearInterval(restIntervalRef.current);
     setIsResting(false);
     setRestSeconds(0);
-    // Si era un descanso de cambio de ejercicio, al saltarlo pasará al siguiente por el useEffect
   };
 
   const autoAdvance = (exIdx: number) => {
@@ -175,7 +205,6 @@ export default function TrainingModeScreen() {
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
     
     if (remaining === 0) {
-      // ¡Última serie del ejercicio! Toca descanso ENTRE EJERCICIOS
       const restTimeExercise = parseInt(currentEx?.rest_exercise) || 0;
       if (restTimeExercise > 0 && currentExIndex < exercises.length - 1) {
         setRestSeconds(restTimeExercise);
@@ -185,7 +214,6 @@ export default function TrainingModeScreen() {
         autoAdvance(currentExIndex);
       }
     } else {
-      // Quedan series, toca descanso ENTRE SERIES
       const restTimeSet = parseInt(currentEx?.rest) || 0;
       if (restTimeSet > 0) {
         setRestSeconds(restTimeSet);
@@ -231,7 +259,6 @@ export default function TrainingModeScreen() {
       rpe: rpe,
       sleep: sleep,
       exercise_results: exercises.map((ex: any, i: number) => {
-        // AQUÍ ESTABA EL BUG QUE PROVOCABA LA PANTALLA NEGRA. AHORA TIENE ?. PROTECTORES
         if (workout.completed && workout.completion_data) {
           return workout.completion_data?.exercise_results?.[i] || {};
         }
@@ -245,7 +272,8 @@ export default function TrainingModeScreen() {
           skipped_sets: sets.filter(s => s === 'skipped').length,
           set_details: sets.map((status, si) => ({ set: si + 1, status })),
           logged_weight: logs[i]?.weight || '',
-          logged_reps: logs[i]?.reps || ''
+          logged_reps: logs[i]?.reps || '',
+          recorded_video_url: recordedVideos[i] || '' // Guardamos el vídeo en la BD
         };
       }),
     };
@@ -287,7 +315,6 @@ export default function TrainingModeScreen() {
 
   if (finished || workout.completed) {
     const completionData = workout.completed && workout.completion_data ? workout.completion_data : buildCompletionData();
-    // Protección adicional para el Reduce
     const validResults = Array.isArray(completionData?.exercise_results) ? completionData.exercise_results : [];
     const totalSkipped = validResults.reduce((s: number, r: any) => s + (r?.skipped_sets || 0), 0);
     const hasSkips = totalSkipped > 0;
@@ -311,7 +338,6 @@ export default function TrainingModeScreen() {
               {workout.completed ? 'Reporte de Rendimiento' : hasSkips ? 'Entrenamiento finalizado' : '¡Entrenamiento completado!'}
             </Text>
 
-            {/* TARJETA DE BIENESTAR / ESFUERZO */}
             <View style={[styles.wellnessCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={[styles.wellnessTitle, { color: colors.textPrimary }]}>Esfuerzo Percibido (RPE)</Text>
               
@@ -405,6 +431,16 @@ export default function TrainingModeScreen() {
                             <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '900', marginTop: 4 }}>
                               {logs[i]?.weight ? `${logs[i]?.weight} kg` : '- kg'}  <Text style={{ color: colors.primary }}>x</Text>  {logs[i]?.reps ? `${logs[i]?.reps} reps` : '- reps'}
                             </Text>
+                            {/* AQUÍ SE MUESTRAN LAS NOTAS DEL COACH SI LAS HAY */}
+                            {logs[i]?.coach_note && (
+                              <View style={{ backgroundColor: colors.warning + '15', padding: 10, borderRadius: 8, marginTop: 10, width: '100%' }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                  <Ionicons name="chatbubbles" size={14} color={colors.warning} />
+                                  <Text style={{ color: colors.warning, fontWeight: '800', fontSize: 11, textTransform: 'uppercase' }}>Feedback Coach</Text>
+                                </View>
+                                <Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{logs[i]?.coach_note}"</Text>
+                              </View>
+                            )}
                           </View>
                         ) : (
                           <>
@@ -497,6 +533,7 @@ export default function TrainingModeScreen() {
           </View>
           <Text style={[styles.exerciseName, { color: colors.textPrimary }]}>{currentEx.name}</Text>
 
+          {/* AQUÍ ESTÁN AHORA TODOS LOS TIEMPOS DE DESCANSO */}
           <View style={styles.detailsGrid}>
             {currentEx.sets && (
               <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}>
@@ -514,6 +551,18 @@ export default function TrainingModeScreen() {
               <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}>
                 <Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.weight}</Text>
                 <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Kg obj.</Text>
+              </View>
+            )}
+            {currentEx.rest && (
+              <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}>
+                <Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest}</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.S</Text>
+              </View>
+            )}
+            {currentEx.rest_exercise && (
+              <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}>
+                <Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest_exercise}</Text>
+                <Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.E</Text>
               </View>
             )}
           </View>
@@ -590,6 +639,33 @@ export default function TrainingModeScreen() {
             </View>
           ) : null}
 
+          {/* BOTÓN PARA SUBIR TÉCNICA */}
+          {nextPendingSet === -1 && !isResting && (
+            <View style={{ marginTop: 15, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
+              {recordedVideos[currentExIndex] ? (
+                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.success + '15', padding: 12, borderRadius: 10 }}>
+                   <Ionicons name="checkmark-circle" size={20} color={colors.success} />
+                   <Text style={{ color: colors.success, marginLeft: 8, fontWeight: '700', flex: 1 }}>Vídeo de técnica subido</Text>
+                 </View>
+              ) : (
+                <TouchableOpacity 
+                  style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHighlight, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }}
+                  onPress={() => pickAndUploadVideo(currentExIndex)}
+                  disabled={videoUploading === currentExIndex}
+                >
+                  {videoUploading === currentExIndex ? (
+                    <ActivityIndicator color={colors.primary} size="small" />
+                  ) : (
+                    <>
+                      <Ionicons name="videocam" size={20} color={colors.textSecondary} />
+                      <Text style={{ color: colors.textSecondary, marginLeft: 8, fontWeight: '700' }}>Grabar y subir técnica al Coach</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+
           {nextPendingSet !== -1 && (
             <TouchableOpacity testID="skip-exercise-btn" style={styles.skipExLink} onPress={skipExercise} activeOpacity={0.6}>
               <Text style={[styles.skipExText, { color: colors.textSecondary }]}>Saltar ejercicio completo</Text>
@@ -641,7 +717,7 @@ const styles = StyleSheet.create({
   exNumberText: { fontSize: 20, fontWeight: '800' },
   exerciseName: { fontSize: 24, fontWeight: '700', textAlign: 'center' },
   detailsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', justifyContent: 'center' },
-  detailBox: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 20, alignItems: 'center', minWidth: 70 },
+  detailBox: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 20, alignItems: 'center', minWidth: 65 },
   detailValue: { fontSize: 22, fontWeight: '700' },
   detailLabel: { fontSize: 11, fontWeight: '600', marginTop: 2, textTransform: 'uppercase' },
   videoBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, width: '100%', borderRadius: 12, padding: 14, borderWidth: 1 },
