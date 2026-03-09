@@ -1,481 +1,279 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert, Image } from 'react-native';
+import {
+  View, Text, TextInput, TouchableOpacity, StyleSheet,
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert
+} from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
 export default function AddWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  
-  const params = useLocalSearchParams();
-  const athlete_id = typeof params.athlete_id === 'string' ? params.athlete_id : params.athlete_id?.[0];
-  const microciclo_id = typeof params.microciclo_id === 'string' ? params.microciclo_id : params.microciclo_id?.[0];
-  const edit_id = typeof params.edit_id === 'string' ? params.edit_id : params.edit_id?.[0];
+  const params = useLocalSearchParams<{ athlete_id: string; name: string }>();
 
-  const [titulo, setTitulo] = useState('');
-  const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
-  const [notas, setNotas] = useState('');
-  // AÑADIDO: rest_exercise
-  const [ejercicios, setEjercicios] = useState<any[]>([
-    { name: '', sets: '', reps: '', weight: '', rest: '', rest_exercise: '', exercise_notes: '', video_url: '', image_path: '' }
-  ]);
-  
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [title, setTitle] = useState('');
+  const [notes, setNotes] = useState('');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [error, setError] = useState('');
   
   const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
-  const [selectedMicroId, setSelectedMicroId] = useState<string | null>(microciclo_id || null);
+  const [selectedMicroId, setSelectedMicroId] = useState<string | null>(null);
 
-  const [imageUploading, setImageUploading] = useState<number | null>(null);
-  const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
-  const [csvLoading, setCsvLoading] = useState(false);
-  const [showCsvFormat, setShowCsvFormat] = useState(false);
+  // --- TIPO DE ENTRENAMIENTO ---
+  const [workoutType, setWorkoutType] = useState<'traditional' | 'hiit'>('traditional');
+
+  // --- ESTADO FUERZA TRADICIONAL ---
+  const [exercises, setExercises] = useState<any[]>([
+    { _key: '1', name: '', sets: '', reps: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '' }
+  ]);
+
+  // --- ESTADO CIRCUITO HIIT ---
+  const [hiitBlocks, setHiitBlocks] = useState<any[]>([
+    { 
+      _key: 'b1', 
+      name: 'Bloque 1', 
+      sets: '3', // Vueltas al circuito
+      rest_exercise: '15', // Descanso entre ejercicios del bloque
+      rest_block: '60', // Descanso al terminar una vuelta completa
+      exercises: [
+        { _key: 'e1', name: '', duration_reps: '' }
+      ] 
+    }
+  ]);
 
   useEffect(() => {
-    let isMounted = true;
-
-    const initData = async () => {
-      try {
-        setLoading(true);
-        if (athlete_id) {
-          try {
-            const tree = await api.getPeriodizationTree(athlete_id);
-            const todosLosMicros = tree.flatMap((macro: any) => macro.microciclos || []);
-            todosLosMicros.sort((a: any, b: any) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
-            if (isMounted) setMicrociclosDisponibles(todosLosMicros);
-          } catch (treeError) {
-            console.log("No se pudieron cargar los microciclos:", treeError);
-          }
-        }
-
-        if (edit_id && athlete_id) {
-          const wks = await api.getWorkouts({ athlete_id: athlete_id });
-          const workoutToEdit = wks.find((w: any) => w.id === edit_id);
-          
-          if (workoutToEdit && isMounted) {
-            setTitulo(workoutToEdit.title || '');
-            setFecha(workoutToEdit.date || '');
-            setNotas(workoutToEdit.notes || '');
-            setSelectedMicroId(workoutToEdit.microciclo_id || null);
-            
-            if (workoutToEdit.exercises && workoutToEdit.exercises.length > 0) {
-              setEjercicios(workoutToEdit.exercises);
-            }
-          } else if (isMounted && Platform.OS !== 'web') {
-            Alert.alert("Aviso", "No se pudo recuperar la sesión antigua.");
-          }
-        }
-      } catch (error) {
-        console.log("Error inicializando pantalla:", error);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    initData();
-    return () => { isMounted = false; };
-  }, [athlete_id, edit_id]);
-
-  const pickExerciseImage = async (exIndex: number) => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ['images'],
-        allowsEditing: true,
-        quality: 0.7,
-      });
-      if (result.canceled) return;
-      
-      const asset = result.assets[0];
-      setImageUploading(exIndex);
-      setImagePreviews(prev => ({ ...prev, [exIndex]: asset.uri }));
-      
-      const fileName = asset.uri.split('/').pop() || 'image.jpg';
-      const fileType = asset.mimeType || 'image/jpeg';
-      const uploaded = await api.uploadFile(asset.uri, fileName, fileType);
-      
-      updateExercise(exIndex, 'image_path', uploaded.storage_path);
-    } catch (e: any) {
-      if (Platform.OS !== 'web') Alert.alert('Error', e.message || 'No se pudo subir la imagen');
-    } finally {
-      setImageUploading(null);
+    if (params.athlete_id) {
+      api.getPeriodizationTree(params.athlete_id).then((tree) => {
+        const todosLosMicros = Array.isArray(tree) ? tree.flatMap((macro: any) => macro.microciclos || []) : (tree?.macros || []).flatMap((macro: any) => macro.microciclos || []);
+        todosLosMicros.sort((a: any, b: any) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+        setMicrociclosDisponibles(todosLosMicros);
+      }).catch((e) => console.log("Error cargando microciclos:", e));
     }
-  };
+  }, [params.athlete_id]);
 
-  const handleImportCSV = () => {
-    if (Platform.OS !== 'web') {
-      Alert.alert('Aviso', 'La importación de CSV actualmente está optimizada para la versión Web.');
-      return;
-    }
-
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.csv, text/csv';
-    
-    input.onchange = (e: any) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      
-      setCsvLoading(true);
-      const reader = new FileReader();
-      
-      reader.onload = (event) => {
-        const csvText = event.target?.result as string;
-        procesarTextoCSV(csvText);
-      };
-      
-      reader.onerror = () => {
-        window.alert('No se pudo leer el archivo.');
-        setCsvLoading(false);
-      };
-
-      reader.readAsText(file);
-    };
-
-    input.click();
-  };
-
-  const procesarTextoCSV = (csvText: string) => {
-    try {
-      const lines = csvText.split(/\r?\n/).filter(line => line.trim() !== '');
-      if (lines.length < 2) {
-        window.alert('El archivo CSV parece estar vacío o no tiene ejercicios.');
-        setCsvLoading(false);
-        return;
-      }
-
-      const newExercises = lines.slice(1).map(line => {
-        const separator = line.includes(';') ? ';' : ',';
-        const columns = line.split(separator).map(item => item?.trim().replace(/^"|"$/g, '') || '');
-        
-        return {
-          name: columns[0] || '',
-          sets: columns[1] || '',
-          reps: columns[2] || '',
-          weight: columns[3] || '',
-          rest: columns[4] || '',
-          rest_exercise: columns[5] || '', // AÑADIDO AL CSV
-          exercise_notes: columns[6] || '',
-          video_url: columns[7] || '',
-          image_path: ''
-        };
-      });
-
-      const validExercises = newExercises.filter(ex => ex.name !== '');
-      
-      if (validExercises.length > 0) {
-        setEjercicios(validExercises);
-        window.alert(`Se han importado ${validExercises.length} ejercicios.`);
-      } else {
-        window.alert('No se detectaron ejercicios válidos en el archivo.');
-      }
-    } catch (error) {
-      window.alert('El formato del CSV no es válido.');
-    } finally {
-      setCsvLoading(false);
-    }
-  };
-
-  const addExercise = () => setEjercicios([...ejercicios, { name: '', sets: '', reps: '', weight: '', rest: '', rest_exercise: '', exercise_notes: '', video_url: '', image_path: '' }]);
-  
+  // --- MÉTODOS TRADICIONALES ---
   const updateExercise = (index: number, field: string, value: string) => {
-    const updated = [...ejercicios];
+    const updated = [...exercises];
     updated[index] = { ...updated[index], [field]: value };
-    setEjercicios(updated);
+    setExercises(updated);
   };
-  
-  const removeExercise = (index: number) => setEjercicios(ejercicios.filter((_, i) => i !== index));
+  const addExercise = () => {
+    setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '' }]);
+  };
+  const removeExercise = (index: number) => {
+    setExercises(exercises.filter((_, i) => i !== index));
+  };
+
+  // --- MÉTODOS HIIT ---
+  const addHiitBlock = () => {
+    setHiitBlocks([...hiitBlocks, {
+      _key: Math.random().toString(),
+      name: `Bloque ${hiitBlocks.length + 1}`,
+      sets: '3', rest_exercise: '15', rest_block: '60',
+      exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '' }]
+    }]);
+  };
+  const removeHiitBlock = (bIndex: number) => {
+    setHiitBlocks(hiitBlocks.filter((_, i) => i !== bIndex));
+  };
+  const updateHiitBlock = (bIndex: number, field: string, value: string) => {
+    const updated = [...hiitBlocks];
+    updated[bIndex] = { ...updated[bIndex], [field]: value };
+    setHiitBlocks(updated);
+  };
+  const addHiitExercise = (bIndex: number) => {
+    const updated = [...hiitBlocks];
+    updated[bIndex].exercises.push({ _key: Math.random().toString(), name: '', duration_reps: '' });
+    setHiitBlocks(updated);
+  };
+  const removeHiitExercise = (bIndex: number, eIndex: number) => {
+    const updated = [...hiitBlocks];
+    updated[bIndex].exercises = updated[bIndex].exercises.filter((_: any, i: number) => i !== eIndex);
+    setHiitBlocks(updated);
+  };
+  const updateHiitExercise = (bIndex: number, eIndex: number, field: string, value: string) => {
+    const updated = [...hiitBlocks];
+    updated[bIndex].exercises[eIndex] = { ...updated[bIndex].exercises[eIndex], [field]: value };
+    setHiitBlocks(updated);
+  };
 
   const handleSave = async () => {
-    if (!titulo || !fecha) {
-      if (Platform.OS !== 'web') Alert.alert('Error', 'Por favor, completa el título y la fecha.');
-      else window.alert('Por favor, completa el título y la fecha.');
-      return;
-    }
+    setError('');
+    if (!title.trim()) { setError('El título es obligatorio'); return; }
+    if (!date.trim()) { setError('La fecha es obligatoria'); return; }
 
-    const ejerciciosLimpios = ejercicios.filter(e => e.name.trim() !== '');
-    if (ejerciciosLimpios.length === 0) {
-      if (Platform.OS !== 'web') Alert.alert('Error', 'Añade al menos un ejercicio con nombre.');
-      else window.alert('Añade al menos un ejercicio con nombre.');
-      return;
-    }
+    let payloadData: any = {
+      title: title.trim(),
+      date: date.trim(),
+      notes: notes.trim(),
+      athlete_id: params.athlete_id,
+      microciclo_id: selectedMicroId,
+      is_hiit: workoutType === 'hiit', // Nueva bandera en la BD
+    };
 
-    if (!athlete_id) {
-        if (Platform.OS !== 'web') Alert.alert('Error', 'No se ha detectado el atleta al que asignar el entrenamiento.');
-        return;
+    if (workoutType === 'traditional') {
+      const cleanExercises = exercises.filter(e => e.name.trim()).map(ex => ({
+        name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight,
+        rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes
+      }));
+      if (cleanExercises.length === 0) { setError('Agrega al menos un ejercicio'); return; }
+      payloadData.exercises = cleanExercises;
+    } else {
+      // Limpiamos los bloques HIIT
+      const cleanBlocks = hiitBlocks.map(block => {
+        const validExs = block.exercises.filter((e: any) => e.name.trim()).map((e: any) => ({ name: e.name, duration_reps: e.duration_reps }));
+        return {
+          name: block.name,
+          sets: block.sets,
+          rest_exercise: block.rest_exercise,
+          rest_block: block.rest_block,
+          exercises: validExs
+        };
+      }).filter(b => b.exercises.length > 0);
+      
+      if (cleanBlocks.length === 0) { setError('Añade al menos un bloque con un ejercicio'); return; }
+      payloadData.hiit_blocks = cleanBlocks;
     }
 
     setSaving(true);
     try {
-      const payload = {
-        title: titulo,
-        date: fecha,
-        exercises: ejerciciosLimpios,
-        notes: notas,
-        athlete_id: athlete_id,
-        microciclo_id: selectedMicroId 
-      };
-
-      if (edit_id) {
-        await api.updateWorkout(edit_id, payload);
-      } else {
-        await api.createWorkout(payload);
-      }
-      
+      await api.createWorkout(payloadData);
       router.back();
-    } catch (e) {
-      if (Platform.OS !== 'web') Alert.alert('Error', 'Hubo un problema al guardar el entrenamiento.');
-      else console.error(e);
+    } catch (e: any) {
+      setError(e.message || 'Error al guardar');
     } finally {
       setSaving(false);
     }
   };
 
-  if (loading) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 10, color: colors.textSecondary }}>Preparando sesión...</Text>
-      </View>
-    );
-  }
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}>
-          <Ionicons name="close" size={28} color={colors.textPrimary} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          {edit_id ? 'Editar Sesión' : 'Nueva Sesión'}
-        </Text>
-        <TouchableOpacity onPress={handleSave} disabled={saving}>
-          {saving ? <ActivityIndicator color={colors.primary} /> : <Text style={[styles.saveText, { color: colors.primary }]}>{edit_id ? 'Actualizar' : 'Guardar'}</Text>}
-        </TouchableOpacity>
-      </View>
-
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+        <View style={[styles.header, { borderBottomColor: colors.border }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
+            <Ionicons name="close" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nueva Sesión</Text>
+          <TouchableOpacity onPress={handleSave} style={styles.headerBtn} disabled={saving}>
+            {saving ? <ActivityIndicator color={colors.primary} size="small" /> : <Text style={[styles.saveText, { color: colors.primary }]}>Guardar</Text>}
+          </TouchableOpacity>
+        </View>
+
+        <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
           
-          <View style={styles.csvSection}>
-            <TouchableOpacity 
-              style={[styles.csvBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}
-              onPress={handleImportCSV}
-              disabled={csvLoading}
-            >
-              {csvLoading ? <ActivityIndicator color={colors.primary} size="small" /> : <Ionicons name="document-text-outline" size={20} color={colors.primary} />}
-              <Text style={{ color: colors.primary, fontWeight: '800', letterSpacing: 0.5 }}>
-                {csvLoading ? 'IMPORTANDO...' : 'IMPORTAR DESDE CSV'}
-              </Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity onPress={() => setShowCsvFormat(!showCsvFormat)} style={{ alignSelf: 'center', marginBottom: showCsvFormat ? 10 : 24 }}>
-              <Text style={{ color: colors.textSecondary, fontSize: 12, textDecorationLine: 'underline' }}>
-                {showCsvFormat ? 'Ocultar formato CSV' : '¿Cómo debe ser el archivo CSV?'}
-              </Text>
-            </TouchableOpacity>
-
-            {showCsvFormat && (
-              <View style={[styles.csvFormatBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>1. Crea un Excel con estas columnas (en orden):</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginBottom: 10, backgroundColor: 'rgba(0,0,0,0.05)', padding: 6, borderRadius: 6 }}>
-                  Nombre, Series, Reps, Kilos, Desc. Series, Desc. Ejercicios, Notas, URL Video
-                </Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>2. Ejemplo de fila:</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginBottom: 10, backgroundColor: 'rgba(0,0,0,0.05)', padding: 6, borderRadius: 6 }}>
-                  Sentadilla, 4, 8-10, 60, 90s, 180s, Bajar lento, https://...
-                </Text>
-              </View>
-            )}
-          </View>
-
           <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>TÍTULO DEL ENTRENAMIENTO *</Text>
-            <TextInput
-              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}
-              placeholder="Ej: Torso Fuerza Máxima"
-              placeholderTextColor={colors.textSecondary}
-              value={titulo}
-              onChangeText={setTitulo}
-            />
-
-            <View style={{ marginTop: 16 }}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA *</Text>
-              <TextInput
-                style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.textSecondary}
-                value={fecha}
-                onChangeText={setFecha}
-              />
-            </View>
-
-            <View style={{ marginTop: 24, marginBottom: 8 }}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>ASIGNAR A SEMANA (MICROCICLO)</Text>
-              
-              {microciclosDisponibles.length === 0 ? (
-                <Text style={{ fontSize: 13, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 }}>
-                  No hay microciclos creados en la periodización.
-                </Text>
-              ) : (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                  <TouchableOpacity
-                    style={[
-                      styles.microChip,
-                      selectedMicroId === null 
-                        ? { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }
-                        : { backgroundColor: 'transparent', borderColor: colors.border }
-                    ]}
-                    onPress={() => setSelectedMicroId(null)}
-                  >
-                    <Text style={{ color: colors.textPrimary, fontWeight: selectedMicroId === null ? '700' : '400' }}>
-                      Sin asignar
-                    </Text>
-                  </TouchableOpacity>
-
-                  {microciclosDisponibles.map((micro) => (
-                    <TouchableOpacity
-                      key={micro.id}
-                      style={[
-                        styles.microChip,
-                        selectedMicroId === micro.id 
-                          ? { backgroundColor: micro.color + '20', borderColor: micro.color, borderWidth: 2 }
-                          : { backgroundColor: 'transparent', borderColor: colors.border }
-                      ]}
-                      onPress={() => setSelectedMicroId(micro.id)}
-                    >
-                      <Text style={{ color: selectedMicroId === micro.id ? micro.color : colors.textPrimary, fontWeight: selectedMicroId === micro.id ? '800' : '500' }}>
-                        {micro.nombre}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
+            <Text style={[styles.label, { color: colors.textSecondary }]}>TÍTULO Y FECHA</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TextInput style={[styles.input, { flex: 2, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} value={title} onChangeText={setTitle} placeholder="Ej: Core y Estabilidad" placeholderTextColor={colors.textSecondary} />
+              <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} />
             </View>
           </View>
 
-          <View style={[styles.section, { marginTop: 10 }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Ejercicios *</Text>
-            </View>
+          {/* PESTAÑAS DE MODO DE ENTRENAMIENTO */}
+          <View style={[styles.typeSelector, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+            <TouchableOpacity 
+              style={[styles.typeBtn, workoutType === 'traditional' && { backgroundColor: colors.primary }]}
+              onPress={() => setWorkoutType('traditional')}
+            >
+              <Text style={{ color: workoutType === 'traditional' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Fuerza</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.typeBtn, workoutType === 'hiit' && { backgroundColor: colors.error }]}
+              onPress={() => setWorkoutType('hiit')}
+            >
+              <Text style={{ color: workoutType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito HIIT</Text>
+            </TouchableOpacity>
+          </View>
 
-            {ejercicios.map((ej, index) => (
-              <View key={index} style={[styles.exerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                  <Text style={{ fontWeight: '800', color: colors.textPrimary, fontSize: 16 }}>#{index + 1}</Text>
-                  {ejercicios.length > 1 && (
-                    <TouchableOpacity onPress={() => removeExercise(index)} style={{ padding: 4 }}>
-                      <Ionicons name="trash-outline" size={20} color={colors.error} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-
-                <TextInput
-                  style={[styles.input, { marginBottom: 10, color: colors.textPrimary, borderColor: colors.border }]}
-                  placeholder="Nombre del Ejercicio (Ej: Sentadilla)"
-                  placeholderTextColor={colors.textSecondary}
-                  value={ej.name}
-                  onChangeText={(t) => updateExercise(index, 'name', t)}
-                />
-
-                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Series</Text>
-                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 4" placeholderTextColor={colors.textSecondary} value={ej.sets} onChangeText={(t) => updateExercise(index, 'sets', t)} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Reps</Text>
-                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 8-10" placeholderTextColor={colors.textSecondary} value={ej.reps} onChangeText={(t) => updateExercise(index, 'reps', t)} />
-                  </View>
-                </View>
-
-                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Desc. Series</Text>
-                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 90s" placeholderTextColor={colors.textSecondary} value={ej.rest} onChangeText={(t) => updateExercise(index, 'rest', t)} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Desc. Ejercicios</Text>
-                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 180s" placeholderTextColor={colors.textSecondary} value={ej.rest_exercise} onChangeText={(t) => updateExercise(index, 'rest_exercise', t)} />
-                  </View>
-                </View>
-
-                <View style={[styles.extrasContainer, { borderTopColor: colors.border }]}>
-                  <View style={styles.extraRow}>
-                    <Ionicons name="videocam-outline" size={16} color={colors.textSecondary} />
-                    <TextInput
-                      style={[styles.extraInput, { color: colors.textPrimary }]}
-                      placeholder="URL de video (YouTube, Drive...)"
-                      placeholderTextColor={colors.textSecondary}
-                      autoCapitalize="none"
-                      keyboardType="url"
-                      value={ej.video_url}
-                      onChangeText={(t) => updateExercise(index, 'video_url', t)}
-                    />
-                  </View>
-                  
-                  <View style={styles.extraRow}>
-                    <Ionicons name="chatbubble-outline" size={16} color={colors.textSecondary} />
-                    <TextInput
-                      style={[styles.extraInput, { color: colors.textPrimary }]}
-                      placeholder="Observaciones de la técnica..."
-                      placeholderTextColor={colors.textSecondary}
-                      value={ej.exercise_notes}
-                      onChangeText={(t) => updateExercise(index, 'exercise_notes', t)}
-                    />
-                  </View>
-
-                  <View style={styles.extraRow}>
-                    {imagePreviews[index] || ej.image_path ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                        <Image source={{ uri: imagePreviews[index] || ej.image_path }} style={{ width: 40, height: 40, borderRadius: 6 }} />
-                        <Text style={{ flex: 1, color: colors.textSecondary, fontSize: 13 }}>Imagen adjunta</Text>
-                        <TouchableOpacity onPress={() => {
-                          updateExercise(index, 'image_path', '');
-                          setImagePreviews(prev => { const n = {...prev}; delete n[index]; return n; });
-                        }}>
-                          <Ionicons name="close-circle" size={20} color={colors.error} />
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 4 }}
-                        onPress={() => pickExerciseImage(index)}
-                        disabled={imageUploading === index}
-                      >
-                        {imageUploading === index ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="camera-outline" size={18} color={colors.primary} />}
-                        <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '600' }}>
-                          {imageUploading === index ? 'Subiendo...' : 'Añadir imagen/dibujo'}
-                        </Text>
+          {workoutType === 'traditional' ? (
+            /* --- RENDERIZADO FUERZA TRADICIONAL --- */
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>EJERCICIOS TRADICIONALES ({exercises.length})</Text>
+              </View>
+              {exercises.map((ex, i) => (
+                <View key={ex._key} style={[styles.exerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={styles.exerciseHeader}>
+                    <TextInput style={[styles.exNameInput, { color: colors.textPrimary }]} value={ex.name} onChangeText={v => updateExercise(i, 'name', v)} placeholder="Nombre del ejercicio" placeholderTextColor={colors.textSecondary} />
+                    {exercises.length > 1 && (
+                      <TouchableOpacity onPress={() => removeExercise(i)} style={styles.removeExBtn}>
+                        <Ionicons name="trash-outline" size={18} color={colors.error} />
                       </TouchableOpacity>
                     )}
                   </View>
+                  <View style={[styles.exDetailsRow, { borderTopColor: colors.border }]}>
+                    <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Series</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.sets} onChangeText={v => updateExercise(i, 'sets', v)} placeholder="-" keyboardType="numeric" /></View>
+                    <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Reps</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.reps} onChangeText={v => updateExercise(i, 'reps', v)} placeholder="-" keyboardType="numeric" /></View>
+                    <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Desc.S</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.rest} onChangeText={v => updateExercise(i, 'rest', v)} placeholder="s" keyboardType="numeric" /></View>
+                  </View>
                 </View>
+              ))}
+              <TouchableOpacity onPress={addExercise} style={styles.addExBtnBig}>
+                <Ionicons name="add" size={20} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontWeight: '700' }}>Añadir Ejercicio</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            /* --- RENDERIZADO BLOQUES HIIT --- */
+            <View style={styles.section}>
+              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>BLOQUES DE CIRCUITO ({hiitBlocks.length})</Text>
+              
+              {hiitBlocks.map((block, bIndex) => (
+                <View key={block._key} style={[styles.hiitBlock, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                  <View style={[styles.hiitHeader, { borderBottomColor: colors.border }]}>
+                    <TextInput style={[styles.hiitNameInput, { color: colors.textPrimary }]} value={block.name} onChangeText={v => updateHiitBlock(bIndex, 'name', v)} placeholder="Nombre del Bloque" placeholderTextColor={colors.textSecondary} />
+                    {hiitBlocks.length > 1 && (
+                      <TouchableOpacity onPress={() => removeHiitBlock(bIndex)}>
+                        <Ionicons name="trash-outline" size={20} color={colors.error} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                  
+                  <View style={styles.hiitConfigRow}>
+                    <View style={styles.hiitConfigItem}>
+                      <Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Vueltas (Series)</Text>
+                      <TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.sets} onChangeText={v => updateHiitBlock(bIndex, 'sets', v)} keyboardType="numeric" placeholder="Ej: 3" />
+                    </View>
+                    <View style={styles.hiitConfigItem}>
+                      <Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Descanso entre ej.</Text>
+                      <TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_exercise} onChangeText={v => updateHiitBlock(bIndex, 'rest_exercise', v)} keyboardType="numeric" placeholder="Segundos" />
+                    </View>
+                    <View style={styles.hiitConfigItem}>
+                      <Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Descanso al acabar vuelta</Text>
+                      <TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_block} onChangeText={v => updateHiitBlock(bIndex, 'rest_block', v)} keyboardType="numeric" placeholder="Segundos" />
+                    </View>
+                  </View>
 
-              </View>
-            ))}
+                  <View style={styles.hiitExList}>
+                    {block.exercises.map((ex: any, eIndex: number) => (
+                      <View key={ex._key} style={styles.hiitExRow}>
+                        <View style={styles.hiitExNum}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>{eIndex + 1}</Text></View>
+                        <TextInput style={[styles.hiitExInput, { flex: 2, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'name', v)} placeholder="Ej: Burpees" placeholderTextColor={colors.textSecondary} />
+                        <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="40s o 15 reps" placeholderTextColor={colors.textSecondary} />
+                        <TouchableOpacity onPress={() => removeHiitExercise(bIndex, eIndex)} style={{ padding: 8 }}>
+                          <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                    <TouchableOpacity onPress={() => addHiitExercise(bIndex)} style={styles.addHiitExBtn}>
+                      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>+ Añadir ejercicio al bloque</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
 
-            <TouchableOpacity style={[styles.addBtn, { borderColor: colors.primary, borderStyle: 'dashed' }]} onPress={addExercise}>
-              <Ionicons name="add" size={20} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontWeight: '700', marginLeft: 8 }}>AÑADIR EJERCICIO</Text>
-            </TouchableOpacity>
-          </View>
+              <TouchableOpacity onPress={addHiitBlock} style={[styles.addExBtnBig, { borderColor: colors.error, borderStyle: 'dashed' }]}>
+                <Ionicons name="add" size={20} color={colors.error} />
+                <Text style={{ color: colors.error, fontWeight: '700' }}>Añadir Nuevo Bloque HIIT</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
-          <View style={styles.section}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS GENERALES DEL ENTRENAMIENTO</Text>
-            <TextInput
-              style={[styles.input, styles.textArea, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}
-              placeholder="Instrucciones generales para la sesión..."
-              placeholderTextColor={colors.textSecondary}
-              multiline
-              value={notas}
-              onChangeText={setNotas}
-            />
-          </View>
-
+          {error ? <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text> : null}
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -484,23 +282,41 @@ export default function AddWorkoutScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center', borderBottomWidth: 1, borderBottomColor: '#eee' },
-  headerTitle: { fontSize: 18, fontWeight: '800' },
-  saveText: { fontSize: 16, fontWeight: '800' },
-  content: { padding: 16 },
-  csvSection: { marginBottom: 10 },
-  csvBtn: { padding: 14, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 10, borderWidth: 1 },
-  csvFormatBox: { padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 24 },
-  section: { marginBottom: 24 },
-  sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
-  label: { fontSize: 12, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
-  smallLabel: { fontSize: 11, fontWeight: '700', marginBottom: 4, letterSpacing: 0.5 },
-  input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15 },
-  textArea: { height: 100, textAlignVertical: 'top' },
-  microChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, marginRight: 8, borderWidth: 1 },
-  exerciseCard: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 16 },
-  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderWidth: 2, borderRadius: 12, marginTop: 8 },
-  extrasContainer: { borderTopWidth: 0.5, paddingTop: 8, gap: 4 },
-  extraRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
-  extraInput: { flex: 1, fontSize: 14 }
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 },
+  headerBtn: { minWidth: 60 },
+  headerTitle: { fontSize: 17, fontWeight: '600' },
+  saveText: { fontSize: 16, fontWeight: '600', textAlign: 'right' },
+  form: { padding: 20, gap: 20, paddingBottom: 48 },
+  section: { gap: 10 },
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
+  input: { borderRadius: 10, padding: 14, fontSize: 15, borderWidth: 1 },
+  
+  typeSelector: { flexDirection: 'row', borderRadius: 12, padding: 4, borderWidth: 1 },
+  typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
+
+  exerciseCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 10 },
+  exerciseHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
+  exNameInput: { flex: 1, fontSize: 16, fontWeight: '500' },
+  removeExBtn: { padding: 4 },
+  exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5 },
+  exDetail: { flex: 1, alignItems: 'center', padding: 8, borderRightWidth: 0.5, borderRightColor: 'rgba(0,0,0,0.1)' },
+  exDetailLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4 },
+  exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 8, fontSize: 14, fontWeight: '600' },
+  addExBtnBig: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)', gap: 8 },
+
+  hiitBlock: { borderRadius: 16, borderWidth: 2, overflow: 'hidden', marginBottom: 15 },
+  hiitHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, backgroundColor: 'rgba(0,0,0,0.02)' },
+  hiitNameInput: { fontSize: 18, fontWeight: '800', flex: 1 },
+  hiitConfigRow: { flexDirection: 'row', padding: 12, gap: 10, backgroundColor: 'rgba(0,0,0,0.01)' },
+  hiitConfigItem: { flex: 1 },
+  hiitConfigLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4, textAlign: 'center' },
+  hiitConfigInput: { borderWidth: 1, borderRadius: 8, padding: 8, textAlign: 'center', fontSize: 14, fontWeight: '600' },
+  hiitExList: { padding: 12, gap: 10 },
+  hiitExRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  hiitExNum: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  hiitExInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14 },
+  addHiitExBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, marginLeft: 20 },
+
+  errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 }
 });
