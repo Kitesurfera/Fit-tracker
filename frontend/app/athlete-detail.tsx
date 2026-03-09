@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, ScrollView, Dimensions, Alert, Platform
+  ActivityIndicator, ScrollView, Dimensions, Alert, Platform, Modal, TextInput
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -38,6 +38,11 @@ export default function AthleteDetailScreen() {
   const [history, setHistory] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'dashboard' | 'workouts' | 'progression'>('dashboard');
   const [loading, setLoading] = useState(true);
+
+  // --- ESTADOS PARA DUPLICAR SESIONES ---
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [workoutToDuplicate, setWorkoutToDuplicate] = useState<any>(null);
+  const [duplicateDate, setDuplicateDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => { loadData(); }, []);
 
@@ -79,6 +84,45 @@ export default function AthleteDetailScreen() {
         { text: "Cancelar", style: "cancel" },
         { text: "ELIMINAR", style: "destructive", onPress: () => executeDeleteWorkout(id) }
       ]);
+    }
+  };
+
+  // --- FUNCIÓN PARA DUPLICAR ENTRENAMIENTO ---
+  const handleDuplicateWorkout = async () => {
+    if (!workoutToDuplicate || !duplicateDate) return;
+    setShowDuplicateModal(false);
+    setLoading(true);
+    
+    try {
+      // Limpiamos los ejercicios para que sean un array nuevo sin rastro de IDs antiguos
+      const cleanExercises = (workoutToDuplicate.exercises || []).map((ex: any) => ({
+        name: ex.name, 
+        sets: ex.sets, 
+        reps: ex.reps, 
+        weight: ex.weight, 
+        rest: ex.rest, 
+        video_url: ex.video_url, 
+        exercise_notes: ex.exercise_notes, 
+        image_path: ex.image_path
+      }));
+
+      const payload = {
+        title: workoutToDuplicate.title,
+        date: duplicateDate,
+        notes: workoutToDuplicate.notes || '',
+        athlete_id: params.id!,
+        microciclo_id: workoutToDuplicate.microciclo_id || null, // Se mantiene en la misma semana si existe
+        exercises: cleanExercises
+      };
+
+      await api.createWorkout(payload);
+      
+      if (Platform.OS !== 'web') Alert.alert("Éxito", `Sesión duplicada para el ${duplicateDate}`);
+      loadData();
+    } catch (e) {
+      console.log("Error duplicando:", e);
+      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo duplicar la sesión.");
+      setLoading(false);
     }
   };
 
@@ -206,7 +250,6 @@ export default function AthleteDetailScreen() {
       {workouts.length > 0 ? workouts.map((wk) => (
         <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface }]}>
           
-          {/* CABECERA Y BOTONES DE EDICIÓN */}
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
             <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '15' }]}>
               <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? colors.success : colors.primary} />
@@ -220,8 +263,18 @@ export default function AthleteDetailScreen() {
               </Text>
             </View>
             
-            {/* HERRAMIENTAS DE COACH */}
+            {/* HERRAMIENTAS DE COACH (AHORA CON BOTÓN DE DUPLICAR) */}
             <View style={{ flexDirection: 'row', gap: 5 }}>
+              <TouchableOpacity 
+                style={styles.iconHitbox}
+                onPress={() => {
+                  setWorkoutToDuplicate(wk);
+                  setDuplicateDate(new Date().toISOString().split('T')[0]);
+                  setShowDuplicateModal(true);
+                }}
+              >
+                <Ionicons name="copy-outline" size={20} color={colors.primary} />
+              </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.iconHitbox}
                 onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}
@@ -234,7 +287,6 @@ export default function AthleteDetailScreen() {
             </View>
           </View>
 
-          {/* DETALLES DEL ENTRENAMIENTO REALIZADO (SOLO SI ESTÁ COMPLETADO) */}
           {wk.completed && wk.completion_data && (
             <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -243,7 +295,6 @@ export default function AthleteDetailScreen() {
                 </Text>
               </View>
               
-              {/* LISTA DE EJERCICIOS COMPLETADOS */}
               {wk.completion_data.exercise_results && wk.completion_data.exercise_results.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
                   <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 5 }}>REGISTRO DE CARGAS:</Text>
@@ -255,7 +306,6 @@ export default function AthleteDetailScreen() {
                 </View>
               )}
 
-              {/* OBSERVACIONES DEL DEPORTISTA */}
               {(wk.observations || wk.completion_data.observations) ? (
                 <View style={{ marginTop: 5, padding: 12, backgroundColor: colors.surfaceHighlight, borderRadius: 10 }}>
                   <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 2 }}>OBSERVACIONES:</Text>
@@ -388,6 +438,42 @@ export default function AthleteDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>{activeContent()}</ScrollView>
+
+      {/* MODAL PARA DUPLICAR SESIÓN */}
+      <Modal visible={showDuplicateModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Duplicar Sesión</Text>
+            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 13 }}>
+              Se creará una copia de "{workoutToDuplicate?.title}" en blanco y lista para entrenar.
+            </Text>
+            
+            <Text style={[styles.label, { color: colors.textSecondary }]}>NUEVA FECHA</Text>
+            <TextInput
+              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
+              value={duplicateDate}
+              onChangeText={setDuplicateDate}
+              placeholder="YYYY-MM-DD"
+            />
+            
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+              <TouchableOpacity 
+                style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} 
+                onPress={() => setShowDuplicateModal(false)}
+              >
+                <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalBtn, { backgroundColor: colors.primary }]} 
+                onPress={handleDuplicateWorkout}
+              >
+                <Text style={{ color: '#FFF', fontWeight: '700' }}>Duplicar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -419,7 +505,7 @@ const styles = StyleSheet.create({
   actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 },
   actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
   
-  // NUEVOS ESTILOS PARA LA SESIÓN DEL COACH
+  // ESTILOS PARA LA SESIÓN DEL COACH
   sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 },
   iconHitbox: { padding: 8 },
   completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 },
@@ -427,5 +513,13 @@ const styles = StyleSheet.create({
   avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   cardTitle: { fontSize: 15, fontWeight: '800' },
   progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 },
-  progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }
+  progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+
+  // ESTILOS PARA EL MODAL DE DUPLICAR
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
+  modalContent: { padding: 24, borderRadius: 20 },
+  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 },
+  modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' },
+  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 },
+  label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 }
 });
