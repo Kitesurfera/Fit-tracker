@@ -11,7 +11,6 @@ export default function AddWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   
-  // Extraemos las variables asegurándonos de que siempre sean strings (o null)
   const params = useLocalSearchParams();
   const athlete_id = typeof params.athlete_id === 'string' ? params.athlete_id : params.athlete_id?.[0];
   const microciclo_id = typeof params.microciclo_id === 'string' ? params.microciclo_id : params.microciclo_id?.[0];
@@ -20,8 +19,9 @@ export default function AddWorkoutScreen() {
   const [titulo, setTitulo] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
   const [notas, setNotas] = useState('');
+  // AÑADIDO: rest_exercise
   const [ejercicios, setEjercicios] = useState<any[]>([
-    { name: '', sets: '', reps: '', weight: '', rest: '', exercise_notes: '', video_url: '', image_path: '' }
+    { name: '', sets: '', reps: '', weight: '', rest: '', rest_exercise: '', exercise_notes: '', video_url: '', image_path: '' }
   ]);
   
   const [loading, setLoading] = useState(true);
@@ -41,8 +41,6 @@ export default function AddWorkoutScreen() {
     const initData = async () => {
       try {
         setLoading(true);
-        
-        // 1. Cargamos Microciclos (siempre que sepamos para qué atleta es)
         if (athlete_id) {
           try {
             const tree = await api.getPeriodizationTree(athlete_id);
@@ -54,7 +52,6 @@ export default function AddWorkoutScreen() {
           }
         }
 
-        // 2. Si venimos a EDITAR, cargamos los datos. Si no, dejamos el formulario en blanco.
         if (edit_id && athlete_id) {
           const wks = await api.getWorkouts({ athlete_id: athlete_id });
           const workoutToEdit = wks.find((w: any) => w.id === edit_id);
@@ -80,12 +77,9 @@ export default function AddWorkoutScreen() {
     };
 
     initData();
-    
     return () => { isMounted = false; };
   }, [athlete_id, edit_id]);
 
-
-  // --- MANEJO DE IMÁGENES ---
   const pickExerciseImage = async (exIndex: number) => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -111,7 +105,6 @@ export default function AddWorkoutScreen() {
     }
   };
 
-  // --- MANEJO DE CSV ---
   const handleImportCSV = () => {
     if (Platform.OS !== 'web') {
       Alert.alert('Aviso', 'La importación de CSV actualmente está optimizada para la versión Web.');
@@ -164,8 +157,9 @@ export default function AddWorkoutScreen() {
           reps: columns[2] || '',
           weight: columns[3] || '',
           rest: columns[4] || '',
-          exercise_notes: columns[5] || '',
-          video_url: columns[6] || '',
+          rest_exercise: columns[5] || '', // AÑADIDO AL CSV
+          exercise_notes: columns[6] || '',
+          video_url: columns[7] || '',
           image_path: ''
         };
       });
@@ -185,8 +179,7 @@ export default function AddWorkoutScreen() {
     }
   };
 
-  // --- MANEJO DE EJERCICIOS ---
-  const addExercise = () => setEjercicios([...ejercicios, { name: '', sets: '', reps: '', weight: '', rest: '', exercise_notes: '', video_url: '', image_path: '' }]);
+  const addExercise = () => setEjercicios([...ejercicios, { name: '', sets: '', reps: '', weight: '', rest: '', rest_exercise: '', exercise_notes: '', video_url: '', image_path: '' }]);
   
   const updateExercise = (index: number, field: string, value: string) => {
     const updated = [...ejercicios];
@@ -196,7 +189,6 @@ export default function AddWorkoutScreen() {
   
   const removeExercise = (index: number) => setEjercicios(ejercicios.filter((_, i) => i !== index));
 
-  // --- GUARDADO FINAL (CREAR O ACTUALIZAR) ---
   const handleSave = async () => {
     if (!titulo || !fecha) {
       if (Platform.OS !== 'web') Alert.alert('Error', 'Por favor, completa el título y la fecha.');
@@ -228,10 +220,8 @@ export default function AddWorkoutScreen() {
       };
 
       if (edit_id) {
-        // ACTUALIZAR EXISTENTE
         await api.updateWorkout(edit_id, payload);
       } else {
-        // CREAR NUEVO
         await api.createWorkout(payload);
       }
       
@@ -270,7 +260,6 @@ export default function AddWorkoutScreen() {
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
           
-          {/* SECCIÓN CSV */}
           <View style={styles.csvSection}>
             <TouchableOpacity 
               style={[styles.csvBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}
@@ -291,20 +280,18 @@ export default function AddWorkoutScreen() {
 
             {showCsvFormat && (
               <View style={[styles.csvFormatBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>1. Crea un Excel con estas columnas (en este orden):</Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>1. Crea un Excel con estas columnas (en orden):</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginBottom: 10, backgroundColor: 'rgba(0,0,0,0.05)', padding: 6, borderRadius: 6 }}>
-                  Nombre, Series, Reps, Kilos, Descanso, Notas, URL Video
+                  Nombre, Series, Reps, Kilos, Desc. Series, Desc. Ejercicios, Notas, URL Video
                 </Text>
                 <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', marginBottom: 6 }}>2. Ejemplo de fila:</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12, fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace', marginBottom: 10, backgroundColor: 'rgba(0,0,0,0.05)', padding: 6, borderRadius: 6 }}>
-                  Sentadilla, 4, 8-10, 60, 90s, Bajar lento, https://...
+                  Sentadilla, 4, 8-10, 60, 90s, 180s, Bajar lento, https://...
                 </Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700' }}>3. Guárdalo como "CSV delimitado por comas" y súbelo.</Text>
               </View>
             )}
           </View>
 
-          {/* DATOS BÁSICOS */}
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>TÍTULO DEL ENTRENAMIENTO *</Text>
             <TextInput
@@ -326,7 +313,6 @@ export default function AddWorkoutScreen() {
               />
             </View>
 
-            {/* SELECTOR DE MICROCICLO */}
             <View style={{ marginTop: 24, marginBottom: 8 }}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>ASIGNAR A SEMANA (MICROCICLO)</Text>
               
@@ -371,7 +357,6 @@ export default function AddWorkoutScreen() {
             </View>
           </View>
 
-          {/* EJERCICIOS */}
           <View style={[styles.section, { marginTop: 10 }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
               <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>Ejercicios *</Text>
@@ -388,7 +373,6 @@ export default function AddWorkoutScreen() {
                   )}
                 </View>
 
-                {/* Nombre */}
                 <TextInput
                   style={[styles.input, { marginBottom: 10, color: colors.textPrimary, borderColor: colors.border }]}
                   placeholder="Nombre del Ejercicio (Ej: Sentadilla)"
@@ -397,7 +381,6 @@ export default function AddWorkoutScreen() {
                   onChangeText={(t) => updateExercise(index, 'name', t)}
                 />
 
-                {/* Grid Detalles */}
                 <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Series</Text>
@@ -407,13 +390,19 @@ export default function AddWorkoutScreen() {
                     <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Reps</Text>
                     <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 8-10" placeholderTextColor={colors.textSecondary} value={ej.reps} onChangeText={(t) => updateExercise(index, 'reps', t)} />
                   </View>
+                </View>
+
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
                   <View style={{ flex: 1 }}>
-                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Descanso</Text>
+                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Desc. Series</Text>
                     <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 90s" placeholderTextColor={colors.textSecondary} value={ej.rest} onChangeText={(t) => updateExercise(index, 'rest', t)} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.smallLabel, { color: colors.textSecondary }]}>Desc. Ejercicios</Text>
+                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: 180s" placeholderTextColor={colors.textSecondary} value={ej.rest_exercise} onChangeText={(t) => updateExercise(index, 'rest_exercise', t)} />
                   </View>
                 </View>
 
-                {/* Extras: URL, Notas e Imagen */}
                 <View style={[styles.extrasContainer, { borderTopColor: colors.border }]}>
                   <View style={styles.extraRow}>
                     <Ionicons name="videocam-outline" size={16} color={colors.textSecondary} />
@@ -475,7 +464,6 @@ export default function AddWorkoutScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* NOTAS GENERALES */}
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS GENERALES DEL ENTRENAMIENTO</Text>
             <TextInput
@@ -500,24 +488,18 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '800' },
   saveText: { fontSize: 16, fontWeight: '800' },
   content: { padding: 16 },
-  
   csvSection: { marginBottom: 10 },
   csvBtn: { padding: 14, borderRadius: 12, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 8, marginBottom: 10, borderWidth: 1 },
   csvFormatBox: { padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 24 },
-  
   section: { marginBottom: 24 },
   sectionTitle: { fontSize: 18, fontWeight: '800', marginBottom: 8 },
   label: { fontSize: 12, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
   smallLabel: { fontSize: 11, fontWeight: '700', marginBottom: 4, letterSpacing: 0.5 },
-  
   input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15 },
   textArea: { height: 100, textAlignVertical: 'top' },
-  
   microChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, marginRight: 8, borderWidth: 1 },
-  
   exerciseCard: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 16 },
   addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderWidth: 2, borderRadius: 12, marginTop: 8 },
-  
   extrasContainer: { borderTopWidth: 0.5, paddingTop: 8, gap: 4 },
   extraRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6 },
   extraInput: { flex: 1, fontSize: 14 }
