@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
   ActivityIndicator, ScrollView, Modal, Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router'; // <-- Añadimos useFocusEffect
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
@@ -37,7 +37,21 @@ export default function CalendarScreen() {
 
   const isTrainer = user?.role === 'trainer';
 
-  useEffect(() => { init(); }, []);
+  // Solo se ejecuta una vez al montar para cargar la lista de atletas (si es entrenador)
+  useEffect(() => { 
+    init(); 
+  }, []);
+
+  // ESTA ES LA MAGIA: Se ejecuta CADA VEZ que la pestaña vuelve a estar en pantalla
+  useFocusEffect(
+    useCallback(() => {
+      if (selectedAthlete) {
+        // Refrescamos los datos en segundo plano sin bloquear la pantalla con loading
+        setUpdating(true);
+        refreshAthleteData(selectedAthlete);
+      }
+    }, [selectedAthlete])
+  );
 
   const init = async () => {
     try {
@@ -55,22 +69,29 @@ export default function CalendarScreen() {
     }
   };
 
-  const handleSelectAthlete = async (athlete: any) => {
+  // Función separada para recargar solo los datos del atleta activo
+  const refreshAthleteData = async (athlete: any) => {
+    try {
+      const [resTree, resWorkouts] = await Promise.all([
+        api.getPeriodizationTree(athlete.id),
+        api.getWorkouts({ athlete_id: athlete.id })
+      ]);
+      setMacros(resTree?.macros || []);
+      setWorkouts(resWorkouts || []);
+    } catch (e) { 
+      console.log("Error recargando datos:", e); 
+    } finally { 
+      setUpdating(false); 
+      setLoading(false);
+    }
+  };
+
+  const handleSelectAthlete = (athlete: any) => {
     if (!athlete) return;
     setSelectedAthlete(athlete);
     setShowPicker(false);
-    setLoading(true);
-    try {
-      const res = await api.getPeriodizationTree(athlete.id);
-      setMacros(res?.macros || []);
-      const wks = await api.getWorkouts({ athlete_id: athlete.id });
-      setWorkouts(wks || []);
-    } catch (e) { 
-      console.log("Error cargando datos:", e); 
-    } finally { 
-      setLoading(false); 
-      setUpdating(false); 
-    }
+    setLoading(true); // Solo mostramos el spinner grande al cambiar de atleta
+    refreshAthleteData(athlete);
   };
 
   const daysInMonth = useMemo(() => {
@@ -108,6 +129,8 @@ export default function CalendarScreen() {
 
   const getSelectedDateDetails = () => {
     let details: any = { macro: null, micro: null, workouts: [] };
+    
+    // Al filtrar, nos aseguramos de mostrar TODOS los entrenos si hay más de uno ese día
     details.workouts = workouts?.filter(w => w.date === selectedDate) || [];
 
     if (Array.isArray(macros)) {
@@ -131,15 +154,14 @@ export default function CalendarScreen() {
     }
   };
 
-
   const handleWorkoutPress = (workoutId: string) => {
     if (isTrainer) {
-      // Ahora sí, apuntamos al archivo correcto de edición
       router.push({ pathname: '/edit-workout', params: { workoutId } });
     } else {
       router.push({ pathname: '/training-mode', params: { workoutId } });
     }
   };
+
   if (loading && athletes.length === 0) return <View style={{flex:1, justifyContent:'center', alignItems:'center'}}><ActivityIndicator size="large" color={colors.primary}/></View>;
 
   return (
@@ -151,7 +173,7 @@ export default function CalendarScreen() {
         </View>
         <View style={{flexDirection:'row', gap: 15}}>
           {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.iconBtn}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
-          <TouchableOpacity onPress={() => { setUpdating(true); handleSelectAthlete(selectedAthlete); }} disabled={updating} style={styles.iconBtn}>
+          <TouchableOpacity onPress={() => { setUpdating(true); refreshAthleteData(selectedAthlete); }} disabled={updating} style={styles.iconBtn}>
             {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={22} color={colors.primary} />}
           </TouchableOpacity>
         </View>
@@ -274,11 +296,8 @@ const styles = StyleSheet.create({
   calendarGrid: { paddingHorizontal: 15 },
   weekDays: { flexDirection: 'row', marginBottom: 10 },
   weekDayText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '800' },
-  
-  // ¡AQUÍ ESTÁ LA CORRECCIÓN DE LA CUADRÍCULA! Adiós a los márgenes raros.
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
-  
   dayText: { fontSize: 15, fontWeight: '600' },
   footer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
   footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1 },
