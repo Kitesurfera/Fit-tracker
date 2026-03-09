@@ -11,8 +11,11 @@ export default function AddWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   
-  // Extraemos las variables directamente para que React no se haga un lío
-  const { athlete_id, name, microciclo_id, edit_id } = useLocalSearchParams();
+  // Extraemos las variables asegurándonos de que siempre sean strings (o null)
+  const params = useLocalSearchParams();
+  const athlete_id = typeof params.athlete_id === 'string' ? params.athlete_id : params.athlete_id?.[0];
+  const microciclo_id = typeof params.microciclo_id === 'string' ? params.microciclo_id : params.microciclo_id?.[0];
+  const edit_id = typeof params.edit_id === 'string' ? params.edit_id : params.edit_id?.[0];
 
   const [titulo, setTitulo] = useState('');
   const [fecha, setFecha] = useState(new Date().toISOString().split('T')[0]);
@@ -21,11 +24,11 @@ export default function AddWorkoutScreen() {
     { name: '', sets: '', reps: '', weight: '', rest: '', exercise_notes: '', video_url: '', image_path: '' }
   ]);
   
-  const [loading, setLoading] = useState(true); // Inicialmente cargando para evitar parpadeos
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
   const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
-  const [selectedMicroId, setSelectedMicroId] = useState<string | null>(microciclo_id ? String(microciclo_id) : null);
+  const [selectedMicroId, setSelectedMicroId] = useState<string | null>(microciclo_id || null);
 
   const [imageUploading, setImageUploading] = useState<number | null>(null);
   const [imagePreviews, setImagePreviews] = useState<Record<number, string>>({});
@@ -38,19 +41,22 @@ export default function AddWorkoutScreen() {
     const initData = async () => {
       try {
         setLoading(true);
-        const currentAthleteId = typeof athlete_id === 'string' ? athlete_id : null;
         
-        // 1. Cargamos Microciclos
-        if (currentAthleteId) {
-          const tree = await api.getPeriodizationTree(currentAthleteId);
-          const todosLosMicros = tree.flatMap((macro: any) => macro.microciclos || []);
-          todosLosMicros.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
-          if (isMounted) setMicrociclosDisponibles(todosLosMicros);
+        // 1. Cargamos Microciclos (siempre que sepamos para qué atleta es)
+        if (athlete_id) {
+          try {
+            const tree = await api.getPeriodizationTree(athlete_id);
+            const todosLosMicros = tree.flatMap((macro: any) => macro.microciclos || []);
+            todosLosMicros.sort((a: any, b: any) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+            if (isMounted) setMicrociclosDisponibles(todosLosMicros);
+          } catch (treeError) {
+            console.log("No se pudieron cargar los microciclos:", treeError);
+          }
         }
 
-        // 2. Cargamos el entrenamiento si estamos editando
-        if (edit_id && currentAthleteId) {
-          const wks = await api.getWorkouts({ athlete_id: currentAthleteId });
+        // 2. Si venimos a EDITAR, cargamos los datos. Si no, dejamos el formulario en blanco.
+        if (edit_id && athlete_id) {
+          const wks = await api.getWorkouts({ athlete_id: athlete_id });
           const workoutToEdit = wks.find((w: any) => w.id === edit_id);
           
           if (workoutToEdit && isMounted) {
@@ -62,8 +68,8 @@ export default function AddWorkoutScreen() {
             if (workoutToEdit.exercises && workoutToEdit.exercises.length > 0) {
               setEjercicios(workoutToEdit.exercises);
             }
-          } else if (isMounted) {
-            if (Platform.OS !== 'web') Alert.alert("Aviso", "No se pudo recuperar la sesión antigua.");
+          } else if (isMounted && Platform.OS !== 'web') {
+            Alert.alert("Aviso", "No se pudo recuperar la sesión antigua.");
           }
         }
       } catch (error) {
@@ -78,8 +84,6 @@ export default function AddWorkoutScreen() {
     return () => { isMounted = false; };
   }, [athlete_id, edit_id]);
 
-  // ---> AQUÍ CONTINÚA TU CÓDIGO (pickExerciseImage, handleImportCSV, etc...) <---
-  // ...
 
   // --- MANEJO DE IMÁGENES ---
   const pickExerciseImage = async (exIndex: number) => {
@@ -207,6 +211,11 @@ export default function AddWorkoutScreen() {
       return;
     }
 
+    if (!athlete_id) {
+        if (Platform.OS !== 'web') Alert.alert('Error', 'No se ha detectado el atleta al que asignar el entrenamiento.');
+        return;
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -214,13 +223,13 @@ export default function AddWorkoutScreen() {
         date: fecha,
         exercises: ejerciciosLimpios,
         notes: notas,
-        athlete_id: params.athlete_id,
+        athlete_id: athlete_id,
         microciclo_id: selectedMicroId 
       };
 
-      if (params.edit_id) {
+      if (edit_id) {
         // ACTUALIZAR EXISTENTE
-        await api.updateWorkout(params.edit_id, payload);
+        await api.updateWorkout(edit_id, payload);
       } else {
         // CREAR NUEVO
         await api.createWorkout(payload);
@@ -239,7 +248,7 @@ export default function AddWorkoutScreen() {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
         <ActivityIndicator size="large" color={colors.primary} />
-        <Text style={{ marginTop: 10, color: colors.textSecondary }}>Cargando planificación...</Text>
+        <Text style={{ marginTop: 10, color: colors.textSecondary }}>Preparando sesión...</Text>
       </View>
     );
   }
@@ -251,10 +260,10 @@ export default function AddWorkoutScreen() {
           <Ionicons name="close" size={28} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-          {params.edit_id ? 'Editar Sesión' : 'Nueva Sesión'}
+          {edit_id ? 'Editar Sesión' : 'Nueva Sesión'}
         </Text>
         <TouchableOpacity onPress={handleSave} disabled={saving}>
-          {saving ? <ActivityIndicator color={colors.primary} /> : <Text style={[styles.saveText, { color: colors.primary }]}>{params.edit_id ? 'Actualizar' : 'Guardar'}</Text>}
+          {saving ? <ActivityIndicator color={colors.primary} /> : <Text style={[styles.saveText, { color: colors.primary }]}>{edit_id ? 'Actualizar' : 'Guardar'}</Text>}
         </TouchableOpacity>
       </View>
 
