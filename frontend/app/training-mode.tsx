@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, TextInput, Alert, Platform
+  ActivityIndicator, Linking, TextInput, Alert, Platform, KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,7 +15,6 @@ export default function TrainingModeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   
-  // Extraemos de forma segura para evitar cuelgues de ruta
   const params = useLocalSearchParams();
   const currentWorkoutId = typeof params.workoutId === 'string' ? params.workoutId : params.workoutId?.[0];
   
@@ -32,6 +31,9 @@ export default function TrainingModeScreen() {
   
   const [restSeconds, setRestSeconds] = useState(0);
   const [isResting, setIsResting] = useState(false);
+  // Nuevo estado para saber qué tipo de descanso estamos haciendo
+  const [restType, setRestType] = useState<'set' | 'exercise' | null>(null);
+  
   const restIntervalRef = useRef<any>(null);
   const [observations, setObservations] = useState('');
 
@@ -85,6 +87,7 @@ export default function TrainingModeScreen() {
     return () => { isMounted = false; };
   }, [currentWorkoutId]);
 
+  // CONTROL DEL TEMPORIZADOR
   useEffect(() => {
     if (isResting && restSeconds > 0) {
       restIntervalRef.current = setInterval(() => {
@@ -99,6 +102,14 @@ export default function TrainingModeScreen() {
       }, 1000);
     }
     return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
+  }, [isResting]);
+
+  // Si acabamos de terminar un descanso DE EJERCICIO, saltamos al siguiente
+  useEffect(() => {
+    if (!isResting && restType === 'exercise') {
+       autoAdvance(currentExIndex);
+       setRestType(null);
+    }
   }, [isResting]);
 
   if (loading) {
@@ -146,14 +157,7 @@ export default function TrainingModeScreen() {
     if (restIntervalRef.current) clearInterval(restIntervalRef.current);
     setIsResting(false);
     setRestSeconds(0);
-  };
-
-  const startRestTimer = () => {
-    const restTime = parseInt(currentEx?.rest) || 0;
-    if (restTime > 0) {
-      setRestSeconds(restTime);
-      setIsResting(true);
-    }
+    // Si era un descanso de cambio de ejercicio, al saltarlo pasará al siguiente por el useEffect
   };
 
   const autoAdvance = (exIdx: number) => {
@@ -167,11 +171,27 @@ export default function TrainingModeScreen() {
   const completeSet = () => {
     if (nextPendingSet === -1) return;
     updateSetStatus(currentExIndex, nextPendingSet, 'completed');
+    
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
+    
     if (remaining === 0) {
-      autoAdvance(currentExIndex);
+      // ¡Última serie del ejercicio! Toca descanso ENTRE EJERCICIOS
+      const restTimeExercise = parseInt(currentEx?.rest_exercise) || 0;
+      if (restTimeExercise > 0 && currentExIndex < exercises.length - 1) {
+        setRestSeconds(restTimeExercise);
+        setIsResting(true);
+        setRestType('exercise');
+      } else {
+        autoAdvance(currentExIndex);
+      }
     } else {
-      startRestTimer();
+      // Quedan series, toca descanso ENTRE SERIES
+      const restTimeSet = parseInt(currentEx?.rest) || 0;
+      if (restTimeSet > 0) {
+        setRestSeconds(restTimeSet);
+        setIsResting(true);
+        setRestType('set');
+      }
     }
   };
 
@@ -179,6 +199,7 @@ export default function TrainingModeScreen() {
     if (nextPendingSet === -1) return;
     if (isResting) skipRest();
     updateSetStatus(currentExIndex, nextPendingSet, 'skipped');
+    
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
     if (remaining === 0) {
       autoAdvance(currentExIndex);
@@ -210,8 +231,9 @@ export default function TrainingModeScreen() {
       rpe: rpe,
       sleep: sleep,
       exercise_results: exercises.map((ex: any, i: number) => {
+        // AQUÍ ESTABA EL BUG QUE PROVOCABA LA PANTALLA NEGRA. AHORA TIENE ?. PROTECTORES
         if (workout.completed && workout.completion_data) {
-          return workout.completion_data.exercise_results[i] || {};
+          return workout.completion_data?.exercise_results?.[i] || {};
         }
         
         const sets = setsStatus[i] || [];
@@ -248,7 +270,7 @@ export default function TrainingModeScreen() {
       }
       const cleanExercises = exercises.map((ex: any) => ({
         name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight, 
-        rest: ex.rest, video_url: ex.video_url, exercise_notes: ex.exercise_notes, image_path: ex.image_path
+        rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes, image_path: ex.image_path
       }));
       updateData.exercises = cleanExercises;
       updateData.title = workout.title;
@@ -265,7 +287,9 @@ export default function TrainingModeScreen() {
 
   if (finished || workout.completed) {
     const completionData = workout.completed && workout.completion_data ? workout.completion_data : buildCompletionData();
-    const totalSkipped = completionData.exercise_results ? completionData.exercise_results.reduce((s: number, r: any) => s + (r.skipped_sets || 0), 0) : 0;
+    // Protección adicional para el Reduce
+    const validResults = Array.isArray(completionData?.exercise_results) ? completionData.exercise_results : [];
+    const totalSkipped = validResults.reduce((s: number, r: any) => s + (r?.skipped_sets || 0), 0);
     const hasSkips = totalSkipped > 0;
 
     return (
@@ -292,7 +316,6 @@ export default function TrainingModeScreen() {
               <Text style={[styles.wellnessTitle, { color: colors.textPrimary }]}>Esfuerzo Percibido (RPE)</Text>
               
               {workout.completed ? (
-                // VISTA REPORTE (SOLO LECTURA)
                 <View style={styles.readOnlyReportBox}>
                   <View style={[styles.rpeBtn, { backgroundColor: (rpe || 0) > 7 ? colors.error : (rpe || 0) > 4 ? colors.warning : colors.success, borderColor: 'transparent', width: 60, height: 60 }]}>
                     <Text style={{ color: '#FFF', fontSize: 28, fontWeight: '900' }}>{rpe || '-'}</Text>
@@ -303,7 +326,6 @@ export default function TrainingModeScreen() {
                   </View>
                 </View>
               ) : (
-                // VISTA DE FORMULARIO (PARA RELLENAR)
                 <>
                   <View style={styles.rpeGrid}>
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
@@ -348,9 +370,9 @@ export default function TrainingModeScreen() {
             </Text>
 
             <View style={styles.summaryList}>
-              {completionData.exercise_results && completionData.exercise_results.map((r: any, i: number) => {
-                const allDone = r.skipped_sets === 0;
-                const allSkipped = r.completed_sets === 0;
+              {validResults.map((r: any, i: number) => {
+                const allDone = r?.skipped_sets === 0;
+                const allSkipped = r?.completed_sets === 0;
                 return (
                   <View key={i} style={[styles.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -361,14 +383,14 @@ export default function TrainingModeScreen() {
                         />
                       </View>
                       <View style={{ flex: 1 }}>
-                        <Text style={[styles.summaryName, { color: colors.textPrimary }]}>{r.name}</Text>
+                        <Text style={[styles.summaryName, { color: colors.textPrimary }]}>{r?.name}</Text>
                         <View style={styles.summaryDots}>
-                          {r.set_details && r.set_details.map((sd: any, si: number) => (
+                          {r?.set_details && Array.isArray(r.set_details) && r.set_details.map((sd: any, si: number) => (
                             <View key={si} style={[
                               styles.miniDot,
-                              sd.status === 'completed' && { backgroundColor: colors.success },
-                              sd.status === 'skipped' && { backgroundColor: colors.error },
-                              sd.status === 'pending' && { backgroundColor: colors.border },
+                              sd?.status === 'completed' && { backgroundColor: colors.success },
+                              sd?.status === 'skipped' && { backgroundColor: colors.error },
+                              sd?.status === 'pending' && { backgroundColor: colors.border },
                             ]} />
                           ))}
                         </View>
@@ -378,7 +400,6 @@ export default function TrainingModeScreen() {
                     {!allSkipped && (
                       <View style={styles.logRow}>
                         {workout.completed ? (
-                          // REPORTE DE PESOS
                           <View style={styles.readOnlyLogBox}>
                             <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '800' }}>Rendimiento Registrado:</Text>
                             <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '900', marginTop: 4 }}>
@@ -386,14 +407,13 @@ export default function TrainingModeScreen() {
                             </Text>
                           </View>
                         ) : (
-                          // FORMULARIO DE PESOS
                           <>
                             <View style={styles.logInputWrapper}>
                               <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Kilos reales</Text>
                               <TextInput
                                 style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
                                 placeholder="Ej: 60" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
-                                value={logs[i]?.weight || ''} onChangeText={(w) => setLogs(prev => ({...prev, [i]: {...prev[i], weight: w}}))}
+                                value={logs[i]?.weight || ''} onChangeText={(w) => setLogs(prev => ({...prev, [i]: {...(prev[i]||{}), weight: w}}))}
                               />
                             </View>
                             <View style={styles.logInputWrapper}>
@@ -401,7 +421,7 @@ export default function TrainingModeScreen() {
                               <TextInput
                                 style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
                                 placeholder="Ej: 10" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
-                                value={logs[i]?.reps || ''} onChangeText={(rep) => setLogs(prev => ({...prev, [i]: {...prev[i], reps: rep}}))}
+                                value={logs[i]?.reps || ''} onChangeText={(rep) => setLogs(prev => ({...prev, [i]: {...(prev[i]||{}), reps: rep}}))}
                               />
                             </View>
                           </>
@@ -537,7 +557,9 @@ export default function TrainingModeScreen() {
             <View style={[styles.restTimerCard, { backgroundColor: colors.primary + '10' }]}>
               <Ionicons name="timer-outline" size={28} color={colors.primary} />
               <View style={styles.restTimerContent}>
-                <Text style={[styles.restTimerLabel, { color: colors.textSecondary }]}>Descanso</Text>
+                <Text style={[styles.restTimerLabel, { color: colors.textSecondary }]}>
+                  {restType === 'exercise' ? 'DESCANSO (SIGUIENTE EJERCICIO)' : 'DESCANSO'}
+                </Text>
                 <Text style={[styles.restTimerValue, { color: colors.primary }]}>
                   {Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, '0')}
                 </Text>
