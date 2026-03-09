@@ -13,7 +13,9 @@ import { api } from '../src/api';
 export default function EditWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const { workoutId } = useLocalSearchParams<{ workoutId: string }>();
+  
+  const params = useLocalSearchParams();
+  const workoutId = typeof params.workoutId === 'string' ? params.workoutId : params.workoutId?.[0];
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -23,18 +25,15 @@ export default function EditWorkoutScreen() {
   const [exercises, setExercises] = useState<any[]>([]);
   const [error, setError] = useState('');
   
-  // --- ESTADOS DE PERIODIZACIÓN ---
   const [athleteId, setAthleteId] = useState<string>('');
   const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
   const [selectedMicroId, setSelectedMicroId] = useState<string | null>(null);
 
-  // --- SOLUCIÓN AL PANTALLAZO NEGRO ---
   useEffect(() => {
     const fetchWorkoutData = async () => {
       if (!workoutId) return;
       
       try {
-        // Usamos la función en plural que sí existe en nuestra API
         const allWorkouts = await api.getWorkouts();
         const w = allWorkouts.find((wk: any) => wk.id === workoutId);
 
@@ -53,6 +52,7 @@ export default function EditWorkoutScreen() {
               reps: ex.reps || '',
               weight: ex.weight || '',
               rest: ex.rest || '',
+              rest_exercise: ex.rest_exercise || '', // Recuperamos el nuevo tipo de descanso
               video_url: ex.video_url || '',
               exercise_notes: ex.exercise_notes || '',
               image_path: ex.image_path || '',
@@ -71,7 +71,6 @@ export default function EditWorkoutScreen() {
     fetchWorkoutData();
   }, [workoutId]);
 
-  // --- EFECTO PARA CARGAR MICROCICLOS ---
   useEffect(() => {
     if (athleteId) {
       api.getPeriodizationTree(athleteId).then((tree) => {
@@ -91,7 +90,7 @@ export default function EditWorkoutScreen() {
   const addExercise = () => {
     setExercises([...exercises, { 
       _key: Math.random().toString(),
-      name: '', sets: '', reps: '', weight: '', rest: '', video_url: '', exercise_notes: '', image_path: '' 
+      name: '', sets: '', reps: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '' 
     }]);
   };
 
@@ -150,7 +149,8 @@ export default function EditWorkoutScreen() {
 
   const handleSave = async () => {
     setError('');
-    if (!title.trim()) { setError('El titulo es obligatorio'); return; }
+    if (!title.trim()) { setError('El título es obligatorio'); return; }
+    if (!date.trim()) { setError('La fecha es obligatoria'); return; }
     
     const cleanExercises = exercises
       .filter(e => e.name.trim())
@@ -160,6 +160,7 @@ export default function EditWorkoutScreen() {
         reps: ex.reps,
         weight: ex.weight,
         rest: ex.rest,
+        rest_exercise: ex.rest_exercise, // Guardamos el nuevo descanso
         video_url: ex.video_url,
         exercise_notes: ex.exercise_notes,
         image_path: ex.image_path
@@ -170,6 +171,7 @@ export default function EditWorkoutScreen() {
     try {
       await api.updateWorkout(workoutId!, { 
         title: title.trim(), 
+        date: date.trim(), // Actualizamos la fecha
         notes: notes.trim(), 
         exercises: cleanExercises,
         microciclo_id: selectedMicroId 
@@ -193,7 +195,6 @@ export default function EditWorkoutScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-        {/* Header */}
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={() => router.back()} testID="close-edit-workout" activeOpacity={0.7} style={styles.headerBtn}>
             <Ionicons name="close" size={24} color={colors.textPrimary} />
@@ -208,25 +209,26 @@ export default function EditWorkoutScreen() {
 
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
           
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={[styles.dateBadge, { backgroundColor: colors.surfaceHighlight }]}>
-              <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
-              <Text style={[styles.dateText, { color: colors.textSecondary }]}>{date}</Text>
-            </View>
-          </View>
-
-          {/* Title */}
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>TÍTULO</Text>
             <TextInput
               testID="edit-workout-title"
-              style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-              value={title} onChangeText={setTitle} placeholder="Titulo del entrenamiento"
+              style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+              value={title} onChangeText={setTitle} placeholder="Título del entrenamiento"
               placeholderTextColor={colors.textSecondary}
             />
           </View>
 
-          {/* --- SELECTOR DE MICROCICLO --- */}
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA</Text>
+            <TextInput
+              testID="edit-workout-date"
+              style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+              value={date} onChangeText={setDate} placeholder="YYYY-MM-DD"
+              placeholderTextColor={colors.textSecondary}
+            />
+          </View>
+
           <View style={[styles.section, { marginTop: 8, marginBottom: 8 }]}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>PERTENECE AL MICROCICLO:</Text>
             
@@ -270,7 +272,6 @@ export default function EditWorkoutScreen() {
             )}
           </View>
 
-          {/* Exercises */}
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>EJERCICIOS ({exercises.length})</Text>
@@ -305,9 +306,10 @@ export default function EditWorkoutScreen() {
                   )}
                 </View>
 
+                {/* Grid adaptado para 5 campos */}
                 <View style={[styles.exDetailsRow, { borderTopColor: colors.border }]}>
                   <View style={styles.exDetail}>
-                    <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Series</Text>
+                    <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]} numberOfLines={1}>Series</Text>
                     <TextInput
                       style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]}
                       value={ex.sets} onChangeText={v => updateExercise(i, 'sets', v)}
@@ -316,7 +318,7 @@ export default function EditWorkoutScreen() {
                   </View>
                   <View style={[styles.exDivider, { backgroundColor: colors.border }]} />
                   <View style={styles.exDetail}>
-                    <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Reps</Text>
+                    <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]} numberOfLines={1}>Reps</Text>
                     <TextInput
                       style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]}
                       value={ex.reps} onChangeText={v => updateExercise(i, 'reps', v)}
@@ -325,7 +327,7 @@ export default function EditWorkoutScreen() {
                   </View>
                   <View style={[styles.exDivider, { backgroundColor: colors.border }]} />
                   <View style={styles.exDetail}>
-                    <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Kg</Text>
+                    <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]} numberOfLines={1}>Kg</Text>
                     <TextInput
                       style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]}
                       value={ex.weight} onChangeText={v => updateExercise(i, 'weight', v)}
@@ -334,10 +336,19 @@ export default function EditWorkoutScreen() {
                   </View>
                   <View style={[styles.exDivider, { backgroundColor: colors.border }]} />
                   <View style={styles.exDetail}>
-                    <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Desc</Text>
+                    <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]} numberOfLines={1}>Desc.S</Text>
                     <TextInput
                       style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]}
                       value={ex.rest} onChangeText={v => updateExercise(i, 'rest', v)}
+                      placeholder="-" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
+                    />
+                  </View>
+                  <View style={[styles.exDivider, { backgroundColor: colors.border }]} />
+                  <View style={styles.exDetail}>
+                    <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]} numberOfLines={1}>Desc.E</Text>
+                    <TextInput
+                      style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]}
+                      value={ex.rest_exercise} onChangeText={v => updateExercise(i, 'rest_exercise', v)}
                       placeholder="-" placeholderTextColor={colors.textSecondary} keyboardType="numeric"
                     />
                   </View>
@@ -403,7 +414,7 @@ export default function EditWorkoutScreen() {
             <Text style={[styles.label, { color: colors.textSecondary }]}>NOTAS GENERALES</Text>
             <TextInput
               testID="edit-workout-notes"
-              style={[styles.input, styles.textArea, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
+              style={[styles.input, styles.textArea, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
               value={notes} onChangeText={setNotes} placeholder="Observaciones opcionales..."
               placeholderTextColor={colors.textSecondary} multiline numberOfLines={3}
             />
@@ -440,8 +451,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 17, fontWeight: '600' },
   saveText: { fontSize: 16, fontWeight: '600', textAlign: 'right' },
   form: { padding: 20, gap: 20, paddingBottom: 48 },
-  dateBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  dateText: { fontSize: 14, fontWeight: '500' },
   section: { gap: 10 },
   sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
@@ -459,14 +468,14 @@ const styles = StyleSheet.create({
   exNameInput: { flex: 1, fontSize: 16, fontWeight: '500' },
   removeExBtn: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
   exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5 },
-  exDetail: { flex: 1, alignItems: 'center', padding: 8, gap: 4 },
-  exDetailLabel: { fontSize: 10, fontWeight: '600', letterSpacing: 0.3, textTransform: 'uppercase' },
-  exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 8, fontSize: 16, fontWeight: '600' },
+  exDetail: { flex: 1, alignItems: 'center', padding: 6, gap: 4 },
+  exDetailLabel: { fontSize: 9, fontWeight: '700', letterSpacing: 0.2, textTransform: 'uppercase' },
+  exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 6, fontSize: 14, fontWeight: '600' },
   exDivider: { width: 0.5 },
   videoUrlRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 0.5 },
   videoUrlInput: { flex: 1, fontSize: 14 },
   errorBox: { borderRadius: 10, padding: 12 },
-  errorText: { fontSize: 14, textAlign: 'center' },
+  errorText: { fontSize: 14, textAlign: 'center', fontWeight: '600' },
   submitBtn: { borderRadius: 10, padding: 16, alignItems: 'center' },
   submitText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
   imagePreviewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
