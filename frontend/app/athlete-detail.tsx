@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, ScrollView, Dimensions, Alert, Platform, Modal, TextInput
+  ActivityIndicator, ScrollView, Dimensions, Alert, Platform, Modal, TextInput, Linking // <-- Añadido Linking
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -39,7 +39,6 @@ export default function AthleteDetailScreen() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'workouts' | 'progression'>('dashboard');
   const [loading, setLoading] = useState(true);
 
-  // --- ESTADOS PARA DUPLICAR SESIONES ---
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [workoutToDuplicate, setWorkoutToDuplicate] = useState<any>(null);
   const [duplicateDate, setDuplicateDate] = useState(new Date().toISOString().split('T')[0]);
@@ -65,7 +64,6 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  // --- BORRADO DE ENTRENAMIENTOS PARA EL ENTRENADOR ---
   const executeDeleteWorkout = async (id: string) => {
     try {
       await api.deleteWorkout(id);
@@ -87,23 +85,15 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  // --- FUNCIÓN PARA DUPLICAR ENTRENAMIENTO ---
   const handleDuplicateWorkout = async () => {
     if (!workoutToDuplicate || !duplicateDate) return;
     setShowDuplicateModal(false);
     setLoading(true);
     
     try {
-      // Limpiamos los ejercicios para que sean un array nuevo sin rastro de IDs antiguos
       const cleanExercises = (workoutToDuplicate.exercises || []).map((ex: any) => ({
-        name: ex.name, 
-        sets: ex.sets, 
-        reps: ex.reps, 
-        weight: ex.weight, 
-        rest: ex.rest, 
-        video_url: ex.video_url, 
-        exercise_notes: ex.exercise_notes, 
-        image_path: ex.image_path
+        name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight, 
+        rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes, image_path: ex.image_path
       }));
 
       const payload = {
@@ -111,18 +101,43 @@ export default function AthleteDetailScreen() {
         date: duplicateDate,
         notes: workoutToDuplicate.notes || '',
         athlete_id: params.id!,
-        microciclo_id: workoutToDuplicate.microciclo_id || null, // Se mantiene en la misma semana si existe
+        microciclo_id: workoutToDuplicate.microciclo_id || null,
         exercises: cleanExercises
       };
 
       await api.createWorkout(payload);
-      
       if (Platform.OS !== 'web') Alert.alert("Éxito", `Sesión duplicada para el ${duplicateDate}`);
       loadData();
     } catch (e) {
       console.log("Error duplicando:", e);
       if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo duplicar la sesión.");
       setLoading(false);
+    }
+  };
+
+  // --- NUEVA FUNCIÓN: Guardar el feedback del coach ---
+  const saveCoachNote = async (workout: any, exerciseIndex: number, noteText: string) => {
+    try {
+      const payload = {
+        title: workout.title,
+        date: workout.date,
+        notes: workout.notes,
+        athlete_id: workout.athlete_id,
+        microciclo_id: workout.microciclo_id,
+        exercises: workout.exercises,
+        completed: workout.completed,
+        completion_data: {
+          ...workout.completion_data,
+          exercise_results: workout.completion_data.exercise_results.map((ex: any, i: number) => 
+            i === exerciseIndex ? { ...ex, coach_note: noteText } : ex
+          )
+        },
+        observations: workout.observations
+      };
+      
+      await api.updateWorkout(workout.id, payload);
+    } catch (e) {
+      console.log("Error guardando la nota del coach:", e);
     }
   };
 
@@ -263,7 +278,6 @@ export default function AthleteDetailScreen() {
               </Text>
             </View>
             
-            {/* HERRAMIENTAS DE COACH (AHORA CON BOTÓN DE DUPLICAR) */}
             <View style={{ flexDirection: 'row', gap: 5 }}>
               <TouchableOpacity 
                 style={styles.iconHitbox}
@@ -297,11 +311,37 @@ export default function AthleteDetailScreen() {
               
               {wk.completion_data.exercise_results && wk.completion_data.exercise_results.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 5 }}>REGISTRO DE CARGAS:</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 5 }}>REGISTRO DE CARGAS Y TÉCNICA:</Text>
                   {wk.completion_data.exercise_results.map((ex: any, idx: number) => (
-                    <Text key={idx} style={{ color: colors.textPrimary, fontSize: 12, marginBottom: 4 }}>
-                      • {ex.name}: <Text style={{ fontWeight: '700' }}>{ex.completed_sets || 0} series</Text> x {ex.logged_reps || 0} reps @ <Text style={{ color: colors.primary, fontWeight: '800' }}>{ex.logged_weight || 0}kg</Text>
-                    </Text>
+                    <View key={idx} style={{ marginBottom: 12 }}>
+                      <Text style={{ color: colors.textPrimary, fontSize: 12, marginBottom: 4 }}>
+                        • {ex.name}: <Text style={{ fontWeight: '700' }}>{ex.completed_sets || 0} series</Text> x {ex.logged_reps || 0} reps @ <Text style={{ color: colors.primary, fontWeight: '800' }}>{ex.logged_weight || 0}kg</Text>
+                      </Text>
+                      
+                      {/* --- NUEVO: BOTÓN DE VÍDEO Y FEEDBACK DEL ENTRENADOR --- */}
+                      {ex.recorded_video_url ? (
+                        <TouchableOpacity 
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 10, marginBottom: 8 }}
+                          onPress={() => Linking.openURL(ex.recorded_video_url)}
+                        >
+                          <Ionicons name="play-circle" size={18} color={colors.primary} />
+                          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Ver Técnica de este ejercicio</Text>
+                        </TouchableOpacity>
+                      ) : null}
+
+                      {user?.role === 'trainer' && (
+                        <View style={{ marginLeft: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <TextInput 
+                             style={{ flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, fontSize: 13, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                             placeholder="Escribir feedback para el atleta..."
+                             placeholderTextColor={colors.textSecondary}
+                             defaultValue={ex.coach_note || ''}
+                             onEndEditing={(e) => saveCoachNote(wk, idx, e.nativeEvent.text)}
+                          />
+                          <Ionicons name="chatbubbles" size={20} color={colors.textSecondary} />
+                        </View>
+                      )}
+                    </View>
                   ))}
                 </View>
               )}
