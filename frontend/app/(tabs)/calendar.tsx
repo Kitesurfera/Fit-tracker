@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router'; // <-- Añadimos useFocusEffect
+import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
@@ -37,16 +37,13 @@ export default function CalendarScreen() {
 
   const isTrainer = user?.role === 'trainer';
 
-  // Solo se ejecuta una vez al montar para cargar la lista de atletas (si es entrenador)
   useEffect(() => { 
     init(); 
   }, []);
 
-  // ESTA ES LA MAGIA: Se ejecuta CADA VEZ que la pestaña vuelve a estar en pantalla
   useFocusEffect(
     useCallback(() => {
       if (selectedAthlete) {
-        // Refrescamos los datos en segundo plano sin bloquear la pantalla con loading
         setUpdating(true);
         refreshAthleteData(selectedAthlete);
       }
@@ -69,7 +66,6 @@ export default function CalendarScreen() {
     }
   };
 
-  // Función separada para recargar solo los datos del atleta activo
   const refreshAthleteData = async (athlete: any) => {
     try {
       const [resTree, resWorkouts] = await Promise.all([
@@ -90,7 +86,7 @@ export default function CalendarScreen() {
     if (!athlete) return;
     setSelectedAthlete(athlete);
     setShowPicker(false);
-    setLoading(true); // Solo mostramos el spinner grande al cambiar de atleta
+    setLoading(true);
     refreshAthleteData(athlete);
   };
 
@@ -104,6 +100,30 @@ export default function CalendarScreen() {
     for (let i = 1; i <= lastDay; i++) days.push(i);
     return days;
   }, [currentMonth, currentYear]);
+
+  // --- NUEVA LÓGICA: Extraer todos los microciclos que caen en el mes actual ---
+  const microciclosDelMes = useMemo(() => {
+    if (!Array.isArray(macros)) return [];
+    const micros: any[] = [];
+    
+    // Construimos las fechas de forma manual para evitar saltos por zonas horarias (UTC)
+    const firstDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+    const lastDayObj = new Date(currentYear, currentMonth + 1, 0);
+    const lastDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(lastDayObj.getDate()).padStart(2, '0')}`;
+
+    macros.forEach(macro => {
+      if (Array.isArray(macro.microciclos)) {
+        macro.microciclos.forEach((m: any) => {
+          // Si el microciclo empieza antes de que acabe el mes y termina después de que empiece
+          if (m.fecha_inicio <= lastDayStr && m.fecha_fin >= firstDayStr) {
+            micros.push({ ...m, macroNombre: macro.nombre });
+          }
+        });
+      }
+    });
+    // Ordenamos cronológicamente
+    return micros.sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio));
+  }, [macros, currentMonth, currentYear]);
 
   const getDayStatus = (day: number | null) => {
     if (!day) return null;
@@ -129,8 +149,6 @@ export default function CalendarScreen() {
 
   const getSelectedDateDetails = () => {
     let details: any = { macro: null, micro: null, workouts: [] };
-    
-    // Al filtrar, nos aseguramos de mostrar TODOS los entrenos si hay más de uno ese día
     details.workouts = workouts?.filter(w => w.date === selectedDate) || [];
 
     if (Array.isArray(macros)) {
@@ -230,8 +248,30 @@ export default function CalendarScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.footer} showsVerticalScrollIndicator={false}>
-        <Text style={styles.footerLabel}>DETALLE DEL DÍA SELECCIONADO</Text>
+      <ScrollView style={styles.footer} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+        
+        {/* CARRUSEL VISUAL DE MICROCICLOS */}
+        {microciclosDelMes.length > 0 && (
+          <View style={{ marginBottom: 25 }}>
+            <Text style={styles.footerLabel}>FASES DE ESTE MES</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20 }}>
+              {microciclosDelMes.map((micro, idx) => (
+                <View key={idx} style={[styles.microCard, { backgroundColor: colors.surface, borderTopColor: micro.color, borderColor: colors.border }]}>
+                  <Text style={[styles.microMacroName, { color: colors.textSecondary }]} numberOfLines={1}>{micro.macroNombre}</Text>
+                  <Text style={[styles.microName, { color: colors.textPrimary }]} numberOfLines={1}>{micro.nombre}</Text>
+                  <View style={[styles.microTypeBadge, { backgroundColor: micro.color + '15' }]}>
+                    <Text style={{ color: micro.color, fontSize: 10, fontWeight: '800' }}>{micro.tipo}</Text>
+                  </View>
+                  <Text style={[styles.microDates, { color: colors.textSecondary }]}>
+                    {micro.fecha_inicio.split('-').slice(1).reverse().join('/')} al {micro.fecha_fin.split('-').slice(1).reverse().join('/')}
+                  </Text>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        )}
+
+        <Text style={styles.footerLabel}>DETALLE DEL {selectedDate.split('-').reverse().join('/')}</Text>
         
         {activeDetail.workouts.length > 0 ? (
           activeDetail.workouts.map((wk: any) => (
@@ -259,6 +299,7 @@ export default function CalendarScreen() {
           </View>
         )}
 
+        {/* MANTENEMOS EL DETALLE DEL MICRO ABAJO POR SI QUIERES REVISARLO RÁPIDO */}
         {activeDetail.micro && (
           <View style={[styles.detailCard, { borderLeftColor: activeDetail.micro.color, backgroundColor: colors.surface }]}>
             <Text style={[styles.macroName, { color: colors.textSecondary }]}>{activeDetail.macro?.nombre}</Text>
@@ -299,12 +340,21 @@ const styles = StyleSheet.create({
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
   dayText: { fontSize: 15, fontWeight: '600' },
+  
   footer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
-  footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1 },
+  footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1, textTransform: 'uppercase' },
+  
+  // ESTILOS DE LA NUEVA TARJETA DE MICROCICLO
+  microCard: { padding: 14, borderRadius: 16, borderTopWidth: 4, borderWidth: 1, width: 160, marginRight: 12 },
+  microMacroName: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 },
+  microName: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
+  microTypeBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8 },
+  microDates: { fontSize: 11, fontWeight: '600' },
+
   workoutCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 18, marginBottom: 12 },
   workoutIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
   workoutTitle: { fontSize: 16, fontWeight: '800' },
-  detailCard: { padding: 18, borderRadius: 20, borderLeftWidth: 6, marginBottom: 25 },
+  detailCard: { padding: 18, borderRadius: 20, borderLeftWidth: 6, marginBottom: 25, marginTop: 10 },
   macroName: { fontSize: 10, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' },
   microName: { fontSize: 18, fontWeight: '900', marginTop: 2 },
   badge: { alignSelf: 'flex-start', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 10 },
