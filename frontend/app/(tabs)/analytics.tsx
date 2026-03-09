@@ -17,6 +17,14 @@ const TEST_LABELS: Record<string, string> = {
   hamstring: 'Isquios', calf: 'Gemelo', quadriceps: 'Cuádriceps', tibialis: 'Tibial',
 };
 
+// --- FILTRO INTELIGENTE PARA UNIFICAR EJERCICIOS ---
+const normalizeName = (name: string) => {
+  let n = name.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (n.endsWith('es')) n = n.slice(0, -2);
+  else if (n.endsWith('s')) n = n.slice(0, -1);
+  return n;
+};
+
 export default function AnalyticsScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -39,7 +47,6 @@ export default function AnalyticsScreen() {
 
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
 
-  // Inicialización (carga la lista de atletas si eres entrenador)
   useEffect(() => {
     const init = async () => {
       if (isTrainer) {
@@ -47,23 +54,21 @@ export default function AnalyticsScreen() {
           const aths = await api.getAthletes();
           setAthletes(aths);
           if (aths.length > 0) {
-            handleSelectAthlete(aths[0]); // Selecciona el primero por defecto
+            handleSelectAthlete(aths[0]);
           } else {
-            setLoading(false); // No hay atletas
+            setLoading(false);
           }
         } catch (e) {
           console.log("Error cargando atletas:", e);
           setLoading(false);
         }
       } else {
-        // Si es deportista, carga sus datos directamente
         loadAthleteData(user?.id);
       }
     };
     init();
   }, [isTrainer, user?.id]);
 
-  // Función genérica para cargar datos de un ID concreto
   const loadAthleteData = async (athleteId: string | undefined) => {
     if (!athleteId) return;
     setLoading(true);
@@ -95,28 +100,33 @@ export default function AnalyticsScreen() {
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
 
-  // Lógica de Progresión: Agrupa por nombre y busca el Récord Máximo (PB)
   const getCleanProgression = () => {
     const exercises: Record<string, any> = {};
 
     workoutHistory.forEach(w => {
       w.completion_data?.exercise_results?.forEach((r: any) => {
-        if (r.completed_sets > 0) {
-          const name = r.name;
+        if (r.completed_sets > 0 && r.name) {
+          const rawName = r.name.trim();
+          const normKey = normalizeName(rawName);
           const weight = parseFloat(r.logged_weight) || 0;
           const reps = parseInt(r.logged_reps) || 0;
           const date = w.date;
 
-          if (!exercises[name]) {
-            exercises[name] = { name, maxWeight: 0, maxReps: 0, history: [] };
+          if (!exercises[normKey]) {
+            exercises[normKey] = { name: rawName, maxWeight: 0, maxReps: 0, history: [] };
+          }
+          
+          // Nos quedamos con el nombre más bonito (mayúsculas) para mostrarlo
+          if (rawName.length > exercises[normKey].name.length || (rawName[0] && rawName[0] === rawName[0].toUpperCase())) {
+             exercises[normKey].name = rawName; 
           }
 
-          if (weight > exercises[name].maxWeight) {
-            exercises[name].maxWeight = weight;
-            exercises[name].maxReps = reps;
+          if (weight > exercises[normKey].maxWeight) {
+            exercises[normKey].maxWeight = weight;
+            exercises[normKey].maxReps = reps;
           }
 
-          exercises[name].history.push({ date, weight, reps });
+          exercises[normKey].history.push({ date, weight, reps });
         }
       });
     });
@@ -124,9 +134,50 @@ export default function AnalyticsScreen() {
     return Object.values(exercises).sort((a: any, b: any) => a.name.localeCompare(b.name));
   };
 
+  const renderChart = (history: any[]) => {
+    // Ordenamos cronológicamente (Eje X)
+    const data = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    
+    // Calculamos los topes del Eje Y
+    const maxW = Math.max(...data.map(d => d.weight));
+    const minW = Math.min(...data.map(d => d.weight));
+    const range = maxW - minW === 0 ? 10 : maxW - minW;
+
+    return (
+      <View style={styles.chartContainer}>
+        {/* Eje Y (Kilos) */}
+        <View style={[styles.yAxis, { borderRightColor: colors.border }]}>
+          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{maxW}kg -</Text>
+          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{(maxW + minW) / 2}kg -</Text>
+          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{minW}kg -</Text>
+        </View>
+
+        {/* Área del Gráfico (Eje X) */}
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartScroll}>
+          {data.map((h, i) => {
+            // Calculamos la altura del punto en porcentaje (min 15%, max 90%)
+            const heightPct = minW === maxW ? 50 : ((h.weight - minW) / range) * 75 + 15;
+            
+            return (
+              <View key={i} style={styles.chartCol}>
+                <View style={styles.chartBarArea}>
+                  <View style={[styles.chartLine, { height: `${heightPct}%`, backgroundColor: colors.primary + '30' }]} />
+                  <View style={[styles.chartPoint, { bottom: `${heightPct}%`, backgroundColor: colors.primary }]} />
+                </View>
+                <View style={styles.xLabels}>
+                  <Text style={[styles.chartXDate, { color: colors.textSecondary }]}>{h.date.split('-').slice(1).join('/')}</Text>
+                  <Text style={[styles.chartXData, { color: colors.textPrimary }]}>{h.weight}k x{h.reps}</Text>
+                </View>
+              </View>
+            );
+          })}
+        </ScrollView>
+      </View>
+    );
+  };
+
   const renderProgressionCard = (item: any) => {
     const isSelected = selectedExercise === item.name;
-    const sortedHistory = [...item.history].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return (
       <View key={item.name} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -140,24 +191,16 @@ export default function AnalyticsScreen() {
             <View style={styles.pbRow}>
               <Ionicons name="trophy" size={14} color="#FFD700" />
               <Text style={[styles.pbText, { color: colors.textSecondary }]}>
-                Récord: <Text style={{ color: colors.primary, fontWeight: '800' }}>{item.maxWeight} kg</Text> x {item.maxReps} reps
+                Récord Histórico: <Text style={{ color: colors.primary, fontWeight: '800' }}>{item.maxWeight} kg</Text> x {item.maxReps} reps
               </Text>
             </View>
           </View>
-          <Ionicons name={isSelected ? "chevron-up" : "chevron-forward"} size={20} color={colors.textSecondary} />
+          <Ionicons name={isSelected ? "chevron-up" : "bar-chart-outline"} size={22} color={colors.primary} />
         </TouchableOpacity>
 
         {isSelected && (
-          <View style={[styles.historyList, { borderTopWidth: 1, borderTopColor: colors.border }]}>
-            {sortedHistory.map((h, i) => (
-              <View key={i} style={[styles.historyRow, i > 0 && { borderTopWidth: 0.5, borderTopColor: colors.border }]}>
-                <Text style={[styles.historyDate, { color: colors.textSecondary }]}>{h.date}</Text>
-                <View style={styles.historyData}>
-                  <Text style={[styles.historyWeight, { color: colors.textPrimary }]}>{h.weight} kg</Text>
-                  <Text style={[styles.historyReps, { color: colors.textSecondary }]}>x {h.reps} reps</Text>
-                </View>
-              </View>
-            ))}
+          <View style={[styles.chartWrapper, { borderTopColor: colors.border }]}>
+            {renderChart(item.history)}
           </View>
         )}
       </View>
@@ -178,7 +221,6 @@ export default function AnalyticsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         
-        {/* CABECERA DINÁMICA */}
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
             {isTrainer ? (
@@ -201,7 +243,6 @@ export default function AnalyticsScreen() {
           </View>
         </View>
 
-        {/* TABS */}
         <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
           <TouchableOpacity 
             style={[styles.tab, activeTab === 'summary' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
@@ -213,7 +254,7 @@ export default function AnalyticsScreen() {
             style={[styles.tab, activeTab === 'progress' && { borderBottomColor: colors.success, borderBottomWidth: 2 }]}
             onPress={() => setActiveTab('progress')}
           >
-            <Text style={[styles.tabText, { color: activeTab === 'progress' ? colors.success : colors.textSecondary }]}>Progreso Real</Text>
+            <Text style={[styles.tabText, { color: activeTab === 'progress' ? colors.success : colors.textSecondary }]}>Evolución Gráfica</Text>
           </TouchableOpacity>
         </View>
 
@@ -256,7 +297,7 @@ export default function AnalyticsScreen() {
               <View style={styles.sectionHeader}>
                 <Ionicons name="trending-up-outline" size={20} color={colors.primary} />
                 <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>
-                  {isTrainer ? 'Récords Personales' : 'Mis Récords Personales'}
+                  {isTrainer ? 'Evolución de Cargas' : 'Mi Evolución de Cargas'}
                 </Text>
               </View>
               
@@ -325,12 +366,20 @@ const styles = StyleSheet.create({
   progName: { fontSize: 16, fontWeight: '800' },
   pbRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   pbText: { fontSize: 13, fontWeight: '600' },
-  historyList: { paddingHorizontal: 18, backgroundColor: 'rgba(0,0,0,0.01)' },
-  historyRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 14 },
-  historyDate: { fontSize: 13, fontWeight: '600' },
-  historyData: { flexDirection: 'row', gap: 10 },
-  historyWeight: { fontSize: 14, fontWeight: '800' },
-  historyReps: { fontSize: 14, fontWeight: '500' },
+  
+  // --- ESTILOS DEL GRÁFICO ---
+  chartWrapper: { borderTopWidth: 1, backgroundColor: 'rgba(0,0,0,0.01)', paddingVertical: 15, paddingHorizontal: 10 },
+  chartContainer: { flexDirection: 'row', height: 180 },
+  yAxis: { width: 45, justifyContent: 'space-between', paddingVertical: 10, borderRightWidth: 1, alignItems: 'flex-end', paddingRight: 5 },
+  axisText: { fontSize: 10, fontWeight: '700' },
+  chartScroll: { alignItems: 'flex-end', paddingHorizontal: 10 },
+  chartCol: { width: 60, height: '100%', alignItems: 'center', justifyContent: 'flex-end' },
+  chartBarArea: { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 5 },
+  chartLine: { width: 4, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
+  chartPoint: { width: 12, height: 12, borderRadius: 6, position: 'absolute', marginLeft: -6, left: '50%', marginBottom: -1 },
+  xLabels: { height: 35, alignItems: 'center', justifyContent: 'center', marginTop: 5 },
+  chartXDate: { fontSize: 10, fontWeight: '700' },
+  chartXData: { fontSize: 11, fontWeight: '800', marginTop: 2 },
 
   emptyCard: { padding: 30, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
 
