@@ -21,6 +21,11 @@ export default function PeriodizationScreen() {
 
   const [macroModal, setMacroModal] = useState(false);
   const [microModal, setMicroModal] = useState(false);
+  
+  // --- NUEVOS ESTADOS PARA ASIGNAR SESIONES ---
+  const [assignModal, setAssignModal] = useState(false);
+  const [targetMicroId, setTargetMicroId] = useState<string | null>(null);
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedMacroId, setSelectedMacroId] = useState<string>('');
   
@@ -69,7 +74,6 @@ export default function PeriodizationScreen() {
     } catch (e) { Alert.alert("Error", "No se pudo guardar"); }
   };
 
-  // --- CORRECCIÓN: BOTÓN ELIMINAR MACRO COMPATIBLE CON WEB ---
   const deleteMacro = (id: string) => {
     if (Platform.OS === 'web') {
       const isConfirmed = window.confirm("¿Estás segura de borrar este macrociclo entero?");
@@ -103,7 +107,6 @@ export default function PeriodizationScreen() {
     } catch (e) { Alert.alert("Error", "No se pudo guardar"); }
   };
 
-  // --- CORRECCIÓN: BOTÓN ELIMINAR MICRO COMPATIBLE CON WEB ---
   const deleteMicro = (id: string) => {
     if (Platform.OS === 'web') {
       const isConfirmed = window.confirm("¿Estás segura de borrar este microciclo?");
@@ -115,6 +118,20 @@ export default function PeriodizationScreen() {
         { text: "No", style: "cancel" }, 
         { text: "Sí", style: 'destructive', onPress: async () => { await api.deleteMicrociclo(id); loadTree(); } }
       ]);
+    }
+  };
+
+  // --- NUEVA FUNCIÓN: ASIGNAR SESIÓN HUÉRFANA ---
+  const handleAssignWorkout = async (workoutId: string) => {
+    if (!targetMicroId) return;
+    try {
+      setLoading(true);
+      await api.updateWorkout(workoutId, { microciclo_id: targetMicroId });
+      setAssignModal(false);
+      loadTree();
+    } catch (e) {
+      setLoading(false);
+      Alert.alert("Error", "No se pudo asignar la sesión");
     }
   };
 
@@ -148,7 +165,7 @@ export default function PeriodizationScreen() {
                   <Ionicons name="pencil" size={18} color={macro.color} />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.iconHitbox} onPress={() => deleteMacro(macro.id)}>
-                  <Ionicons name="trash" size={18} color={colors.error} />
+                  <Ionicons name="trash" size={18} color={colors.error || '#EF4444'} />
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.addMicroSmall, { backgroundColor: macro.color }]} onPress={() => { setEditingId(null); setSelectedMacroId(macro.id); setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] }); setMicroModal(true); }}>
                   <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>+ MICRO</Text>
@@ -168,12 +185,16 @@ export default function PeriodizationScreen() {
                         <Ionicons name="pencil" size={16} color={colors.textSecondary} />
                       </TouchableOpacity>
                       <TouchableOpacity style={styles.iconHitboxSmall} onPress={() => deleteMicro(micro.id)}>
-                        <Ionicons name="trash" size={16} color={colors.error} />
+                        <Ionicons name="trash" size={16} color={colors.error || '#EF4444'} />
                       </TouchableOpacity>
                     </View>
                   </View>
                   
-                  <TouchableOpacity style={styles.addSessionBtn} onPress={() => router.push({ pathname: '/add-workout', params: { athlete_id: params.athlete_id, microciclo_id: micro.id } })}>
+                  {/* --- BOTÓN AÑADIR/ASIGNAR SESIÓN MODIFICADO --- */}
+                  <TouchableOpacity 
+                    style={styles.addSessionBtn} 
+                    onPress={() => { setTargetMicroId(micro.id); setAssignModal(true); }}
+                  >
                     <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
                     <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>Añadir sesión</Text>
                   </TouchableOpacity>
@@ -182,7 +203,7 @@ export default function PeriodizationScreen() {
                     <TouchableOpacity key={wk.id} style={styles.workoutRow} onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}>
                       <Ionicons name="barbell-outline" size={16} color={colors.textSecondary} />
                       <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{wk.title}</Text>
-                      {wk.completed && <Ionicons name="checkmark-circle" size={14} color={colors.success} />}
+                      {wk.completed && <Ionicons name="checkmark-circle" size={14} color={colors.success || '#10B981'} />}
                     </TouchableOpacity>
                   ))}
                 </View>
@@ -192,7 +213,54 @@ export default function PeriodizationScreen() {
         ))}
       </ScrollView>
 
-      {/* --- MODAL MACROCICLO CON COLOR PICKER --- */}
+      {/* --- MODAL PARA ASIGNAR SESIONES --- */}
+      <Modal visible={assignModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Añadir al microciclo</Text>
+              <TouchableOpacity onPress={() => setAssignModal(false)}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
+            </View>
+
+            <TouchableOpacity 
+              style={[styles.createNewSessionBtn, { backgroundColor: colors.primary }]} 
+              onPress={() => { 
+                setAssignModal(false); 
+                router.push({ pathname: '/add-workout', params: { athlete_id: params.athlete_id, microciclo_id: targetMicroId } });
+              }}
+            >
+              <Ionicons name="add" size={20} color="#FFF" />
+              <Text style={{ color: '#FFF', fontWeight: '800', marginLeft: 8 }}>CREAR NUEVA SESIÓN DESDE CERO</Text>
+            </TouchableOpacity>
+
+            <Text style={[styles.label, { marginBottom: 10 }]}>O RESCATAR SESIÓN SUELTA (SIN ASIGNAR):</Text>
+            
+            <ScrollView style={{ maxHeight: 250 }}>
+              {unassigned.length > 0 ? (
+                unassigned.map((wk: any) => (
+                  <TouchableOpacity 
+                    key={wk.id} 
+                    style={[styles.unassignedWkBtn, { borderColor: colors.border }]}
+                    onPress={() => handleAssignWorkout(wk.id)}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{wk.title}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.date}</Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={20} color={colors.primary} />
+                  </TouchableOpacity>
+                ))
+              ) : (
+                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 20, fontStyle: 'italic' }}>
+                  No tienes sesiones sueltas. Todas están ya asignadas a un microciclo.
+                </Text>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL MACROCICLO --- */}
       <Modal visible={macroModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -224,12 +292,12 @@ export default function PeriodizationScreen() {
             </View>
 
             <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSaveMacro}><Text style={styles.saveBtnText}>GUARDAR MACRO</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => setMacroModal(false)} style={styles.cancelBtn}><Text style={{ color: colors.error, fontWeight: '600' }}>Cancelar</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setMacroModal(false)} style={styles.cancelBtn}><Text style={{ color: colors.error || '#EF4444', fontWeight: '600' }}>Cancelar</Text></TouchableOpacity>
           </KeyboardAvoidingView>
         </View>
       </Modal>
 
-      {/* --- MODAL MICROCICLO CON COLOR PICKER Y TIPO --- */}
+      {/* --- MODAL MICROCICLO --- */}
       <Modal visible={microModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -274,7 +342,7 @@ export default function PeriodizationScreen() {
             </View>
 
             <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSaveMicro}><Text style={styles.saveBtnText}>GUARDAR MICRO</Text></TouchableOpacity>
-            <TouchableOpacity onPress={() => setMicroModal(false)} style={styles.cancelBtn}><Text style={{ color: colors.error, fontWeight: '600' }}>Cancelar</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setMicroModal(false)} style={styles.cancelBtn}><Text style={{ color: colors.error || '#EF4444', fontWeight: '600' }}>Cancelar</Text></TouchableOpacity>
           </KeyboardAvoidingView>
         </View>
       </Modal>
@@ -308,5 +376,9 @@ const styles = StyleSheet.create({
   typeChip: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1 },
   saveBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 25 },
   saveBtnText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
-  cancelBtn: { padding: 15, alignItems: 'center', marginTop: 5 }
+  cancelBtn: { padding: 15, alignItems: 'center', marginTop: 5 },
+  
+  // Novedades Modal Asignación
+  createNewSessionBtn: { flexDirection: 'row', justifyContent: 'center', padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 25 },
+  unassignedWkBtn: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 });
