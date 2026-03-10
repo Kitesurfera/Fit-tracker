@@ -289,8 +289,19 @@ export default function TrainingModeScreen() {
               <Text style={[styles.wellnessTitle, { color: colors.textPrimary }]}>Esfuerzo Percibido (RPE)</Text>
               {workout.completed ? (
                 <View style={styles.readOnlyReportBox}>
-                  <View style={[styles.rpeBtn, { backgroundColor: (rpe || 0) > 7 ? colors.error : (rpe || 0) > 4 ? colors.warning : colors.success, borderColor: 'transparent', width: 60, height: 60 }]}><Text style={{ color: '#FFF', fontSize: 28, fontWeight: '900' }}>{rpe || '-'}</Text></View>
-                  <View style={{ marginLeft: 20 }}><Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>DESCANSO PREVIO:</Text><Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '800', textTransform: 'uppercase', marginTop: 2 }}>{sleep || 'NO REGISTRADO'}</Text></View>
+                  {/* CORRECCIÓN: Estilos directos e incondicionales para RPE de lectura */}
+                  <View style={{ 
+                    width: 60, height: 60, borderRadius: 10, justifyContent: 'center', alignItems: 'center',
+                    backgroundColor: (rpe || 0) > 7 ? colors.error : (rpe || 0) > 4 ? colors.warning : colors.success 
+                  }}>
+                    <Text style={{ color: (rpe || 0) > 4 && (rpe || 0) < 8 ? '#000' : '#FFF', fontSize: 28, fontWeight: '900' }}>
+                      {rpe || '-'}
+                    </Text>
+                  </View>
+                  <View style={{ marginLeft: 20 }}>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>DESCANSO PREVIO:</Text>
+                    <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '800', textTransform: 'uppercase', marginTop: 2 }}>{sleep || 'NO REGISTRADO'}</Text>
+                  </View>
                 </View>
               ) : (
                 <>
@@ -301,8 +312,8 @@ export default function TrainingModeScreen() {
                       if (num > 4) rpeColor = colors.warning; 
                       if (num > 7) rpeColor = colors.error;
 
-                      // MAGIA DE CONTRASTE: Texto negro para el amarillo, texto blanco para verde y rojo.
-                      const selectedTextColor = (num > 4 && num < 8) ? '#000000' : '#FFFFFF';
+                      const bgColor = isSelected ? rpeColor : colors.surface;
+                      const textColor = isSelected ? ((num > 4 && num < 8) ? '#000' : '#FFF') : rpeColor;
                       
                       return (
                         <TouchableOpacity 
@@ -312,12 +323,12 @@ export default function TrainingModeScreen() {
                             { 
                               borderColor: rpeColor, 
                               borderWidth: 1.5,
-                              backgroundColor: isSelected ? rpeColor : 'transparent' 
+                              backgroundColor: bgColor
                             }
                           ]} 
                           onPress={() => setRpe(num)}
                         >
-                          <Text style={[styles.rpeText, { color: isSelected ? selectedTextColor : rpeColor }]}>
+                          <Text style={[styles.rpeText, { color: textColor }]}>
                             {num}
                           </Text>
                         </TouchableOpacity>
