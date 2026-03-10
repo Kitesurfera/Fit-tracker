@@ -10,9 +10,15 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
+// --- MAGIA: LIBRERÍA PARA MANTENER LA PANTALLA ENCENDIDA ---
+import { useKeepAwake } from 'expo-keep-awake';
+
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
 export default function TrainingModeScreen() {
+  // --- ACTIVAMOS LA MAGIA AQUÍ ---
+  useKeepAwake();
+
   const { colors } = useTheme();
   const router = useRouter();
   
@@ -137,7 +143,6 @@ export default function TrainingModeScreen() {
     const totalExercises = currentBlock.hiit_exercises.length;
     const totalRounds = parseInt(currentBlock.sets) || 1;
 
-    // Aún quedan ejercicios en esta vuelta
     if (hiitExIdx < totalExercises - 1) {
       const restTime = parseInt(currentBlock.rest_exercise) || 0;
       if (restTime > 0) {
@@ -147,9 +152,7 @@ export default function TrainingModeScreen() {
       } else {
         setHiitExIdx(hiitExIdx + 1);
       }
-    // Fin de la vuelta
     } else {
-      // Quedan más vueltas en este bloque
       if (hiitRound < totalRounds) {
         const restTime = parseInt(currentBlock.rest_block) || 0;
         if (restTime > 0) {
@@ -160,9 +163,7 @@ export default function TrainingModeScreen() {
           setHiitRound(hiitRound + 1);
           setHiitExIdx(0);
         }
-      // Fin del bloque actual
       } else {
-        // Quedan más bloques
         if (hiitBlockIdx < workout.exercises.length - 1) {
           const restNextBlockTime = parseInt(currentBlock.rest_between_blocks) || 0;
           if (restNextBlockTime > 0) {
@@ -175,7 +176,6 @@ export default function TrainingModeScreen() {
             setHiitExIdx(0);
             setHiitPhase('work');
           }
-        // Fin del entrenamiento
         } else {
           setFinished(true);
         }
@@ -271,7 +271,6 @@ export default function TrainingModeScreen() {
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Entrenamiento no encontrado.</Text><TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.primary }]} onPress={() => router.back()}><Text style={styles.backBtnText}>Volver</Text></TouchableOpacity></SafeAreaView>;
 
-  // --- PANTALLA DE RESUMEN FINAL ---
   if (finished || workout.completed) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -298,7 +297,6 @@ export default function TrainingModeScreen() {
                   <View style={styles.rpeGrid}>
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
                       const isSelected = rpe === num; 
-                      // Mantenemos siempre el color en el borde para que se vea la escala real
                       let rpeColor = colors.success; if (num > 4) rpeColor = colors.warning; if (num > 7) rpeColor = colors.error;
                       
                       return (
@@ -375,12 +373,10 @@ export default function TrainingModeScreen() {
     );
   }
 
-  // --- RENDERIZADO MODO HIIT ---
   if (isHiit) {
     const currentBlock = workout.exercises?.[hiitBlockIdx];
     if (!currentBlock) return null;
 
-    // MAGIA DINÁMICA: Ajustamos márgenes y letras según cuántos ejercicios haya
     const totalExs = currentBlock.hiit_exercises.length;
     const dynamicPadding = totalExs <= 3 ? 18 : totalExs <= 5 ? 12 : 8;
     const dynamicFontName = totalExs <= 3 ? 20 : totalExs <= 5 ? 18 : 15;
@@ -442,7 +438,6 @@ export default function TrainingModeScreen() {
     );
   }
 
-  // --- RENDERIZADO FUERZA TRADICIONAL ---
   const exercises = workout.exercises || [];
   const currentEx = exercises[currentExIndex];
   const totalSets = parseInt(currentEx?.sets) || 1;
