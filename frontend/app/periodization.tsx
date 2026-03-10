@@ -121,7 +121,6 @@ export default function PeriodizationScreen() {
     }
   };
 
-  // --- NUEVA FUNCIÓN: ASIGNAR SESIÓN HUÉRFANA ---
   const handleAssignWorkout = async (workoutId: string) => {
     if (!targetMicroId) return;
     try {
@@ -157,17 +156,17 @@ export default function PeriodizationScreen() {
           <View key={macro.id} style={[styles.macroCard, { borderColor: macro.color || colors.border }]}>
             <View style={[styles.macroHeader, { backgroundColor: (macro.color || colors.primary) + '15' }]}>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.macroTitle, { color: macro.color }]}>{macro.nombre}</Text>
+                <Text style={[styles.macroTitle, { color: colors.textPrimary }]}>{macro.nombre}</Text>
                 <Text style={{ fontSize: 10, color: colors.textSecondary }}>{macro.fecha_inicio} - {macro.fecha_fin}</Text>
               </View>
               <View style={styles.actionsRow}>
                 <TouchableOpacity style={styles.iconHitbox} onPress={() => { setEditingId(macro.id); setMacroForm({ ...macro }); setMacroModal(true); }}>
-                  <Ionicons name="pencil" size={18} color={macro.color} />
+                  <Ionicons name="pencil" size={18} color={colors.textSecondary} />
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.iconHitbox} onPress={() => deleteMacro(macro.id)}>
                   <Ionicons name="trash" size={18} color={colors.error || '#EF4444'} />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.addMicroSmall, { backgroundColor: macro.color }]} onPress={() => { setEditingId(null); setSelectedMacroId(macro.id); setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] }); setMicroModal(true); }}>
+                <TouchableOpacity style={[styles.addMicroSmall, { backgroundColor: colors.primary }]} onPress={() => { setEditingId(null); setSelectedMacroId(macro.id); setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] }); setMicroModal(true); }}>
                   <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>+ MICRO</Text>
                 </TouchableOpacity>
               </View>
@@ -190,7 +189,6 @@ export default function PeriodizationScreen() {
                     </View>
                   </View>
                   
-                  {/* --- BOTÓN AÑADIR/ASIGNAR SESIÓN MODIFICADO --- */}
                   <TouchableOpacity 
                     style={styles.addSessionBtn} 
                     onPress={() => { setTargetMicroId(micro.id); setAssignModal(true); }}
@@ -378,7 +376,6 @@ const styles = StyleSheet.create({
   saveBtnText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
   cancelBtn: { padding: 15, alignItems: 'center', marginTop: 5 },
   
-  // Novedades Modal Asignación
   createNewSessionBtn: { flexDirection: 'row', justifyContent: 'center', padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 25 },
   unassignedWkBtn: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
 });
