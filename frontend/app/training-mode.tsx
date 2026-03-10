@@ -297,19 +297,29 @@ export default function TrainingModeScreen() {
                   <View style={styles.rpeGrid}>
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
                       const isSelected = rpe === num; 
-                      let rpeColor = colors.success; if (num > 4) rpeColor = colors.warning; if (num > 7) rpeColor = colors.error;
+                      let rpeColor = colors.success; 
+                      if (num > 4) rpeColor = colors.warning; 
+                      if (num > 7) rpeColor = colors.error;
+
+                      // MAGIA DE CONTRASTE: Texto negro para el amarillo, texto blanco para verde y rojo.
+                      const selectedTextColor = (num > 4 && num < 8) ? '#000000' : '#FFFFFF';
                       
                       return (
                         <TouchableOpacity 
                           key={num} 
                           style={[
                             styles.rpeBtn, 
-                            { borderColor: rpeColor, borderWidth: 1.5 }, 
-                            isSelected && { backgroundColor: rpeColor }
+                            { 
+                              borderColor: rpeColor, 
+                              borderWidth: 1.5,
+                              backgroundColor: isSelected ? rpeColor : 'transparent' 
+                            }
                           ]} 
                           onPress={() => setRpe(num)}
                         >
-                          <Text style={[styles.rpeText, { color: isSelected ? '#FFF' : rpeColor }]}>{num}</Text>
+                          <Text style={[styles.rpeText, { color: isSelected ? selectedTextColor : rpeColor }]}>
+                            {num}
+                          </Text>
                         </TouchableOpacity>
                       );
                     })}
