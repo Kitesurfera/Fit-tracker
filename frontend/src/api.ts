@@ -148,10 +148,27 @@ export const api = {
     try {
       const headers = await getAuthHeaders();
       const res = await fetch(`${BACKEND_URL}/api/periodization/tree/${athleteId}`, { headers });
-      if (!res.ok) return { macros: [], unassigned_workouts: [] };
-      return await res.json();
+      
+      if (!res.ok) {
+        console.warn(`Error API Tree (Status: ${res.status})`);
+        return { macros: [], unassigned_workouts: [] };
+      }
+      
+      const data = await res.json();
+      
+      // BLINDAJE: Si el servidor devuelve un array directamente, lo envolvemos en un objeto
+      if (Array.isArray(data)) {
+        return { macros: data, unassigned_workouts: [] };
+      }
+      
+      // Si devuelve un objeto, nos aseguramos de que exista la clave macros
+      return { 
+        macros: Array.isArray(data?.macros) ? data.macros : [], 
+        unassigned_workouts: Array.isArray(data?.unassigned_workouts) ? data.unassigned_workouts : [] 
+      };
+      
     } catch (e) {
-      console.error("Error API Tree:", e);
+      console.error("Error catched in API Tree:", e);
       return { macros: [], unassigned_workouts: [] };
     }
   },
@@ -238,7 +255,7 @@ export const api = {
     return res.json();
   },
 
-  // --- SUBIDA DE ARCHIVOS (¡LA PIEZA QUE FALTABA!) ---
+  // --- SUBIDA DE ARCHIVOS ---
   uploadFile: async (uri: string, fileName: string, fileType: string) => {
     const headers: any = await getAuthHeaders();
     // Es vital quitar el Content-Type para que el navegador/móvil genere el límite multipart automáticamente
@@ -251,7 +268,6 @@ export const api = {
       type: fileType,
     } as any);
 
-    // *Asegúrate de que tu backend tenga esta ruta habilitada*
     const res = await fetch(`${BACKEND_URL}/api/upload`, { 
       method: 'POST',
       headers,
