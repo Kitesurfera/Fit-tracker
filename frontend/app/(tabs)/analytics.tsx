@@ -11,10 +11,24 @@ import { useAuth } from '../../src/context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
+// --- EL DICCIONARIO TRADUCTOR ---
+// Aquí mapeamos los nombres feos de la base de datos a etiquetas bonitas
 const TEST_LABELS: Record<string, string> = {
-  squat_rm: 'Sentadilla', bench_rm: 'Press Banca', deadlift_rm: 'Peso Muerto',
-  cmj: 'Salto CMJ', sj: 'Salto SJ', dj: 'DJ',
-  hamstring: 'Isquios', calf: 'Gemelo', quadriceps: 'Cuádriceps', tibialis: 'Tibial',
+  squat_rm: 'Sentadilla', 
+  bench_rm: 'Press Banca', 
+  deadlift_rm: 'Peso Muerto',
+  cmj: 'Salto CMJ', 
+  sj: 'Salto SJ', 
+  dj: 'Salto DJ (Drop Jump)',
+  hamstring: 'Fuerza Isquios', 
+  calf: 'Fuerza Gemelo', 
+  quadriceps: 'Fuerza Cuádriceps', 
+  tibialis: 'Fuerza Tibial',
+  'max-force': 'Fuerza Máxima (1RM)',
+  'core-endurance': 'Resistencia Core',
+  'vo2-max': 'VO2 Max',
+  'explosiveness': 'Explosividad',
+  'agility': 'Agilidad / Cambio de Dirección'
 };
 
 const normalizeName = (name: string) => {
@@ -97,21 +111,15 @@ export default function AnalyticsScreen() {
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
 
-  // --- FILTRO: OBTIENE SOLO EL ÚLTIMO TEST DE CADA TIPO ---
+  // --- FILTRO ACTUALIZADO: LOS 3 ÚLTIMOS TESTS EN EL TIEMPO ---
   const getLatestTests = () => {
     if (!testHistory || testHistory.length === 0) return [];
     
-    // Ordenamos primero de más reciente a más antiguo
+    // Ordenamos de más reciente a más antiguo
     const sortedTests = [...testHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     
-    const latest: Record<string, any> = {};
-    sortedTests.forEach(t => {
-      if (!latest[t.test_type]) {
-        latest[t.test_type] = t; // Como están ordenados, el primero que entra es el más reciente
-      }
-    });
-    
-    return Object.values(latest);
+    // Devolvemos exactamente los 3 primeros de la lista
+    return sortedTests.slice(0, 3);
   };
 
   const getCleanProgression = () => {
@@ -240,160 +248,4 @@ export default function AnalyticsScreen() {
 
           <View style={styles.headerActions}>
             {isTrainer && (
-              <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
-                <Ionicons name="people" size={22} color={colors.primary} />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
-              {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={22} color={colors.primary} />}
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={[styles.tabs, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'summary' && { borderBottomColor: colors.primary, borderBottomWidth: 2 }]}
-            onPress={() => setActiveTab('summary')}
-          >
-            <Text style={[styles.tabText, { color: activeTab === 'summary' ? colors.primary : colors.textSecondary }]}>Resumen</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.tab, activeTab === 'progress' && { borderBottomColor: colors.success, borderBottomWidth: 2 }]}
-            onPress={() => setActiveTab('progress')}
-          >
-            <Text style={[styles.tabText, { color: activeTab === 'progress' ? colors.success : colors.textSecondary }]}>Evolución Gráfica</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.innerContent}>
-          {activeTab === 'summary' ? (
-            <View>
-              <View style={styles.statsGrid}>
-                <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
-                  <Ionicons name="flash-outline" size={24} color={colors.primary} />
-                  <Text style={[styles.statValue, { color: colors.textPrimary }]}>{summary?.total_workouts || 0}</Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Entrenos Totales</Text>
-                </View>
-                <View style={[styles.statCard, { backgroundColor: colors.surface }]}>
-                  <Ionicons name="checkmark-done-outline" size={24} color={colors.success} />
-                  <Text style={[styles.statValue, { color: colors.success }]}>{summary?.completion_rate || 0}%</Text>
-                  <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Efectividad</Text>
-                </View>
-              </View>
-
-              <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>
-                 {isTrainer ? `Últimos Tests de ${selectedAthlete?.name?.split(' ')[0] || ''}` : 'Mis Últimos Tests'}
-              </Text>
-
-              {latestTestsToDisplay.length > 0 ? (
-                latestTestsToDisplay.map((t: any, i) => (
-                  <View key={i} style={[styles.itemRow, { backgroundColor: colors.surface }]}>
-                    <Text style={[styles.itemName, { color: colors.textPrimary }]}>{TEST_LABELS[t.test_type] || t.test_type}</Text>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={[styles.itemValue, { color: colors.primary }]}>{t.value} {t.unit}</Text>
-                      <Text style={{ fontSize: 10, color: colors.textSecondary }}>{t.date.split('-').reverse().join('/')}</Text>
-                    </View>
-                  </View>
-                ))
-              ) : (
-                <View style={[styles.emptyCard, { backgroundColor: colors.surface }]}>
-                   <Ionicons name="analytics-outline" size={32} color={colors.border} />
-                   <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10, fontWeight: '600' }}>Sin registros de tests recientes</Text>
-                </View>
-              )}
-            </View>
-          ) : (
-            <View>
-              <View style={styles.sectionHeader}>
-                <Ionicons name="trending-up-outline" size={20} color={colors.primary} />
-                <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginBottom: 0, marginLeft: 8 }]}>
-                  {isTrainer ? 'Evolución de Cargas' : 'Mi Evolución de Cargas'}
-                </Text>
-              </View>
-              
-              {cleanProgression.length > 0 ? (
-                 cleanProgression.map(renderProgressionCard)
-              ) : (
-                 <View style={[styles.emptyCard, { backgroundColor: colors.surface, marginTop: 10 }]}>
-                   <Ionicons name="barbell-outline" size={32} color={colors.border} />
-                   <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10, fontWeight: '600' }}>No hay datos de progresión registrados.</Text>
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-      </ScrollView>
-
-      <Modal visible={showPicker} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPicker(false)} activeOpacity={1}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text>
-            {athletes.map(a => (
-              <TouchableOpacity key={a.id} style={[styles.athleteItem, { borderBottomColor: colors.border }]} onPress={() => handleSelectAthlete(a)}>
-                <View style={[styles.avatarMini, { backgroundColor: colors.primary + '20' }]}>
-                  <Text style={{ color: colors.primary, fontWeight: '800' }}>{a.name.charAt(0)}</Text>
-                </View>
-                <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </TouchableOpacity>
-      </Modal>
-    </SafeAreaView>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scrollContent: { paddingBottom: 40 },
-  
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 15, paddingBottom: 15 },
-  headerSubtitle: { fontSize: 10, fontWeight: '800', letterSpacing: 1.5, marginBottom: 2 },
-  headerTitle: { fontSize: 26, fontWeight: '900' },
-  headerActions: { flexDirection: 'row', gap: 10 },
-  iconBtn: { width: 42, height: 42, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-
-  tabs: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 15, borderBottomWidth: 1 },
-  tab: { paddingVertical: 12, marginRight: 25 },
-  tabText: { fontSize: 15, fontWeight: '700' },
-  innerContent: { paddingHorizontal: 20 },
-  
-  statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 30 },
-  statCard: { flex: 1, padding: 22, borderRadius: 20, alignItems: 'center', gap: 8, elevation: 1 },
-  statValue: { fontSize: 28, fontWeight: '900' },
-  statLabel: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  
-  sectionTitle: { fontSize: 16, fontWeight: '800', marginBottom: 15, letterSpacing: 0.5 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
-  
-  itemRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 18, borderRadius: 16, marginBottom: 10, elevation: 1 },
-  itemName: { fontSize: 15, fontWeight: '700' },
-  itemValue: { fontSize: 18, fontWeight: '900' },
-  
-  progCard: { borderRadius: 16, marginBottom: 12, borderWidth: 1, overflow: 'hidden' },
-  progHeader: { padding: 18, flexDirection: 'row', alignItems: 'center' },
-  progName: { fontSize: 16, fontWeight: '800' },
-  pbRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
-  pbText: { fontSize: 13, fontWeight: '600' },
-  
-  chartWrapper: { borderTopWidth: 1, backgroundColor: 'rgba(0,0,0,0.01)', paddingVertical: 15, paddingHorizontal: 10 },
-  chartContainer: { flexDirection: 'row', height: 180 },
-  yAxis: { width: 45, justifyContent: 'space-between', paddingVertical: 10, borderRightWidth: 1, alignItems: 'flex-end', paddingRight: 5 },
-  axisText: { fontSize: 10, fontWeight: '700' },
-  chartScroll: { alignItems: 'flex-end', paddingHorizontal: 10 },
-  chartCol: { width: 60, height: '100%', alignItems: 'center', justifyContent: 'flex-end' },
-  chartBarArea: { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 5 },
-  chartLine: { width: 4, borderTopLeftRadius: 2, borderTopRightRadius: 2 },
-  chartPoint: { width: 12, height: 12, borderRadius: 6, position: 'absolute', marginLeft: -6, left: '50%', marginBottom: -1 },
-  xLabels: { height: 35, alignItems: 'center', justifyContent: 'center', marginTop: 5 },
-  chartXDate: { fontSize: 10, fontWeight: '700' },
-  chartXData: { fontSize: 11, fontWeight: '800', marginTop: 2 },
-
-  emptyCard: { padding: 30, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'transparent' },
-
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
-  modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 50 },
-  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20, textAlign: 'center' },
-  athleteItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 15, borderBottomWidth: 1 },
-  avatarMini: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginRight: 15 }
-});
+              <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn,
