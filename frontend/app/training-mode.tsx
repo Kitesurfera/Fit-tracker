@@ -282,7 +282,7 @@ export default function TrainingModeScreen() {
 
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={styles.finishedContainer} keyboardShouldPersistTaps="handled">
-            <View style={[styles.finishedIcon, { backgroundColor: colors.success + '15' }]}><Ionicons name="checkmark-circle" size={64} color={colors.success} /></View>
+            <View style={[styles.finishedIcon, { backgroundColor: (colors.success || '#10B981') + '15' }]}><Ionicons name="checkmark-circle" size={64} color={colors.success || '#10B981'} /></View>
             <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
 
             <View style={[styles.wellnessCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -292,7 +292,7 @@ export default function TrainingModeScreen() {
                   {/* CORRECCIÓN: Estilos directos e incondicionales para RPE de lectura */}
                   <View style={{ 
                     width: 60, height: 60, borderRadius: 10, justifyContent: 'center', alignItems: 'center',
-                    backgroundColor: (rpe || 0) > 7 ? colors.error : (rpe || 0) > 4 ? colors.warning : colors.success 
+                    backgroundColor: (rpe || 0) > 7 ? (colors.error || '#EF4444') : (rpe || 0) > 4 ? (colors.warning || '#F59E0B') : (colors.success || '#10B981') 
                   }}>
                     <Text style={{ color: (rpe || 0) > 4 && (rpe || 0) < 8 ? '#000' : '#FFF', fontSize: 28, fontWeight: '900' }}>
                       {rpe || '-'}
@@ -308,9 +308,11 @@ export default function TrainingModeScreen() {
                   <View style={styles.rpeGrid}>
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
                       const isSelected = rpe === num; 
-                      let rpeColor = colors.success; 
-                      if (num > 4) rpeColor = colors.warning; 
-                      if (num > 7) rpeColor = colors.error;
+                      
+                      // BLINDAJE DE COLORES: Hexadecimales por si falla el useTheme
+                      let rpeColor = colors.success || '#10B981'; 
+                      if (num > 4) rpeColor = colors.warning || '#F59E0B'; 
+                      if (num > 7) rpeColor = colors.error || '#EF4444';
 
                       const bgColor = isSelected ? rpeColor : colors.surface;
                       const textColor = isSelected ? ((num > 4 && num < 8) ? '#000' : '#FFF') : rpeColor;
@@ -321,7 +323,7 @@ export default function TrainingModeScreen() {
                           style={[
                             styles.rpeBtn, 
                             { 
-                              borderColor: rpeColor, 
+                              borderColor: rpeColor, // Asegura que el borde también use el hex
                               borderWidth: 1.5,
                               backgroundColor: bgColor
                             }
@@ -337,9 +339,37 @@ export default function TrainingModeScreen() {
                   </View>
                   <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 24 }]}>¿Cómo has descansado hoy?</Text>
                   <View style={styles.sleepGrid}>
-                    {['bien', 'regular', 'mal'].map(opt => (
-                       <TouchableOpacity key={opt} style={[styles.sleepBtn, { borderColor: colors.border }, sleep === opt && { backgroundColor: opt === 'bien' ? colors.success : opt === 'mal' ? colors.error : colors.warning, borderColor: opt === 'bien' ? colors.success : opt === 'mal' ? colors.error : colors.warning }]} onPress={() => setSleep(opt as any)}><Text style={[styles.sleepText, { color: colors.textPrimary }, sleep === opt && { color: '#FFF' }]}>{opt.toUpperCase()}</Text></TouchableOpacity>
-                    ))}
+                    {['bien', 'regular', 'mal'].map(opt => {
+                      
+                      // BLINDAJE DE COLORES PARA SUEÑO
+                      const isSelected = sleep === opt;
+                      let sleepColor = colors.border;
+                      if (isSelected) {
+                        if (opt === 'bien') sleepColor = colors.success || '#10B981';
+                        else if (opt === 'mal') sleepColor = colors.error || '#EF4444';
+                        else sleepColor = colors.warning || '#F59E0B';
+                      }
+
+                      return (
+                        <TouchableOpacity 
+                          key={opt} 
+                          style={[
+                            styles.sleepBtn, 
+                            { borderColor: isSelected ? sleepColor : colors.border }, 
+                            isSelected && { backgroundColor: sleepColor }
+                          ]} 
+                          onPress={() => setSleep(opt as any)}
+                        >
+                          <Text style={[
+                            styles.sleepText, 
+                            { color: colors.textPrimary }, 
+                            isSelected && { color: opt === 'regular' ? '#000' : '#FFF' }
+                          ]}>
+                            {opt.toUpperCase()}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
                   </View>
                 </>
               )}
@@ -355,7 +385,7 @@ export default function TrainingModeScreen() {
                     return (
                       <View key={i} style={[styles.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                          <View style={[styles.summaryIcon, { backgroundColor: allSkipped ? colors.error + '15' : colors.success + '15' }]}><Ionicons name={allSkipped ? 'close-circle' : 'checkmark-circle'} size={22} color={allSkipped ? colors.error : colors.success} /></View>
+                          <View style={[styles.summaryIcon, { backgroundColor: allSkipped ? (colors.error || '#EF4444') + '15' : (colors.success || '#10B981') + '15' }]}><Ionicons name={allSkipped ? 'close-circle' : 'checkmark-circle'} size={22} color={allSkipped ? (colors.error || '#EF4444') : (colors.success || '#10B981')} /></View>
                           <Text style={[styles.summaryName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
                         </View>
                         {!allSkipped && (
@@ -365,7 +395,7 @@ export default function TrainingModeScreen() {
                                 <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '800' }}>Rendimiento Registrado:</Text>
                                 <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '900', marginTop: 4 }}>{logs[i]?.weight ? `${logs[i]?.weight} kg` : '- kg'} x {logs[i]?.reps ? `${logs[i]?.reps} reps` : '- reps'}</Text>
                                 {logs[i]?.coach_note && (
-                                  <View style={{ backgroundColor: colors.warning + '15', padding: 10, borderRadius: 8, marginTop: 10, width: '100%' }}><Text style={{ color: colors.warning, fontWeight: '800', fontSize: 11 }}>FEEDBACK COACH:</Text><Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{logs[i]?.coach_note}"</Text></View>
+                                  <View style={{ backgroundColor: (colors.warning || '#F59E0B') + '15', padding: 10, borderRadius: 8, marginTop: 10, width: '100%' }}><Text style={{ color: colors.warning || '#F59E0B', fontWeight: '800', fontSize: 11 }}>FEEDBACK COACH:</Text><Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{logs[i]?.coach_note}"</Text></View>
                                 )}
                               </View>
                             ) : (
@@ -413,9 +443,9 @@ export default function TrainingModeScreen() {
 
         <ScrollView contentContainerStyle={styles.content}>
           <View style={[styles.hiitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.hiitHeader, { backgroundColor: colors.error + '15' }]}>
-              <Ionicons name="flame" size={24} color={colors.error} />
-              <View style={{ flex: 1, marginLeft: 10 }}><Text style={{ color: colors.error, fontWeight: '900', fontSize: 18, textTransform: 'uppercase' }}>{currentBlock.name}</Text><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>Vuelta {hiitRound} de {currentBlock.sets}</Text></View>
+            <View style={[styles.hiitHeader, { backgroundColor: (colors.error || '#EF4444') + '15' }]}>
+              <Ionicons name="flame" size={24} color={colors.error || '#EF4444'} />
+              <View style={{ flex: 1, marginLeft: 10 }}><Text style={{ color: colors.error || '#EF4444', fontWeight: '900', fontSize: 18, textTransform: 'uppercase' }}>{currentBlock.name}</Text><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>Vuelta {hiitRound} de {currentBlock.sets}</Text></View>
             </View>
 
             <View style={styles.hiitList}>
@@ -424,7 +454,7 @@ export default function TrainingModeScreen() {
                 const isDone = hiitExIdx > idx;
                 return (
                   <View key={idx} style={[styles.hiitExRow, { paddingVertical: dynamicPadding }, isCurrent && { backgroundColor: colors.surfaceHighlight, borderRadius: 10, borderWidth: 1, borderColor: colors.primary }]}>
-                    <View style={[styles.hiitCheck, { backgroundColor: isDone ? colors.success : isCurrent ? colors.primary : colors.border }]}>
+                    <View style={[styles.hiitCheck, { backgroundColor: isDone ? (colors.success || '#10B981') : isCurrent ? colors.primary : colors.border }]}>
                       {isDone ? <Ionicons name="checkmark" size={12} color="#FFF" /> : <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>{idx + 1}</Text>}
                     </View>
                     <Text style={[styles.hiitExName, { fontSize: dynamicFontName, color: isCurrent ? colors.textPrimary : colors.textSecondary, fontWeight: isCurrent ? '800' : '600', flex: 1 }]}>{ex.name}</Text>
@@ -435,20 +465,20 @@ export default function TrainingModeScreen() {
             </View>
 
             {isResting ? (
-              <View style={[styles.restTimerCard, { backgroundColor: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? colors.warning + '15' : colors.primary + '15' }]}>
-                <Ionicons name="timer" size={32} color={hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? colors.warning : colors.primary} />
+              <View style={[styles.restTimerCard, { backgroundColor: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') + '15' : colors.primary + '15' }]}>
+                <Ionicons name="timer" size={32} color={hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary} />
                 <View style={styles.restTimerContent}>
                   <Text style={[styles.restTimerLabel, { color: colors.textSecondary }]}>
                     {hiitPhase === 'rest_block' ? 'DESCANSO ENTRE VUELTAS' : 
                      hiitPhase === 'rest_next_block' ? 'DESCANSO PARA SIGUIENTE BLOQUE' : 
                      'PREPÁRATE PARA EL SIGUIENTE'}
                   </Text>
-                  <Text style={[styles.restTimerValue, { color: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? colors.warning : colors.primary }]}>{Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, '0')}</Text>
+                  <Text style={[styles.restTimerValue, { color: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary }]}>{Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, '0')}</Text>
                 </View>
-                <TouchableOpacity style={[styles.skipRestBtn, { borderColor: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? colors.warning : colors.primary }]} onPress={skipHiitRest}><Text style={{ color: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? colors.warning : colors.primary, fontWeight: '700' }}>Saltar</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.skipRestBtn, { borderColor: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary }]} onPress={skipHiitRest}><Text style={{ color: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary, fontWeight: '700' }}>Saltar</Text></TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.error, marginTop: 20 }]} onPress={advanceHiit}>
+              <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.error || '#EF4444', marginTop: 20 }]} onPress={advanceHiit}>
                 <Ionicons name="play" size={22} color="#FFF" />
                 <Text style={[styles.completeSetText, { color: '#FFF' }]}>Completar Ejercicio</Text>
               </TouchableOpacity>
@@ -494,7 +524,7 @@ export default function TrainingModeScreen() {
           <Text style={[styles.setsTitle, { color: colors.textPrimary }]}>Progreso de Series</Text>
           <View style={styles.setsGrid}>
             {currentSets.map((status, i) => (
-              <View key={i} style={[styles.setCircle, { borderColor: colors.border }, status === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }, status === 'skipped' && { backgroundColor: colors.error, borderColor: colors.error }]}>
+              <View key={i} style={[styles.setCircle, { borderColor: colors.border }, status === 'completed' && { backgroundColor: colors.success || '#10B981', borderColor: colors.success || '#10B981' }, status === 'skipped' && { backgroundColor: colors.error || '#EF4444', borderColor: colors.error || '#EF4444' }]}>
                 {status === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : status === 'skipped' ? <Ionicons name="close" size={18} color="#FFF" /> : <Text style={[styles.setNum, { color: colors.textSecondary }]}>{i + 1}</Text>}
               </View>
             ))}
@@ -514,16 +544,16 @@ export default function TrainingModeScreen() {
           {nextPendingSet !== -1 && !isResting ? (
             <View style={styles.setActions}>
               <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 1 }]} onPress={completeSet}><Ionicons name="checkmark-circle-outline" size={22} color="#FFF" /><Text style={[styles.completeSetText, { color: '#FFF' }]}>Completar serie {nextPendingSet + 1}</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error }]} onPress={skipSet}><Ionicons name="play-skip-forward" size={18} color={colors.error} /><Text style={[styles.skipSetText, { color: colors.error }]}>Saltar</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444' }]} onPress={skipSet}><Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} /><Text style={[styles.skipSetText, { color: colors.error || '#EF4444' }]}>Saltar</Text></TouchableOpacity>
             </View>
           ) : nextPendingSet === -1 ? (
-            <View style={[styles.allDoneBadge, { backgroundColor: colors.success + '12' }]}><Ionicons name="checkmark-circle" size={18} color={colors.success} /><Text style={{ color: colors.success, fontSize: 14, fontWeight: '600' }}>Todas completadas</Text></View>
+            <View style={[styles.allDoneBadge, { backgroundColor: (colors.success || '#10B981') + '12' }]}><Ionicons name="checkmark-circle" size={18} color={colors.success || '#10B981'} /><Text style={{ color: colors.success || '#10B981', fontSize: 14, fontWeight: '600' }}>Todas completadas</Text></View>
           ) : null}
 
           {nextPendingSet === -1 && !isResting && (
             <View style={{ marginTop: 15, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
               {recordedVideos[currentExIndex] ? (
-                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.success + '15', padding: 12, borderRadius: 10 }}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><Text style={{ color: colors.success, marginLeft: 8, fontWeight: '700', flex: 1 }}>Vídeo de técnica subido</Text></View>
+                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 12, borderRadius: 10 }}><Ionicons name="checkmark-circle" size={20} color={colors.success || '#10B981'} /><Text style={{ color: colors.success || '#10B981', marginLeft: 8, fontWeight: '700', flex: 1 }}>Vídeo de técnica subido</Text></View>
               ) : (
                 <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHighlight, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.border, borderStyle: 'dashed' }} onPress={() => pickAndUploadVideo(currentExIndex)} disabled={videoUploading === currentExIndex}>
                   {videoUploading === currentExIndex ? <ActivityIndicator color={colors.primary} size="small" /> : <><Ionicons name="videocam" size={20} color={colors.textSecondary} /><Text style={{ color: colors.textSecondary, marginLeft: 8, fontWeight: '700' }}>Grabar y subir técnica</Text></>}
@@ -539,7 +569,7 @@ export default function TrainingModeScreen() {
         {currentExIndex < exercises.length - 1 ? (
           <TouchableOpacity style={styles.navBtn} onPress={() => setCurrentExIndex(currentExIndex+1)}><Text style={[styles.navBtnText, { color: colors.textPrimary }]}>Siguiente</Text><Ionicons name="arrow-forward" size={22} color={colors.textPrimary} /></TouchableOpacity>
         ) : (
-          <TouchableOpacity style={styles.navBtn} onPress={() => setFinished(true)}><Text style={[styles.navBtnText, { color: colors.success, fontWeight: '700' }]}>Terminar</Text><Ionicons name="flag" size={20} color={colors.success} /></TouchableOpacity>
+          <TouchableOpacity style={styles.navBtn} onPress={() => setFinished(true)}><Text style={[styles.navBtnText, { color: colors.success || '#10B981', fontWeight: '700' }]}>Terminar</Text><Ionicons name="flag" size={20} color={colors.success || '#10B981'} /></TouchableOpacity>
         )}
       </View>
     </SafeAreaView>
