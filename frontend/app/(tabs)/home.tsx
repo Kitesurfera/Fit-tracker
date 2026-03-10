@@ -43,7 +43,8 @@ export default function HomeScreen() {
 
   const [showAthleteModal, setShowAthleteModal] = useState(false);
   const [editingAthleteId, setEditingAthleteId] = useState<string | null>(null);
-  const [athleteForm, setAthleteForm] = useState({ name: '', email: '', password: '', gender: 'Femenino' });
+  // Añadimos 'sport' al estado del formulario
+  const [athleteForm, setAthleteForm] = useState({ name: '', email: '', password: '', gender: 'Femenino', sport: '' });
 
   const isTrainer = user?.role === 'trainer';
   const firstName = user?.name?.split(' ')[0] || 'Atleta';
@@ -70,7 +71,6 @@ export default function HomeScreen() {
         let foundMicro = null;
         if (treeData?.macros && Array.isArray(treeData.macros)) {
           treeData.macros.forEach((macro: any) => {
-            // BLINDAJE: Acepta inglés o español
             const micros = macro.microciclos || macro.microcycles || [];
             micros.forEach((micro: any) => {
               const start = micro.fecha_inicio || micro.start_date;
@@ -118,14 +118,18 @@ export default function HomeScreen() {
 
   const openNewAthlete = () => {
     setEditingAthleteId(null);
-    setAthleteForm({ name: '', email: '', password: '', gender: 'Femenino' });
+    setAthleteForm({ name: '', email: '', password: '', gender: 'Femenino', sport: '' });
     setShowAthleteModal(true);
   };
 
   const openEditAthlete = (athlete: any) => {
     setEditingAthleteId(athlete.id);
     setAthleteForm({ 
-      name: athlete.name, email: athlete.email, password: '', gender: athlete.gender || 'Femenino' 
+      name: athlete.name, 
+      email: athlete.email, 
+      password: '', 
+      gender: athlete.gender || 'Femenino',
+      sport: athlete.sport || '' // Cargamos el deporte si existe
     });
     setShowAthleteModal(true);
   };
@@ -226,16 +230,17 @@ export default function HomeScreen() {
         <View style={[styles.athleteCard, { backgroundColor: colors.surface }]}>
           <TouchableOpacity style={styles.athleteInfoArea} onPress={() => router.push({ pathname: "/athlete-detail", params: { id: item.id, name: item.name } })}>
             <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
-              <Text style={{color: colors.primary, fontWeight: '800'}}>{item.name.charAt(0)}</Text>
+              <Text style={{color: colors.primary, fontWeight: '800'}}>{item.name.charAt(0).toUpperCase()}</Text>
             </View>
             <View style={{flex: 1}}>
               <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
-              <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Atleta de Fit Tracker</Text>
+              {/* AQUÍ SE MUESTRA EL DEPORTE EN LUGAR DEL TEXTO GENÉRICO */}
+              <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{item.sport || 'Deportista multidisciplinar'}</Text>
             </View>
           </TouchableOpacity>
           <View style={styles.athleteActionsArea}>
             <TouchableOpacity onPress={() => openEditAthlete(item)} style={styles.iconHitbox}><Ionicons name="pencil-outline" size={20} color={colors.textSecondary} /></TouchableOpacity>
-            <TouchableOpacity onPress={() => handleDeleteAthlete(item.id, item.name)} style={styles.iconHitbox}><Ionicons name="trash-outline" size={20} color={colors.error} /></TouchableOpacity>
+            <TouchableOpacity onPress={() => handleDeleteAthlete(item.id, item.name)} style={styles.iconHitbox}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
           </View>
         </View>
       )}
@@ -304,7 +309,7 @@ export default function HomeScreen() {
 
             <View style={styles.metricsGrid}>
               <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-                <Ionicons name="flash-outline" size={22} color={colors.success} />
+                <Ionicons name="flash-outline" size={22} color={colors.success || '#10B981'} />
                 <Text style={[styles.metricValue, { color: colors.textPrimary }]}>{summary?.latest_wellness?.fatigue || '-'}</Text>
                 <Text style={[styles.metricLabel, { color: colors.textSecondary }]}>NIVEL FATIGA</Text>
               </View>
@@ -316,7 +321,7 @@ export default function HomeScreen() {
             </View>
 
             <TouchableOpacity style={[styles.fullBtn, { backgroundColor: colors.surface }]} onPress={() => setShowWellness(true)}>
-              <Ionicons name="fitness-outline" size={22} color={colors.success} />
+              <Ionicons name="fitness-outline" size={22} color={colors.success || '#10B981'} />
               <Text style={[styles.actionText, { color: colors.textPrimary }]}>Actualizar Wellness de Hoy</Text>
             </TouchableOpacity>
 
@@ -325,8 +330,8 @@ export default function HomeScreen() {
         }
         renderItem={({ item }) => (
           <TouchableOpacity style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.7 : 1 }]} onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}>
-            <View style={[styles.avatarCircle, { backgroundColor: item.completed ? colors.success + '15' : colors.primary + '15' }]}>
-              <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? colors.success : colors.primary} />
+            <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
+              <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} />
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
@@ -347,9 +352,16 @@ export default function HomeScreen() {
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editingAthleteId ? 'Editar Deportista' : 'Añadir Deportista'}</Text>
+            
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Nombre Completo" placeholderTextColor="#888" value={athleteForm.name} onChangeText={t => setAthleteForm({...athleteForm, name: t})} />
+            
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Email" placeholderTextColor="#888" autoCapitalize="none" keyboardType="email-address" value={athleteForm.email} onChangeText={t => setAthleteForm({...athleteForm, email: t})} />
+            
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder={editingAthleteId ? "Nueva Contraseña (Opcional)" : "Contraseña"} placeholderTextColor="#888" secureTextEntry value={athleteForm.password} onChangeText={t => setAthleteForm({...athleteForm, password: t})} />
+            
+            {/* NUEVO CAMPO: DEPORTE */}
+            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Deporte (Ej: Kitesurf freestyle)" placeholderTextColor="#888" value={athleteForm.sport} onChangeText={t => setAthleteForm({...athleteForm, sport: t})} />
+
             <View style={styles.genderRow}>
               {['Masculino', 'Femenino'].map(g => (
                 <TouchableOpacity key={g} style={[styles.genderBtn, { borderColor: colors.border }, athleteForm.gender === g && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => setAthleteForm({...athleteForm, gender: g})}>
@@ -357,9 +369,11 @@ export default function HomeScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+            
             <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleSaveAthlete}>
               <Text style={{ color: '#FFF', fontWeight: '800' }}>{editingAthleteId ? 'ACTUALIZAR PERFIL' : 'GUARDAR PERFIL'}</Text>
             </TouchableOpacity>
+            
             <TouchableOpacity onPress={() => setShowAthleteModal(false)} style={{ marginTop: 20, alignItems: 'center' }}>
               <Text style={{ color: colors.textSecondary }}>Cerrar</Text>
             </TouchableOpacity>
