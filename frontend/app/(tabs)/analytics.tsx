@@ -17,7 +17,6 @@ const TEST_LABELS: Record<string, string> = {
   hamstring: 'Isquios', calf: 'Gemelo', quadriceps: 'Cuádriceps', tibialis: 'Tibial',
 };
 
-// --- FILTRO INTELIGENTE PARA UNIFICAR EJERCICIOS ---
 const normalizeName = (name: string) => {
   let n = name.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
   if (n.endsWith('es')) n = n.slice(0, -2);
@@ -35,12 +34,10 @@ export default function AnalyticsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
-  // --- Estados de datos ---
   const [summary, setSummary] = useState<any>(null);
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [testHistory, setTestHistory] = useState<any[]>([]);
   
-  // --- Estados para el Entrenador ---
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
   const [showPicker, setShowPicker] = useState(false);
@@ -100,6 +97,23 @@ export default function AnalyticsScreen() {
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
 
+  // --- FILTRO: OBTIENE SOLO EL ÚLTIMO TEST DE CADA TIPO ---
+  const getLatestTests = () => {
+    if (!testHistory || testHistory.length === 0) return [];
+    
+    // Ordenamos primero de más reciente a más antiguo
+    const sortedTests = [...testHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    const latest: Record<string, any> = {};
+    sortedTests.forEach(t => {
+      if (!latest[t.test_type]) {
+        latest[t.test_type] = t; // Como están ordenados, el primero que entra es el más reciente
+      }
+    });
+    
+    return Object.values(latest);
+  };
+
   const getCleanProgression = () => {
     const exercises: Record<string, any> = {};
 
@@ -116,7 +130,6 @@ export default function AnalyticsScreen() {
             exercises[normKey] = { name: rawName, maxWeight: 0, maxReps: 0, history: [] };
           }
           
-          // Nos quedamos con el nombre más bonito (mayúsculas) para mostrarlo
           if (rawName.length > exercises[normKey].name.length || (rawName[0] && rawName[0] === rawName[0].toUpperCase())) {
              exercises[normKey].name = rawName; 
           }
@@ -135,29 +148,22 @@ export default function AnalyticsScreen() {
   };
 
   const renderChart = (history: any[]) => {
-    // Ordenamos cronológicamente (Eje X)
     const data = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    
-    // Calculamos los topes del Eje Y
     const maxW = Math.max(...data.map(d => d.weight));
     const minW = Math.min(...data.map(d => d.weight));
     const range = maxW - minW === 0 ? 10 : maxW - minW;
 
     return (
       <View style={styles.chartContainer}>
-        {/* Eje Y (Kilos) */}
         <View style={[styles.yAxis, { borderRightColor: colors.border }]}>
           <Text style={[styles.axisText, { color: colors.textSecondary }]}>{maxW}kg -</Text>
           <Text style={[styles.axisText, { color: colors.textSecondary }]}>{(maxW + minW) / 2}kg -</Text>
           <Text style={[styles.axisText, { color: colors.textSecondary }]}>{minW}kg -</Text>
         </View>
 
-        {/* Área del Gráfico (Eje X) */}
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartScroll}>
           {data.map((h, i) => {
-            // Calculamos la altura del punto en porcentaje (min 15%, max 90%)
             const heightPct = minW === maxW ? 50 : ((h.weight - minW) / range) * 75 + 15;
-            
             return (
               <View key={i} style={styles.chartCol}>
                 <View style={styles.chartBarArea}>
@@ -207,7 +213,7 @@ export default function AnalyticsScreen() {
     );
   };
 
-  if (loading && !summary) {
+  if (loading && !summary && testHistory.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
         <ActivityIndicator size="large" color={colors.primary} />
@@ -216,6 +222,7 @@ export default function AnalyticsScreen() {
   }
 
   const cleanProgression = getCleanProgression();
+  const latestTestsToDisplay = getLatestTests();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -278,11 +285,14 @@ export default function AnalyticsScreen() {
                  {isTrainer ? `Últimos Tests de ${selectedAthlete?.name?.split(' ')[0] || ''}` : 'Mis Últimos Tests'}
               </Text>
 
-              {Object.keys(summary?.latest_tests || {}).length > 0 ? (
-                Object.values(summary.latest_tests).map((t: any, i) => (
+              {latestTestsToDisplay.length > 0 ? (
+                latestTestsToDisplay.map((t: any, i) => (
                   <View key={i} style={[styles.itemRow, { backgroundColor: colors.surface }]}>
-                    <Text style={[styles.itemName, { color: colors.textPrimary }]}>{TEST_LABELS[t.test_name] || t.test_name}</Text>
-                    <Text style={[styles.itemValue, { color: colors.primary }]}>{t.value} {t.unit}</Text>
+                    <Text style={[styles.itemName, { color: colors.textPrimary }]}>{TEST_LABELS[t.test_type] || t.test_type}</Text>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={[styles.itemValue, { color: colors.primary }]}>{t.value} {t.unit}</Text>
+                      <Text style={{ fontSize: 10, color: colors.textSecondary }}>{t.date.split('-').reverse().join('/')}</Text>
+                    </View>
                   </View>
                 ))
               ) : (
@@ -314,7 +324,6 @@ export default function AnalyticsScreen() {
         </View>
       </ScrollView>
 
-      {/* SELECTOR DE DEPORTISTA (SÓLO ENTRENADOR) */}
       <Modal visible={showPicker} transparent animationType="fade">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPicker(false)} activeOpacity={1}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -367,7 +376,6 @@ const styles = StyleSheet.create({
   pbRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6 },
   pbText: { fontSize: 13, fontWeight: '600' },
   
-  // --- ESTILOS DEL GRÁFICO ---
   chartWrapper: { borderTopWidth: 1, backgroundColor: 'rgba(0,0,0,0.01)', paddingVertical: 15, paddingHorizontal: 10 },
   chartContainer: { flexDirection: 'row', height: 180 },
   yAxis: { width: 45, justifyContent: 'space-between', paddingVertical: 10, borderRightWidth: 1, alignItems: 'flex-end', paddingRight: 5 },
