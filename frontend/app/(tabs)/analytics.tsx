@@ -11,7 +11,26 @@ import { useAuth } from '../../src/context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
-// --- DICCIONARIO DE RESPALDO POR SI VIENEN DATOS ANTIGUOS ---
+// --- DICCIONARIO DE TRADUCCIÓN AL ESPAÑOL ---
+const TEST_TRANSLATIONS: Record<string, string> = {
+  squat_rm: 'Sentadilla RM',
+  bench_rm: 'Press Banca RM',
+  deadlift_rm: 'Peso Muerto RM',
+  cmj: 'Salto CMJ',
+  sj: 'Salto SJ',
+  dj: 'Drop Jump (DJ)',
+  hamstring: 'Isquiotibiales',
+  calf: 'Gemelos',
+  quadriceps: 'Cuádriceps',
+  tibialis: 'Tibial',
+  'max-force': 'Fuerza General',
+  'core-endurance': 'Resistencia Core',
+  'vo2-max': 'VO2 Max',
+  explosiveness: 'Explosividad',
+  agility: 'Agilidad'
+};
+
+// --- RESPALDO ANTIGUO PARA CATEGORÍAS ---
 const OLD_TEST_INFO: Record<string, string> = {
   squat_rm: 'FUERZA MÁXIMA', bench_rm: 'FUERZA MÁXIMA', deadlift_rm: 'FUERZA MÁXIMA',
   cmj: 'PLIOMETRÍA', sj: 'PLIOMETRÍA', dj: 'PLIOMETRÍA',
@@ -240,7 +259,7 @@ export default function AnalyticsScreen() {
                 <Ionicons name="people" size={20} color={colors.primary} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
+            <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]} disabled={refreshing}>
               {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={20} color={colors.primary} />}
             </TouchableOpacity>
           </View>
@@ -267,28 +286,39 @@ export default function AnalyticsScreen() {
               </View>
 
               <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={[styles.statIconBox, { backgroundColor: colors.success + '15' }]}><Ionicons name="flash" size={24} color={colors.success} /></View>
+                <View style={[styles.statIconBox, { backgroundColor: (colors.success || '#10B981') + '15' }]}><Ionicons name="flash" size={24} color={colors.success || '#10B981'} /></View>
                 <Text style={[styles.statValue, { color: colors.textPrimary }]}>{summary?.total_completed_workouts || 0}</Text>
                 <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Completados</Text>
               </View>
 
               <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={[styles.statIconBox, { backgroundColor: colors.warning + '15' }]}><Ionicons name="barbell" size={24} color={colors.warning} /></View>
+                <View style={[styles.statIconBox, { backgroundColor: (colors.warning || '#F59E0B') + '15' }]}><Ionicons name="barbell" size={24} color={colors.warning || '#F59E0B'} /></View>
                 <Text style={[styles.statValue, { color: colors.textPrimary }]}>{summary?.total_completed_sets || 0}</Text>
                 <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Series</Text>
               </View>
             </View>
 
-            {/* SECCIÓN DE TESTS ACTUALIZADA: NOMBRE PERSONALIZADO Y 3 CATEGORÍAS */}
             <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: 10 }]}>ÚLTIMOS TESTS FÍSICOS</Text>
             {latestTestsToDisplay.length > 0 ? (
               <View style={styles.testsList}>
                 {latestTestsToDisplay.map((t: any, i: number) => {
                   
-                  // 1. Respetamos el nombre personalizado que haya puesto el entrenador
-                  const customName = t.name || t.test_name || t.type || 'Test Físico';
+                  // 1. Extraemos los valores crudos
+                  const rawType = (t.type || t.test_type || '').toLowerCase();
+                  const rawName = t.name || t.test_name || '';
+
+                  // 2. Lógica de Traducción:
+                  // Si el nombre introducido coincide con el diccionario, lo traducimos.
+                  // Si no hay nombre introducido, pero el tipo base (ej. "cmj") está en el dicc, lo traducimos.
+                  // Si no aplica nada de eso, dejamos lo que haya puesto el entrenador o "Test Físico".
+                  let displayName = rawName || rawType || 'Test Físico';
+                  if (TEST_TRANSLATIONS[displayName.toLowerCase()]) {
+                    displayName = TEST_TRANSLATIONS[displayName.toLowerCase()];
+                  } else if (!rawName && TEST_TRANSLATIONS[rawType]) {
+                    displayName = TEST_TRANSLATIONS[rawType];
+                  }
                   
-                  // 2. Extraemos la categoría (puede venir en category, type o test_type)
+                  // 3. Extraemos la categoría (puede venir en category, type o test_type)
                   const rawCategory = (t.category || t.type || t.test_type || '').toUpperCase();
                   let finalCategory = 'FUERZA'; // Por defecto
                   
@@ -299,7 +329,6 @@ export default function AnalyticsScreen() {
                   } else if (rawCategory.includes('FUERZA') || rawCategory.includes('STRENGTH')) {
                     finalCategory = 'FUERZA';
                   } else {
-                    // Si el backend envía algo muy raro, miramos el diccionario viejo por si coincide
                     const dictMatch = OLD_TEST_INFO[rawCategory.toLowerCase()];
                     if (dictMatch) finalCategory = dictMatch;
                   }
@@ -312,7 +341,7 @@ export default function AnalyticsScreen() {
                         <View style={{ flex: 1, paddingRight: 10 }}>
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                             <Ionicons name="speedometer" size={16} color={badgeColor} />
-                            <Text style={[styles.testName, { color: colors.textPrimary }]}>{customName}</Text>
+                            <Text style={[styles.testName, { color: colors.textPrimary }]}>{displayName}</Text>
                           </View>
                           <Text style={[styles.testDate, { color: colors.textSecondary }]}>{t.date}</Text>
                         </View>
@@ -341,7 +370,7 @@ export default function AnalyticsScreen() {
 
             {summary?.avg_rpe && (
               <View style={[styles.rpeSummaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <View style={[styles.rpeCircle, { backgroundColor: summary.avg_rpe > 7 ? colors.error : summary.avg_rpe > 4 ? colors.warning : colors.success }]}><Text style={{ color: '#FFF', fontSize: 24, fontWeight: '800' }}>{parseFloat(summary.avg_rpe).toFixed(1)}</Text></View>
+                <View style={[styles.rpeCircle, { backgroundColor: summary.avg_rpe > 7 ? (colors.error || '#EF4444') : summary.avg_rpe > 4 ? (colors.warning || '#F59E0B') : (colors.success || '#10B981') }]}><Text style={{ color: '#FFF', fontSize: 24, fontWeight: '800' }}>{parseFloat(summary.avg_rpe).toFixed(1)}</Text></View>
                 <View style={{ flex: 1, marginLeft: 16 }}>
                   <Text style={[styles.rpeSummaryTitle, { color: colors.textPrimary }]}>RPE Medio Reciente</Text>
                   <Text style={[styles.rpeSummarySub, { color: colors.textSecondary }]}>Nivel de esfuerzo percibido en los últimos entrenamientos.</Text>
