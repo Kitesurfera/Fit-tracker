@@ -11,24 +11,17 @@ import { useAuth } from '../../src/context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
-// --- EL DICCIONARIO TRADUCTOR ---
-// Aquí mapeamos los nombres feos de la base de datos a etiquetas bonitas
-const TEST_LABELS: Record<string, string> = {
-  squat_rm: 'Sentadilla', 
-  bench_rm: 'Press Banca', 
-  deadlift_rm: 'Peso Muerto',
-  cmj: 'Salto CMJ', 
-  sj: 'Salto SJ', 
-  dj: 'Salto DJ (Drop Jump)',
-  hamstring: 'Fuerza Isquios', 
-  calf: 'Fuerza Gemelo', 
-  quadriceps: 'Fuerza Cuádriceps', 
-  tibialis: 'Fuerza Tibial',
-  'max-force': 'Fuerza Máxima (1RM)',
-  'core-endurance': 'Resistencia Core',
-  'vo2-max': 'VO2 Max',
-  'explosiveness': 'Explosividad',
-  'agility': 'Agilidad / Cambio de Dirección'
+// --- DICCIONARIO DE RESPALDO POR SI VIENEN DATOS ANTIGUOS ---
+const OLD_TEST_INFO: Record<string, string> = {
+  squat_rm: 'FUERZA MÁXIMA', bench_rm: 'FUERZA MÁXIMA', deadlift_rm: 'FUERZA MÁXIMA',
+  cmj: 'PLIOMETRÍA', sj: 'PLIOMETRÍA', dj: 'PLIOMETRÍA',
+  hamstring: 'FUERZA', calf: 'FUERZA', quadriceps: 'FUERZA', tibialis: 'FUERZA'
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  'FUERZA MÁXIMA': '#EF4444', // Rojo
+  'PLIOMETRÍA': '#F59E0B',    // Naranja
+  'FUERZA': '#10B981',        // Verde
 };
 
 const normalizeName = (name: string) => {
@@ -111,14 +104,9 @@ export default function AnalyticsScreen() {
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
 
-  // --- FILTRO ACTUALIZADO: LOS 3 ÚLTIMOS TESTS EN EL TIEMPO ---
   const getLatestTests = () => {
     if (!testHistory || testHistory.length === 0) return [];
-    
-    // Ordenamos de más reciente a más antiguo
     const sortedTests = [...testHistory].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    // Devolvemos exactamente los 3 primeros de la lista
     return sortedTests.slice(0, 3);
   };
 
@@ -252,7 +240,7 @@ export default function AnalyticsScreen() {
                 <Ionicons name="people" size={20} color={colors.primary} />
               </TouchableOpacity>
             )}
-            <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]} disabled={refreshing}>
+            <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
               {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={20} color={colors.primary} />}
             </TouchableOpacity>
           </View>
@@ -270,7 +258,6 @@ export default function AnalyticsScreen() {
         {activeTab === 'summary' ? (
           <View style={styles.tabContent}>
             
-            {/* ESTADÍSTICAS GLOBALES */}
             <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>ESTADÍSTICAS GLOBALES</Text>
             <View style={styles.statsGrid}>
               <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -292,26 +279,54 @@ export default function AnalyticsScreen() {
               </View>
             </View>
 
-            {/* SECCIÓN DE ÚLTIMOS TESTS (AQUÍ APLICAMOS EL TRADUCTOR) */}
+            {/* SECCIÓN DE TESTS ACTUALIZADA: NOMBRE PERSONALIZADO Y 3 CATEGORÍAS */}
             <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: 10 }]}>ÚLTIMOS TESTS FÍSICOS</Text>
             {latestTestsToDisplay.length > 0 ? (
               <View style={styles.testsList}>
                 {latestTestsToDisplay.map((t: any, i: number) => {
-                  // APLICAMOS LA MAGIA: Si el nombre está en el diccionario, usa el bonito. Si no, usa el que venga de la BD.
-                  const testName = TEST_LABELS[t.type] || t.type;
+                  
+                  // 1. Respetamos el nombre personalizado que haya puesto el entrenador
+                  const customName = t.name || t.test_name || t.type || 'Test Físico';
+                  
+                  // 2. Extraemos la categoría (puede venir en category, type o test_type)
+                  const rawCategory = (t.category || t.type || t.test_type || '').toUpperCase();
+                  let finalCategory = 'FUERZA'; // Por defecto
+                  
+                  if (rawCategory.includes('MAX') || rawCategory.includes('MÁX') || rawCategory.includes('RM')) {
+                    finalCategory = 'FUERZA MÁXIMA';
+                  } else if (rawCategory.includes('PLIO') || rawCategory.includes('JUMP') || rawCategory.includes('SALTO') || rawCategory.includes('CMJ')) {
+                    finalCategory = 'PLIOMETRÍA';
+                  } else if (rawCategory.includes('FUERZA') || rawCategory.includes('STRENGTH')) {
+                    finalCategory = 'FUERZA';
+                  } else {
+                    // Si el backend envía algo muy raro, miramos el diccionario viejo por si coincide
+                    const dictMatch = OLD_TEST_INFO[rawCategory.toLowerCase()];
+                    if (dictMatch) finalCategory = dictMatch;
+                  }
+
+                  const badgeColor = CATEGORY_COLORS[finalCategory] || colors.primary;
                   
                   return (
                     <View key={i} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                       <View style={styles.testHeader}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <Ionicons name="speedometer" size={16} color={colors.primary} />
-                          <Text style={[styles.testName, { color: colors.textPrimary }]}>{testName}</Text>
+                        <View style={{ flex: 1, paddingRight: 10 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                            <Ionicons name="speedometer" size={16} color={badgeColor} />
+                            <Text style={[styles.testName, { color: colors.textPrimary }]}>{customName}</Text>
+                          </View>
+                          <Text style={[styles.testDate, { color: colors.textSecondary }]}>{t.date}</Text>
                         </View>
-                        <Text style={[styles.testDate, { color: colors.textSecondary }]}>{t.date}</Text>
+                        {/* INSIGNIA DE CATEGORÍA FIJA */}
+                        <View style={{ backgroundColor: badgeColor + '15', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, alignSelf: 'flex-start' }}>
+                          <Text style={{ color: badgeColor, fontSize: 10, fontWeight: '900' }}>{finalCategory}</Text>
+                        </View>
                       </View>
-                      <View style={styles.testResultRow}>
-                        <Text style={[styles.testValue, { color: colors.textPrimary }]}>{t.value} {t.unit}</Text>
-                        {t.notes && <Text style={[styles.testNotes, { color: colors.textSecondary }]} numberOfLines={1}>{t.notes}</Text>}
+                      
+                      <View style={[styles.testResultRow, { marginTop: 8 }]}>
+                        <Text style={[styles.testValue, { color: colors.textPrimary }]}>
+                          {t.value} <Text style={{ fontSize: 14, color: colors.textSecondary }}>{t.unit}</Text>
+                        </Text>
+                        {t.notes && <Text style={[styles.testNotes, { color: colors.textSecondary }]} numberOfLines={2}>{t.notes}</Text>}
                       </View>
                     </View>
                   );
@@ -395,15 +410,14 @@ const styles = StyleSheet.create({
   statValue: { fontSize: 24, fontWeight: '800', marginBottom: 2 },
   statLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
   
-  // Tests Styles
   testsList: { gap: 10 },
-  testCard: { padding: 16, borderRadius: 12, borderWidth: 1, gap: 8 },
-  testHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  testName: { fontSize: 14, fontWeight: '700' },
-  testDate: { fontSize: 12, fontWeight: '600' },
+  testCard: { padding: 16, borderRadius: 16, borderWidth: 1, gap: 8 },
+  testHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  testName: { fontSize: 15, fontWeight: '800', flexShrink: 1 },
+  testDate: { fontSize: 12, fontWeight: '600', marginLeft: 24 },
   testResultRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  testValue: { fontSize: 22, fontWeight: '900' },
-  testNotes: { flex: 1, fontSize: 13, fontStyle: 'italic' },
+  testValue: { fontSize: 24, fontWeight: '900' },
+  testNotes: { flex: 1, fontSize: 12, fontStyle: 'italic', lineHeight: 16 },
   
   rpeSummaryCard: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 16, borderWidth: 1, marginTop: 10 },
   rpeCircle: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center' },
