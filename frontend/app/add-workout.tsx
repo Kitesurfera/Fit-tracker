@@ -6,6 +6,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
@@ -61,12 +62,66 @@ export default function AddWorkoutScreen() {
   const removeHiitExercise = (bIndex: number, eIndex: number) => { const updated = [...hiitBlocks]; updated[bIndex].exercises = updated[bIndex].exercises.filter((_: any, i: number) => i !== eIndex); setHiitBlocks(updated); };
   const updateHiitExercise = (bIndex: number, eIndex: number, field: string, value: string) => { const updated = [...hiitBlocks]; updated[bIndex].exercises[eIndex] = { ...updated[bIndex].exercises[eIndex], [field]: value }; setHiitBlocks(updated); };
 
-  // --- LÓGICA IMPORTAR CSV (Añade aquí tu lógica de parseo) ---
-  const handleImportCSV = () => {
-    Alert.alert("Importar CSV", "Aquí va la lógica para abrir el explorador de archivos y cargar las series.");
-    // Ejemplo:
-    // const result = await DocumentPicker.getDocumentAsync({ type: 'text/csv' });
-    // if (!result.canceled) { ... procesar ... }
+  // --- LÓGICA IMPORTAR CSV COMPLETA ---
+  const handleImportCSV = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ 
+        type: ['text/csv', 'text/comma-separated-values', 'application/csv', '*/*'],
+        copyToCacheDirectory: true 
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        return; 
+      }
+
+      const fileUri = result.assets[0].uri;
+      let text = '';
+
+      // Dependiendo de si es entorno web o nativo, leemos el archivo
+      if (Platform.OS === 'web' && result.assets[0].file) {
+        text = await result.assets[0].file.text();
+      } else {
+        const response = await fetch(fileUri);
+        text = await response.text();
+      }
+
+      const lines = text.split(/\r?\n/).filter((line: string) => line.trim() !== '');
+      
+      if (lines.length <= 1) {
+        if (Platform.OS === 'web') window.alert("El CSV parece estar vacío o solo tiene la cabecera.");
+        else Alert.alert("Error", "El CSV parece estar vacío o solo tiene la cabecera.");
+        return;
+      }
+
+      const parsedExercises = lines.slice(1).map((line: string, index: number) => {
+        const cols = line.split(',').map((col: string) => col.trim());
+        return {
+          _key: Math.random().toString() + index,
+          name: cols[0] || `Ejercicio ${index + 1}`,
+          sets: cols[1] || '3',
+          reps: cols[2] || '10',
+          weight: '', 
+          rest: cols[3] || '90',
+          rest_exercise: '',
+          video_url: '',
+          exercise_notes: cols[4] || '', 
+          image_path: ''
+        };
+      });
+
+      setExercises(parsedExercises);
+
+      if (Platform.OS !== 'web') {
+        Alert.alert("¡Importación exitosa!", `Se han cargado ${parsedExercises.length} ejercicios.`);
+      } else {
+        window.alert(`¡Importación exitosa! Se han cargado ${parsedExercises.length} ejercicios.`);
+      }
+
+    } catch (error) {
+      console.error("Error al leer CSV:", error);
+      if (Platform.OS !== 'web') Alert.alert("Error", "Hubo un problema al intentar leer el archivo CSV.");
+      else window.alert("Error al intentar leer el archivo CSV.");
+    }
   };
 
   const handleSave = async () => {
@@ -170,7 +225,6 @@ export default function AddWorkoutScreen() {
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>EJERCICIOS ({exercises.length})</Text>
-                {/* BOTÓN CSV RESTAURADO */}
                 <TouchableOpacity style={[styles.csvBtn, { backgroundColor: colors.primary + '15' }]} onPress={handleImportCSV}>
                   <Ionicons name="document-text" size={14} color={colors.primary} />
                   <Text style={{ color: colors.primary, fontSize: 11, fontWeight: '800' }}>IMPORTAR CSV</Text>
@@ -188,7 +242,6 @@ export default function AddWorkoutScreen() {
                     <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Reps</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.reps} onChangeText={v => updateExercise(i, 'reps', v)} placeholder="-" keyboardType="numeric" /></View>
                     <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Desc.S</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.rest} onChangeText={v => updateExercise(i, 'rest', v)} placeholder="s" keyboardType="numeric" /></View>
                   </View>
-                  {/* OBSERVACIONES FUERZA */}
                   <View style={[styles.notesContainer, { borderTopColor: colors.border }]}>
                     <TextInput 
                       style={[styles.notesInput, { color: colors.textPrimary }]} 
@@ -232,7 +285,6 @@ export default function AddWorkoutScreen() {
                           <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="40s / 15 reps" placeholderTextColor={colors.textSecondary} />
                           <TouchableOpacity onPress={() => removeHiitExercise(bIndex, eIndex)} style={{ padding: 8 }}><Ionicons name="close-circle" size={20} color={colors.textSecondary} /></TouchableOpacity>
                         </View>
-                        {/* OBSERVACIONES HIIT */}
                         <TextInput 
                           style={[styles.hiitNotesInput, { color: colors.textPrimary, borderColor: colors.border }]} 
                           value={ex.exercise_notes} 
