@@ -70,9 +70,19 @@ export default function HomeScreen() {
         let foundMicro = null;
         if (treeData?.macros && Array.isArray(treeData.macros)) {
           treeData.macros.forEach((macro: any) => {
-            macro.microciclos?.forEach((micro: any) => {
-              if (todayStr >= micro.fecha_inicio && todayStr <= micro.fecha_fin) {
-                foundMicro = { ...micro, macroNombre: macro.nombre };
+            // BLINDAJE: Acepta inglés o español
+            const micros = macro.microciclos || macro.microcycles || [];
+            micros.forEach((micro: any) => {
+              const start = micro.fecha_inicio || micro.start_date;
+              const end = micro.fecha_fin || micro.end_date;
+              if (start && end && todayStr >= start && todayStr <= end) {
+                foundMicro = { 
+                  ...micro, 
+                  macroNombre: macro.nombre || macro.name || 'Macro',
+                  nombre: micro.nombre || micro.name || 'Micro',
+                  tipo: micro.tipo || micro.type || 'BASE',
+                  color: micro.color || colors.primary
+                };
               }
             });
           });
@@ -161,9 +171,7 @@ export default function HomeScreen() {
     }
   };
 
-  // --- LÓGICA DE GUARDADO INSTANTÁNEO (OPTIMISTIC UI) ---
   const handleQuickPhaseUpdate = async (phaseId: string) => {
-    // 1. Cambiamos el color en pantalla AL INSTANTE
     setSummary((prev: any) => ({
       ...prev,
       latest_wellness: {
@@ -171,8 +179,6 @@ export default function HomeScreen() {
         cycle_phase: phaseId
       }
     }));
-
-    // 2. Mandamos la orden al servidor en segundo plano
     try {
       const baseData = summary?.latest_wellness || {};
       const payload = {
@@ -197,7 +203,6 @@ export default function HomeScreen() {
     );
   }
 
-  // --- COMPONENTES DE VISTA COMO FUNCIONES ---
   const renderTrainerView = () => (
     <FlatList
       data={athletes}
@@ -262,7 +267,6 @@ export default function HomeScreen() {
               <Text style={[styles.tipText, { color: colors.textPrimary }]}>{tip}</Text>
             </View>
 
-            {/* SECCIÓN CICLO MENSTRUAL */}
             {isFemale && (
               <View style={{ marginBottom: 25 }}>
                 <Text style={styles.sectionTitle}>TU CICLO ACTUAL</Text>
@@ -279,11 +283,7 @@ export default function HomeScreen() {
                         ]}
                         onPress={() => handleQuickPhaseUpdate(phase.id)}
                       >
-                        <Text style={{ 
-                          color: isActive ? '#FFF' : colors.textSecondary, 
-                          fontWeight: isActive ? '800' : '600',
-                          fontSize: 12 
-                        }}>
+                        <Text style={{ color: isActive ? '#FFF' : colors.textSecondary, fontWeight: isActive ? '800' : '600', fontSize: 12 }}>
                           {phase.label}
                         </Text>
                       </TouchableOpacity>
@@ -339,13 +339,10 @@ export default function HomeScreen() {
     );
   };
 
-  // --- CORRECCIÓN EN EL RENDERIZADO PRINCIPAL ---
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       {isTrainer ? renderTrainerView() : renderAthleteView()}
-      
       <WellnessModal isVisible={showWellness} onClose={() => { setShowWellness(false); loadData(true); }} />
-
       <Modal visible={showAthleteModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -374,43 +371,5 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 },
-  dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' },
-  welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 },
-  refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' },
-  actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-  athleteCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' },
-  athleteInfoArea: { flexDirection: 'row', alignItems: 'center', flex: 1, padding: 18 },
-  athleteActionsArea: { flexDirection: 'row', alignItems: 'center', paddingRight: 15, gap: 10 },
-  iconHitbox: { padding: 8 },
-  avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  cardTitle: { fontSize: 16, fontWeight: '700' },
-  tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 },
-  tipText: { fontSize: 13, fontWeight: '600', flex: 1, fontStyle: 'italic' },
-  phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 25, alignItems: 'center' },
-  phaseInfo: { flex: 1 },
-  phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 },
-  phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 },
-  macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 },
-  phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' },
-  metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 },
-  metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' },
-  metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 },
-  metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 },
-  fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 30, gap: 12 },
-  actionText: { fontWeight: '800', fontSize: 15 },
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5, textTransform: 'uppercase' },
-  sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 22, marginHorizontal: 20, marginBottom: 12 },
-  avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 },
-  modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 25, textAlign: 'center' },
-  input: { borderWidth: 1, padding: 16, borderRadius: 15, marginBottom: 15, fontSize: 16 },
-  genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 },
-  genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
-  submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 },
-  cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }
+  container: { padding: 20 }, headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }, dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }, welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 }, refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' }, actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }, athleteCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' }, athleteInfoArea: { flexDirection: 'row', alignItems: 'center', flex: 1, padding: 18 }, athleteActionsArea: { flexDirection: 'row', alignItems: 'center', paddingRight: 15, gap: 10 }, iconHitbox: { padding: 8 }, avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 16, fontWeight: '700' }, tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 }, tipText: { fontSize: 13, fontWeight: '600', flex: 1, fontStyle: 'italic' }, phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 25, alignItems: 'center' }, phaseInfo: { flex: 1 }, phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 }, phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 }, macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 }, phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }, phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' }, metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 }, metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' }, metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 }, metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 }, fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 30, gap: 12 }, actionText: { fontWeight: '800', fontSize: 15 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5, textTransform: 'uppercase' }, sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 22, marginHorizontal: 20, marginBottom: 12 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 }, modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 25, textAlign: 'center' }, input: { borderWidth: 1, padding: 16, borderRadius: 15, marginBottom: 15, fontSize: 16 }, genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 }, genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }, submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 }, cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }
 });
