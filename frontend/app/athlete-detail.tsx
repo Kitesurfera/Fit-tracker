@@ -39,7 +39,6 @@ export default function AthleteDetailScreen() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'workouts' | 'progression'>('dashboard');
   const [loading, setLoading] = useState(true);
 
-  // --- NUEVO ESTADO PARA EL ACORDEÓN ---
   const [expandedWorkouts, setExpandedWorkouts] = useState<Record<string, boolean>>({});
 
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -67,7 +66,6 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  // --- FUNCIÓN PARA ALTERNAR EL ACORDEÓN ---
   const toggleWorkout = (id: string) => {
     setExpandedWorkouts(prev => ({ ...prev, [id]: !prev[id] }));
   };
@@ -144,9 +142,9 @@ export default function AthleteDetailScreen() {
   const getLevelColor = (val: number, inverse = false) => {
     if (!val) return colors.border;
     if (!inverse) { 
-      if (val <= 2) return colors.success; if (val === 3) return '#EAB308'; return colors.error;
+      if (val <= 2) return colors.success || '#10B981'; if (val === 3) return '#F59E0B'; return colors.error || '#EF4444';
     } else { 
-      if (val >= 4) return colors.success; if (val === 3) return '#EAB308'; return colors.error;
+      if (val >= 4) return colors.success || '#10B981'; if (val === 3) return '#F59E0B'; return colors.error || '#EF4444';
     }
   };
 
@@ -156,10 +154,10 @@ export default function AthleteDetailScreen() {
   const renderDashboard = () => (
     <View style={styles.tabContainer}>
       {summary?.is_injured && (
-        <View style={[styles.alert, { backgroundColor: colors.error + '10', borderColor: colors.error }]}>
-          <Ionicons name="warning" size={22} color={colors.error} />
+        <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '10', borderColor: colors.error || '#EF4444' }]}>
+          <Ionicons name="warning" size={22} color={colors.error || '#EF4444'} />
           <View style={{flex:1, marginLeft: 12}}>
-            <Text style={{color: colors.error, fontWeight: '900', fontSize: 12}}>ESTADO: LESIONADA / BAJA</Text>
+            <Text style={{color: colors.error || '#EF4444', fontWeight: '900', fontSize: 12}}>ESTADO: LESIONADA / BAJA</Text>
             <Text style={{color: colors.textPrimary, fontSize: 13, marginTop: 2}}>{summary.injury_notes}</Text>
           </View>
         </View>
@@ -181,8 +179,8 @@ export default function AthleteDetailScreen() {
       <View style={[styles.chartCard, { backgroundColor: colors.surface }]}>
         <View style={styles.barsContainer}>
           {history.length > 0 ? history.map((day, idx) => (
-            <View key={idx} style={styles.barWrapper}>
-              <View style={[styles.bar, { height: (day.fatigue / 5) * 100, backgroundColor: getLevelColor(day.fatigue) }]} />
+            <View key={idx} style={[styles.barWrapper, { justifyContent: 'flex-end', height: '100%' }]}>
+              <View style={[styles.bar, { height: `${(day.fatigue / 5) * 100}%`, backgroundColor: getLevelColor(day.fatigue) }]} />
               <Text style={styles.barDate}>{day.date.split('-')[2]}</Text>
             </View>
           )) : <Text style={{color: colors.textSecondary, fontSize: 12}}>Esperando datos...</Text>}
@@ -222,14 +220,13 @@ export default function AthleteDetailScreen() {
         <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface }]}>
           
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            {/* ÁREA CLICKABLE PARA DESPLEGAR (SI ESTÁ COMPLETADA) */}
             <TouchableOpacity 
               style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
               onPress={() => wk.completed && toggleWorkout(wk.id)}
               activeOpacity={wk.completed ? 0.6 : 1}
             >
-              <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '15' }]}>
-                <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? colors.success : colors.primary} />
+              <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
+                <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>
@@ -257,17 +254,16 @@ export default function AthleteDetailScreen() {
                 <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
               </TouchableOpacity>
               <TouchableOpacity style={styles.iconHitbox} onPress={() => handleDeleteWorkout(wk.id, wk.title)}>
-                <Ionicons name="trash-outline" size={20} color={colors.error} />
+                <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
               </TouchableOpacity>
             </View>
           </View>
 
-          {/* CONTENIDO DESPLEGABLE */}
           {wk.completed && wk.completion_data && expandedWorkouts[wk.id] && (
             <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
                 <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
-                  ESFUERZO (RPE): <Text style={{ color: colors.success, fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
+                  ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
                 </Text>
               </View>
               
@@ -326,21 +322,26 @@ export default function AthleteDetailScreen() {
           totalVolume += ((parseFloat(ex.logged_weight) || 0) * (parseInt(ex.logged_reps) || 0) * (parseInt(ex.completed_sets) || 0));
         });
       }
-      return { date: wk.date.split('-').slice(1).join('/'), volume: totalVolume, rpe: wk.completion_data?.rpe || 0 };
+      return { 
+        date: wk.date.split('-').slice(1).reverse().join('/'), 
+        volume: totalVolume, 
+        rpe: wk.completion_data?.rpe || 0 
+      };
     }).slice(-7);
 
     const maxVolume = Math.max(...progressionData.map(d => d.volume), 100);
 
     return (
       <View style={styles.tabContainer}>
+        {/* GRÁFICO DE VOLUMEN */}
         <Text style={styles.sectionTitle}>VOLUMEN DE CARGA (KILOS TOTALES)</Text>
         <View style={[styles.progressionCard, { backgroundColor: colors.surface }]}>
           {progressionData.length > 0 ? (
             <View style={styles.barsContainer}>
               {progressionData.map((data, idx) => (
-                <View key={idx} style={styles.barWrapper}>
+                <View key={idx} style={[styles.barWrapper, { justifyContent: 'flex-end', height: '100%' }]}>
                   <Text style={[styles.barValue, { color: colors.primary }]}>{data.volume > 0 ? `${(data.volume/1000).toFixed(1)}k` : '0'}</Text>
-                  <View style={[styles.bar, styles.progressionBar, { height: (data.volume / maxVolume) * 100, backgroundColor: colors.primary }]} />
+                  <View style={[styles.bar, styles.progressionBar, { height: `${Math.max((data.volume / maxVolume) * 100, 5)}%`, backgroundColor: colors.primary }]} />
                   <Text style={styles.barDate}>{data.date}</Text>
                 </View>
               ))}
@@ -348,16 +349,27 @@ export default function AthleteDetailScreen() {
           ) : <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 20 }}>Completa sesiones con pesos registrados para ver la evolución.</Text>}
         </View>
 
+        {/* GRÁFICO DE RPE BLINDADO */}
         <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ESFUERZO PERCIBIDO (RPE)</Text>
         <View style={[styles.progressionCard, { backgroundColor: colors.surface }]}>
           {progressionData.length > 0 ? (
             <View style={styles.barsContainer}>
               {progressionData.map((data, idx) => {
-                let rpeColor = colors.success; if (data.rpe > 6) rpeColor = colors.warning; if (data.rpe > 8) rpeColor = colors.error;
+                
+                // Usamos colores HEX explícitos para esquivar la posible falta de `colors.warning` en el tema
+                let rpeColor = '#10B981'; // Verde por defecto (RPE 1-4)
+                if (!data.rpe || data.rpe === 0) rpeColor = colors.border || '#D1D5DB'; // Gris si no hay datos
+                else if (data.rpe >= 8) rpeColor = '#EF4444'; // Rojo si es altísimo (8-10)
+                else if (data.rpe >= 5) rpeColor = '#F59E0B'; // Naranja/Amarillo si es alto (5-7)
+
+                const barHeight = data.rpe > 0 ? `${(data.rpe / 10) * 100}%` : '5%';
+
                 return (
-                  <View key={idx} style={styles.barWrapper}>
-                    <Text style={[styles.barValue, { color: rpeColor }]}>{data.rpe}</Text>
-                    <View style={[styles.bar, styles.progressionBar, { height: (data.rpe / 10) * 100, backgroundColor: rpeColor }]} />
+                  <View key={idx} style={[styles.barWrapper, { justifyContent: 'flex-end', height: '100%' }]}>
+                    <Text style={[styles.barValue, { color: data.rpe > 0 ? rpeColor : colors.textSecondary }]}>
+                      {data.rpe > 0 ? data.rpe : '-'}
+                    </Text>
+                    <View style={[styles.bar, styles.progressionBar, { height: barHeight, backgroundColor: rpeColor }]} />
                     <Text style={styles.barDate}>{data.date}</Text>
                   </View>
                 );
@@ -411,7 +423,7 @@ export default function AthleteDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 50 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 25, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1 }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
+  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 50 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 25, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
   sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 },
   avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 }, progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 }
