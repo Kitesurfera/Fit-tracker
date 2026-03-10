@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, ScrollView, Modal, Dimensions
+  ActivityIndicator, ScrollView, Modal, Dimensions, Alert, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +33,9 @@ export default function CalendarScreen() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+
+  // Estados para la funcionalidad de Duplicar/Mover
+  const [workoutToCopy, setWorkoutToCopy] = useState<any>(null);
 
   const isTrainer = user?.role === 'trainer';
 
@@ -90,6 +93,36 @@ export default function CalendarScreen() {
     refreshAthleteData(athlete);
   };
 
+  // --- LOGICA DE DUPLICAR (Simulación de Arrastrar) ---
+  const startCopyWorkout = (workout: any) => {
+    setWorkoutToCopy(workout);
+    if (Platform.OS !== 'web') {
+        Alert.alert("Modo Duplicar", "Toca cualquier día del calendario para pegar este entrenamiento.");
+    }
+  };
+
+  const pasteWorkout = async (targetDate: string) => {
+    if (!workoutToCopy) return;
+    setUpdating(true);
+    try {
+      const newWorkout = {
+        ...workoutToCopy,
+        date: targetDate,
+        completed: false,
+        completion_data: null,
+        athlete_id: selectedAthlete.id
+      };
+      delete newWorkout.id; // Eliminamos ID para que cree uno nuevo
+
+      await api.createWorkout(newWorkout);
+      setWorkoutToCopy(null);
+      refreshAthleteData(selectedAthlete);
+    } catch (e) {
+      console.error("Error duplicando:", e);
+      setUpdating(false);
+    }
+  };
+
   const daysInMonth = useMemo(() => {
     const firstDay = new Date(currentYear, currentMonth, 1);
     const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -101,7 +134,6 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
-  // BLINDAJE: Extracción robusta de fechas
   const microciclosDelMes = useMemo(() => {
     if (!Array.isArray(macros)) return [];
     const microsResult: any[] = [];
@@ -123,14 +155,15 @@ export default function CalendarScreen() {
               nombre: m.nombre || m.name || 'Micro', 
               fecha_inicio: start, 
               fecha_fin: end, 
-              tipo: m.tipo || m.type || 'BASE' 
+              tipo: m.tipo || m.type || 'BASE',
+              color: m.color || colors.primary
             });
           }
         });
       }
     });
     return microsResult.sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio));
-  }, [macros, currentMonth, currentYear]);
+  }, [macros, currentMonth, currentYear, colors.primary]);
 
   const getDayStatus = (day: number | null) => {
     if (!day) return null;
@@ -199,6 +232,14 @@ export default function CalendarScreen() {
     }
   };
 
+  const handleDatePress = (dateStr: string) => {
+    if (workoutToCopy) {
+      pasteWorkout(dateStr);
+    } else {
+      setSelectedDate(dateStr);
+    }
+  };
+
   const handleWorkoutPress = (workoutId: string) => {
     if (isTrainer) {
       router.push({ pathname: '/edit-workout', params: { workoutId } });
@@ -217,12 +258,24 @@ export default function CalendarScreen() {
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{selectedAthlete?.name || 'Calendario'}</Text>
         </View>
         <View style={{flexDirection:'row', gap: 15}}>
+          {workoutToCopy && (
+            <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: colors.error + '20' }]}>
+              <Ionicons name="close" size={22} color={colors.error} />
+            </TouchableOpacity>
+          )}
           {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.iconBtn}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
           <TouchableOpacity onPress={() => { setUpdating(true); refreshAthleteData(selectedAthlete); }} disabled={updating} style={styles.iconBtn}>
             {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={22} color={colors.primary} />}
           </TouchableOpacity>
         </View>
       </View>
+
+      {workoutToCopy && (
+        <View style={[styles.copyBanner, { backgroundColor: colors.primary }]}>
+          <Ionicons name="copy-outline" size={16} color="#FFF" />
+          <Text style={styles.copyBannerText}>Duplicando "{workoutToCopy.title}". Toca un día para pegar.</Text>
+        </View>
+      )}
 
       <View style={styles.monthSelector}>
         <TouchableOpacity onPress={() => changeMonth(-1)}><Ionicons name="chevron-back" size={24} color={colors.textPrimary}/></TouchableOpacity>
@@ -250,7 +303,7 @@ export default function CalendarScreen() {
                   isSelected && { backgroundColor: (status?.phaseColor || colors.primary) + '40', borderWidth: 2, borderColor: status?.phaseColor || colors.primary, borderRadius: 12 },
                   status?.hasWorkout && !isSelected && { borderWidth: 1, borderColor: status.isCompleted ? colors.success : colors.primary, borderRadius: 12 }
                 ]}
-                onPress={() => dateStr && setSelectedDate(dateStr)}
+                onPress={() => dateStr && handleDatePress(dateStr)}
                 disabled={!day}
               >
                 {day && (
@@ -306,22 +359,31 @@ export default function CalendarScreen() {
         
         {activeDetail.workouts.length > 0 ? (
           activeDetail.workouts.map((wk: any) => (
-            <TouchableOpacity 
-              key={wk.id} 
-              style={[styles.workoutCard, { backgroundColor: colors.surface }]}
-              onPress={() => handleWorkoutPress(wk.id)}
-            >
-              <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '15' }]}>
-                <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? colors.success : colors.primary} />
+            <View key={wk.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
+              <TouchableOpacity 
+                style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                onPress={() => handleWorkoutPress(wk.id)}
+              >
+                <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '15' }]}>
+                  <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? colors.success : colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{wk.title}</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                    {wk.completed ? 'Completado' : isTrainer ? 'Sesión asignada' : 'Sesión pendiente'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+              
+              <View style={styles.workoutActions}>
+                <TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}>
+                  <Ionicons name="copy-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleWorkoutPress(wk.id)} style={styles.actionIconBtn}>
+                  <Ionicons name={isTrainer ? "pencil" : "chevron-forward"} size={20} color={colors.border} />
+                </TouchableOpacity>
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{wk.title}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                  {wk.completed ? 'Completado' : isTrainer ? 'Sesión asignada' : 'Sesión pendiente'}
-                </Text>
-              </View>
-              <Ionicons name={isTrainer ? "pencil" : "chevron-forward"} size={20} color={colors.border} />
-            </TouchableOpacity>
+            </View>
           ))
         ) : (
           <View style={styles.emptyCard}>
@@ -348,5 +410,35 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  topHeader: { flexDirection: 'row', alignItems: 'center', padding: 20 }, headerSubtitle: { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 1.5 }, headerTitle: { fontSize: 24, fontWeight: '900' }, iconBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.03)', justifyContent: 'center', alignItems: 'center' }, monthSelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 15 }, monthLabel: { fontSize: 18, fontWeight: '900', textTransform: 'capitalize' }, calendarGrid: { paddingHorizontal: 15 }, weekDays: { flexDirection: 'row', marginBottom: 10 }, weekDayText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '800' }, daysGrid: { flexDirection: 'row', flexWrap: 'wrap' }, dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' }, dayText: { fontSize: 15, fontWeight: '600' }, footer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 }, footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1, textTransform: 'uppercase' }, microCard: { padding: 14, borderRadius: 16, borderTopWidth: 4, borderWidth: 1, width: 160, marginRight: 12 }, microMacroName: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 }, microName: { fontSize: 14, fontWeight: '800', marginBottom: 8 }, microTypeBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8 }, microDates: { fontSize: 11, fontWeight: '600' }, workoutCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 18, marginBottom: 12 }, workoutIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, workoutTitle: { fontSize: 16, fontWeight: '800' }, emptyCard: { alignItems: 'center', paddingVertical: 30 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20 }, athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
+  topHeader: { flexDirection: 'row', alignItems: 'center', padding: 20 },
+  headerSubtitle: { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 1.5 },
+  headerTitle: { fontSize: 24, fontWeight: '900' },
+  iconBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.03)', justifyContent: 'center', alignItems: 'center' },
+  copyBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 20, justifyContent: 'center' },
+  copyBannerText: { color: '#FFF', fontSize: 12, fontWeight: '700' },
+  monthSelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginVertical: 15 },
+  monthLabel: { fontSize: 18, fontWeight: '900', textTransform: 'capitalize' },
+  calendarGrid: { paddingHorizontal: 15 },
+  weekDays: { flexDirection: 'row', marginBottom: 10 },
+  weekDayText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '800' },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
+  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
+  dayText: { fontSize: 15, fontWeight: '600' },
+  footer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
+  footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1, textTransform: 'uppercase' },
+  microCard: { padding: 14, borderRadius: 16, borderTopWidth: 4, borderWidth: 1, width: 160, marginRight: 12 },
+  microMacroName: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 },
+  microName: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
+  microTypeBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8 },
+  microDates: { fontSize: 11, fontWeight: '600' },
+  workoutCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 18, marginBottom: 12 },
+  workoutIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  workoutTitle: { fontSize: 16, fontWeight: '800' },
+  workoutActions: { flexDirection: 'row', gap: 5 },
+  actionIconBtn: { padding: 8 },
+  emptyCard: { alignItems: 'center', paddingVertical: 30 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
+  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20 },
+  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
 });
