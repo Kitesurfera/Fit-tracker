@@ -221,6 +221,9 @@ export default function AnalyticsScreen() {
     );
   };
 
+  const cleanProgression = getCleanProgression();
+  const latestTestsToDisplay = getLatestTests();
+
   if (loading && !summary && testHistory.length === 0) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
@@ -228,9 +231,6 @@ export default function AnalyticsScreen() {
       </SafeAreaView>
     );
   }
-
-  const cleanProgression = getCleanProgression();
-  const latestTestsToDisplay = getLatestTests();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -248,4 +248,195 @@ export default function AnalyticsScreen() {
 
           <View style={styles.headerActions}>
             {isTrainer && (
-              <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn,
+              <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
+                <Ionicons name="people" size={20} color={colors.primary} />
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]} disabled={refreshing}>
+              {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={20} color={colors.primary} />}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={[styles.tabsRow, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'summary' && { backgroundColor: colors.primary }]} onPress={() => setActiveTab('summary')}>
+            <Text style={[styles.tabText, { color: activeTab === 'summary' ? '#FFF' : colors.textSecondary }]}>Resumen</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'progress' && { backgroundColor: colors.primary }]} onPress={() => setActiveTab('progress')}>
+            <Text style={[styles.tabText, { color: activeTab === 'progress' ? '#FFF' : colors.textSecondary }]}>Evolución ({cleanProgression.length})</Text>
+          </TouchableOpacity>
+        </View>
+
+        {activeTab === 'summary' ? (
+          <View style={styles.tabContent}>
+            
+            {/* ESTADÍSTICAS GLOBALES */}
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary }]}>ESTADÍSTICAS GLOBALES</Text>
+            <View style={styles.statsGrid}>
+              <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[styles.statIconBox, { backgroundColor: colors.primary + '15' }]}><Ionicons name="fitness" size={24} color={colors.primary} /></View>
+                <Text style={[styles.statValue, { color: colors.textPrimary }]}>{summary?.total_workouts || 0}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Entrenos</Text>
+              </View>
+
+              <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[styles.statIconBox, { backgroundColor: colors.success + '15' }]}><Ionicons name="flash" size={24} color={colors.success} /></View>
+                <Text style={[styles.statValue, { color: colors.textPrimary }]}>{summary?.total_completed_workouts || 0}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Completados</Text>
+              </View>
+
+              <View style={[styles.statBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[styles.statIconBox, { backgroundColor: colors.warning + '15' }]}><Ionicons name="barbell" size={24} color={colors.warning} /></View>
+                <Text style={[styles.statValue, { color: colors.textPrimary }]}>{summary?.total_completed_sets || 0}</Text>
+                <Text style={[styles.statLabel, { color: colors.textSecondary }]}>Series</Text>
+              </View>
+            </View>
+
+            {/* SECCIÓN DE ÚLTIMOS TESTS (AQUÍ APLICAMOS EL TRADUCTOR) */}
+            <Text style={[styles.sectionTitle, { color: colors.textPrimary, marginTop: 10 }]}>ÚLTIMOS TESTS FÍSICOS</Text>
+            {latestTestsToDisplay.length > 0 ? (
+              <View style={styles.testsList}>
+                {latestTestsToDisplay.map((t: any, i: number) => {
+                  // APLICAMOS LA MAGIA: Si el nombre está en el diccionario, usa el bonito. Si no, usa el que venga de la BD.
+                  const testName = TEST_LABELS[t.type] || t.type;
+                  
+                  return (
+                    <View key={i} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <View style={styles.testHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <Ionicons name="speedometer" size={16} color={colors.primary} />
+                          <Text style={[styles.testName, { color: colors.textPrimary }]}>{testName}</Text>
+                        </View>
+                        <Text style={[styles.testDate, { color: colors.textSecondary }]}>{t.date}</Text>
+                      </View>
+                      <View style={styles.testResultRow}>
+                        <Text style={[styles.testValue, { color: colors.textPrimary }]}>{t.value} {t.unit}</Text>
+                        {t.notes && <Text style={[styles.testNotes, { color: colors.textSecondary }]} numberOfLines={1}>{t.notes}</Text>}
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={[styles.emptyBox, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+                <Ionicons name="clipboard-outline" size={32} color={colors.textSecondary} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No hay tests físicos registrados recientemente.</Text>
+              </View>
+            )}
+
+            {summary?.avg_rpe && (
+              <View style={[styles.rpeSummaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <View style={[styles.rpeCircle, { backgroundColor: summary.avg_rpe > 7 ? colors.error : summary.avg_rpe > 4 ? colors.warning : colors.success }]}><Text style={{ color: '#FFF', fontSize: 24, fontWeight: '800' }}>{parseFloat(summary.avg_rpe).toFixed(1)}</Text></View>
+                <View style={{ flex: 1, marginLeft: 16 }}>
+                  <Text style={[styles.rpeSummaryTitle, { color: colors.textPrimary }]}>RPE Medio Reciente</Text>
+                  <Text style={[styles.rpeSummarySub, { color: colors.textSecondary }]}>Nivel de esfuerzo percibido en los últimos entrenamientos.</Text>
+                </View>
+              </View>
+            )}
+
+          </View>
+        ) : (
+          <View style={styles.tabContent}>
+            {cleanProgression.length > 0 ? (
+               <View style={styles.progressionList}>
+                 {cleanProgression.map(renderProgressionCard)}
+               </View>
+            ) : (
+              <View style={[styles.emptyBox, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+                <Ionicons name="trending-up" size={32} color={colors.textSecondary} />
+                <Text style={[styles.emptyText, { color: colors.textSecondary }]}>No hay datos de evolución suficientes. Completa entrenamientos registrando tus kilos y repeticiones.</Text>
+              </View>
+            )}
+          </View>
+        )}
+      </ScrollView>
+
+      {/* MODAL PARA SELECCIONAR ATLETA (SOLO ENTRENADORES) */}
+      <Modal visible={showPicker} animationType="slide" transparent={true}>
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text>
+              <TouchableOpacity onPress={() => setShowPicker(false)}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {athletes.map(a => (
+                <TouchableOpacity key={a.id} style={[styles.modalItem, selectedAthlete?.id === a.id && { backgroundColor: colors.primary + '15' }]} onPress={() => handleSelectAthlete(a)}>
+                  <Ionicons name="person-circle" size={24} color={selectedAthlete?.id === a.id ? colors.primary : colors.textSecondary} />
+                  <Text style={[styles.modalItemText, { color: selectedAthlete?.id === a.id ? colors.primary : colors.textPrimary, fontWeight: selectedAthlete?.id === a.id ? '700' : '500' }]}>{a.name}</Text>
+                  {selectedAthlete?.id === a.id && <Ionicons name="checkmark" size={20} color={colors.primary} />}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+    </SafeAreaView>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1 },
+  scrollContent: { padding: 20, paddingBottom: 100 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  headerSubtitle: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.8 },
+  headerTitle: { fontSize: 24, fontWeight: '800' },
+  headerActions: { flexDirection: 'row', gap: 10 },
+  iconBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  tabsRow: { flexDirection: 'row', borderRadius: 12, padding: 4, borderWidth: 1, marginBottom: 24 },
+  tabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
+  tabText: { fontSize: 14, fontWeight: '700' },
+  tabContent: { gap: 16 },
+  sectionTitle: { fontSize: 13, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 0.5, marginLeft: 4, marginBottom: 4 },
+  statsGrid: { flexDirection: 'row', gap: 12 },
+  statBox: { flex: 1, padding: 16, borderRadius: 16, borderWidth: 1, alignItems: 'center' },
+  statIconBox: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  statValue: { fontSize: 24, fontWeight: '800', marginBottom: 2 },
+  statLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase' },
+  
+  // Tests Styles
+  testsList: { gap: 10 },
+  testCard: { padding: 16, borderRadius: 12, borderWidth: 1, gap: 8 },
+  testHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  testName: { fontSize: 14, fontWeight: '700' },
+  testDate: { fontSize: 12, fontWeight: '600' },
+  testResultRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  testValue: { fontSize: 22, fontWeight: '900' },
+  testNotes: { flex: 1, fontSize: 13, fontStyle: 'italic' },
+  
+  rpeSummaryCard: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 16, borderWidth: 1, marginTop: 10 },
+  rpeCircle: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center' },
+  rpeSummaryTitle: { fontSize: 16, fontWeight: '700', marginBottom: 4 },
+  rpeSummarySub: { fontSize: 12, lineHeight: 18 },
+  
+  progressionList: { gap: 12 },
+  progCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  progHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 },
+  progName: { fontSize: 16, fontWeight: '800', marginBottom: 4 },
+  pbRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  pbText: { fontSize: 12, fontWeight: '600' },
+  
+  chartWrapper: { padding: 16, paddingTop: 20, borderTopWidth: 1 },
+  chartContainer: { flexDirection: 'row', height: 160 },
+  yAxis: { justifyContent: 'space-between', paddingRight: 10, borderRightWidth: 1, width: 40 },
+  axisText: { fontSize: 10, fontWeight: '600', textAlign: 'right' },
+  chartScroll: { paddingLeft: 10, paddingRight: 20, gap: 15 },
+  chartCol: { width: 60, alignItems: 'center', justifyContent: 'flex-end', height: '100%' },
+  chartBarArea: { flex: 1, width: '100%', alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 5 },
+  chartLine: { width: 6, borderRadius: 3, position: 'absolute', bottom: 5 },
+  chartPoint: { width: 14, height: 14, borderRadius: 7, position: 'absolute', transform: [{ translateY: 7 }] },
+  xLabels: { height: 35, alignItems: 'center', justifyContent: 'center', paddingTop: 5 },
+  chartXDate: { fontSize: 10, fontWeight: '700', marginBottom: 2 },
+  chartXData: { fontSize: 11, fontWeight: '800' },
+  
+  emptyBox: { padding: 30, borderRadius: 16, borderWidth: 1, alignItems: 'center', borderStyle: 'dashed', gap: 12, marginTop: 10 },
+  emptyText: { fontSize: 14, textAlign: 'center', lineHeight: 20 },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: 40 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  modalTitle: { fontSize: 18, fontWeight: '700' },
+  modalItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 12, gap: 12, marginBottom: 8 },
+  modalItemText: { flex: 1, fontSize: 16 }
+});
