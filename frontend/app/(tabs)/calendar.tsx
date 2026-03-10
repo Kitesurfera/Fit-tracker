@@ -240,11 +240,19 @@ export default function CalendarScreen() {
     }
   };
 
-  const handleWorkoutPress = (workoutId: string) => {
+  // --- NAVEGACIÓN ACTUALIZADA ---
+  const handleWorkoutPress = (workout: any) => {
     if (isTrainer) {
-      router.push({ pathname: '/edit-workout', params: { workoutId } });
+      if (workout.completed) {
+        // Si el entreno está completado, el entrenador va a ver los resultados
+        router.push({ pathname: '/training-mode', params: { workoutId: workout.id } });
+      } else {
+        // Si está pendiente, va a editar la planificación
+        router.push({ pathname: '/edit-workout', params: { workoutId: workout.id } });
+      }
     } else {
-      router.push({ pathname: '/training-mode', params: { workoutId } });
+      // La deportista siempre va al modo entrenamiento (para hacerlo o para ver su propio resumen)
+      router.push({ pathname: '/training-mode', params: { workoutId: workout.id } });
     }
   };
 
@@ -259,8 +267,8 @@ export default function CalendarScreen() {
         </View>
         <View style={{flexDirection:'row', gap: 15}}>
           {workoutToCopy && (
-            <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: colors.error + '20' }]}>
-              <Ionicons name="close" size={22} color={colors.error} />
+            <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: (colors.error || '#EF4444') + '20' }]}>
+              <Ionicons name="close" size={22} color={colors.error || '#EF4444'} />
             </TouchableOpacity>
           )}
           {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.iconBtn}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
@@ -301,7 +309,7 @@ export default function CalendarScreen() {
                   styles.dayCell, 
                   status?.phaseColor && { backgroundColor: status.phaseColor + '15', borderRadius: 12 },
                   isSelected && { backgroundColor: (status?.phaseColor || colors.primary) + '40', borderWidth: 2, borderColor: status?.phaseColor || colors.primary, borderRadius: 12 },
-                  status?.hasWorkout && !isSelected && { borderWidth: 1, borderColor: status.isCompleted ? colors.success : colors.primary, borderRadius: 12 }
+                  status?.hasWorkout && !isSelected && { borderWidth: 1, borderColor: status.isCompleted ? (colors.success || '#10B981') : colors.primary, borderRadius: 12 }
                 ]}
                 onPress={() => dateStr && handleDatePress(dateStr)}
                 disabled={!day}
@@ -313,12 +321,12 @@ export default function CalendarScreen() {
                       { color: colors.textPrimary }, 
                       status?.phaseColor && { color: status.phaseColor, fontWeight: '800' },
                       isSelected && { color: status?.phaseColor || colors.primary, fontWeight: '900' },
-                      isToday && !isSelected && { color: colors.error, fontWeight: '900' }
+                      isToday && !isSelected && { color: colors.error || '#EF4444', fontWeight: '900' }
                     ]}>
                       {day}
                     </Text>
                     {status?.hasWorkout && status?.isCompleted && (
-                      <Ionicons name="checkmark-circle" size={12} color={colors.success} style={{ position: 'absolute', top: 2, right: 2 }} />
+                      <Ionicons name="checkmark-circle" size={12} color={colors.success || '#10B981'} style={{ position: 'absolute', top: 2, right: 2 }} />
                     )}
                   </>
                 )}
@@ -362,10 +370,10 @@ export default function CalendarScreen() {
             <View key={wk.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
               <TouchableOpacity 
                 style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
-                onPress={() => handleWorkoutPress(wk.id)}
+                onPress={() => handleWorkoutPress(wk)}
               >
-                <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '15' }]}>
-                  <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? colors.success : colors.primary} />
+                <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
+                  <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
                 </View>
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{wk.title}</Text>
@@ -379,8 +387,9 @@ export default function CalendarScreen() {
                 <TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}>
                   <Ionicons name="copy-outline" size={20} color={colors.primary} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleWorkoutPress(wk.id)} style={styles.actionIconBtn}>
-                  <Ionicons name={isTrainer ? "pencil" : "chevron-forward"} size={20} color={colors.border} />
+                <TouchableOpacity onPress={() => handleWorkoutPress(wk)} style={styles.actionIconBtn}>
+                  {/* ICONO DINÁMICO: Si es entrenador y está completado, muestra un ojo en vez de lápiz */}
+                  <Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} />
                 </TouchableOpacity>
               </View>
             </View>
