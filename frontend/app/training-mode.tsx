@@ -31,8 +31,10 @@ export default function TrainingModeScreen() {
   const [currentExIndex, setCurrentExIndex] = useState(0);
   const [setsStatus, setSetsStatus] = useState<Record<number, SetStatus[]>>({});
   const [logs, setLogs] = useState<Record<number, {weight: string, reps: string, coach_note?: string}>>({});
-  const [recordedVideos, setRecordedVideos] = useState<Record<number, string>>({});
-  const [videoUploading, setVideoUploading] = useState<number | null>(null);
+  
+  // --- ESTADOS: VÍDEOS (Compartido) ---
+  const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
+  const [videoUploading, setVideoUploading] = useState<string | null>(null);
 
   // --- ESTADOS: CIRCUITO HIIT ---
   const [hiitBlockIdx, setHiitBlockIdx] = useState(0);
@@ -68,16 +70,24 @@ export default function TrainingModeScreen() {
             if (currentWorkout.completion_data) {
               setRpe(currentWorkout.completion_data.rpe || null);
               setSleep(currentWorkout.completion_data.sleep || null);
+              
+              const savedVideos: Record<string, string> = {}; 
+              
               if (!isWorkoutHiit) {
                 const savedLogs: Record<number, {weight: string, reps: string, coach_note?: string}> = {};
-                const savedVideos: Record<number, string> = {}; 
                 currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
                   savedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', coach_note: res.coach_note || '' };
-                  if (res.recorded_video_url) savedVideos[idx] = res.recorded_video_url;
+                  if (res.recorded_video_url) savedVideos[idx.toString()] = res.recorded_video_url;
                 });
                 setLogs(savedLogs);
-                setRecordedVideos(savedVideos);
+              } else {
+                currentWorkout.completion_data.hiit_results?.forEach((block: any, bIdx: number) => {
+                  block.hiit_exercises?.forEach((ex: any, eIdx: number) => {
+                    if (ex.recorded_video_url) savedVideos[`${bIdx}-${eIdx}`] = ex.recorded_video_url;
+                  });
+                });
               }
+              setRecordedVideos(savedVideos);
             }
           } else {
             if (!isWorkoutHiit) {
@@ -219,9 +229,9 @@ export default function TrainingModeScreen() {
     if (remaining === 0) autoAdvance(currentExIndex);
   };
 
-  const handleRecordVideoOptions = (exIndex: number) => {
+  const handleRecordVideoOptions = (key: string) => {
     if (Platform.OS === 'web') {
-      launchVideoPicker('library', exIndex);
+      launchVideoPicker('library', key);
       return;
     }
 
@@ -230,13 +240,13 @@ export default function TrainingModeScreen() {
       "¿Cómo quieres subir el vídeo?",
       [
         { text: "Cancelar", style: "cancel" },
-        { text: "Elegir de la Galería", onPress: () => launchVideoPicker('library', exIndex) },
-        { text: "Grabar ahora", onPress: () => launchVideoPicker('camera', exIndex) }
+        { text: "Elegir de la Galería", onPress: () => launchVideoPicker('library', key) },
+        { text: "Grabar ahora", onPress: () => launchVideoPicker('camera', key) }
       ]
     );
   };
 
-  const launchVideoPicker = async (source: 'camera' | 'library', exIndex: number) => {
+  const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
       let result;
       if (source === 'camera') {
@@ -260,11 +270,11 @@ export default function TrainingModeScreen() {
 
       if (result.canceled || !result.assets || result.assets.length === 0) return;
       
-      setVideoUploading(exIndex);
+      setVideoUploading(key);
       const asset = result.assets[0];
       const fileName = asset.uri.split('/').pop() || 'technique.mp4';
       const uploaded = await api.uploadFile(asset.uri, fileName, asset.mimeType || 'video/mp4');
-      setRecordedVideos(prev => ({ ...prev, [exIndex]: uploaded.storage_path }));
+      setRecordedVideos(prev => ({ ...prev, [key]: uploaded.storage_path }));
     } catch (e: any) { 
       if (Platform.OS !== 'web') Alert.alert('Error', 'No se pudo subir el vídeo'); 
     } finally { 
@@ -273,7 +283,19 @@ export default function TrainingModeScreen() {
   };
 
   const buildCompletionData = () => {
-    if (isHiit) return { rpe, sleep, hiit_completed: true };
+    if (isHiit) {
+      return { 
+        rpe, sleep, hiit_completed: true,
+        hiit_results: (workout.exercises || []).map((block: any, bIdx: number) => ({
+          ...block,
+          hiit_exercises: block.hiit_exercises.map((ex: any, eIdx: number) => ({
+            ...ex,
+            recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || (workout.completed ? ex.recorded_video_url : '') || ''
+          }))
+        }))
+      };
+    }
+    
     return {
       rpe: rpe, sleep: sleep,
       exercise_results: (workout.exercises || []).map((ex: any, i: number) => {
@@ -283,7 +305,7 @@ export default function TrainingModeScreen() {
           exercise_index: i, name: ex.name, total_sets: parseInt(ex.sets) || 1,
           completed_sets: sets.filter(s => s === 'completed').length, skipped_sets: sets.filter(s => s === 'skipped').length,
           set_details: sets.map((status, si) => ({ set: si + 1, status })),
-          logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', recorded_video_url: recordedVideos[i] || ''
+          logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', recorded_video_url: recordedVideos[i.toString()] || ''
         };
       }),
     };
@@ -393,14 +415,50 @@ export default function TrainingModeScreen() {
               )}
             </View>
 
-            {!isHiit && (
+            {isHiit ? (
+              <>
+                <Text style={[styles.finishedSub, { color: colors.textSecondary, marginTop: 10 }]}>Resumen del Circuito</Text>
+                <View style={styles.summaryList}>
+                  {(workout.exercises || []).map((block: any, bIdx: number) => (
+                    <View key={bIdx} style={[styles.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 10, marginBottom: 10 }}>
+                        <Ionicons name="flame" size={20} color={colors.error || '#EF4444'} />
+                        <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800' }}>{block.name}</Text>
+                      </View>
+                      {block.hiit_exercises.map((ex: any, eIdx: number) => {
+                        const videoKey = `${bIdx}-${eIdx}`;
+                        const videoUrl = recordedVideos[videoKey] || (workout.completed ? ex.recorded_video_url : null);
+                        
+                        return (
+                          <View key={eIdx} style={{ marginBottom: 10 }}>
+                            <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600' }}>• {ex.name}</Text>
+                            {videoUrl && (
+                              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, marginLeft: 10 }} onPress={() => Linking.openURL(videoUrl)}>
+                                <Ionicons name="play-circle" size={18} color={colors.primary} />
+                                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Ver Técnica Grabada</Text>
+                              </TouchableOpacity>
+                            )}
+                            {ex.coach_note && (
+                              <View style={{ backgroundColor: (colors.warning || '#F59E0B') + '15', padding: 10, borderRadius: 8, marginTop: 8, marginLeft: 10 }}>
+                                <Text style={{ color: colors.warning || '#F59E0B', fontWeight: '800', fontSize: 11 }}>FEEDBACK COACH:</Text>
+                                <Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{ex.coach_note}"</Text>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  ))}
+                </View>
+              </>
+            ) : (
               <>
                 <Text style={[styles.finishedSub, { color: colors.textSecondary, marginTop: 10 }]}>Anota tus marcas de hoy</Text>
                 <View style={styles.summaryList}>
                   {(workout.exercises || []).map((ex: any, i: number) => {
                     const statusData = workout.completed ? workout.completion_data?.exercise_results?.[i] : null;
                     const allSkipped = statusData ? statusData.completed_sets === 0 : setsStatus[i]?.every(s => s !== 'completed');
-                    const videoUrl = recordedVideos[i] || statusData?.recorded_video_url;
+                    const videoUrl = recordedVideos[i.toString()] || statusData?.recorded_video_url;
 
                     return (
                       <View key={i} style={[styles.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -436,7 +494,7 @@ export default function TrainingModeScreen() {
                                   <View style={styles.logInputWrapper}><Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Reps reales</Text><TextInput style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} keyboardType="numeric" value={logs[i]?.reps || ''} onChangeText={(rep) => setLogs(prev => ({...prev, [i]: {...(prev[i]||{}), reps: rep}}))} /></View>
                                 </View>
                                 
-                                {recordedVideos[i] && (
+                                {recordedVideos[i.toString()] && (
                                   <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 10, borderRadius: 8, marginTop: 12 }}>
                                     <Ionicons name="videocam" size={16} color={colors.success || '#10B981'} />
                                     <Text style={{ color: colors.success || '#10B981', marginLeft: 8, fontWeight: '700', fontSize: 12 }}>Vídeo adjuntado correctamente</Text>
@@ -496,6 +554,8 @@ export default function TrainingModeScreen() {
               {currentBlock.hiit_exercises.map((ex: any, idx: number) => {
                 const isCurrent = hiitPhase === 'work' && idx === hiitExIdx;
                 const isDone = hiitExIdx > idx;
+                const videoKey = `${hiitBlockIdx}-${idx}`;
+
                 return (
                   <View key={idx} style={[styles.hiitExRowWrapper, isCurrent && { backgroundColor: colors.surfaceHighlight, borderRadius: 10, borderWidth: 1, borderColor: colors.primary }]}>
                     <View style={[styles.hiitExRow, { paddingVertical: dynamicPadding }]}>
@@ -507,20 +567,48 @@ export default function TrainingModeScreen() {
                     </View>
                     
                     {/* VISUALIZACIÓN DE VÍDEO Y NOTAS EN MODO HIIT */}
-                    {isCurrent && (ex.video_url || ex.exercise_notes) && (
+                    {isCurrent && (
                       <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
                         {ex.video_url ? (
-                          <TouchableOpacity style={[styles.hiitRefBtn, { backgroundColor: colors.primary + '15' }]} onPress={() => Linking.openURL(ex.video_url)}>
+                          <TouchableOpacity style={[styles.hiitRefBtn, { backgroundColor: colors.primary + '15', marginBottom: 10 }]} onPress={() => Linking.openURL(ex.video_url)}>
                             <Ionicons name="logo-youtube" size={16} color={colors.primary} />
                             <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Ver Técnica</Text>
                           </TouchableOpacity>
                         ) : null}
                         {ex.exercise_notes ? (
-                          <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                          <View style={{ flexDirection: 'row', marginBottom: 10 }}>
                             <Ionicons name="information-circle" size={14} color={colors.textSecondary} />
                             <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginLeft: 4, flex: 1 }}>{ex.exercise_notes}</Text>
                           </View>
                         ) : null}
+
+                        {/* BOTÓN PARA GRABAR TÉCNICA DEL HIIT */}
+                        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 5 }}>
+                          {recordedVideos[videoKey] ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 10, borderRadius: 8 }}>
+                              <Ionicons name="checkmark-circle" size={18} color={colors.success || '#10B981'} />
+                              <Text style={{ color: colors.success || '#10B981', marginLeft: 6, fontWeight: '700', fontSize: 12, flex: 1 }}>Vídeo de técnica subido</Text>
+                              <TouchableOpacity onPress={() => handleRecordVideoOptions(videoKey)}>
+                                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' }}>Cambiar</Text>
+                              </TouchableOpacity>
+                            </View>
+                          ) : (
+                            <TouchableOpacity 
+                              style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.primary, borderStyle: 'dashed' }}
+                              onPress={() => handleRecordVideoOptions(videoKey)}
+                              disabled={videoUploading === videoKey}
+                            >
+                              {videoUploading === videoKey ? (
+                                <ActivityIndicator color={colors.primary} size="small" />
+                              ) : (
+                                <>
+                                  <Ionicons name="videocam" size={18} color={colors.primary} />
+                                  <Text style={{ color: colors.primary, marginLeft: 6, fontWeight: '700', fontSize: 12 }}>Grabar técnica</Text>
+                                </>
+                              )}
+                            </TouchableOpacity>
+                          )}
+                        </View>
                       </View>
                     )}
                   </View>
@@ -542,7 +630,7 @@ export default function TrainingModeScreen() {
                 <TouchableOpacity style={[styles.skipRestBtn, { borderColor: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary }]} onPress={skipHiitRest}><Text style={{ color: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary, fontWeight: '700' }}>Saltar</Text></TouchableOpacity>
               </View>
             ) : (
-              <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.error || '#EF4444', marginTop: 20, marginHorizontal: 20, marginBottom: 20 }]} onPress={advanceHiit}>
+              <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.error || '#EF4444', marginTop: 10, marginHorizontal: 20, marginBottom: 20 }]} onPress={advanceHiit}>
                 <Ionicons name="play" size={22} color="#FFF" />
                 <Text style={[styles.completeSetText, { color: '#FFF' }]}>Completar Ejercicio</Text>
               </TouchableOpacity>
@@ -611,23 +699,23 @@ export default function TrainingModeScreen() {
             ))}
           </View>
 
-          {/* BOTÓN DE GRABAR TÉCNICA REUBICADO Y SIEMPRE VISIBLE */}
+          {/* BOTÓN DE GRABAR TÉCNICA */}
           <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
-            {recordedVideos[currentExIndex] ? (
+            {recordedVideos[currentExIndex.toString()] ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 12, borderRadius: 10 }}>
                   <Ionicons name="checkmark-circle" size={20} color={colors.success || '#10B981'} />
                   <Text style={{ color: colors.success || '#10B981', marginLeft: 8, fontWeight: '700', flex: 1 }}>Vídeo de técnica subido</Text>
-                  <TouchableOpacity onPress={() => handleRecordVideoOptions(currentExIndex)}>
+                  <TouchableOpacity onPress={() => handleRecordVideoOptions(currentExIndex.toString())}>
                     <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' }}>Cambiar</Text>
                   </TouchableOpacity>
                 </View>
             ) : (
               <TouchableOpacity 
                 style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHighlight, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.primary, borderStyle: 'dashed' }} 
-                onPress={() => handleRecordVideoOptions(currentExIndex)} 
-                disabled={videoUploading === currentExIndex}
+                onPress={() => handleRecordVideoOptions(currentExIndex.toString())} 
+                disabled={videoUploading === currentExIndex.toString()}
               >
-                {videoUploading === currentExIndex ? (
+                {videoUploading === currentExIndex.toString() ? (
                   <ActivityIndicator color={colors.primary} size="small" /> 
                 ) : (
                   <>
