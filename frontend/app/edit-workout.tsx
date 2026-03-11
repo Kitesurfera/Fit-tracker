@@ -153,7 +153,7 @@ export default function EditWorkoutScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, width: '100%' }}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Editar Sesión</Text>
@@ -233,11 +233,11 @@ export default function EditWorkoutScreen() {
                   <View style={styles.hiitConfigGrid}>
                     <View style={styles.hiitConfigRow}>
                       <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Vueltas</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.sets} onChangeText={v => updateHiitBlock(bIndex, 'sets', v)} keyboardType="numeric" placeholder="Ej: 3" /></View>
-                      <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Desc. Ej.</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_exercise} onChangeText={v => updateHiitBlock(bIndex, 'rest_exercise', v)} keyboardType="numeric" placeholder="Segundos" /></View>
+                      <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Desc. Ej.</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_exercise} onChangeText={v => updateHiitBlock(bIndex, 'rest_exercise', v)} keyboardType="numeric" placeholder="Seg" /></View>
                     </View>
                     <View style={styles.hiitConfigRow}>
-                      <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Desc. Vuelta</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_block} onChangeText={v => updateHiitBlock(bIndex, 'rest_block', v)} keyboardType="numeric" placeholder="Segundos" /></View>
-                      <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Sig. Bloque</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_between_blocks} onChangeText={v => updateHiitBlock(bIndex, 'rest_between_blocks', v)} keyboardType="numeric" placeholder="Segundos" /></View>
+                      <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Desc. Vuelta</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_block} onChangeText={v => updateHiitBlock(bIndex, 'rest_block', v)} keyboardType="numeric" placeholder="Seg" /></View>
+                      <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Sig. Bloque</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_between_blocks} onChangeText={v => updateHiitBlock(bIndex, 'rest_between_blocks', v)} keyboardType="numeric" placeholder="Seg" /></View>
                     </View>
                   </View>
                   <View style={styles.hiitExList}>
@@ -246,8 +246,8 @@ export default function EditWorkoutScreen() {
                         <View style={styles.hiitExRow}>
                           <View style={styles.hiitExNum}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>{eIndex + 1}</Text></View>
                           <TextInput style={[styles.hiitExInput, { flex: 2, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'name', v)} placeholder="Ej: Burpees" placeholderTextColor={colors.textSecondary} />
-                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="40s / 15 reps" placeholderTextColor={colors.textSecondary} />
-                          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="40s o 15r" placeholderTextColor={colors.textSecondary} />
+                          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: 60 }}>
                              {eIndex > 0 && <TouchableOpacity onPress={() => moveHiitExerciseUp(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="arrow-up" size={16} color={colors.textSecondary} /></TouchableOpacity>}
                              {eIndex < block.exercises.length - 1 && <TouchableOpacity onPress={() => moveHiitExerciseDown(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="arrow-down" size={16} color={colors.textSecondary} /></TouchableOpacity>}
                              <TouchableOpacity onPress={() => removeHiitExercise(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="close-circle" size={20} color={colors.textSecondary} /></TouchableOpacity>
@@ -273,9 +273,48 @@ export default function EditWorkoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 }, headerBtn: { minWidth: 60 }, headerTitle: { fontSize: 17, fontWeight: '600' }, saveText: { fontSize: 16, fontWeight: '600', textAlign: 'right' }, form: { padding: 20, gap: 20, paddingBottom: 48 }, section: { gap: 10 }, sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }, input: { borderRadius: 10, padding: 14, fontSize: 15, borderWidth: 1 }, typeSelector: { flexDirection: 'row', borderRadius: 12, padding: 4, borderWidth: 1 }, typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 }, 
-  microChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, marginRight: 10 }, csvBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
-  exerciseCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 10 }, exerciseHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 }, exNameInput: { flex: 1, fontSize: 16, fontWeight: '500' }, exActions: { flexDirection: 'row', gap: 4 }, iconBtn: { padding: 4 }, exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5 }, exDetail: { flex: 1, alignItems: 'center', padding: 8, borderRightWidth: 0.5, borderRightColor: 'rgba(0,0,0,0.1)' }, exDetailLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4 }, exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 8, fontSize: 14, fontWeight: '600' }, 
-  mediaContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 0.5, gap: 8 }, urlInput: { flex: 1, fontSize: 13 }, notesContainer: { padding: 10, borderTopWidth: 0.5 }, notesInput: { fontSize: 13, fontStyle: 'italic' },
-  addExBtnBig: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)', gap: 8 }, hiitBlock: { borderRadius: 16, borderWidth: 2, overflow: 'hidden', marginBottom: 15 }, hiitHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, backgroundColor: 'rgba(0,0,0,0.02)' }, hiitNameInput: { flex: 1, fontSize: 16, fontWeight: '700' }, hiitConfigGrid: { gap: 10, padding: 12, backgroundColor: 'rgba(0,0,0,0.01)' }, hiitConfigRow: { flexDirection: 'row', gap: 10 }, hiitConfigItem: { flex: 1 }, hiitConfigLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4, textAlign: 'center' }, hiitConfigInput: { borderWidth: 1, borderRadius: 8, padding: 8, textAlign: 'center', fontSize: 14, fontWeight: '600' }, hiitExList: { padding: 12, gap: 10 }, hiitExContainer: { marginBottom: 8 }, hiitExRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, hiitExNum: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, hiitExInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14 }, hiitNotesInput: { borderWidth: 1, borderRadius: 8, padding: 8, fontSize: 12, fontStyle: 'italic', marginTop: 5, marginLeft: 28, marginRight: 36 }, addHiitExBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, marginLeft: 20 }, errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 }
+  container: { flex: 1 }, 
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 }, 
+  headerBtn: { minWidth: 60 }, 
+  headerTitle: { fontSize: 17, fontWeight: '600' }, 
+  saveText: { fontSize: 16, fontWeight: '600', textAlign: 'right' }, 
+  form: { padding: 20, gap: 20, paddingBottom: 48, width: '100%', maxWidth: 800, alignSelf: 'center' }, 
+  section: { gap: 10 }, 
+  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, 
+  label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }, 
+  input: { borderRadius: 10, padding: 14, fontSize: 15, borderWidth: 1, minWidth: 0 }, 
+  typeSelector: { flexDirection: 'row', borderRadius: 12, padding: 4, borderWidth: 1 }, 
+  typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 }, 
+  microChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, marginRight: 10 }, 
+  csvBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
+  exerciseCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 10 }, 
+  exerciseHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 }, 
+  exNameInput: { flex: 1, fontSize: 16, fontWeight: '500', minWidth: 0 }, 
+  exActions: { flexDirection: 'row', gap: 4 }, 
+  iconBtn: { padding: 4 }, 
+  exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5 }, 
+  exDetail: { flex: 1, alignItems: 'center', padding: 8, borderRightWidth: 0.5, borderRightColor: 'rgba(0,0,0,0.1)' }, 
+  exDetailLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4 }, 
+  exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 8, fontSize: 14, fontWeight: '600' }, 
+  mediaContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: 0.5, gap: 8 }, 
+  urlInput: { flex: 1, fontSize: 13, minWidth: 0 }, 
+  notesContainer: { padding: 10, borderTopWidth: 0.5 }, 
+  notesInput: { fontSize: 13, fontStyle: 'italic', minWidth: 0 },
+  addExBtnBig: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(0,0,0,0.1)', gap: 8 }, 
+  hiitBlock: { borderRadius: 16, borderWidth: 2, overflow: 'hidden', marginBottom: 15 }, 
+  hiitHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, backgroundColor: 'rgba(0,0,0,0.02)' }, 
+  hiitNameInput: { flex: 1, fontSize: 16, fontWeight: '700', minWidth: 0 }, 
+  hiitConfigGrid: { gap: 10, padding: 12, backgroundColor: 'rgba(0,0,0,0.01)' }, 
+  hiitConfigRow: { flexDirection: 'row', gap: 10 }, 
+  hiitConfigItem: { flex: 1 }, 
+  hiitConfigLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4, textAlign: 'center' }, 
+  hiitConfigInput: { borderWidth: 1, borderRadius: 8, padding: 8, textAlign: 'center', fontSize: 14, fontWeight: '600', minWidth: 0 }, 
+  hiitExList: { padding: 12, gap: 10 }, 
+  hiitExContainer: { marginBottom: 8 }, 
+  hiitExRow: { flexDirection: 'row', alignItems: 'center', gap: 8 }, 
+  hiitExNum: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, 
+  hiitExInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14, minWidth: 0 }, 
+  hiitNotesInput: { borderWidth: 1, borderRadius: 8, padding: 8, fontSize: 12, fontStyle: 'italic', marginTop: 5, marginLeft: 28, minWidth: 0 }, 
+  addHiitExBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, marginLeft: 20 }, 
+  errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 }
 });
