@@ -126,6 +126,35 @@ export default function CalendarScreen() {
     }
   };
 
+  // NUEVA FUNCIÓN: Eliminar entrenamiento
+  const executeDeleteWorkout = async (workoutId: string) => {
+    setUpdating(true);
+    try {
+      await api.deleteWorkout(workoutId);
+      refreshAthleteData(selectedAthlete);
+    } catch (error) {
+      console.error("Error al eliminar la sesión:", error);
+      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar la sesión.");
+      setUpdating(false);
+    }
+  };
+
+  const handleDeleteWorkout = (workout: any) => {
+    if (Platform.OS === 'web') {
+      const isConfirmed = window.confirm(`¿Seguro que quieres eliminar la sesión "${workout.title}"?`);
+      if (isConfirmed) executeDeleteWorkout(workout.id);
+    } else {
+      Alert.alert(
+        "Eliminar Sesión",
+        `¿Seguro que quieres borrar "${workout.title}"?`,
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Eliminar", style: "destructive", onPress: () => executeDeleteWorkout(workout.id) }
+        ]
+      );
+    }
+  };
+
   const daysInMonth = useMemo(() => {
     const firstDay = new Date(currentYear, currentMonth, 1);
     const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -390,9 +419,14 @@ export default function CalendarScreen() {
                 
                 <View style={styles.workoutActions}>
                   {isTrainer && (
-                    <TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}>
-                      <Ionicons name="copy-outline" size={20} color={colors.primary} />
-                    </TouchableOpacity>
+                    <>
+                      <TouchableOpacity onPress={() => handleDeleteWorkout(wk)} style={styles.actionIconBtn}>
+                        <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}>
+                        <Ionicons name="copy-outline" size={20} color={colors.primary} />
+                      </TouchableOpacity>
+                    </>
                   )}
                   <TouchableOpacity onPress={() => handleWorkoutPress(wk)} style={styles.actionIconBtn}>
                     <Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} />
