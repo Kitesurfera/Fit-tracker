@@ -139,6 +139,25 @@ export default function AthleteDetailScreen() {
     } catch (e) { console.log("Error guardando la nota del coach:", e); }
   };
 
+  const saveHiitCoachNote = async (workout: any, blockIndex: number, exIndex: number, noteText: string) => {
+    try {
+      const updatedHiitResults = [...workout.completion_data.hiit_results];
+      updatedHiitResults[blockIndex].hiit_exercises[exIndex].coach_note = noteText;
+
+      const payload = {
+        title: workout.title, date: workout.date, notes: workout.notes,
+        athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
+        exercises: workout.exercises, completed: workout.completed,
+        completion_data: {
+          ...workout.completion_data,
+          hiit_results: updatedHiitResults
+        },
+        observations: workout.observations
+      };
+      await api.updateWorkout(workout.id, payload);
+    } catch (e) { console.log("Error guardando la nota del coach en HIIT:", e); }
+  };
+
   const getLevelColor = (val: number, inverse = false) => {
     if (!val) return colors.border;
     if (!inverse) { 
@@ -267,6 +286,7 @@ export default function AthleteDetailScreen() {
                 </Text>
               </View>
               
+              {/* VISTA FUERZA TRADICIONAL */}
               {wk.completion_data.exercise_results && wk.completion_data.exercise_results.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
                   <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 5 }}>REGISTRO DE CARGAS Y TÉCNICA:</Text>
@@ -292,6 +312,40 @@ export default function AthleteDetailScreen() {
                           <Ionicons name="chatbubbles" size={20} color={colors.textSecondary} />
                         </View>
                       )}
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* VISTA CIRCUITO HIIT */}
+              {wk.completion_data.hiit_results && wk.completion_data.hiit_results.length > 0 && (
+                <View style={{ marginBottom: 10 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 5 }}>RESUMEN DE CIRCUITO:</Text>
+                  {wk.completion_data.hiit_results.map((block: any, bIdx: number) => (
+                    <View key={bIdx} style={{ marginBottom: 12 }}>
+                      <Text style={{ color: colors.error || '#EF4444', fontSize: 14, fontWeight: '800', marginBottom: 4 }}>{block.name}</Text>
+                      {block.hiit_exercises.map((ex: any, eIdx: number) => (
+                        <View key={eIdx} style={{ marginBottom: 10, marginLeft: 10 }}>
+                          <Text style={{ color: colors.textPrimary, fontSize: 12, marginBottom: 4 }}>• {ex.name} ({ex.duration_reps})</Text>
+                          
+                          {ex.recorded_video_url ? (
+                            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }} onPress={() => Linking.openURL(ex.recorded_video_url)}>
+                              <Ionicons name="play-circle" size={18} color={colors.primary} />
+                              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Ver Técnica</Text>
+                            </TouchableOpacity>
+                          ) : null}
+
+                          {user?.role === 'trainer' && (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <TextInput 
+                                style={{ flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, fontSize: 13, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
+                                placeholder="Escribir feedback para este ejercicio..." placeholderTextColor={colors.textSecondary} defaultValue={ex.coach_note || ''} onEndEditing={(e) => saveHiitCoachNote(wk, bIdx, eIdx, e.nativeEvent.text)}
+                              />
+                              <Ionicons name="chatbubbles" size={20} color={colors.textSecondary} />
+                            </View>
+                          )}
+                        </View>
+                      ))}
                     </View>
                   ))}
                 </View>
