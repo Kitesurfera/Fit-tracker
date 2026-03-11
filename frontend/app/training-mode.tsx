@@ -256,13 +256,13 @@ export default function TrainingModeScreen() {
           return;
         }
         result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ['videos'],
+          mediaTypes: ImagePicker.MediaTypeOptions.Videos, // CORREGIDO AQUÍ
           videoMaxDuration: 60,
           quality: 0.7
         });
       } else {
         result = await ImagePicker.launchImageLibraryAsync({ 
-          mediaTypes: ['videos'], 
+          mediaTypes: ImagePicker.MediaTypeOptions.Videos, // CORREGIDO AQUÍ
           allowsEditing: true, 
           quality: 0.7 
         });
@@ -273,8 +273,15 @@ export default function TrainingModeScreen() {
       setVideoUploading(key);
       const asset = result.assets[0];
       const fileName = asset.uri.split('/').pop() || 'technique.mp4';
+      
       const uploaded = await api.uploadFile(asset.uri, fileName, asset.mimeType || 'video/mp4');
-      setRecordedVideos(prev => ({ ...prev, [key]: uploaded.storage_path }));
+      
+      // EXTRACCIÓN DEFENSIVA DE LA URL DEL VÍDEO
+      const finalUrl = typeof uploaded === 'string' 
+        ? uploaded 
+        : (uploaded?.url || uploaded?.publicUrl || uploaded?.storage_path || uploaded?.file_url || '');
+
+      setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
     } catch (e: any) { 
       if (Platform.OS !== 'web') Alert.alert('Error', 'No se pudo subir el vídeo'); 
     } finally { 
