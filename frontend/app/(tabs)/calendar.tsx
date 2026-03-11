@@ -384,9 +384,13 @@ export default function CalendarScreen() {
               </TouchableOpacity>
               
               <View style={styles.workoutActions}>
-                <TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}>
-                  <Ionicons name="copy-outline" size={20} color={colors.primary} />
-                </TouchableOpacity>
+                {/* ESTE ES EL BOTÓN QUE QUEREMOS OCULTAR AL DEPORTISTA */}
+                {isTrainer && (
+                  <TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}>
+                    <Ionicons name="copy-outline" size={20} color={colors.primary} />
+                  </TouchableOpacity>
+                )}
+                
                 <TouchableOpacity onPress={() => handleWorkoutPress(wk)} style={styles.actionIconBtn}>
                   {/* ICONO DINÁMICO: Si es entrenador y está completado, muestra un ojo en vez de lápiz */}
                   <Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} />
