@@ -30,18 +30,6 @@ const CATEGORY_COLORS: Record<string, string> = {
   'FUERZA': '#10B981',        
 };
 
-// --- UTILIDADES DE PROCESAMIENTO ---
-const detectSide = (name: string) => {
-  const lower = name.toLowerCase();
-  if (lower.includes('izq') || lower.includes('left')) return 'left';
-  if (lower.includes('der') || lower.includes('right')) return 'right';
-  return 'bilateral';
-};
-
-const getBaseTestName = (name: string) => {
-  return name.replace(/(\(|\s*-?\s*)(izq|der|left|right|izquierda|derecha)(\)|\s*$)/i, '').trim();
-};
-
 export default function AnalyticsScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -52,7 +40,6 @@ export default function AnalyticsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState<any>(null);
   const [testHistory, setTestHistory] = useState<any[]>([]);
-  const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
@@ -61,7 +48,7 @@ export default function AnalyticsScreen() {
   useEffect(() => {
     const init = async () => {
       if (isTrainer) {
-        const aths = await api.getAthletes();
+        const aths = await api.getAthletes().catch(() => []);
         setAthletes(aths);
         if (aths.length > 0) handleSelectAthlete(aths[0]);
       } else {
@@ -75,14 +62,13 @@ export default function AnalyticsScreen() {
     if (!athleteId) return;
     setLoading(true);
     try {
-      const [sum, ts, wk] = await Promise.all([
+      const [sum, ts] = await Promise.all([
         api.getSummary(athleteId).catch(() => null),
         api.getTests({ athlete_id: athleteId }).catch(() => []),
-        api.getWorkouts({ athlete_id: athleteId }).catch(() => [])
       ]);
       setSummary(sum);
-      setTestHistory(ts);
-      setWorkoutHistory(wk.filter((w:any) => w.completed));
+      // Ordenamos por fecha descendente
+      setTestHistory(Array.isArray(ts) ? ts.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : []);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -95,61 +81,30 @@ export default function AnalyticsScreen() {
     loadAthleteData(athlete.id);
   };
 
-  // --- LÓGICA DE AGRUPACIÓN DE TESTS (IZQ / DER) ---
-  const getGroupedTests = () => {
-    if (!testHistory.length) return [];
+  const renderTestCard = (test: any, index: number) => {
+    const valL = parseFloat(test.value_left);
+    const valR = parseFloat(test.value_right);
+    const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
     
-    const groups: Record<string, any> = {};
-
-    testHistory.forEach(t => {
-      const date = t.date;
-      const baseName = getBaseTestName(t.name || t.test_type || '');
-      const side = detectSide(t.name || t.test_type || '');
-      const key = `${date}_${baseName}`;
-
-      if (!groups[key]) {
-        groups[key] = { 
-          date, 
-          baseName, 
-          left: null, 
-          right: null, 
-          bi: null, 
-          unit: t.unit,
-          category: t.category || t.test_type 
-        };
-      }
-
-      if (side === 'left') groups[key].left = t;
-      else if (side === 'right') groups[key].right = t;
-      else groups[key].bi = t;
-    });
-
-    return Object.values(groups).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  };
-
-  const renderTestCard = (group: any, index: number) => {
-    const hasBoth = group.left && group.right;
     let asymmetry = 0;
-    if (hasBoth) {
-      const vL = parseFloat(group.left.value);
-      const vR = parseFloat(group.right.value);
-      asymmetry = Math.abs(((vL - vR) / Math.max(vL, vR)) * 100);
+    if (hasSides) {
+      const maxVal = Math.max(valL, valR);
+      asymmetry = maxVal > 0 ? Math.abs(((valL - valR) / maxVal) * 100) : 0;
     }
 
-    const badgeColor = CATEGORY_COLORS[group.category?.toUpperCase()] || colors.primary;
+    const testName = test.test_name === 'custom' ? test.custom_name : (TEST_TRANSLATIONS[test.test_name] || test.test_name || 'Test');
+    const badgeColor = CATEGORY_COLORS[test.test_type?.toUpperCase()] || colors.primary;
 
     return (
       <View key={index} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
         <View style={styles.testHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.testName, { color: colors.textPrimary }]}>
-              {TEST_TRANSLATIONS[group.baseName.toLowerCase()] || group.baseName}
-            </Text>
-            <Text style={[styles.testDate, { color: colors.textSecondary }]}>{group.date}</Text>
+            <Text style={[styles.testName, { color: colors.textPrimary }]}>{testName}</Text>
+            <Text style={[styles.testDate, { color: colors.textSecondary }]}>{test.date}</Text>
           </View>
-          {hasBoth && (
-            <View style={[styles.asymBadge, { backgroundColor: asymmetry > 15 ? '#EF4444' : colors.surfaceHighlight }]}>
-              <Text style={{ color: asymmetry > 15 ? '#FFF' : colors.textSecondary, fontSize: 10, fontWeight: '800' }}>
+          {hasSides && (
+            <View style={[styles.asymBadge, { backgroundColor: asymmetry > 15 ? colors.error : colors.primary + '20' }]}>
+              <Text style={{ color: asymmetry > 15 ? '#FFF' : colors.primary, fontSize: 10, fontWeight: '900' }}>
                 {asymmetry.toFixed(1)}% ASIM.
               </Text>
             </View>
@@ -157,29 +112,28 @@ export default function AnalyticsScreen() {
         </View>
 
         <View style={styles.testValuesRow}>
-          {group.bi ? (
-            <View style={styles.valueBox}>
-              <Text style={[styles.testValue, { color: colors.textPrimary }]}>{group.bi.value} <Text style={styles.unitText}>{group.unit}</Text></Text>
-              <Text style={styles.sideLabel}>BILATERAL</Text>
-            </View>
-          ) : (
+          {hasSides ? (
             <>
               <View style={[styles.valueBox, { borderRightWidth: 1, borderRightColor: colors.border }]}>
-                <Text style={[styles.testValue, { color: '#3B82F6' }]}>{group.left?.value || '-'}</Text>
-                <Text style={styles.sideLabel}>IZQUIERDA</Text>
+                <Text style={[styles.testValue, { color: '#3B82F6' }]}>{valL}</Text>
+                <Text style={styles.sideLabel}>IZQUIERDA ({test.unit})</Text>
               </View>
               <View style={styles.valueBox}>
-                <Text style={[styles.testValue, { color: '#EF4444' }]}>{group.right?.value || '-'}</Text>
-                <Text style={styles.sideLabel}>DERECHA</Text>
+                <Text style={[styles.testValue, { color: '#EF4444' }]}>{valR}</Text>
+                <Text style={styles.sideLabel}>DERECHA ({test.unit})</Text>
               </View>
             </>
+          ) : (
+            <View style={styles.valueBox}>
+              <Text style={[styles.testValue, { color: colors.textPrimary }]}>{test.value} <Text style={{fontSize: 14}}>{test.unit}</Text></Text>
+              <Text style={styles.sideLabel}>RESULTADO GLOBAL</Text>
+            </View>
           )}
         </View>
+        {test.notes ? <Text style={[styles.testNotes, { color: colors.textSecondary }]}>{test.notes}</Text> : null}
       </View>
     );
   };
-
-  const groupedTests = getGroupedTests();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -195,25 +149,28 @@ export default function AnalyticsScreen() {
           )}
         </View>
 
-        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>RESULTADOS DE TESTS</Text>
-        {groupedTests.length > 0 ? (
-          groupedTests.map(renderTestCard)
+        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>HISTORIAL DE TESTS</Text>
+        {loading ? (
+          <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
+        ) : testHistory.length > 0 ? (
+          testHistory.map(renderTestCard)
         ) : (
           <View style={styles.emptyBox}><Text style={{ color: colors.textSecondary }}>No hay tests registrados.</Text></View>
         )}
       </ScrollView>
 
-      {/* MODAL PICKER ATLETA */}
-      <Modal visible={showPicker} transparent animationType="fade">
+      <Modal visible={showPicker} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Atleta</Text>
-            {athletes.map(a => (
-              <TouchableOpacity key={a.id} style={styles.athleteItem} onPress={() => handleSelectAthlete(a)}>
-                <Text style={{ color: colors.textPrimary }}>{a.name}</Text>
-              </TouchableOpacity>
-            ))}
-            <TouchableOpacity onPress={() => setShowPicker(false)} style={{ marginTop: 20 }}><Text style={{ color: colors.primary, textAlign: 'center' }}>Cerrar</Text></TouchableOpacity>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {athletes.map(a => (
+                <TouchableOpacity key={a.id} style={styles.athleteItem} onPress={() => handleSelectAthlete(a)}>
+                  <Text style={{ color: colors.textPrimary, fontWeight: '600' }}>{a.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity onPress={() => setShowPicker(false)} style={styles.closeBtn}><Text style={{ color: '#FFF', fontWeight: '800' }}>CERRAR</Text></TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -222,8 +179,7 @@ export default function AnalyticsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  scrollContent: { padding: 20 },
+  container: { flex: 1 }, scrollContent: { padding: 20 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   headerTitle: { fontSize: 24, fontWeight: '900' },
   pickerBtn: { padding: 10, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.05)' },
@@ -235,12 +191,13 @@ const styles = StyleSheet.create({
   asymBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   testValuesRow: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center', paddingTop: 10 },
   valueBox: { flex: 1, alignItems: 'center' },
-  testValue: { fontSize: 22, fontWeight: '900' },
-  unitText: { fontSize: 12, fontWeight: '600' },
+  testValue: { fontSize: 28, fontWeight: '900' },
   sideLabel: { fontSize: 9, fontWeight: '800', marginTop: 4, color: '#888' },
+  testNotes: { fontSize: 12, fontStyle: 'italic', marginTop: 15, opacity: 0.7 },
   emptyBox: { padding: 40, alignItems: 'center' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  modalContent: { padding: 25, borderRadius: 20 },
-  modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 20 },
-  athleteItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContent: { padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25 },
+  modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 20, textAlign: 'center' },
+  athleteItem: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  closeBtn: { marginTop: 20, backgroundColor: '#000', padding: 15, borderRadius: 12, alignItems: 'center' }
 });
