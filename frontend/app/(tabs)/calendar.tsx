@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, ScrollView, Modal, Dimensions, Alert, Platform
+  ActivityIndicator, ScrollView, Modal, Alert, Platform, useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +20,10 @@ export default function CalendarScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
+  
+  // Hook para detectar el ancho de la pantalla y dividir columnas en PC
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 800; 
   
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
@@ -93,7 +97,6 @@ export default function CalendarScreen() {
     refreshAthleteData(athlete);
   };
 
-  // --- LOGICA DE DUPLICAR (Simulación de Arrastrar) ---
   const startCopyWorkout = (workout: any) => {
     setWorkoutToCopy(workout);
     if (Platform.OS !== 'web') {
@@ -112,7 +115,7 @@ export default function CalendarScreen() {
         completion_data: null,
         athlete_id: selectedAthlete.id
       };
-      delete newWorkout.id; // Eliminamos ID para que cree uno nuevo
+      delete newWorkout.id; 
 
       await api.createWorkout(newWorkout);
       setWorkoutToCopy(null);
@@ -240,18 +243,14 @@ export default function CalendarScreen() {
     }
   };
 
-  // --- NAVEGACIÓN ACTUALIZADA ---
   const handleWorkoutPress = (workout: any) => {
     if (isTrainer) {
       if (workout.completed) {
-        // Si el entreno está completado, el entrenador va a ver los resultados
         router.push({ pathname: '/training-mode', params: { workoutId: workout.id } });
       } else {
-        // Si está pendiente, va a editar la planificación
         router.push({ pathname: '/edit-workout', params: { workoutId: workout.id } });
       }
     } else {
-      // La deportista siempre va al modo entrenamiento (para hacerlo o para ver su propio resumen)
       router.push({ pathname: '/training-mode', params: { workoutId: workout.id } });
     }
   };
@@ -260,6 +259,7 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+      {/* CABECERA (Siempre arriba y ancho completo) */}
       <View style={styles.topHeader}>
         <View style={{flex:1}}>
           <Text style={styles.headerSubtitle}>{isTrainer ? 'AGENDA DEPORTISTA' : 'MI PLANIFICACIÓN'}</Text>
@@ -285,126 +285,129 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      <View style={styles.monthSelector}>
-        <TouchableOpacity onPress={() => changeMonth(-1)}><Ionicons name="chevron-back" size={24} color={colors.textPrimary}/></TouchableOpacity>
-        <Text style={[styles.monthLabel, { color: colors.textPrimary }]}>{MONTHS[currentMonth]} {currentYear}</Text>
-        <TouchableOpacity onPress={() => changeMonth(1)}><Ionicons name="chevron-forward" size={24} color={colors.textPrimary}/></TouchableOpacity>
-      </View>
-
-      <View style={styles.calendarGrid}>
-        <View style={styles.weekDays}>
-          {DAYS.map(d => <Text key={d} style={[styles.weekDayText, { color: colors.textSecondary }]}>{d}</Text>)}
-        </View>
-        <View style={styles.daysGrid}>
-          {daysInMonth.map((day, i) => {
-            const status = getDayStatus(day);
-            const dateStr = day ? `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
-            const isSelected = dateStr && selectedDate === dateStr;
-            const isToday = dateStr && dateStr === localTodayStr;
-            
-            return (
-              <TouchableOpacity 
-                key={i} 
-                style={[
-                  styles.dayCell, 
-                  status?.phaseColor && { backgroundColor: status.phaseColor + '15', borderRadius: 12 },
-                  isSelected && { backgroundColor: (status?.phaseColor || colors.primary) + '40', borderWidth: 2, borderColor: status?.phaseColor || colors.primary, borderRadius: 12 },
-                  status?.hasWorkout && !isSelected && { borderWidth: 1, borderColor: status.isCompleted ? (colors.success || '#10B981') : colors.primary, borderRadius: 12 }
-                ]}
-                onPress={() => dateStr && handleDatePress(dateStr)}
-                disabled={!day}
-              >
-                {day && (
-                  <>
-                    <Text style={[
-                      styles.dayText, 
-                      { color: colors.textPrimary }, 
-                      status?.phaseColor && { color: status.phaseColor, fontWeight: '800' },
-                      isSelected && { color: status?.phaseColor || colors.primary, fontWeight: '900' },
-                      isToday && !isSelected && { color: colors.error || '#EF4444', fontWeight: '900' }
-                    ]}>
-                      {day}
-                    </Text>
-                    {status?.hasWorkout && status?.isCompleted && (
-                      <Ionicons name="checkmark-circle" size={12} color={colors.success || '#10B981'} style={{ position: 'absolute', top: 2, right: 2 }} />
-                    )}
-                  </>
-                )}
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-
-      <ScrollView style={styles.footer} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+      {/* CONTENEDOR PRINCIPAL: Filas en móvil, Columnas en Ordenador */}
+      <View style={[styles.mainLayout, isDesktop && styles.mainLayoutDesktop]}>
         
-        <View style={{ marginBottom: 25 }}>
-          <Text style={styles.footerLabel}>FASES DE ESTE MES</Text>
-          
-          {microciclosDelMes.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20, marginTop: 10 }}>
-              {microciclosDelMes.map((micro, idx) => (
-                <View key={idx} style={[styles.microCard, { backgroundColor: colors.surface, borderTopColor: micro.color || colors.primary, borderColor: colors.border }]}>
-                  <Text style={[styles.microMacroName, { color: colors.textSecondary }]} numberOfLines={1}>{micro.macroNombre}</Text>
-                  <Text style={[styles.microName, { color: colors.textPrimary }]} numberOfLines={1}>{micro.nombre}</Text>
-                  <View style={[styles.microTypeBadge, { backgroundColor: (micro.color || colors.primary) + '15' }]}>
-                    <Text style={{ color: micro.color || colors.primary, fontSize: 10, fontWeight: '800' }}>{micro.tipo}</Text>
-                  </View>
-                  <Text style={[styles.microDates, { color: colors.textSecondary }]}>
-                    {micro.fecha_inicio.split('-').slice(1).reverse().join('/')} al {micro.fecha_fin.split('-').slice(1).reverse().join('/')}
-                  </Text>
-                </View>
-              ))}
-            </ScrollView>
-          ) : (
-            <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 10 }}>
-              No hay fases/microciclos planificados para este mes.
-            </Text>
-          )}
-        </View>
-
-        <Text style={styles.footerLabel}>DETALLE DEL {selectedDate.split('-').reverse().join('/')}</Text>
-        
-        {activeDetail.workouts.length > 0 ? (
-          activeDetail.workouts.map((wk: any) => (
-            <View key={wk.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
-              <TouchableOpacity 
-                style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
-                onPress={() => handleWorkoutPress(wk)}
-              >
-                <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
-                  <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{wk.title}</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
-                    {wk.completed ? 'Completado' : isTrainer ? 'Sesión asignada' : 'Sesión pendiente'}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-              
-              <View style={styles.workoutActions}>
-                {/* ESTE ES EL BOTÓN QUE QUEREMOS OCULTAR AL DEPORTISTA */}
-                {isTrainer && (
-                  <TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}>
-                    <Ionicons name="copy-outline" size={20} color={colors.primary} />
-                  </TouchableOpacity>
-                )}
-                
-                <TouchableOpacity onPress={() => handleWorkoutPress(wk)} style={styles.actionIconBtn}>
-                  {/* ICONO DINÁMICO: Si es entrenador y está completado, muestra un ojo en vez de lápiz */}
-                  <Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          ))
-        ) : (
-          <View style={styles.emptyCard}>
-            <Ionicons name="calendar-clear-outline" size={32} color={colors.border} />
-            <Text style={{ color: colors.textSecondary, marginTop: 10 }}>Día sin sesiones programadas.</Text>
+        {/* COLUMNA IZQUIERDA (Calendario) */}
+        <View style={[isDesktop && styles.leftColumnDesktop]}>
+          <View style={styles.monthSelector}>
+            <TouchableOpacity onPress={() => changeMonth(-1)}><Ionicons name="chevron-back" size={24} color={colors.textPrimary}/></TouchableOpacity>
+            <Text style={[styles.monthLabel, { color: colors.textPrimary }]}>{MONTHS[currentMonth]} {currentYear}</Text>
+            <TouchableOpacity onPress={() => changeMonth(1)}><Ionicons name="chevron-forward" size={24} color={colors.textPrimary}/></TouchableOpacity>
           </View>
-        )}
-      </ScrollView>
+
+          <View style={styles.calendarGrid}>
+            <View style={styles.weekDays}>
+              {DAYS.map(d => <Text key={d} style={[styles.weekDayText, { color: colors.textSecondary }]}>{d}</Text>)}
+            </View>
+            <View style={styles.daysGrid}>
+              {daysInMonth.map((day, i) => {
+                const status = getDayStatus(day);
+                const dateStr = day ? `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
+                const isSelected = dateStr && selectedDate === dateStr;
+                const isToday = dateStr && dateStr === localTodayStr;
+                
+                return (
+                  <TouchableOpacity 
+                    key={i} 
+                    style={[
+                      styles.dayCell, 
+                      status?.phaseColor && { backgroundColor: status.phaseColor + '15', borderRadius: 12 },
+                      isSelected && { backgroundColor: (status?.phaseColor || colors.primary) + '40', borderWidth: 2, borderColor: status?.phaseColor || colors.primary, borderRadius: 12 },
+                      status?.hasWorkout && !isSelected && { borderWidth: 1, borderColor: status.isCompleted ? (colors.success || '#10B981') : colors.primary, borderRadius: 12 }
+                    ]}
+                    onPress={() => dateStr && handleDatePress(dateStr)}
+                    disabled={!day}
+                  >
+                    {day && (
+                      <>
+                        <Text style={[
+                          styles.dayText, 
+                          { color: colors.textPrimary }, 
+                          status?.phaseColor && { color: status.phaseColor, fontWeight: '800' },
+                          isSelected && { color: status?.phaseColor || colors.primary, fontWeight: '900' },
+                          isToday && !isSelected && { color: colors.error || '#EF4444', fontWeight: '900' }
+                        ]}>
+                          {day}
+                        </Text>
+                        {status?.hasWorkout && status?.isCompleted && (
+                          <Ionicons name="checkmark-circle" size={12} color={colors.success || '#10B981'} style={{ position: 'absolute', top: 2, right: 2 }} />
+                        )}
+                      </>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+
+        {/* COLUMNA DERECHA (Detalles del día y Fases) */}
+        <ScrollView style={[styles.footer, isDesktop && styles.rightColumnDesktop]} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+          <View style={{ marginBottom: 25 }}>
+            <Text style={styles.footerLabel}>FASES DE ESTE MES</Text>
+            {microciclosDelMes.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20, marginTop: 10 }}>
+                {microciclosDelMes.map((micro, idx) => (
+                  <View key={idx} style={[styles.microCard, { backgroundColor: colors.surface, borderTopColor: micro.color || colors.primary, borderColor: colors.border }]}>
+                    <Text style={[styles.microMacroName, { color: colors.textSecondary }]} numberOfLines={1}>{micro.macroNombre}</Text>
+                    <Text style={[styles.microName, { color: colors.textPrimary }]} numberOfLines={1}>{micro.nombre}</Text>
+                    <View style={[styles.microTypeBadge, { backgroundColor: (micro.color || colors.primary) + '15' }]}>
+                      <Text style={{ color: micro.color || colors.primary, fontSize: 10, fontWeight: '800' }}>{micro.tipo}</Text>
+                    </View>
+                    <Text style={[styles.microDates, { color: colors.textSecondary }]}>
+                      {micro.fecha_inicio.split('-').slice(1).reverse().join('/')} al {micro.fecha_fin.split('-').slice(1).reverse().join('/')}
+                    </Text>
+                  </View>
+                ))}
+              </ScrollView>
+            ) : (
+              <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 10 }}>
+                No hay fases/microciclos planificados para este mes.
+              </Text>
+            )}
+          </View>
+
+          <Text style={styles.footerLabel}>DETALLE DEL {selectedDate.split('-').reverse().join('/')}</Text>
+          
+          {activeDetail.workouts.length > 0 ? (
+            activeDetail.workouts.map((wk: any) => (
+              <View key={wk.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
+                <TouchableOpacity 
+                  style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
+                  onPress={() => handleWorkoutPress(wk)}
+                >
+                  <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
+                    <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{wk.title}</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>
+                      {wk.completed ? 'Completado' : isTrainer ? 'Sesión asignada' : 'Sesión pendiente'}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+                
+                <View style={styles.workoutActions}>
+                  {isTrainer && (
+                    <TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}>
+                      <Ionicons name="copy-outline" size={20} color={colors.primary} />
+                    </TouchableOpacity>
+                  )}
+                  <TouchableOpacity onPress={() => handleWorkoutPress(wk)} style={styles.actionIconBtn}>
+                    <Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          ) : (
+            <View style={styles.emptyCard}>
+              <Ionicons name="calendar-clear-outline" size={32} color={colors.border} />
+              <Text style={{ color: colors.textSecondary, marginTop: 10 }}>Día sin sesiones programadas.</Text>
+            </View>
+          )}
+        </ScrollView>
+      </View>
 
       <Modal visible={showPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPicker(false)}>
@@ -423,6 +426,11 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
+  mainLayout: { flex: 1, flexDirection: 'column' },
+  mainLayoutDesktop: { flexDirection: 'row', paddingHorizontal: 20, gap: 30 },
+  leftColumnDesktop: { flex: 1, maxWidth: 500 }, // Evita que el calendario se estire de forma infinita en monitores anchos
+  rightColumnDesktop: { flex: 1, paddingTop: 0, paddingHorizontal: 0 },
+  
   topHeader: { flexDirection: 'row', alignItems: 'center', padding: 20 },
   headerSubtitle: { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 1.5 },
   headerTitle: { fontSize: 24, fontWeight: '900' },
@@ -437,6 +445,7 @@ const styles = StyleSheet.create({
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
   dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
   dayText: { fontSize: 15, fontWeight: '600' },
+  
   footer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
   footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1, textTransform: 'uppercase' },
   microCard: { padding: 14, borderRadius: 16, borderTopWidth: 4, borderWidth: 1, width: 160, marginRight: 12 },
