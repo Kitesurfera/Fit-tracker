@@ -101,14 +101,25 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      // BARRERA 1: Evitamos que corra si el AuthContext aún está cargando o no hay usuario
+      if (authLoading || !user) return;
+
       const init = async () => {
+        // BARRERA 2: Si el usuario es entrenador, cargamos sus datos y SALIMOS de la función.
+        if (isTrainer) {
+          await loadData(true);
+          return;
+        }
+
+        // Si llega aquí, es porque es deportista. 
         const sData = await loadData(true);
-        if (!isTrainer && sData?.latest_wellness?.date !== todayStr) {
+        if (sData?.latest_wellness?.date !== todayStr) {
           setShowWellness(true);
         }
       };
+      
       init();
-    }, [])
+    }, [isTrainer, user, authLoading, todayStr]) // BARRERA 3: Dependencias correctas.
   );
 
   const handleManualUpdate = () => {
