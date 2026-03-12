@@ -12,6 +12,9 @@ import { useAuth } from '../../src/context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
+// Calculamos el tamaño exacto del cuadrado (48% del ancho disponible quitando el padding de 20 a cada lado)
+const GRID_CARD_SIZE = (width - 40) * 0.48;
+
 const TEST_TRANSLATIONS: Record<string, string> = {
   squat_rm: 'Sentadilla RM',
   bench_rm: 'Press Banca RM',
@@ -120,7 +123,7 @@ export default function AnalyticsScreen() {
     setExercisesToMerge(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
   };
 
-  // NUEVA FUNCIÓN PARA BORRAR FEEDBACK
+  // FUNCIÓN PARA BORRAR FEEDBACK
   const handleDeleteFeedback = (workoutId: string, isHiit: boolean, blockIdx: number, exIdx: number) => {
     if (Platform.OS === 'web') {
       if (window.confirm('¿Seguro que quieres eliminar este feedback?')) {
@@ -149,19 +152,18 @@ export default function AnalyticsScreen() {
         const newHiitResults = [...updatedData.completion_data.hiit_results];
         const newBlock = { ...newHiitResults[blockIdx] };
         const newExercises = [...newBlock.hiit_exercises];
-        newExercises[exIdx] = { ...newExercises[exIdx], coach_note: "" }; // Borramos la nota
+        newExercises[exIdx] = { ...newExercises[exIdx], coach_note: "" };
         newBlock.hiit_exercises = newExercises;
         newHiitResults[blockIdx] = newBlock;
         updatedData.completion_data.hiit_results = newHiitResults;
       } else {
         const newExResults = [...updatedData.completion_data.exercise_results];
-        newExResults[exIdx] = { ...newExResults[exIdx], coach_note: "" }; // Borramos la nota
+        newExResults[exIdx] = { ...newExResults[exIdx], coach_note: "" };
         updatedData.completion_data.exercise_results = newExResults;
       }
 
       await api.updateWorkout(workoutId, updatedData);
       
-      // Actualizamos el estado local para que desaparezca al instante
       setWorkoutHistory(prev => prev.map(w => w.id === workoutId ? updatedData : w));
       
       if (Platform.OS !== 'web') Alert.alert("Eliminado", "El feedback ha sido borrado.");
@@ -306,7 +308,6 @@ export default function AnalyticsScreen() {
       <View style={{ paddingBottom: 100 }}>
         {feedbacks.reverse().map((fb, i) => (
           <View key={i} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: (colors.warning || '#F59E0B') + '40' }]}>
-            {/* Cabecera del Feedback */}
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                 <Ionicons name="chatbubble-ellipses" size={20} color={colors.warning || '#F59E0B'} />
@@ -567,8 +568,10 @@ const styles = StyleSheet.create({
 
   listContainer: { flexDirection: 'column' },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  listCard: { width: '100%' },
-  gridCard: { width: '48%', aspectRatio: 1, justifyContent: 'center', padding: 5 }, 
+  // Se añade height: 'auto' para que al volver de grid recupere la altura original
+  listCard: { width: '100%', height: 'auto' },
+  // Usamos el alto calculado matemáticamente en vez de aspectRatio
+  gridCard: { width: '48%', height: GRID_CARD_SIZE, justifyContent: 'center', padding: 5 }, 
   
   progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden' },
   progHeader: { flexDirection: 'row', padding: 20, alignItems: 'center' },
