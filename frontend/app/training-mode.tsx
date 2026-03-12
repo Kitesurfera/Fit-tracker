@@ -285,20 +285,32 @@ export default function TrainingModeScreen() {
     } catch (e) { console.log("Error guardando nota:", e); }
   };
 
-  const saveTrainerFeedbackHiit = async (blockIndex: number, exIndex: number, noteText: string) => {
+    const saveTrainerFeedbackHiit = async (blockIndex: number, exIndex: number, noteText: string) => {
     try {
-      const updatedHiitResults = [...workout.completion_data.hiit_results];
-      updatedHiitResults[blockIndex].hiit_exercises[exIndex].coach_note = noteText;
+      // Clonación profunda para no mutar el estado directamente
+      const updatedHiitResults = workout.completion_data.hiit_results.map((block: any, bIdx: number) => {
+        if (bIdx !== blockIndex) return block;
+        return {
+          ...block,
+          hiit_exercises: block.hiit_exercises.map((ex: any, eIdx: number) => {
+            if (eIdx !== exIndex) return ex;
+            return { ...ex, coach_note: noteText };
+          })
+        };
+      });
+
       const payload = {
         title: workout.title, date: workout.date, notes: workout.notes, athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
         exercises: workout.exercises, completed: workout.completed, observations: workout.observations,
         completion_data: { ...workout.completion_data, hiit_results: updatedHiitResults }
       };
+
       await api.updateWorkout(workout.id, payload);
       setWorkout(payload);
       if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
     } catch (e) { console.log("Error guardando nota HIIT:", e); }
   };
+
 
   const renderVideoModal = () => (
     <Modal visible={!!expandedVideo} transparent animationType="fade">
