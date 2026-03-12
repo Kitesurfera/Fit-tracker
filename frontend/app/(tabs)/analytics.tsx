@@ -53,6 +53,10 @@ export default function AnalyticsScreen() {
   
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
 
+  // --- ESTADOS PARA BÚSQUEDA Y VISTA ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
+
   // --- ESTADOS PARA UNIFICACIÓN MANUAL ---
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [exercisesToMerge, setExercisesToMerge] = useState<string[]>([]);
@@ -219,7 +223,6 @@ export default function AnalyticsScreen() {
     );
   };
 
-  // --- RENDERIZADO DE LA NUEVA PESTAÑA FEEDBACK ---
   const renderFeedbackTab = () => {
     const feedbacks: any[] = [];
     workoutHistory.forEach(w => {
@@ -255,6 +258,11 @@ export default function AnalyticsScreen() {
 
   const cleanProgression = getCleanProgression();
   const rawExerciseNames = getUniqueRawExerciseNames();
+  
+  // Filtrar progresión basado en la búsqueda
+  const filteredProgression = cleanProgression.filter(item => 
+    item.name.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -279,38 +287,94 @@ export default function AnalyticsScreen() {
       </View>
 
       {activeTab === 'progress' && cleanProgression.length > 0 && (
-        <View style={{ paddingHorizontal: 20, marginBottom: 10 }}>
-          <TouchableOpacity style={[styles.mergeBtn, { borderColor: colors.primary }]} onPress={() => setShowMergeModal(true)}>
+        <View style={{ paddingHorizontal: 20, marginBottom: 15 }}>
+          {/* BOTÓN UNIFICAR */}
+          <TouchableOpacity style={[styles.mergeBtn, { borderColor: colors.primary, marginBottom: 15 }]} onPress={() => setShowMergeModal(true)}>
             <Ionicons name="git-merge-outline" size={18} color={colors.primary} />
             <Text style={{ color: colors.primary, fontWeight: '700', marginLeft: 8 }}>Unificar nombres de ejercicios</Text>
           </TouchableOpacity>
+
+          {/* BARRA DE BÚSQUEDA Y CAMBIO DE VISTA */}
+          <View style={styles.controlsRow}>
+            <View style={[styles.searchBox, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+              <Ionicons name="search" size={20} color={colors.textSecondary} />
+              <TextInput
+                style={[styles.searchInput, { color: colors.textPrimary }]}
+                placeholder="Buscar ejercicio..."
+                placeholderTextColor={colors.textSecondary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')}>
+                  <Ionicons name="close-circle" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            
+            <View style={[styles.viewToggle, { backgroundColor: colors.surfaceHighlight }]}>
+              <TouchableOpacity onPress={() => setViewMode('list')} style={[styles.toggleBtn, viewMode === 'list' && { backgroundColor: colors.primary }]}>
+                <Ionicons name="list" size={20} color={viewMode === 'list' ? '#FFF' : colors.textSecondary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setViewMode('grid')} style={[styles.toggleBtn, viewMode === 'grid' && { backgroundColor: colors.primary }]}>
+                <Ionicons name="grid" size={20} color={viewMode === 'grid' ? '#FFF' : colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          </View>
         </View>
       )}
 
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 0, paddingBottom: 100 }}>
         {loading && !refreshing ? (
           <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/>
         ) : activeTab === 'summary' ? (
           testHistory.length > 0 ? testHistory.map(renderTestCard) : <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40 }}>Sin tests registrados.</Text>
         ) : activeTab === 'progress' ? (
-          cleanProgression.length > 0 ? (
-            cleanProgression.map((item, i) => (
-              <View key={i} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.name ? null : item.name)} style={styles.progHeader}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.progName, { color: colors.textPrimary }]}>{item.name}</Text>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Récord Histórico: <Text style={{fontWeight:'700', color: colors.primary}}>{item.maxW} kg</Text></Text>
+          filteredProgression.length > 0 ? (
+            <View style={viewMode === 'grid' ? styles.gridContainer : styles.listContainer}>
+              {filteredProgression.map((item, i) => {
+                const isSelected = selectedExercise === item.name;
+                // Si está en modo grid y NO está seleccionado, es un cuadradito. Si se selecciona, ocupa el 100%
+                const isGridFormat = viewMode === 'grid' && !isSelected;
+
+                return (
+                  <View key={i} style={[
+                    styles.progCard, 
+                    { backgroundColor: colors.surface, borderColor: colors.border },
+                    isGridFormat ? styles.gridCard : styles.listCard
+                  ]}>
+                    <TouchableOpacity 
+                      onPress={() => setSelectedExercise(isSelected ? null : item.name)} 
+                      style={isGridFormat ? styles.gridHeader : styles.progHeader}
+                    >
+                      <View style={{ flex: 1, alignItems: isGridFormat ? 'center' : 'flex-start' }}>
+                        <Text style={[
+                          styles.progName, 
+                          { color: colors.textPrimary, textAlign: isGridFormat ? 'center' : 'left' },
+                          isGridFormat && { fontSize: 14 } // Texto algo más pequeño en modo grid
+                        ]}>
+                          {item.name}
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: isGridFormat ? 'center' : 'left' }}>
+                          {isGridFormat ? 'Récord:\n' : 'Récord Histórico: '}
+                          <Text style={{fontWeight:'700', color: colors.primary}}>{item.maxW} kg</Text>
+                        </Text>
+                      </View>
+                      {!isGridFormat && (
+                        <Ionicons name={isSelected ? "chevron-up" : "bar-chart-outline"} size={22} color={colors.primary} />
+                      )}
+                    </TouchableOpacity>
+                    
+                    {isSelected && (
+                      <View style={[styles.chartWrapper, { borderTopColor: colors.border }]}>
+                        {renderChart(item.history)}
+                      </View>
+                    )}
                   </View>
-                  <Ionicons name={selectedExercise === item.name ? "chevron-up" : "bar-chart-outline"} size={22} color={colors.primary} />
-                </TouchableOpacity>
-                {selectedExercise === item.name && (
-                  <View style={[styles.chartWrapper, { borderTopColor: colors.border }]}>
-                    {renderChart(item.history)}
-                  </View>
-                )}
-              </View>
-            ))
-          ) : <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40 }}>Completa entrenamientos para ver tu evolución.</Text>
+                );
+              })}
+            </View>
+          ) : <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40 }}>No hay ejercicios que coincidan con la búsqueda.</Text>
         ) : (
           renderFeedbackTab()
         )}
@@ -400,12 +464,23 @@ const styles = StyleSheet.create({
   sideLabel: { fontSize: 9, fontWeight: '800', marginTop: 4, color: '#888' },
   
   mergeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed' },
-  mergeItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 10, borderWidth: 1, marginBottom: 8 },
-  mergeInput: { padding: 14, borderRadius: 10, borderWidth: 1, fontSize: 16, marginBottom: 15 },
-  confirmMergeBtn: { padding: 16, borderRadius: 12 },
+  
+  // NUEVOS ESTILOS PARA CONTROLES DE BÚSQUEDA Y VISTA
+  controlsRow: { flexDirection: 'row', gap: 10 },
+  searchBox: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, borderRadius: 12, borderWidth: 1, height: 46 },
+  searchInput: { flex: 1, marginLeft: 10, fontSize: 15 },
+  viewToggle: { flexDirection: 'row', borderRadius: 12, padding: 4, height: 46 },
+  toggleBtn: { width: 38, height: 38, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+
+  // ESTILOS DE LISTA VS GRID
+  listContainer: { flexDirection: 'column' },
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
+  listCard: { width: '100%' },
+  gridCard: { width: '48%', aspectRatio: 1, justifyContent: 'center', padding: 5 }, // Formato cuadrado
   
   progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden' },
   progHeader: { flexDirection: 'row', padding: 20, alignItems: 'center' },
+  gridHeader: { alignItems: 'center', justifyContent: 'center', flex: 1, padding: 10, gap: 5 },
   progName: { fontSize: 17, fontWeight: '800', marginBottom: 4 },
   
   chartWrapper: { padding: 20, borderTopWidth: 1, height: 220 },
@@ -419,6 +494,10 @@ const styles = StyleSheet.create({
   chartLabelsArea: { height: 25, alignItems: 'center', justifyContent: 'center' },
   chartXDate: { fontSize: 9, fontWeight: '600' },
   chartXWeight: { fontSize: 11, fontWeight: '800' },
+  
+  mergeItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 10, borderWidth: 1, marginBottom: 8 },
+  mergeInput: { padding: 14, borderRadius: 10, borderWidth: 1, fontSize: 16, marginBottom: 15 },
+  confirmMergeBtn: { padding: 16, borderRadius: 12 },
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25 },
