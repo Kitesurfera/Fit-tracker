@@ -256,17 +256,29 @@ export const api = {
   },
 
   // --- SUBIDA DE ARCHIVOS ---
-  uploadFile: async (uri: string, fileName: string, fileType: string) => {
+  uploadFile: async (asset: any) => {
     const headers: any = await getAuthHeaders();
-    // Es vital quitar el Content-Type para que el navegador/móvil genere el límite multipart automáticamente
     delete headers['Content-Type']; 
 
     const formData = new FormData();
-    formData.append('file', {
-      uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
-      name: fileName,
-      type: fileType,
-    } as any);
+
+    if (Platform.OS === 'web') {
+      // Magia para la web: necesitamos extraer el archivo real (Blob/File)
+      if (asset.file) {
+        formData.append('file', asset.file);
+      } else {
+        const response = await fetch(asset.uri);
+        const blob = await response.blob();
+        formData.append('file', blob, asset.fileName || 'video.mp4');
+      }
+    } else {
+      // Formato tradicional para móviles Android/iOS
+      formData.append('file', {
+        uri: Platform.OS === 'android' ? asset.uri : asset.uri.replace('file://', ''),
+        name: asset.fileName || asset.uri.split('/').pop() || 'video.mp4',
+        type: asset.mimeType || 'video/mp4',
+      } as any);
+    }
 
     const res = await fetch(`${BACKEND_URL}/api/upload`, { 
       method: 'POST',
@@ -274,7 +286,9 @@ export const api = {
       body: formData,
     });
     
-    if (!res.ok) throw new Error('Error al subir el archivo al servidor');
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Fallo en el servidor: ${errorText}`);
+    }
     return res.json();
   }
-};
