@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Dimensions, Modal, TextInput, KeyboardAvoidingView, Platform
+  ActivityIndicator, Dimensions, Modal, TextInput, KeyboardAvoidingView, Platform, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -120,6 +120,57 @@ export default function AnalyticsScreen() {
     setExercisesToMerge(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
   };
 
+  // NUEVA FUNCIÓN PARA BORRAR FEEDBACK
+  const handleDeleteFeedback = (workoutId: string, isHiit: boolean, blockIdx: number, exIdx: number) => {
+    if (Platform.OS === 'web') {
+      if (window.confirm('¿Seguro que quieres eliminar este feedback?')) {
+        executeDeleteFeedback(workoutId, isHiit, blockIdx, exIdx);
+      }
+    } else {
+      Alert.alert(
+        "Eliminar Feedback",
+        "¿Seguro que quieres borrar la nota de este ejercicio?",
+        [
+          { text: "Cancelar", style: "cancel" },
+          { text: "Eliminar", style: "destructive", onPress: () => executeDeleteFeedback(workoutId, isHiit, blockIdx, exIdx) }
+        ]
+      );
+    }
+  };
+
+  const executeDeleteFeedback = async (workoutId: string, isHiit: boolean, blockIdx: number, exIdx: number) => {
+    const targetWorkout = workoutHistory.find(w => w.id === workoutId);
+    if (!targetWorkout) return;
+
+    try {
+      let updatedData = { ...targetWorkout };
+
+      if (isHiit) {
+        const newHiitResults = [...updatedData.completion_data.hiit_results];
+        const newBlock = { ...newHiitResults[blockIdx] };
+        const newExercises = [...newBlock.hiit_exercises];
+        newExercises[exIdx] = { ...newExercises[exIdx], coach_note: "" }; // Borramos la nota
+        newBlock.hiit_exercises = newExercises;
+        newHiitResults[blockIdx] = newBlock;
+        updatedData.completion_data.hiit_results = newHiitResults;
+      } else {
+        const newExResults = [...updatedData.completion_data.exercise_results];
+        newExResults[exIdx] = { ...newExResults[exIdx], coach_note: "" }; // Borramos la nota
+        updatedData.completion_data.exercise_results = newExResults;
+      }
+
+      await api.updateWorkout(workoutId, updatedData);
+      
+      // Actualizamos el estado local para que desaparezca al instante
+      setWorkoutHistory(prev => prev.map(w => w.id === workoutId ? updatedData : w));
+      
+      if (Platform.OS !== 'web') Alert.alert("Eliminado", "El feedback ha sido borrado.");
+    } catch (e) {
+      console.error("Error al borrar feedback:", e);
+      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo borrar el feedback.");
+    }
+  };
+
   const getCleanProgression = () => {
     const exercises: Record<string, any> = {};
     workoutHistory.forEach(w => {
@@ -226,12 +277,18 @@ export default function AnalyticsScreen() {
   const renderFeedbackTab = () => {
     const feedbacks: any[] = [];
     workoutHistory.forEach(w => {
-      w.completion_data?.exercise_results?.forEach((ex: any) => {
-        if (ex.coach_note) feedbacks.push({ date: w.date, title: w.title, exercise: ex.name, note: ex.coach_note });
+      w.completion_data?.exercise_results?.forEach((ex: any, idx: number) => {
+        if (ex.coach_note) feedbacks.push({ 
+          workoutId: w.id, isHiit: false, blockIdx: -1, exIdx: idx,
+          date: w.date, title: w.title, exercise: ex.name, note: ex.coach_note 
+        });
       });
-      w.completion_data?.hiit_results?.forEach((block: any) => {
-        block.hiit_exercises?.forEach((ex: any) => {
-          if (ex.coach_note) feedbacks.push({ date: w.date, title: w.title, exercise: ex.name, note: ex.coach_note });
+      w.completion_data?.hiit_results?.forEach((block: any, bIdx: number) => {
+        block.hiit_exercises?.forEach((ex: any, eIdx: number) => {
+          if (ex.coach_note) feedbacks.push({ 
+            workoutId: w.id, isHiit: true, blockIdx: bIdx, exIdx: eIdx,
+            date: w.date, title: w.title, exercise: ex.name, note: ex.coach_note 
+          });
         });
       });
     });
@@ -249,10 +306,19 @@ export default function AnalyticsScreen() {
       <View style={{ paddingBottom: 100 }}>
         {feedbacks.reverse().map((fb, i) => (
           <View key={i} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: (colors.warning || '#F59E0B') + '40' }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
-              <Ionicons name="chatbubble-ellipses" size={20} color={colors.warning || '#F59E0B'} />
-              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{fb.date} • {fb.title}</Text>
+            {/* Cabecera del Feedback */}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Ionicons name="chatbubble-ellipses" size={20} color={colors.warning || '#F59E0B'} />
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{fb.date} • {fb.title}</Text>
+              </View>
+              {isTrainer && (
+                <TouchableOpacity onPress={() => handleDeleteFeedback(fb.workoutId, fb.isHiit, fb.blockIdx, fb.exIdx)}>
+                  <Ionicons name="trash-outline" size={18} color={colors.error || '#EF4444'} />
+                </TouchableOpacity>
+              )}
             </View>
+            
             <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800', marginBottom: 8 }}>{fb.exercise}</Text>
             <View style={{ backgroundColor: (colors.warning || '#F59E0B') + '15', padding: 12, borderRadius: 10 }}>
               <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic', lineHeight: 20 }}>"{fb.note}"</Text>
