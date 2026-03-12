@@ -13,7 +13,7 @@ import WellnessModal from '../../src/components/WellnessModal';
 
 const ELITE_TIPS = [
   "La disciplina es hacer lo que debes, incluso cuando no quieres.",
-  "Tu mayor competición eres tú misma ayer.",
+  "Tu mayor competición eres tú mismo/a ayer.",
   "El descanso es parte del entrenamiento, no una recompensa.",
   "La constancia vence al talento cuando el talento no se esfuerza.",
   "Pequeñas mejoras diarias crean resultados excepcionales."
