@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, TouchableOpacity, 
   ActivityIndicator, RefreshControl, Modal, TextInput, Alert, KeyboardAvoidingView, Platform 
@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
@@ -44,6 +45,10 @@ export default function HomeScreen() {
   const [showAthleteModal, setShowAthleteModal] = useState(false);
   const [editingAthleteId, setEditingAthleteId] = useState<string | null>(null);
   const [athleteForm, setAthleteForm] = useState({ name: '', email: '', password: '', gender: 'Femenino', sport: '', phone: '' });
+
+  // NUEVO: Estados para controlar la notificación de feedback
+  const [feedbackSignature, setFeedbackSignature] = useState('');
+  const [hasUnreadFeedback, setHasUnreadFeedback] = useState(false);
 
   const isTrainer = user?.role === 'trainer';
   const firstName = user?.name?.split(' ')[0] || 'Atleta';
@@ -110,6 +115,37 @@ export default function HomeScreen() {
     }, [isTrainer, user, authLoading, todayStr])
   );
 
+  // NUEVO: Detectar si hay feedback nuevo usando una "firma"
+  useEffect(() => {
+    const checkFeedbackStatus = async () => {
+      if (!user || isTrainer) return;
+      
+      let sig = '';
+      workouts.forEach(w => {
+        if (w.completed && w.completion_data) {
+          w.completion_data.exercise_results?.forEach((ex: any) => {
+            if (ex.coach_note) sig += `${w.id}-${ex.coach_note}|`;
+          });
+          w.completion_data.hiit_results?.forEach((block: any) => {
+            block.hiit_exercises?.forEach((ex: any) => {
+              if (ex.coach_note) sig += `${w.id}-${ex.coach_note}|`;
+            });
+          });
+        }
+      });
+      
+      setFeedbackSignature(sig);
+      
+      if (sig) {
+        const savedSig = await AsyncStorage.getItem(`feedback_read_${user.id}`);
+        setHasUnreadFeedback(savedSig !== sig);
+      } else {
+        setHasUnreadFeedback(false);
+      }
+    };
+    checkFeedbackStatus();
+  }, [workouts, isTrainer, user]);
+
   const handleManualUpdate = () => { setUpdating(true); loadData(); };
 
   const openNewAthlete = () => {
@@ -174,6 +210,15 @@ export default function HomeScreen() {
     } catch (e) { console.error("Error guardando fase en el servidor", e); }
   };
 
+  // NUEVO: Función para descartar la notificación temporalmente
+  const handleFeedbackClick = async () => {
+    if (user) {
+      await AsyncStorage.setItem(`feedback_read_${user.id}`, feedbackSignature);
+    }
+    setHasUnreadFeedback(false);
+    router.push({ pathname: '/analytics', params: { tab: 'feedback' } });
+  };
+
   if (authLoading || (!user && !isTrainer)) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" color={colors.primary} /></View>;
   }
@@ -225,15 +270,6 @@ export default function HomeScreen() {
   const renderAthleteView = () => {
     const currentPhase = summary?.latest_wellness?.cycle_phase;
     
-    // Identificar si hay feedback en alguna sesión
-    const workoutsWithFeedback = workouts.filter(w => {
-      if (!w.completed || !w.completion_data) return false;
-      let hasNote = false;
-      w.completion_data.exercise_results?.forEach((ex: any) => { if (ex.coach_note) hasNote = true; });
-      w.completion_data.hiit_results?.forEach((block: any) => { block.hiit_exercises?.forEach((ex: any) => { if (ex.coach_note) hasNote = true; }); });
-      return hasNote;
-    });
-
     return (
       <FlatList
         data={workouts}
@@ -309,10 +345,11 @@ export default function HomeScreen() {
               <Text style={[styles.actionText, { color: colors.textPrimary }]}>Actualizar Wellness de Hoy</Text>
             </TouchableOpacity>
 
-            {workoutsWithFeedback.length > 0 && (
+            {/* SE MUESTRA SOLO SI HAY FEEDBACK SIN LEER */}
+            {hasUnreadFeedback && (
               <TouchableOpacity 
                 style={[styles.feedbackAlertCard, { backgroundColor: colors.warning || '#F59E0B' }]} 
-                onPress={() => router.push({ pathname: '/analytics', params: { tab: 'feedback' } })}
+                onPress={handleFeedbackClick}
               >
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                   <Ionicons name="chatbubbles" size={28} color="#FFF" />
@@ -329,7 +366,6 @@ export default function HomeScreen() {
           </View>
         }
         renderItem={({ item }) => {
-          // Comprobar si ESTA sesión específica tiene feedback
           let hasSessionFeedback = false;
           if (item.completed && item.completion_data) {
             item.completion_data.exercise_results?.forEach((ex: any) => { if (ex.coach_note) hasSessionFeedback = true; });
@@ -344,7 +380,7 @@ export default function HomeScreen() {
               <View style={{ flex: 1 }}>
                 <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
-                {/* ETIQUETA NUEVA DE FEEDBACK */}
+                
                 {hasSessionFeedback && (
                   <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}>
                     <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text>
