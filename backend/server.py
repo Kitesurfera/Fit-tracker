@@ -17,6 +17,9 @@ from datetime import datetime, timezone, timedelta
 import shutil
 from fastapi import Request
 from fastapi.staticfiles import StaticFiles
+import asyncio
+import time
+
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -42,6 +45,32 @@ app = FastAPI()
 UPLOAD_DIR = ROOT_DIR / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
+
+# --- LIMPIEZA AUTOMÁTICA DE VÍDEOS (30 DÍAS) ---
+async def cleanup_old_videos():
+    while True:
+        try:
+            now = time.time()
+            thirty_days_seconds = 30 * 24 * 60 * 60  # 30 días en segundos
+            
+            if UPLOAD_DIR.exists():
+                for file_path in UPLOAD_DIR.iterdir():
+                    if file_path.is_file():
+                        # Calcula cuánto tiempo ha pasado desde que se guardó
+                        file_age = now - file_path.stat().st_mtime
+                        if file_age > thirty_days_seconds:
+                            file_path.unlink() # Borra el vídeo físicamente
+                            logger.info(f"Vídeo antiguo eliminado automáticamente: {file_path.name}")
+                            
+        except Exception as e:
+            logger.error(f"Error en la limpieza de vídeos: {str(e)}")
+        
+        # Se pone a dormir 24 horas (86400 segundos) hasta el próximo repaso
+        await asyncio.sleep(86400)
+
+@app.on_event("startup")
+async def start_cleanup_task():
+    asyncio.create_task(cleanup_old_videos())
 
 @app.get("/ping")
 async def ping():
