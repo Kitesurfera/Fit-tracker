@@ -20,7 +20,6 @@ from fastapi.staticfiles import StaticFiles
 import asyncio
 import time
 
-
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -34,9 +33,6 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ.get('JWT_SECRET', 'fitness-tracker-secret-key-2026')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 72
-
-security = HTTPBearer()
-app = FastAPI()
 
 security = HTTPBearer()
 app = FastAPI()
@@ -103,12 +99,16 @@ class AthleteCreate(BaseModel):
     name: str
     gender: str
     sport: Optional[str] = "Preparación Física"
+    phone: Optional[str] = "" 
 
 class AthleteUpdate(BaseModel):
     name: str
     email: str
     gender: str
     password: Optional[str] = None
+    sport: Optional[str] = None
+    phone: Optional[str] = None 
+
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
@@ -321,6 +321,7 @@ async def create_athlete(data: AthleteCreate, user=Depends(get_current_user)):
     new_athlete = {
         "id": athlete_id, "email": data.email, "password": hash_password(data.password),
         "name": data.name, "gender": data.gender, "role": "athlete",
+        "sport": data.sport, "phone": data.phone, # <-- AÑADIDO
         "trainer_id": user['id'], "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(new_athlete)
@@ -332,6 +333,12 @@ async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_
         raise HTTPException(status_code=403, detail="No autorizado")
     
     update_data = {"name": data.name, "email": data.email, "gender": data.gender}
+    
+    if hasattr(data, 'sport') and data.sport is not None: 
+        update_data["sport"] = data.sport
+    if hasattr(data, 'phone') and data.phone is not None: 
+        update_data["phone"] = data.phone # <-- AÑADIDO
+        
     if data.password and len(data.password) > 0:
         update_data["password"] = hash_password(data.password)
         
