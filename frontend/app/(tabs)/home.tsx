@@ -43,7 +43,6 @@ export default function HomeScreen() {
 
   const [showAthleteModal, setShowAthleteModal] = useState(false);
   const [editingAthleteId, setEditingAthleteId] = useState<string | null>(null);
-  // Añadimos 'sport' al estado del formulario
   const [athleteForm, setAthleteForm] = useState({ name: '', email: '', password: '', gender: 'Femenino', sport: '' });
 
   const isTrainer = user?.role === 'trainer';
@@ -101,31 +100,17 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      // BARRERA 1: Evitamos que corra si el AuthContext aún está cargando o no hay usuario
       if (authLoading || !user) return;
-
       const init = async () => {
-        // BARRERA 2: Si el usuario es entrenador, cargamos sus datos y SALIMOS de la función.
-        if (isTrainer) {
-          await loadData(true);
-          return;
-        }
-
-        // Si llega aquí, es porque es deportista. 
+        if (isTrainer) { await loadData(true); return; }
         const sData = await loadData(true);
-        if (sData?.latest_wellness?.date !== todayStr) {
-          setShowWellness(true);
-        }
+        if (sData?.latest_wellness?.date !== todayStr) setShowWellness(true);
       };
-      
       init();
-    }, [isTrainer, user, authLoading, todayStr]) // BARRERA 3: Dependencias correctas.
+    }, [isTrainer, user, authLoading, todayStr])
   );
 
-  const handleManualUpdate = () => {
-    setUpdating(true);
-    loadData();
-  };
+  const handleManualUpdate = () => { setUpdating(true); loadData(); };
 
   const openNewAthlete = () => {
     setEditingAthleteId(null);
@@ -136,11 +121,8 @@ export default function HomeScreen() {
   const openEditAthlete = (athlete: any) => {
     setEditingAthleteId(athlete.id);
     setAthleteForm({ 
-      name: athlete.name, 
-      email: athlete.email, 
-      password: '', 
-      gender: athlete.gender || 'Femenino',
-      sport: athlete.sport || '' // Cargamos el deporte si existe
+      name: athlete.name, email: athlete.email, password: '', 
+      gender: athlete.gender || 'Femenino', sport: athlete.sport || '' 
     });
     setShowAthleteModal(true);
   };
@@ -151,27 +133,17 @@ export default function HomeScreen() {
       return;
     }
     try {
-      if (editingAthleteId) {
-        if (api.updateAthlete) await api.updateAthlete(editingAthleteId, athleteForm);
-      } else {
-        if (api.createAthlete) await api.createAthlete(athleteForm);
-      }
+      if (editingAthleteId) { if (api.updateAthlete) await api.updateAthlete(editingAthleteId, athleteForm); } 
+      else { if (api.createAthlete) await api.createAthlete(athleteForm); }
       setShowAthleteModal(false);
       loadData();
-    } catch (e) { 
-      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo guardar la información del deportista."); 
-    }
+    } catch (e) { if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo guardar la información."); }
   };
 
   const executeDelete = async (id: string) => {
     try {
-      if (api.deleteAthlete) {
-        await api.deleteAthlete(id);
-        loadData();
-      }
-    } catch (e) {
-      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar al deportista.");
-    }
+      if (api.deleteAthlete) { await api.deleteAthlete(id); loadData(); }
+    } catch (e) { if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar al deportista."); }
   };
 
   const handleDeleteAthlete = (id: string, name: string) => {
@@ -189,33 +161,21 @@ export default function HomeScreen() {
   const handleQuickPhaseUpdate = async (phaseId: string) => {
     setSummary((prev: any) => ({
       ...prev,
-      latest_wellness: {
-        ...(prev?.latest_wellness || { fatigue: 3, stress: 3, sleep_quality: 3, soreness: 3, notes: '' }),
-        cycle_phase: phaseId
-      }
+      latest_wellness: { ...(prev?.latest_wellness || { fatigue: 3, stress: 3, sleep_quality: 3, soreness: 3, notes: '' }), cycle_phase: phaseId }
     }));
     try {
       const baseData = summary?.latest_wellness || {};
       const payload = {
-         fatigue: baseData.fatigue || 3,
-         stress: baseData.stress || 3,
-         sleep_quality: baseData.sleep_quality || 3,
-         soreness: baseData.soreness || 3,
-         notes: baseData.notes || '',
-         cycle_phase: phaseId
+         fatigue: baseData.fatigue || 3, stress: baseData.stress || 3,
+         sleep_quality: baseData.sleep_quality || 3, soreness: baseData.soreness || 3,
+         notes: baseData.notes || '', cycle_phase: phaseId
       };
       await api.postWellness(payload);
-    } catch (e) {
-      console.error("Error guardando fase en el servidor", e);
-    }
+    } catch (e) { console.error("Error guardando fase en el servidor", e); }
   };
 
   if (authLoading || (!user && !isTrainer)) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </View>
-    );
+    return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" color={colors.primary} /></View>;
   }
 
   const renderTrainerView = () => (
@@ -245,7 +205,6 @@ export default function HomeScreen() {
             </View>
             <View style={{flex: 1}}>
               <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
-              {/* AQUÍ SE MUESTRA EL DEPORTE EN LUGAR DEL TEXTO GENÉRICO */}
               <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{item.sport || 'Deportista multidisciplinar'}</Text>
             </View>
           </TouchableOpacity>
@@ -260,6 +219,15 @@ export default function HomeScreen() {
 
   const renderAthleteView = () => {
     const currentPhase = summary?.latest_wellness?.cycle_phase;
+    
+    // VERIFICADOR DE FEEDBACK NUEVO
+    const workoutsWithFeedback = workouts.filter(w => {
+      if (!w.completed || !w.completion_data) return false;
+      let hasNote = false;
+      w.completion_data.exercise_results?.forEach((ex: any) => { if (ex.coach_note) hasNote = true; });
+      w.completion_data.hiit_results?.forEach((block: any) => { block.hiit_exercises?.forEach((ex: any) => { if (ex.coach_note) hasNote = true; }); });
+      return hasNote;
+    });
 
     return (
       <FlatList
@@ -336,6 +304,23 @@ export default function HomeScreen() {
               <Text style={[styles.actionText, { color: colors.textPrimary }]}>Actualizar Wellness de Hoy</Text>
             </TouchableOpacity>
 
+            {/* AVISO DE FEEDBACK DEL ENTRENADOR */}
+            {workoutsWithFeedback.length > 0 && (
+              <TouchableOpacity 
+                style={[styles.feedbackAlertCard, { backgroundColor: colors.warning || '#F59E0B' }]} 
+                onPress={() => router.push({ pathname: '/analytics', params: { tab: 'feedback' } })}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                  <Ionicons name="chatbubbles" size={28} color="#FFF" />
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16 }}>¡TIENES FEEDBACK NUEVO!</Text>
+                    <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, marginTop: 2 }}>El coach ha comentado tu técnica.</Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={24} color="#FFF" />
+                </View>
+              </TouchableOpacity>
+            )}
+
             <Text style={styles.sectionTitle}>SESIONES PROGRAMADAS</Text>
           </View>
         }
@@ -370,7 +355,6 @@ export default function HomeScreen() {
             
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder={editingAthleteId ? "Nueva Contraseña (Opcional)" : "Contraseña"} placeholderTextColor="#888" secureTextEntry value={athleteForm.password} onChangeText={t => setAthleteForm({...athleteForm, password: t})} />
             
-            {/* NUEVO CAMPO: DEPORTE */}
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Deporte (Ej: Kitesurf freestyle)" placeholderTextColor="#888" value={athleteForm.sport} onChangeText={t => setAthleteForm({...athleteForm, sport: t})} />
 
             <View style={styles.genderRow}>
@@ -396,5 +380,6 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20 }, headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }, dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }, welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 }, refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' }, actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }, athleteCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' }, athleteInfoArea: { flexDirection: 'row', alignItems: 'center', flex: 1, padding: 18 }, athleteActionsArea: { flexDirection: 'row', alignItems: 'center', paddingRight: 15, gap: 10 }, iconHitbox: { padding: 8 }, avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 16, fontWeight: '700' }, tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 }, tipText: { fontSize: 13, fontWeight: '600', flex: 1, fontStyle: 'italic' }, phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 25, alignItems: 'center' }, phaseInfo: { flex: 1 }, phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 }, phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 }, macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 }, phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }, phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' }, metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 }, metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' }, metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 }, metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 }, fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 30, gap: 12 }, actionText: { fontWeight: '800', fontSize: 15 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5, textTransform: 'uppercase' }, sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 22, marginHorizontal: 20, marginBottom: 12 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 }, modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 25, textAlign: 'center' }, input: { borderWidth: 1, padding: 16, borderRadius: 15, marginBottom: 15, fontSize: 16 }, genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 }, genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }, submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 }, cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }
+  container: { padding: 20 }, headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }, dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }, welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 }, refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' }, actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }, athleteCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' }, athleteInfoArea: { flexDirection: 'row', alignItems: 'center', flex: 1, padding: 18 }, athleteActionsArea: { flexDirection: 'row', alignItems: 'center', paddingRight: 15, gap: 10 }, iconHitbox: { padding: 8 }, avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 16, fontWeight: '700' }, tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 }, tipText: { fontSize: 13, fontWeight: '600', flex: 1, fontStyle: 'italic' }, phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 25, alignItems: 'center' }, phaseInfo: { flex: 1 }, phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 }, phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 }, macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 }, phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }, phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' }, metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 }, metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' }, metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 }, metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 }, fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 30, gap: 12 }, actionText: { fontWeight: '800', fontSize: 15 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5, textTransform: 'uppercase' }, sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 22, marginHorizontal: 20, marginBottom: 12 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 }, modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 25, textAlign: 'center' }, input: { borderWidth: 1, padding: 16, borderRadius: 15, marginBottom: 15, fontSize: 16 }, genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 }, genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }, submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 }, cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 },
+  feedbackAlertCard: { padding: 18, borderRadius: 20, marginBottom: 25, elevation: 3 }
 });
