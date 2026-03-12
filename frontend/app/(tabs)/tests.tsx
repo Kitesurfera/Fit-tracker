@@ -49,8 +49,11 @@ export default function TestsScreen() {
   const [newCategoryName, setNewCategoryName] = useState('');
 
   const [showCustomModal, setShowCustomModal] = useState(false);
+  const [editTest, setEditTest] = useState<any>(null);
   const [saving, setSaving] = useState(false);
-  const [customTest, setCustomTest] = useState({
+
+  // Estados para el formulario (Sirven para crear nuevo o editar)
+  const [formData, setFormData] = useState({
     name: '',
     category: 'strength',
     isBilateral: false,
@@ -84,10 +87,7 @@ export default function TestsScreen() {
 
   useEffect(() => { loadData(); }, [selectedCategory, selectedAthlete]);
 
-  const onRefresh = () => { 
-    setRefreshing(true); 
-    loadData(); 
-  };
+  const onRefresh = () => { setRefreshing(true); loadData(); };
 
   const addCategory = () => {
     if (!newCategoryName.trim()) return;
@@ -96,8 +96,7 @@ export default function TestsScreen() {
       Alert.alert("Error", "Esta categoría ya existe.");
       return;
     }
-    const newCat = { key, label: newCategoryName.trim() };
-    setDynamicCategories([...dynamicCategories, newCat]);
+    setDynamicCategories([...dynamicCategories, { key, label: newCategoryName.trim() }]);
     setNewCategoryName('');
     setShowCategoryModal(false);
   };
@@ -109,7 +108,6 @@ export default function TestsScreen() {
         setTests(prev => prev.filter(t => t.id !== testId));
       } catch (e) { console.log(e); }
     };
-
     if (Platform.OS === 'web') {
       if (window.confirm(`¿Eliminar "${testName}"?`)) performDelete();
     } else {
@@ -120,33 +118,53 @@ export default function TestsScreen() {
     }
   };
 
-  const handleCreateCustomTest = async () => {
-    if (!customTest.name.trim()) return Alert.alert("Error", "Ponle un nombre al test.");
-    if (isTrainer && !selectedAthlete) return Alert.alert("Error", "Selecciona un deportista primero.");
+  const openEditModal = (test: any) => {
+    setEditTest(test);
+    setFormData({
+      name: test.custom_name || test.test_name,
+      category: test.test_type || 'strength',
+      isBilateral: test.value_left != null || test.value_right != null,
+      unit: test.unit || '',
+      value: String(test.value ?? ''),
+      valueLeft: String(test.value_left ?? ''),
+      valueRight: String(test.value_right ?? ''),
+      notes: test.notes || ''
+    });
+  };
 
+  const handleSave = async () => {
+    if (!formData.name.trim()) return Alert.alert("Error", "El nombre es obligatorio.");
     setSaving(true);
     try {
       const payload: any = {
-        athlete_id: isTrainer ? selectedAthlete : user?.id,
-        test_name: 'custom',
-        custom_name: customTest.name.trim(),
-        test_type: customTest.category,
-        unit: customTest.unit.trim(),
-        notes: customTest.notes.trim(),
-        date: new Date().toISOString().split('T')[0],
+        unit: formData.unit.trim(),
+        notes: formData.notes.trim(),
+        test_type: formData.category,
       };
 
-      if (customTest.isBilateral) {
-        payload.value_left = parseFloat(customTest.valueLeft) || 0;
-        payload.value_right = parseFloat(customTest.valueRight) || 0;
+      if (formData.isBilateral) {
+        payload.value_left = parseFloat(formData.valueLeft) || 0;
+        payload.value_right = parseFloat(formData.valueRight) || 0;
         payload.value = 0;
       } else {
-        payload.value = parseFloat(customTest.value) || 0;
+        payload.value = parseFloat(formData.value) || 0;
+        payload.value_left = null;
+        payload.value_right = null;
       }
 
-      const created = await api.createTest(payload);
-      setTests([created, ...tests]);
+      if (editTest) {
+        const updated = await api.updateTest(editTest.id, payload);
+        setTests(prev => prev.map(t => t.id === editTest.id ? { ...t, ...updated } : t));
+      } else {
+        payload.athlete_id = isTrainer ? selectedAthlete : user?.id;
+        payload.test_name = 'custom';
+        payload.custom_name = formData.name.trim();
+        payload.date = new Date().toISOString().split('T')[0];
+        const created = await api.createTest(payload);
+        setTests([created, ...tests]);
+      }
       setShowCustomModal(false);
+      setEditTest(null);
     } catch (e) {
       Alert.alert("Error", "No se pudo guardar.");
     } finally {
@@ -177,7 +195,11 @@ export default function TestsScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity 
                   style={[styles.actionBtn, { backgroundColor: colors.primary }]} 
-                  onPress={() => setShowCustomModal(true)} 
+                  onPress={() => {
+                    setEditTest(null);
+                    setFormData({ name: '', category: 'strength', isBilateral: false, unit: '', value: '', valueLeft: '', valueRight: '', notes: '' });
+                    setShowCustomModal(true);
+                  }} 
                 >
                   <Ionicons name="add" size={24} color="#FFF" />
                 </TouchableOpacity>
@@ -219,9 +241,14 @@ export default function TestsScreen() {
                   {dynamicCategories.find(c => c.key === item.test_type)?.label || item.test_type?.toUpperCase()}
                 </Text>
               </View>
-              <TouchableOpacity onPress={() => deleteTest(item.id, item.custom_name || item.test_name)}>
-                <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
-              </TouchableOpacity>
+              <View style={{ flexDirection: 'row', gap: 15 }}>
+                <TouchableOpacity onPress={() => openEditModal(item)}>
+                  <Ionicons name="create-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => deleteTest(item.id, item.custom_name || item.test_name)}>
+                  <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <Text style={[styles.testName, { color: colors.textPrimary }]}>
@@ -252,7 +279,7 @@ export default function TestsScreen() {
             <Text style={[styles.testDate, { color: colors.textSecondary }]}>{item.date}</Text>
           </View>
         )}
-      </FlatList>
+      />
 
       {/* MODAL CATEGORÍAS */}
       <Modal visible={showCategoryModal} transparent animationType="fade">
@@ -272,49 +299,89 @@ export default function TestsScreen() {
         </View>
       </Modal>
 
-      {/* MODAL TEST PERSONALIZADO */}
-      <Modal visible={showCustomModal} transparent animationType="slide">
+      {/* MODAL TEST PERSONALIZADO / EDICIÓN */}
+      <Modal visible={showCustomModal || !!editTest} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior="padding" style={{ width: '100%' }}>
             <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
               <ScrollView showsVerticalScrollIndicator={false}>
-                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nuevo Test</Text>
+                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editTest ? 'Editar Test' : 'Nuevo Test'}</Text>
+                
+                {!editTest && (
+                  <>
+                    <Text style={styles.label}>NOMBRE DEL TEST</Text>
+                    <TextInput 
+                      style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                      placeholder="Ej: Salto Vertical" placeholderTextColor={colors.textSecondary}
+                      value={formData.name} onChangeText={(t) => setFormData({...formData, name: t})}
+                    />
+                  </>
+                )}
+
                 <Text style={styles.label}>CATEGORÍA</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
                   {dynamicCategories.filter(c => c.key !== 'all').map(cat => (
                     <TouchableOpacity 
                       key={cat.key} 
-                      style={[styles.miniChip, customTest.category === cat.key && { backgroundColor: colors.primary }]}
-                      onPress={() => setCustomTest({...customTest, category: cat.key})}
+                      style={[styles.miniChip, formData.category === cat.key && { backgroundColor: colors.primary }]}
+                      onPress={() => setFormData({...formData, category: cat.key})}
                     >
-                      <Text style={{ color: customTest.category === cat.key ? '#FFF' : colors.textSecondary }}>{cat.label}</Text>
+                      <Text style={{ color: formData.category === cat.key ? '#FFF' : colors.textSecondary }}>{cat.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </ScrollView>
 
-                <TextInput 
-                  style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                  placeholder="Nombre del test" placeholderTextColor={colors.textSecondary}
-                  value={customTest.name} onChangeText={(t) => setCustomTest({...customTest, name: t})}
-                />
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                   <TouchableOpacity 
+                    style={[styles.toggleBtnCustom, !formData.isBilateral && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    onPress={() => setFormData({...formData, isBilateral: false})}
+                  >
+                    <Text style={{ color: !formData.isBilateral ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>Global</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.toggleBtnCustom, formData.isBilateral && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    onPress={() => setFormData({...formData, isBilateral: true})}
+                  >
+                    <Text style={{ color: formData.isBilateral ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>Bilat. (L/R)</Text>
+                  </TouchableOpacity>
+                </View>
                 
+                {formData.isBilateral ? (
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <TextInput 
+                      style={[styles.modalInput, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                      placeholder="IZQ" keyboardType="numeric" value={formData.valueLeft} onChangeText={(t) => setFormData({...formData, valueLeft: t})}
+                    />
+                    <TextInput 
+                      style={[styles.modalInput, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                      placeholder="DER" keyboardType="numeric" value={formData.valueRight} onChangeText={(t) => setFormData({...formData, valueRight: t})}
+                    />
+                  </View>
+                ) : (
+                  <TextInput 
+                    style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                    placeholder="Valor" keyboardType="numeric" value={formData.value} onChangeText={(t) => setFormData({...formData, value: t})}
+                  />
+                )}
+
+                <Text style={styles.label}>UNIDAD Y NOTAS</Text>
                 <View style={{ flexDirection: 'row', gap: 10 }}>
                   <TextInput 
-                    style={[styles.modalInput, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                    placeholder="Valor" keyboardType="numeric"
-                    value={customTest.value} onChangeText={(t) => setCustomTest({...customTest, value: t})}
+                    style={[styles.modalInput, { flex: 0.5, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                    placeholder="kg, s, cm..." value={formData.unit} onChangeText={(t) => setFormData({...formData, unit: t})}
                   />
                   <TextInput 
-                    style={[styles.modalInput, { flex: 0.5, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                    placeholder="Unidad"
-                    value={customTest.unit} onChangeText={(t) => setCustomTest({...customTest, unit: t})}
+                    style={[styles.modalInput, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                    placeholder="Notas..." value={formData.notes} onChangeText={(t) => setFormData({...formData, notes: t})}
                   />
                 </View>
 
-                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleCreateCustomTest} disabled={saving}>
-                  {saving ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR TEST</Text>}
+                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSave} disabled={saving}>
+                  {saving ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR CAMBIOS</Text>}
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowCustomModal(false)}><Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 15 }}>Cerrar</Text></TouchableOpacity>
+                <TouchableOpacity onPress={() => { setShowCustomModal(false); setEditTest(null); }}>
+                  <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 15 }}>Cerrar</Text>
+                </TouchableOpacity>
               </ScrollView>
             </View>
           </KeyboardAvoidingView>
@@ -359,5 +426,6 @@ const styles = StyleSheet.create({
   modalBtn: { flex: 1, padding: 15, borderRadius: 12, alignItems: 'center' },
   label: { fontSize: 11, fontWeight: '800', marginBottom: 8, color: '#888' },
   miniChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, marginRight: 8, backgroundColor: 'rgba(0,0,0,0.05)' },
-  saveBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 }
+  saveBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 10 },
+  toggleBtnCustom: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#ccc', alignItems: 'center' },
 });
