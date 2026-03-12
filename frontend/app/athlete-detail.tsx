@@ -27,7 +27,7 @@ const CYCLE_LABELS: any = {
   lutea: 'Fase Lútea (Posible Fatiga)'
 };
 
-// --- MINI REPRODUCTOR PARA EFECTO GIF ---
+// --- COMPONENTE AYUDANTE: MINI REPRODUCTOR (EFECTO GIF) ---
 const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
   return (
@@ -35,7 +35,7 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
       <Video
         source={{ uri: url }}
         style={styles.miniVideo}
-        resizeMode={ResizeMode.COVER}
+        resizeMode={ResizeMode.CONTAIN} // <-- ¡AQUÍ ESTÁ LA MAGIA! Cambiamos COVER por CONTAIN
         shouldPlay
         isLooping
         isMuted
