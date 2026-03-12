@@ -22,7 +22,7 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
       <Video
         source={{ uri: url }}
         style={styles.miniVideo}
-        resizeMode={ResizeMode.CONTAIN} // <-- ¡AQUÍ ESTÁ LA MAGIA! Cambiamos COVER por CONTAIN
+        resizeMode={ResizeMode.CONTAIN}
         shouldPlay
         isLooping
         isMuted
@@ -269,7 +269,6 @@ export default function TrainingModeScreen() {
     );
   };
 
-  // --- SUBIDA DE VÍDEO CORREGIDA ---
   const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
       let result;
@@ -297,28 +296,18 @@ export default function TrainingModeScreen() {
       setVideoUploading(key);
       const asset = result.assets[0];
       
-      // Enviamos el asset entero, tal y como arreglamos en api.ts
       const uploaded = await api.uploadFile(asset);
-      
-      const finalUrl = typeof uploaded === 'string' 
-        ? uploaded 
-        : (uploaded?.url || uploaded?.publicUrl || uploaded?.storage_path || uploaded?.file_url || asset.uri);
+      const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || uploaded?.publicUrl || uploaded?.storage_path || uploaded?.file_url || asset.uri);
 
       setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
 
-      if (Platform.OS === 'web') {
-        window.alert('✅ ¡Vídeo de técnica subido y guardado!');
-      } else {
-        Alert.alert('Éxito', '¡Vídeo de técnica subido y guardado!');
-      }
+      if (Platform.OS === 'web') window.alert('✅ ¡Vídeo de técnica subido y guardado!');
+      else Alert.alert('Éxito', '¡Vídeo de técnica subido y guardado!');
 
     } catch (e: any) { 
       console.error("Error detallado al subir:", e);
-      if (Platform.OS === 'web') {
-        window.alert(`❌ Error al subir: ${e.message}`);
-      } else {
-        Alert.alert('Error', `No se pudo subir el vídeo: ${e.message}`); 
-      }
+      if (Platform.OS === 'web') window.alert(`❌ Error al subir: ${e.message}`);
+      else Alert.alert('Error', `No se pudo subir el vídeo: ${e.message}`); 
     } finally { 
       setVideoUploading(null); 
     }
@@ -359,14 +348,8 @@ export default function TrainingModeScreen() {
 
     const completionData = buildCompletionData();
     try {
-      const updateData: any = { 
-        completed: true, 
-        completion_data: completionData, 
-        title: workout.title, 
-        exercises: workout.exercises 
-      };
+      const updateData: any = { completed: true, completion_data: completionData, title: workout.title, exercises: workout.exercises };
       if (observations.trim()) updateData.observations = observations.trim();
-
       await api.updateWorkout(currentWorkoutId, updateData);
       router.back();
     } catch (e) { 
@@ -439,11 +422,7 @@ export default function TrainingModeScreen() {
                       const bgColor = isSelected ? rpeColor : colors.surface;
                       const textColor = isSelected ? ((num > 4 && num < 8) ? '#000' : '#FFF') : rpeColor;
                       return (
-                        <TouchableOpacity 
-                          key={num} 
-                          style={[styles.rpeBtn, { borderColor: rpeColor, borderWidth: 1.5, backgroundColor: bgColor }]} 
-                          onPress={() => setRpe(num)}
-                        >
+                        <TouchableOpacity key={num} style={[styles.rpeBtn, { borderColor: rpeColor, borderWidth: 1.5, backgroundColor: bgColor }]} onPress={() => setRpe(num)}>
                           <Text style={[styles.rpeText, { color: textColor }]}>{num}</Text>
                         </TouchableOpacity>
                       );
@@ -460,14 +439,8 @@ export default function TrainingModeScreen() {
                         else sleepColor = colors.warning || '#F59E0B';
                       }
                       return (
-                        <TouchableOpacity 
-                          key={opt} 
-                          style={[styles.sleepBtn, { borderColor: isSelected ? sleepColor : colors.border }, isSelected && { backgroundColor: sleepColor }]} 
-                          onPress={() => setSleep(opt as any)}
-                        >
-                          <Text style={[styles.sleepText, { color: colors.textPrimary }, isSelected && { color: opt === 'regular' ? '#000' : '#FFF' }]}>
-                            {opt.toUpperCase()}
-                          </Text>
+                        <TouchableOpacity key={opt} style={[styles.sleepBtn, { borderColor: isSelected ? sleepColor : colors.border }, isSelected && { backgroundColor: sleepColor }]} onPress={() => setSleep(opt as any)}>
+                          <Text style={[styles.sleepText, { color: colors.textPrimary }, isSelected && { color: opt === 'regular' ? '#000' : '#FFF' }]}>{opt.toUpperCase()}</Text>
                         </TouchableOpacity>
                       );
                     })}
@@ -491,17 +464,21 @@ export default function TrainingModeScreen() {
                         const videoUrl = recordedVideos[videoKey] || (workout.completed ? ex.recorded_video_url : null);
                         
                         return (
-                          <View key={eIdx} style={{ marginBottom: 10 }}>
+                          <View key={eIdx} style={{ marginBottom: 15 }}>
                             <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600' }}>• {ex.name}</Text>
                             {videoUrl && (
                               <View style={{ marginTop: 8, marginLeft: 10 }}>
                                 <MiniVideoPlayer url={videoUrl} onExpand={setExpandedVideo} />
                               </View>
                             )}
+                            {/* NUEVO DISEÑO FEEDBACK COACH EN HIIT */}
                             {ex.coach_note && (
-                              <View style={{ backgroundColor: (colors.warning || '#F59E0B') + '15', padding: 10, borderRadius: 8, marginTop: 8, marginLeft: 10 }}>
-                                <Text style={{ color: colors.warning || '#F59E0B', fontWeight: '800', fontSize: 11 }}>FEEDBACK COACH:</Text>
-                                <Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{ex.coach_note}"</Text>
+                              <View style={styles.feedbackCoachBox}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                  <Ionicons name="chatbubble-ellipses" size={16} color={colors.warning || '#F59E0B'} />
+                                  <Text style={{ color: colors.warning || '#F59E0B', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 }}>EL COACH DICE:</Text>
+                                </View>
+                                <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic' }}>"{ex.coach_note}"</Text>
                               </View>
                             )}
                           </View>
@@ -539,8 +516,15 @@ export default function TrainingModeScreen() {
                                   </View>
                                 )}
 
+                                {/* NUEVO DISEÑO FEEDBACK COACH EN FUERZA */}
                                 {logs[i]?.coach_note && (
-                                  <View style={{ backgroundColor: (colors.warning || '#F59E0B') + '15', padding: 10, borderRadius: 8, marginTop: 10, width: '100%' }}><Text style={{ color: colors.warning || '#F59E0B', fontWeight: '800', fontSize: 11 }}>FEEDBACK COACH:</Text><Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{logs[i]?.coach_note}"</Text></View>
+                                  <View style={styles.feedbackCoachBox}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                                      <Ionicons name="chatbubble-ellipses" size={16} color={colors.warning || '#F59E0B'} />
+                                      <Text style={{ color: colors.warning || '#F59E0B', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 }}>EL COACH DICE:</Text>
+                                    </View>
+                                    <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic' }}>"{logs[i]?.coach_note}"</Text>
+                                  </View>
                                 )}
                               </View>
                             ) : (
@@ -549,7 +533,6 @@ export default function TrainingModeScreen() {
                                   <View style={styles.logInputWrapper}><Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Kilos reales</Text><TextInput style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} keyboardType="numeric" value={logs[i]?.weight || ''} onChangeText={(w) => setLogs(prev => ({...prev, [i]: {...(prev[i]||{}), weight: w}}))} /></View>
                                   <View style={styles.logInputWrapper}><Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Reps reales</Text><TextInput style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} keyboardType="numeric" value={logs[i]?.reps || ''} onChangeText={(rep) => setLogs(prev => ({...prev, [i]: {...(prev[i]||{}), reps: rep}}))} /></View>
                                 </View>
-                                
                                 {recordedVideos[i.toString()] && (
                                   <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 10, borderRadius: 8, marginTop: 12 }}>
                                     <MiniVideoPlayer url={recordedVideos[i.toString()]} onExpand={setExpandedVideo} />
@@ -623,7 +606,6 @@ export default function TrainingModeScreen() {
                       <Text style={[styles.hiitExDur, { fontSize: dynamicFontDur, color: isCurrent ? colors.primary : colors.textSecondary, fontWeight: '800' }]}>{ex.duration_reps}</Text>
                     </View>
                     
-                    {/* VISUALIZACIÓN DE VÍDEO Y NOTAS EN MODO HIIT */}
                     {isCurrent && (
                       <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
                         {ex.video_url ? (
@@ -639,7 +621,6 @@ export default function TrainingModeScreen() {
                           </View>
                         ) : null}
 
-                        {/* BOTÓN PARA GRABAR TÉCNICA DEL HIIT */}
                         <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 5 }}>
                           {recordedVideos[videoKey] ? (
                             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 10, borderRadius: 8 }}>
@@ -680,9 +661,7 @@ export default function TrainingModeScreen() {
                 <Ionicons name="timer" size={32} color={hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary} />
                 <View style={styles.restTimerContent}>
                   <Text style={[styles.restTimerLabel, { color: colors.textSecondary }]}>
-                    {hiitPhase === 'rest_block' ? 'DESCANSO ENTRE VUELTAS' : 
-                     hiitPhase === 'rest_next_block' ? 'DESCANSO PARA SIGUIENTE BLOQUE' : 
-                     'PREPÁRATE PARA EL SIGUIENTE'}
+                    {hiitPhase === 'rest_block' ? 'DESCANSO ENTRE VUELTAS' : hiitPhase === 'rest_next_block' ? 'DESCANSO PARA SIGUIENTE BLOQUE' : 'PREPÁRATE PARA EL SIGUIENTE'}
                   </Text>
                   <Text style={[styles.restTimerValue, { color: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary }]}>{Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, '0')}</Text>
                 </View>
@@ -704,9 +683,7 @@ export default function TrainingModeScreen() {
   // --- MODO FUERZA TRADICIONAL ---
   const exercises = workout.exercises || [];
   const currentEx = exercises[currentExIndex];
-  const totalSets = parseInt(currentEx?.sets) || 1;
   const currentSets = setsStatus[currentExIndex] || [];
-  const doneSets = currentSets.filter(s => s === 'completed').length;
   const nextPendingSet = currentSets.findIndex(s => s === 'pending');
   const progress = exercises.length > 0 ? ((currentExIndex) / exercises.length) * 100 : 0;
 
@@ -725,7 +702,6 @@ export default function TrainingModeScreen() {
           <View style={[styles.exNumber, { backgroundColor: colors.primary + '12' }]}><Text style={[styles.exNumberText, { color: colors.primary }]}>{currentExIndex + 1}</Text></View>
           <Text style={[styles.exerciseName, { color: colors.textPrimary }]}>{currentEx.name}</Text>
 
-          {/* VISUALIZACIÓN DE VÍDEO Y NOTAS EN MODO FUERZA */}
           {currentEx.video_url ? (
             <TouchableOpacity style={[styles.referenceVideoBtn, { backgroundColor: (colors.error || '#EF4444') + '15' }]} onPress={() => Linking.openURL(currentEx.video_url)}>
               <Ionicons name="logo-youtube" size={18} color={colors.error || '#EF4444'} />
@@ -759,7 +735,6 @@ export default function TrainingModeScreen() {
             ))}
           </View>
 
-          {/* BOTÓN DE GRABAR TÉCNICA */}
           <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
             {recordedVideos[currentExIndex.toString()] ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 12, borderRadius: 10 }}>
@@ -838,5 +813,16 @@ const styles = StyleSheet.create({
   expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 },
   fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
   closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
-  fullVideo: { width: '100%', height: '80%' }
+  fullVideo: { width: '100%', height: '80%' },
+  
+  // NUEVO DISEÑO PARA LA CAJA DE FEEDBACK DEL COACH
+  feedbackCoachBox: { 
+    backgroundColor: 'rgba(245, 158, 11, 0.15)', 
+    padding: 12, 
+    borderRadius: 10, 
+    marginTop: 10, 
+    width: '100%', 
+    borderLeftWidth: 4, 
+    borderLeftColor: '#F59E0B' 
+  }
 });
