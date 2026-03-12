@@ -37,6 +37,9 @@ export default function CalendarScreen() {
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
+  
+  // NUEVO: Estado para mostrar información de la fase al deportista
+  const [athleteViewMicro, setAthleteViewMicro] = useState<any>(null);
 
   // Estados para la funcionalidad de Duplicar/Mover
   const [workoutToCopy, setWorkoutToCopy] = useState<any>(null);
@@ -287,7 +290,7 @@ export default function CalendarScreen() {
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-      {/* CABECERA (Siempre arriba y ancho completo) */}
+      {/* CABECERA */}
       <View style={styles.topHeader}>
         <View style={{flex:1}}>
           <Text style={styles.headerSubtitle}>{isTrainer ? 'AGENDA DEPORTISTA' : 'MI PLANIFICACIÓN'}</Text>
@@ -313,7 +316,7 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {/* CONTENEDOR PRINCIPAL: Filas en móvil, Columnas en Ordenador */}
+      {/* CONTENEDOR PRINCIPAL */}
       <View style={[styles.mainLayout, isDesktop && styles.mainLayoutDesktop]}>
         
         {/* COLUMNA IZQUIERDA (Calendario) */}
@@ -383,8 +386,12 @@ export default function CalendarScreen() {
                     key={idx} 
                     style={[styles.microCard, { backgroundColor: colors.surface, borderTopColor: micro.color || colors.primary, borderColor: colors.border }]}
                     onPress={() => {
-                      if (selectedAthlete) {
-                        router.push(`/periodization?athlete_id=${selectedAthlete.id}&name=${encodeURIComponent(selectedAthlete.name)}`);
+                      if (isTrainer) {
+                        if (selectedAthlete) {
+                          router.push(`/periodization?athlete_id=${selectedAthlete.id}&name=${encodeURIComponent(selectedAthlete.name)}`);
+                        }
+                      } else {
+                        setAthleteViewMicro(micro);
                       }
                     }}
                   >
@@ -452,6 +459,7 @@ export default function CalendarScreen() {
         </ScrollView>
       </View>
 
+      {/* MODAL PARA CAMBIAR DE DEPORTISTA (SOLO ENTRENADORES) */}
       <Modal visible={showPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPicker(false)}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -464,6 +472,47 @@ export default function CalendarScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      {/* MODAL DE INFORMACIÓN DE FASE (SOLO DEPORTISTAS) */}
+      <Modal visible={!!athleteViewMicro} transparent animationType="fade">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setAthleteViewMicro(null)}>
+          <View style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
+            {athleteViewMicro && (
+              <View style={{ alignItems: 'center', width: '100%' }}>
+                <View style={[styles.phaseIconBadge, { backgroundColor: (athleteViewMicro.color || colors.primary) + '15' }]}>
+                  <Ionicons name="flag" size={32} color={athleteViewMicro.color || colors.primary} />
+                </View>
+                
+                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>PERTENECE AL MACROCICLO:</Text>
+                <Text style={[styles.infoTitleMacro, { color: colors.textPrimary }]}>{athleteViewMicro.macroNombre}</Text>
+                
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                
+                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>FASE ACTUAL (MICROCICLO):</Text>
+                <Text style={[styles.infoTitleMicro, { color: colors.textPrimary }]}>{athleteViewMicro.nombre}</Text>
+
+                <View style={[styles.microTypeBadgeBig, { backgroundColor: (athleteViewMicro.color || colors.primary) }]}>
+                  <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }}>{athleteViewMicro.tipo}</Text>
+                </View>
+
+                <View style={styles.datesRow}>
+                  <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+                  <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '600', marginLeft: 6 }}>
+                    {athleteViewMicro.fecha_inicio.split('-').reverse().join('/')} - {athleteViewMicro.fecha_fin.split('-').reverse().join('/')}
+                  </Text>
+                </View>
+
+                <TouchableOpacity 
+                  style={[styles.closePhaseBtn, { backgroundColor: colors.surfaceHighlight }]} 
+                  onPress={() => setAthleteViewMicro(null)}
+                >
+                  <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>Cerrar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -471,7 +520,7 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   mainLayout: { flex: 1, flexDirection: 'column' },
   mainLayoutDesktop: { flexDirection: 'row', paddingHorizontal: 20, gap: 30 },
-  leftColumnDesktop: { flex: 1, maxWidth: 380, minWidth: 300 }, // ¡Aquí está la magia de la reducción!
+  leftColumnDesktop: { flex: 1, maxWidth: 380, minWidth: 300 }, 
   rightColumnDesktop: { flex: 1, paddingTop: 0, paddingHorizontal: 0 },
   
   topHeader: { flexDirection: 'row', alignItems: 'center', padding: 20 },
@@ -502,8 +551,20 @@ const styles = StyleSheet.create({
   workoutActions: { flexDirection: 'row', gap: 5 },
   actionIconBtn: { padding: 8 },
   emptyCard: { alignItems: 'center', paddingVertical: 30 },
+  
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
   modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20 },
-  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
+  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 },
+
+  // Estilos del nuevo Modal de Fase
+  modalContentInfo: { margin: 20, padding: 30, borderRadius: 30, alignItems: 'center', elevation: 5, marginBottom: 'auto', marginTop: 'auto' },
+  phaseIconBadge: { width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' },
+  infoTitleMacro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' },
+  divider: { height: 1, width: '80%', marginVertical: 20, opacity: 0.5 },
+  infoTitleMicro: { fontSize: 22, fontWeight: '900', marginTop: 4, textAlign: 'center' },
+  microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, marginTop: 15 },
+  datesRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 12 },
+  closePhaseBtn: { width: '100%', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 30 }
 });
