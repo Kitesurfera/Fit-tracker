@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Dimensions, Modal, TextInput
+  ActivityIndicator, Dimensions, Modal, TextInput, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -160,9 +160,9 @@ export default function AnalyticsScreen() {
     return (
       <View style={styles.chartContainer}>
         <View style={[styles.yAxis, { borderRightColor: colors.border }]}>
-          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{maxW}kg</Text>
-          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{Math.round((maxW+minW)/2)}kg</Text>
-          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{minW}kg</Text>
+          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{Number(maxW.toFixed(1))}kg</Text>
+          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{Number(((maxW+minW)/2).toFixed(1))}kg</Text>
+          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{Number(minW.toFixed(1))}kg</Text>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartScrollArea}>
@@ -174,7 +174,7 @@ export default function AnalyticsScreen() {
                   <View style={[styles.chartBar, { height: `${heightPct}%`, backgroundColor: colors.primary }]} />
                 </View>
                 <View style={styles.chartLabelsArea}>
-                  <Text style={[styles.chartXWeight, { color: colors.textPrimary }]}>{h.weight}</Text>
+                  <Text style={[styles.chartXWeight, { color: colors.textPrimary }]}>{Number(h.weight.toFixed(1))}</Text>
                   <Text style={[styles.chartXDate, { color: colors.textSecondary }]}>{h.date.split('-').slice(1).join('/')}</Text>
                 </View>
               </View>
@@ -236,7 +236,14 @@ export default function AnalyticsScreen() {
       });
     });
 
-    if (feedbacks.length === 0) return <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40 }}>Aún no hay correcciones del coach registradas.</Text>;
+    if (feedbacks.length === 0) {
+      return (
+        <View style={styles.emptyCard}>
+          <Ionicons name="chatbubbles-outline" size={48} color={colors.border} />
+          <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 12, fontSize: 15 }}>Aún no hay correcciones del coach registradas.</Text>
+        </View>
+      );
+    }
 
     return (
       <View style={{ paddingBottom: 100 }}>
@@ -328,13 +335,19 @@ export default function AnalyticsScreen() {
         {loading && !refreshing ? (
           <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/>
         ) : activeTab === 'summary' ? (
-          testHistory.length > 0 ? testHistory.map(renderTestCard) : <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40 }}>Sin tests registrados.</Text>
+          testHistory.length > 0 ? (
+            testHistory.map(renderTestCard)
+          ) : (
+            <View style={styles.emptyCard}>
+              <Ionicons name="clipboard-outline" size={48} color={colors.border} />
+              <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 12, fontSize: 15 }}>Sin tests registrados.</Text>
+            </View>
+          )
         ) : activeTab === 'progress' ? (
           filteredProgression.length > 0 ? (
             <View style={viewMode === 'grid' ? styles.gridContainer : styles.listContainer}>
               {filteredProgression.map((item, i) => {
                 const isSelected = selectedExercise === item.name;
-                // Si está en modo grid y NO está seleccionado, es un cuadradito. Si se selecciona, ocupa el 100%
                 const isGridFormat = viewMode === 'grid' && !isSelected;
 
                 return (
@@ -351,13 +364,13 @@ export default function AnalyticsScreen() {
                         <Text style={[
                           styles.progName, 
                           { color: colors.textPrimary, textAlign: isGridFormat ? 'center' : 'left' },
-                          isGridFormat && { fontSize: 14 } // Texto algo más pequeño en modo grid
+                          isGridFormat && { fontSize: 14 }
                         ]}>
                           {item.name}
                         </Text>
                         <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: isGridFormat ? 'center' : 'left' }}>
                           {isGridFormat ? 'Récord:\n' : 'Récord Histórico: '}
-                          <Text style={{fontWeight:'700', color: colors.primary}}>{item.maxW} kg</Text>
+                          <Text style={{fontWeight:'700', color: colors.primary}}>{Number(item.maxW.toFixed(1))} kg</Text>
                         </Text>
                       </View>
                       {!isGridFormat && (
@@ -374,7 +387,12 @@ export default function AnalyticsScreen() {
                 );
               })}
             </View>
-          ) : <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40 }}>No hay ejercicios que coincidan con la búsqueda.</Text>
+          ) : (
+            <View style={styles.emptyCard}>
+              <Ionicons name="bar-chart-outline" size={48} color={colors.border} />
+              <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 12, fontSize: 15 }}>No hay ejercicios que coincidan con tu búsqueda.</Text>
+            </View>
+          )
         ) : (
           renderFeedbackTab()
         )}
@@ -383,47 +401,53 @@ export default function AnalyticsScreen() {
       {/* MODAL PARA UNIFICAR EJERCICIOS */}
       <Modal visible={showMergeModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.background, height: '85%' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Unificar Ejercicios</Text>
-              <TouchableOpacity onPress={() => { setShowMergeModal(false); setExercisesToMerge([]); setMergeTargetName(''); }}><Ionicons name="close" size={24} color={colors.textPrimary}/></TouchableOpacity>
-            </View>
-            
-            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 13 }}>Selecciona los ejercicios que son el mismo pero se escribieron diferente y asígnales un nombre común.</Text>
-            
-            <ScrollView style={{ flex: 1, marginBottom: 15 }}>
-              {rawExerciseNames.map(name => (
-                <TouchableOpacity 
-                  key={name} 
-                  style={[styles.mergeItem, { borderColor: colors.border }, exercisesToMerge.includes(name) && { backgroundColor: colors.primary + '15', borderColor: colors.primary }]}
-                  onPress={() => toggleMergeSelection(name)}
-                >
-                  <Ionicons name={exercisesToMerge.includes(name) ? "checkbox" : "square-outline"} size={20} color={exercisesToMerge.includes(name) ? colors.primary : colors.textSecondary} />
-                  <Text style={{ color: colors.textPrimary, marginLeft: 10, fontWeight: '500' }}>{name}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {exercisesToMerge.length > 1 && (
-              <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
-                <Text style={{ color: colors.textPrimary, fontWeight: '700', marginBottom: 8 }}>¿Cómo quieres que se llamen?</Text>
-                <TextInput 
-                  style={[styles.mergeInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                  placeholder="Ej: Sentadilla Búlgara"
-                  placeholderTextColor={colors.textSecondary}
-                  value={mergeTargetName}
-                  onChangeText={setMergeTargetName}
-                />
-                <TouchableOpacity 
-                  style={[styles.confirmMergeBtn, { backgroundColor: mergeTargetName.trim() ? colors.primary : colors.border }]}
-                  disabled={!mergeTargetName.trim()}
-                  onPress={handleMerge}
-                >
-                  <Text style={{ color: '#FFF', fontWeight: '800', textAlign: 'center' }}>JUNTAR DATOS</Text>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, justifyContent: 'flex-end' }}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Unificar Ejercicios</Text>
+                <TouchableOpacity onPress={() => { setShowMergeModal(false); setExercisesToMerge([]); setMergeTargetName(''); }}>
+                  <Ionicons name="close" size={24} color={colors.textPrimary}/>
                 </TouchableOpacity>
               </View>
-            )}
-          </View>
+              
+              <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 13 }}>
+                Selecciona los ejercicios que son el mismo pero se escribieron diferente y asígnales un nombre común.
+              </Text>
+              
+              <ScrollView style={{ flexShrink: 1, marginBottom: 15 }}>
+                {rawExerciseNames.map(name => (
+                  <TouchableOpacity 
+                    key={name} 
+                    style={[styles.mergeItem, { borderColor: colors.border }, exercisesToMerge.includes(name) && { backgroundColor: colors.primary + '15', borderColor: colors.primary }]}
+                    onPress={() => toggleMergeSelection(name)}
+                  >
+                    <Ionicons name={exercisesToMerge.includes(name) ? "checkbox" : "square-outline"} size={20} color={exercisesToMerge.includes(name) ? colors.primary : colors.textSecondary} />
+                    <Text style={{ color: colors.textPrimary, marginLeft: 10, fontWeight: '500' }}>{name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              {exercisesToMerge.length > 1 && (
+                <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
+                  <Text style={{ color: colors.textPrimary, fontWeight: '700', marginBottom: 8 }}>¿Cómo quieres que se llamen?</Text>
+                  <TextInput 
+                    style={[styles.mergeInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                    placeholder="Ej: Sentadilla Búlgara"
+                    placeholderTextColor={colors.textSecondary}
+                    value={mergeTargetName}
+                    onChangeText={setMergeTargetName}
+                  />
+                  <TouchableOpacity 
+                    style={[styles.confirmMergeBtn, { backgroundColor: mergeTargetName.trim() ? colors.primary : colors.border }]}
+                    disabled={!mergeTargetName.trim()}
+                    onPress={handleMerge}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: '800', textAlign: 'center' }}>JUNTAR DATOS</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
@@ -434,10 +458,14 @@ export default function AnalyticsScreen() {
             <Text style={{ fontSize: 18, fontWeight: '800', marginBottom: 20, textAlign: 'center', color: colors.textPrimary }}>Seleccionar Deportista</Text>
             <ScrollView style={{ maxHeight: 300 }}>
               {athletes.map(a => (
-                <TouchableOpacity key={a.id} style={styles.athleteItem} onPress={() => handleSelectAthlete(a)}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>{a.name}</Text></TouchableOpacity>
+                <TouchableOpacity key={a.id} style={[styles.athleteItem, { borderBottomColor: colors.border }]} onPress={() => handleSelectAthlete(a)}>
+                  <Text style={{ color: colors.textPrimary, fontWeight: '600', fontSize: 16 }}>{a.name}</Text>
+                </TouchableOpacity>
               ))}
             </ScrollView>
-            <TouchableOpacity onPress={() => setShowPicker(false)} style={styles.closeBtn}><Text style={{ color: '#FFF', fontWeight: '800' }}>CERRAR</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowPicker(false)} style={[styles.closeBtn, { backgroundColor: colors.primary }]}>
+              <Text style={{ color: '#FFF', fontWeight: '800' }}>CERRAR</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -465,18 +493,16 @@ const styles = StyleSheet.create({
   
   mergeBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed' },
   
-  // NUEVOS ESTILOS PARA CONTROLES DE BÚSQUEDA Y VISTA
   controlsRow: { flexDirection: 'row', gap: 10 },
   searchBox: { flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, borderRadius: 12, borderWidth: 1, height: 46 },
   searchInput: { flex: 1, marginLeft: 10, fontSize: 15 },
   viewToggle: { flexDirection: 'row', borderRadius: 12, padding: 4, height: 46 },
   toggleBtn: { width: 38, height: 38, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
 
-  // ESTILOS DE LISTA VS GRID
   listContainer: { flexDirection: 'column' },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   listCard: { width: '100%' },
-  gridCard: { width: '48%', aspectRatio: 1, justifyContent: 'center', padding: 5 }, // Formato cuadrado
+  gridCard: { width: '48%', aspectRatio: 1, justifyContent: 'center', padding: 5 }, 
   
   progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden' },
   progHeader: { flexDirection: 'row', padding: 20, alignItems: 'center' },
@@ -501,8 +527,10 @@ const styles = StyleSheet.create({
   
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25 },
-  athleteItem: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  closeBtn: { marginTop: 20, backgroundColor: '#000', padding: 15, borderRadius: 12, alignItems: 'center' },
+  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 },
+  closeBtn: { marginTop: 20, padding: 15, borderRadius: 12, alignItems: 'center' },
   
-  feedbackCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 }
+  feedbackCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
+  
+  emptyCard: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, paddingHorizontal: 20 }
 });
