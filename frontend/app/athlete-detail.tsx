@@ -39,6 +39,7 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
         shouldPlay
         isLooping
         isMuted
+        playsInLine
       />
       <TouchableOpacity style={styles.expandBtn} onPress={() => onExpand(url)}>
         <Ionicons name="expand" size={16} color="#FFF" />
