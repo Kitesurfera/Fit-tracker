@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native'; // <-- Añadido para gestionar las rutas de archivos
+import { Platform } from 'react-native';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -156,12 +156,10 @@ export const api = {
       
       const data = await res.json();
       
-      // BLINDAJE: Si el servidor devuelve un array directamente, lo envolvemos en un objeto
       if (Array.isArray(data)) {
         return { macros: data, unassigned_workouts: [] };
       }
       
-      // Si devuelve un objeto, nos aseguramos de que exista la clave macros
       return { 
         macros: Array.isArray(data?.macros) ? data.macros : [], 
         unassigned_workouts: Array.isArray(data?.unassigned_workouts) ? data.unassigned_workouts : [] 
@@ -263,7 +261,6 @@ export const api = {
     const formData = new FormData();
 
     if (Platform.OS === 'web') {
-      // Magia para la web: necesitamos extraer el archivo real (Blob/File)
       if (asset.file) {
         formData.append('file', asset.file);
       } else {
@@ -272,7 +269,6 @@ export const api = {
         formData.append('file', blob, asset.fileName || 'video.mp4');
       }
     } else {
-      // Formato tradicional para móviles Android/iOS
       formData.append('file', {
         uri: Platform.OS === 'android' ? asset.uri : asset.uri.replace('file://', ''),
         name: asset.fileName || asset.uri.split('/').pop() || 'video.mp4',
@@ -292,3 +288,4 @@ export const api = {
     }
     return res.json();
   }
+};
