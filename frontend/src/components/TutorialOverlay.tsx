@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-// RUTA CORREGIDA: Ya estamos dentro de src, solo subimos un nivel y entramos en hooks
 import { useTheme } from '../hooks/useTheme';
 
 const { width, height } = Dimensions.get('window');
@@ -18,17 +17,17 @@ export default function TutorialOverlay({ role, isVisible, onClose }: { role: st
   const [currentStep, setCurrentStep] = useState(0);
 
   const trainerSteps: Step[] = [
-    { title: "¡Hola!", description: "Aquí verás el listado de tus deportistas y su actividad de hoy de un vistazo.", icon: "people" },
-    { title: "Planificación Pro", description: "Usa el botón '+' para añadir entrenos o el de 'copia' para duplicar rutinas rápidamente.", icon: "copy" },
-    { title: "Feedback en tiempo real", description: "En el Dashboard del deportista verás las notas y el RPE que tu cliente te deje al terminar.", icon: "chatbubbles" },
-    { title: "Buscador de Progresión", description: "Filtra por nombre de ejercicio para ver cómo evolucionan las cargas sin perder tiempo.", icon: "search" },
+    { title: "Gestión Total", description: "Aquí verás a tus deportistas. Toca su perfil para ver su evolución, o el icono de WhatsApp para hablarles directamente.", icon: "people" },
+    { title: "Periodización Pro", description: "Crea Macrociclos y Microciclos desde el perfil del deportista. Organiza la temporada de forma visual.", icon: "calendar" },
+    { title: "Planificación Ágil", description: "Asigna sesiones y usa la función de 'copiar' en el calendario para pegar entrenamientos en otros días en un segundo.", icon: "copy" },
+    { title: "Corrección de Técnica", description: "Revisa los vídeos que suben tus deportistas, evalúa su ejecución y déjales feedback directo en cada ejercicio.", icon: "videocam" },
   ];
 
   const athleteSteps: Step[] = [
-    { title: "¡A por todas!", description: "Aquí tienes tus entrenos de hoy. Si te saltas uno, aparecerá como 'No realizado'.", icon: "barbell" },
-    { title: "Modo Entrenamiento", description: "Dale al 'Play' para empezar. Registra tus marcas reales y descansa con el cronómetro.", icon: "play-circle" },
-    { title: "Tu Bienestar", description: "Al acabar, dinos qué tal has dormido y el RPE (esfuerzo). ¡Tu coach lo verá al instante!", icon: "battery-charging" },
-    { title: "Récords Personales", description: "En la pestaña de Rendimiento verás tus PBs y gráficas de progreso sin duplicados.", icon: "trending-up" },
+    { title: "Tu Planificación", description: "Revisa tu calendario. Podrás ver de un vistazo qué sesiones tocan hoy y en qué fase del macrociclo te encuentras.", icon: "calendar" },
+    { title: "Modo Entrenamiento", description: "Registra tus pesos reales, usa el cronómetro para los descansos y sube vídeos de tu técnica para tu coach.", icon: "play-circle" },
+    { title: "Feedback del Coach", description: "Si tu entrenador corrige tu técnica o te deja notas en una sesión, verás una alerta naranja. ¡No te la pierdas!", icon: "chatbubbles" },
+    { title: "Control de Wellness", description: "Registra a diario tu fatiga, sueño y fase del ciclo. Ayudará muchísimo a adaptar las cargas de tus entrenamientos.", icon: "fitness" },
   ];
 
   const steps = role === 'trainer' ? trainerSteps : athleteSteps;
