@@ -35,7 +35,7 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
       <Video
         source={{ uri: url }}
         style={styles.miniVideo}
-        resizeMode={ResizeMode.CONTAIN} // <-- ¡AQUÍ ESTÁ LA MAGIA! Cambiamos COVER por CONTAIN
+        resizeMode={ResizeMode.CONTAIN} // Mantenemos CONTAIN para que no recorte
         shouldPlay
         isLooping
         isMuted
@@ -194,6 +194,7 @@ export default function AthleteDetailScreen() {
 
   const isFemale = ['female', 'mujer', 'femenino'].includes(athlete?.gender?.toLowerCase() || '');
   const currentPhase = summary?.latest_wellness?.cycle_phase;
+  const isTrainer = user?.role === 'trainer';
 
   const renderDashboard = () => (
     <View style={styles.tabContainer}>
@@ -459,7 +460,13 @@ export default function AthleteDetailScreen() {
 
   const activeContent = () => { if (activeTab === 'dashboard') return renderDashboard(); if (activeTab === 'workouts') return renderWorkouts(); if (activeTab === 'progression') return renderProgression(); };
 
-  if (loading) return <SafeAreaView style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}><ActivityIndicator size="large" color={colors.primary}/></SafeAreaView>;
+  if (loading) {
+    return (
+      <SafeAreaView style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}>
+        <ActivityIndicator size="large" color={colors.primary}/>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -478,6 +485,16 @@ export default function AthleteDetailScreen() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>{activeContent()}</ScrollView>
+
+      {/* BOTÓN FLOTANTE WHATSAPP */}
+      {isTrainer && athlete?.phone ? (
+        <TouchableOpacity 
+          style={styles.whatsappFab} 
+          onPress={() => Linking.openURL(`https://wa.me/${athlete.phone.replace(/\D/g, '')}`)}
+        >
+          <Ionicons name="logo-whatsapp" size={28} color="#FFF" />
+        </TouchableOpacity>
+      ) : null}
 
       <Modal visible={showDuplicateModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
@@ -517,14 +534,66 @@ export default function AthleteDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 50 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 25, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
-  sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 },
-  avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 }, progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
+  container: { flex: 1 }, 
+  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, 
+  headerTitle: { fontSize: 22, fontWeight: '900' }, 
+  tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, 
+  tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, 
+  tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, 
+  tabContainer: { padding: 20, paddingBottom: 100 }, // Añadido más padding abajo para que el botón flotante no tape el contenido
+  alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, 
+  cycleCard: { padding: 16, borderRadius: 20, marginBottom: 25, borderWidth: 1 }, 
+  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, 
+  chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 }, 
+  barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, 
+  barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, 
+  bar: { width: 16, borderRadius: 8, minHeight: 5 }, 
+  barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, 
+  barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, 
+  mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, 
+  wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, 
+  wellBox: { alignItems: 'center' }, 
+  wellVal: { fontSize: 26, fontWeight: '900' }, 
+  wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, 
+  noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, 
+  noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, 
+  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, 
+  actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
+  sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, 
+  iconHitbox: { padding: 8 }, 
+  completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 },
+  avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, 
+  cardTitle: { fontSize: 15, fontWeight: '800' }, 
+  progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 }, 
+  progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, 
+  modalContent: { padding: 24, borderRadius: 20 }, 
+  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, 
+  modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, 
+  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, 
+  label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
   miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' },
   miniVideo: { width: '100%', height: '100%' },
   expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 },
   fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
   closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
-  fullVideo: { width: '100%', height: '80%' }
+  fullVideo: { width: '100%', height: '80%' },
+  
+  // ESTILO DEL BOTÓN FLOTANTE
+  whatsappFab: {
+    position: 'absolute',
+    bottom: 30,
+    right: 20,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#25D366', // Verde WhatsApp
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  }
 });
