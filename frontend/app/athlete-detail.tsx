@@ -134,20 +134,32 @@ export default function AthleteDetailScreen() {
     } catch (e) { console.log("Error guardando la nota del coach:", e); }
   };
 
-  const saveHiitCoachNote = async (workout: any, blockIndex: number, exIndex: number, noteText: string) => {
+    const saveHiitCoachNote = async (workout: any, blockIndex: number, exIndex: number, noteText: string) => {
     try {
-      const updatedHiitResults = [...workout.completion_data.hiit_results];
-      updatedHiitResults[blockIndex].hiit_exercises[exIndex].coach_note = noteText;
+      // Clonación profunda para no mutar el estado directamente
+      const updatedHiitResults = workout.completion_data.hiit_results.map((block: any, bIdx: number) => {
+        if (bIdx !== blockIndex) return block;
+        return {
+          ...block,
+          hiit_exercises: block.hiit_exercises.map((ex: any, eIdx: number) => {
+            if (eIdx !== exIndex) return ex;
+            return { ...ex, coach_note: noteText };
+          })
+        };
+      });
+
       const payload = {
         title: workout.title, date: workout.date, notes: workout.notes, athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
         exercises: workout.exercises, completed: workout.completed, observations: workout.observations,
         completion_data: { ...workout.completion_data, hiit_results: updatedHiitResults }
       };
+
       await api.updateWorkout(workout.id, payload);
       setWorkouts(prev => prev.map(w => w.id === workout.id ? payload : w));
       if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
     } catch (e) { console.log("Error guardando la nota del coach en HIIT:", e); }
   };
+
 
   const getLevelColor = (val: number, inverse = false) => {
     if (!val) return colors.border;
