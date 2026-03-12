@@ -6,6 +6,7 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { Video, ResizeMode } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
@@ -26,6 +27,26 @@ const CYCLE_LABELS: any = {
   lutea: 'Fase Lútea (Posible Fatiga)'
 };
 
+// --- MINI REPRODUCTOR PARA EFECTO GIF ---
+const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
+  if (!url) return null;
+  return (
+    <View style={styles.miniVideoContainer}>
+      <Video
+        source={{ uri: url }}
+        style={styles.miniVideo}
+        resizeMode={ResizeMode.COVER}
+        shouldPlay
+        isLooping
+        isMuted
+      />
+      <TouchableOpacity style={styles.expandBtn} onPress={() => onExpand(url)}>
+        <Ionicons name="expand" size={16} color="#FFF" />
+      </TouchableOpacity>
+    </View>
+  );
+};
+
 export default function AthleteDetailScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -44,6 +65,9 @@ export default function AthleteDetailScreen() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [workoutToDuplicate, setWorkoutToDuplicate] = useState<any>(null);
   const [duplicateDate, setDuplicateDate] = useState(new Date().toISOString().split('T')[0]);
+
+  // Estado para el modal de vídeo a pantalla completa
+  const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -297,10 +321,9 @@ export default function AthleteDetailScreen() {
                       </Text>
                       
                       {ex.recorded_video_url ? (
-                        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 10, marginBottom: 8 }} onPress={() => Linking.openURL(ex.recorded_video_url)}>
-                          <Ionicons name="play-circle" size={18} color={colors.primary} />
-                          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Ver Técnica</Text>
-                        </TouchableOpacity>
+                        <View style={{ marginLeft: 10, marginBottom: 10 }}>
+                          <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
+                        </View>
                       ) : null}
 
                       {user?.role === 'trainer' && (
@@ -329,10 +352,9 @@ export default function AthleteDetailScreen() {
                           <Text style={{ color: colors.textPrimary, fontSize: 12, marginBottom: 4 }}>• {ex.name} ({ex.duration_reps})</Text>
                           
                           {ex.recorded_video_url ? (
-                            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 }} onPress={() => Linking.openURL(ex.recorded_video_url)}>
-                              <Ionicons name="play-circle" size={18} color={colors.primary} />
-                              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Ver Técnica</Text>
-                            </TouchableOpacity>
+                            <View style={{ marginBottom: 10 }}>
+                              <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
+                            </View>
                           ) : null}
 
                           {user?.role === 'trainer' && (
@@ -410,11 +432,10 @@ export default function AthleteDetailScreen() {
             <View style={styles.barsContainer}>
               {progressionData.map((data, idx) => {
                 
-                // Usamos colores HEX explícitos para esquivar la posible falta de `colors.warning` en el tema
-                let rpeColor = '#10B981'; // Verde por defecto (RPE 1-4)
-                if (!data.rpe || data.rpe === 0) rpeColor = colors.border || '#D1D5DB'; // Gris si no hay datos
-                else if (data.rpe >= 8) rpeColor = '#EF4444'; // Rojo si es altísimo (8-10)
-                else if (data.rpe >= 5) rpeColor = '#F59E0B'; // Naranja/Amarillo si es alto (5-7)
+                let rpeColor = '#10B981'; 
+                if (!data.rpe || data.rpe === 0) rpeColor = colors.border || '#D1D5DB'; 
+                else if (data.rpe >= 8) rpeColor = '#EF4444'; 
+                else if (data.rpe >= 5) rpeColor = '#F59E0B'; 
 
                 const barHeight = data.rpe > 0 ? `${(data.rpe / 10) * 100}%` : '5%';
 
@@ -472,6 +493,24 @@ export default function AthleteDetailScreen() {
         </View>
       </Modal>
 
+      {/* MODAL DEL REPRODUCTOR A PANTALLA COMPLETA */}
+      <Modal visible={!!expandedVideo} transparent animationType="fade">
+        <View style={styles.fullscreenVideoOverlay}>
+          <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}>
+            <Ionicons name="close-circle" size={40} color="#FFF" />
+          </TouchableOpacity>
+          {expandedVideo && (
+            <Video
+              source={{ uri: expandedVideo }}
+              style={styles.fullVideo}
+              resizeMode={ResizeMode.CONTAIN}
+              useNativeControls
+              shouldPlay
+            />
+          )}
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -480,5 +519,11 @@ const styles = StyleSheet.create({
   container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 50 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 25, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
   sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 },
   avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 }, progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 }
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
+  miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' },
+  miniVideo: { width: '100%', height: '100%' },
+  expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 },
+  fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
+  fullVideo: { width: '100%', height: '80%' }
 });
