@@ -269,7 +269,8 @@ export default function TrainingModeScreen() {
     );
   };
 
-const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
+  // --- SUBIDA DE VÍDEO CORREGIDA ---
+  const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
       let result;
       if (source === 'camera') {
@@ -296,7 +297,7 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
       setVideoUploading(key);
       const asset = result.assets[0];
       
-      // Le pasamos el ASSET ENTERO a la nueva función de la API
+      // Enviamos el asset entero, tal y como arreglamos en api.ts
       const uploaded = await api.uploadFile(asset);
       
       const finalUrl = typeof uploaded === 'string' 
@@ -305,7 +306,6 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
 
       setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
 
-      // ¡NUEVO!: Damos confirmación de éxito en pantalla
       if (Platform.OS === 'web') {
         window.alert('✅ ¡Vídeo de técnica subido y guardado!');
       } else {
@@ -314,30 +314,11 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
 
     } catch (e: any) { 
       console.error("Error detallado al subir:", e);
-      // ¡NUEVO!: Mostramos el error incluso en la web para no volvernos locas
       if (Platform.OS === 'web') {
         window.alert(`❌ Error al subir: ${e.message}`);
       } else {
         Alert.alert('Error', `No se pudo subir el vídeo: ${e.message}`); 
       }
-    } finally { 
-      setVideoUploading(null); 
-    }
-  };
-      
-      setVideoUploading(key);
-      const asset = result.assets[0];
-      const fileName = asset.uri.split('/').pop() || 'technique.mp4';
-      
-      const uploaded = await api.uploadFile(asset.uri, fileName, asset.mimeType || 'video/mp4');
-      
-      const finalUrl = typeof uploaded === 'string' 
-        ? uploaded 
-        : (uploaded?.url || uploaded?.publicUrl || uploaded?.storage_path || uploaded?.file_url || asset.uri);
-
-      setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
-    } catch (e: any) { 
-      if (Platform.OS !== 'web') Alert.alert('Error', 'No se pudo subir el vídeo'); 
     } finally { 
       setVideoUploading(null); 
     }
