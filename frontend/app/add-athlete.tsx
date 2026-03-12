@@ -12,11 +12,14 @@ import { api } from '../src/api';
 export default function AddAthleteScreen() {
   const { colors } = useTheme();
   const router = useRouter();
+  
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [sport, setSport] = useState('');
-  const [position, setPosition] = useState('');
+  const [phone, setPhone] = useState('');
+  const [gender, setGender] = useState('Femenino');
+  
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -28,7 +31,7 @@ export default function AddAthleteScreen() {
     }
     setSubmitting(true);
     try {
-      await api.createAthlete({ name, email, password, sport, position });
+      await api.createAthlete({ name, email, password, sport, phone, gender });
       router.back();
     } catch (e: any) {
       setError(e.message);
@@ -68,7 +71,7 @@ export default function AddAthleteScreen() {
           <View style={[styles.infoBox, { backgroundColor: colors.primary + '10' }]}>
             <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
             <Text style={[styles.infoText, { color: colors.primary }]}>
-              El deportista podra iniciar sesion con el email y contraseña que definas aqui.
+              El deportista podrá iniciar sesión con el email y contraseña que definas aquí.
             </Text>
           </View>
 
@@ -80,14 +83,24 @@ export default function AddAthleteScreen() {
           <InputField label="Contraseña" value={password} onChangeText={setPassword}
             placeholder="Min. 4 caracteres" testID="athlete-password-input" required secureTextEntry />
 
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <InputField label="Deporte" value={sport} onChangeText={setSport}
-                placeholder="Ej: Futbol" testID="athlete-sport-input" />
-            </View>
-            <View style={{ flex: 1 }}>
-              <InputField label="Posicion" value={position} onChangeText={setPosition}
-                placeholder="Ej: Portero" testID="athlete-position-input" />
+          <InputField label="Deporte" value={sport} onChangeText={setSport}
+            placeholder="Ej: Kitesurf Freestyle" testID="athlete-sport-input" />
+
+          <InputField label="Teléfono (WhatsApp)" value={phone} onChangeText={setPhone}
+            placeholder="Ej: +34 600 000 000" testID="athlete-phone-input" keyboardType="phone-pad" />
+
+          <View style={styles.field}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Género</Text>
+            <View style={styles.genderRow}>
+              {['Masculino', 'Femenino'].map(g => (
+                <TouchableOpacity 
+                  key={g} 
+                  style={[styles.genderBtn, { borderColor: colors.border }, gender === g && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
+                  onPress={() => setGender(g)}
+                >
+                  <Text style={{ color: gender === g ? '#FFF' : colors.textPrimary, fontWeight: '700' }}>{g}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
           </View>
 
@@ -115,21 +128,19 @@ export default function AddAthleteScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   flex: { flex: 1 },
-  header: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5,
-  },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 },
   headerBtn: { width: 32 },
   headerTitle: { fontSize: 17, fontWeight: '600' },
   form: { padding: 20, gap: 16, paddingBottom: 48 },
   field: { gap: 8 },
   label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   input: { borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1 },
-  row: { flexDirection: 'row', gap: 12 },
   infoBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 10 },
   infoText: { fontSize: 14, flex: 1, lineHeight: 20 },
   errorBox: { borderRadius: 10, padding: 12 },
   errorText: { fontSize: 14, textAlign: 'center' },
   submitBtn: { borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8 },
   submitText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
+  genderRow: { flexDirection: 'row', gap: 10 },
+  genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }
 });
