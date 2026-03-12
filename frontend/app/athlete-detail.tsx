@@ -35,7 +35,7 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
       <Video
         source={{ uri: url }}
         style={styles.miniVideo}
-        resizeMode={ResizeMode.CONTAIN} // Mantenemos CONTAIN para que no recorte
+        resizeMode={ResizeMode.CONTAIN} 
         shouldPlay
         isLooping
         isMuted
@@ -306,66 +306,95 @@ export default function AthleteDetailScreen() {
 
           {wk.completed && wk.completion_data && expandedWorkouts[wk.id] && (
             <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 10 }}>
+              
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
                 <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
                   ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
                 </Text>
               </View>
               
-              {/* VISTA FUERZA TRADICIONAL */}
+              {/* VISTA FUERZA / TÉCNICA (NUEVO DISEÑO LIMPIO) */}
               {wk.completion_data.exercise_results && wk.completion_data.exercise_results.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 5 }}>REGISTRO DE CARGAS Y TÉCNICA:</Text>
-                  {wk.completion_data.exercise_results.map((ex: any, idx: number) => (
-                    <View key={idx} style={{ marginBottom: 12 }}>
-                      <Text style={{ color: colors.textPrimary, fontSize: 12, marginBottom: 4 }}>
-                        • {ex.name}: <Text style={{ fontWeight: '700' }}>{ex.completed_sets || 0} series</Text> x {ex.logged_reps || 0} reps @ <Text style={{ color: colors.primary, fontWeight: '800' }}>{ex.logged_weight || 0}kg</Text>
-                      </Text>
-                      
-                      {ex.recorded_video_url ? (
-                        <View style={{ marginLeft: 10, marginBottom: 10 }}>
-                          <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
-                        </View>
-                      ) : null}
+                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 10 }}>TÉCNICA Y EJERCICIOS:</Text>
+                  
+                  {wk.completion_data.exercise_results.map((ex: any, idx: number) => {
+                    // Extraemos lo planificado del array original de exercises si existe
+                    const plannedEx = wk.exercises && wk.exercises[idx] ? wk.exercises[idx] : null;
+                    const planText = plannedEx && plannedEx.sets ? `${plannedEx.sets}x${plannedEx.reps}` : 'Libre';
 
-                      {user?.role === 'trainer' && (
-                        <View style={{ marginLeft: 10, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <TextInput 
-                             style={{ flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, fontSize: 13, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
-                             placeholder="Escribir feedback para el atleta..." placeholderTextColor={colors.textSecondary} defaultValue={ex.coach_note || ''} onEndEditing={(e) => saveCoachNote(wk, idx, e.nativeEvent.text)}
-                          />
-                          <Ionicons name="chatbubbles" size={20} color={colors.textSecondary} />
+                    return (
+                      <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+                        
+                        <View style={styles.exerciseHeader}>
+                          <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
+                          <View style={[styles.planBadge, { backgroundColor: colors.primary + '15' }]}>
+                            <Text style={[styles.planText, { color: colors.primary }]}>{planText}</Text>
+                          </View>
                         </View>
-                      )}
-                    </View>
-                  ))}
+                        
+                        {ex.recorded_video_url && (
+                          <View style={{ marginBottom: 10 }}>
+                            <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
+                          </View>
+                        )}
+
+                        {user?.role === 'trainer' && (
+                          <View style={styles.feedbackRow}>
+                            <TextInput 
+                               style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
+                               placeholder="Añadir feedback..." 
+                               placeholderTextColor={colors.textSecondary} 
+                               defaultValue={ex.coach_note || ''} 
+                               onEndEditing={(e) => saveCoachNote(wk, idx, e.nativeEvent.text)}
+                            />
+                            <View style={[styles.sendBtn, { backgroundColor: ex.coach_note ? (colors.success || '#10B981') : colors.primary }]}>
+                              <Ionicons name={ex.coach_note ? "checkmark-done" : "send"} size={16} color="#FFF" />
+                            </View>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })}
                 </View>
               )}
 
-              {/* VISTA CIRCUITO HIIT */}
+              {/* VISTA CIRCUITO HIIT (NUEVO DISEÑO LIMPIO) */}
               {wk.completion_data.hiit_results && wk.completion_data.hiit_results.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 5 }}>RESUMEN DE CIRCUITO:</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 10 }}>RESUMEN DE CIRCUITO:</Text>
+                  
                   {wk.completion_data.hiit_results.map((block: any, bIdx: number) => (
-                    <View key={bIdx} style={{ marginBottom: 12 }}>
-                      <Text style={{ color: colors.error || '#EF4444', fontSize: 14, fontWeight: '800', marginBottom: 4 }}>{block.name}</Text>
+                    <View key={bIdx} style={{ marginBottom: 15 }}>
+                      <Text style={{ color: colors.error || '#EF4444', fontSize: 13, fontWeight: '800', marginBottom: 8, letterSpacing: 1 }}>{block.name.toUpperCase()}</Text>
+                      
                       {block.hiit_exercises.map((ex: any, eIdx: number) => (
-                        <View key={eIdx} style={{ marginBottom: 10, marginLeft: 10 }}>
-                          <Text style={{ color: colors.textPrimary, fontSize: 12, marginBottom: 4 }}>• {ex.name} ({ex.duration_reps})</Text>
+                        <View key={eIdx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+                          <View style={styles.exerciseHeader}>
+                            <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
+                            <View style={[styles.planBadge, { backgroundColor: colors.primary + '15' }]}>
+                              <Text style={[styles.planText, { color: colors.primary }]}>{ex.duration_reps}</Text>
+                            </View>
+                          </View>
                           
-                          {ex.recorded_video_url ? (
+                          {ex.recorded_video_url && (
                             <View style={{ marginBottom: 10 }}>
                               <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
                             </View>
-                          ) : null}
+                          )}
 
                           {user?.role === 'trainer' && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <View style={styles.feedbackRow}>
                               <TextInput 
-                                style={{ flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, fontSize: 13, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}
-                                placeholder="Escribir feedback para este ejercicio..." placeholderTextColor={colors.textSecondary} defaultValue={ex.coach_note || ''} onEndEditing={(e) => saveHiitCoachNote(wk, bIdx, eIdx, e.nativeEvent.text)}
+                                style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
+                                placeholder="Añadir feedback..." 
+                                placeholderTextColor={colors.textSecondary} 
+                                defaultValue={ex.coach_note || ''} 
+                                onEndEditing={(e) => saveHiitCoachNote(wk, bIdx, eIdx, e.nativeEvent.text)}
                               />
-                              <Ionicons name="chatbubbles" size={20} color={colors.textSecondary} />
+                              <View style={[styles.sendBtn, { backgroundColor: ex.coach_note ? (colors.success || '#10B981') : colors.primary }]}>
+                                <Ionicons name={ex.coach_note ? "checkmark-done" : "send"} size={16} color="#FFF" />
+                              </View>
                             </View>
                           )}
                         </View>
@@ -377,7 +406,7 @@ export default function AthleteDetailScreen() {
 
               {(wk.observations || wk.completion_data.observations) ? (
                 <View style={{ marginTop: 5, padding: 12, backgroundColor: colors.surfaceHighlight, borderRadius: 10 }}>
-                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 2 }}>OBSERVACIONES:</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 2 }}>OBSERVACIONES DEL DEPORTISTA:</Text>
                   <Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{wk.observations || wk.completion_data.observations}"</Text>
                 </View>
               ) : null}
@@ -411,7 +440,6 @@ export default function AthleteDetailScreen() {
 
     return (
       <View style={styles.tabContainer}>
-        {/* GRÁFICO DE VOLUMEN */}
         <Text style={styles.sectionTitle}>VOLUMEN DE CARGA (KILOS TOTALES)</Text>
         <View style={[styles.progressionCard, { backgroundColor: colors.surface }]}>
           {progressionData.length > 0 ? (
@@ -427,13 +455,11 @@ export default function AthleteDetailScreen() {
           ) : <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 20 }}>Completa sesiones con pesos registrados para ver la evolución.</Text>}
         </View>
 
-        {/* GRÁFICO DE RPE BLINDADO */}
         <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ESFUERZO PERCIBIDO (RPE)</Text>
         <View style={[styles.progressionCard, { backgroundColor: colors.surface }]}>
           {progressionData.length > 0 ? (
             <View style={styles.barsContainer}>
               {progressionData.map((data, idx) => {
-                
                 let rpeColor = '#10B981'; 
                 if (!data.rpe || data.rpe === 0) rpeColor = colors.border || '#D1D5DB'; 
                 else if (data.rpe >= 8) rpeColor = '#EF4444'; 
@@ -540,7 +566,7 @@ const styles = StyleSheet.create({
   tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, 
   tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, 
   tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, 
-  tabContainer: { padding: 20, paddingBottom: 100 }, // Añadido más padding abajo para que el botón flotante no tape el contenido
+  tabContainer: { padding: 20, paddingBottom: 100 }, 
   alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, 
   cycleCard: { padding: 16, borderRadius: 20, marginBottom: 25, borderWidth: 1 }, 
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, 
@@ -578,22 +604,57 @@ const styles = StyleSheet.create({
   fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
   closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   fullVideo: { width: '100%', height: '80%' },
-  
-  // ESTILO DEL BOTÓN FLOTANTE
   whatsappFab: {
-    position: 'absolute',
-    bottom: 30,
-    right: 20,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#25D366', // Verde WhatsApp
-    justifyContent: 'center',
+    position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30,
+    backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center',
+    elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3,
+  },
+  
+  // NUEVOS ESTILOS PARA LAS TARJETAS DE EJERCICIOS
+  exerciseCard: {
+    padding: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+    marginBottom: 10
+  },
+  exerciseHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
+    marginBottom: 10
+  },
+  exerciseName: {
+    fontSize: 14,
+    fontWeight: '800'
+  },
+  planBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 8
+  },
+  planText: {
+    fontSize: 11,
+    fontWeight: '900'
+  },
+  feedbackRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 5
+  },
+  feedbackInput: {
+    flex: 1,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    fontSize: 13
+  },
+  sendBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center'
   }
 });
