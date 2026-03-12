@@ -43,7 +43,6 @@ export default function HomeScreen() {
 
   const [showAthleteModal, setShowAthleteModal] = useState(false);
   const [editingAthleteId, setEditingAthleteId] = useState<string | null>(null);
-  // Añadimos phone al estado inicial
   const [athleteForm, setAthleteForm] = useState({ name: '', email: '', password: '', gender: 'Femenino', sport: '', phone: '' });
 
   const isTrainer = user?.role === 'trainer';
@@ -225,6 +224,8 @@ export default function HomeScreen() {
 
   const renderAthleteView = () => {
     const currentPhase = summary?.latest_wellness?.cycle_phase;
+    
+    // Identificar si hay feedback en alguna sesión
     const workoutsWithFeedback = workouts.filter(w => {
       if (!w.completed || !w.completion_data) return false;
       let hasNote = false;
@@ -327,18 +328,33 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>SESIONES PROGRAMADAS</Text>
           </View>
         }
-        renderItem={({ item }) => (
-          <TouchableOpacity style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.7 : 1 }]} onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}>
-            <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
-              <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
-              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
-            </View>
-            <Ionicons name="play" size={18} color={item.completed ? colors.border : colors.primary} />
-          </TouchableOpacity>
-        )}
+        renderItem={({ item }) => {
+          // Comprobar si ESTA sesión específica tiene feedback
+          let hasSessionFeedback = false;
+          if (item.completed && item.completion_data) {
+            item.completion_data.exercise_results?.forEach((ex: any) => { if (ex.coach_note) hasSessionFeedback = true; });
+            item.completion_data.hiit_results?.forEach((block: any) => { block.hiit_exercises?.forEach((ex: any) => { if (ex.coach_note) hasSessionFeedback = true; }); });
+          }
+
+          return (
+            <TouchableOpacity style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.7 : 1 }]} onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}>
+              <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
+                <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
+                {/* ETIQUETA NUEVA DE FEEDBACK */}
+                {hasSessionFeedback && (
+                  <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}>
+                    <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text>
+                  </View>
+                )}
+              </View>
+              <Ionicons name="play" size={18} color={item.completed ? colors.border : colors.primary} />
+            </TouchableOpacity>
+          );
+        }}
       />
     );
   };
@@ -360,7 +376,6 @@ export default function HomeScreen() {
             
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Deporte (Ej: Kitesurf freestyle)" placeholderTextColor="#888" value={athleteForm.sport} onChangeText={t => setAthleteForm({...athleteForm, sport: t})} />
 
-            {/* NUEVO CAMPO: TELÉFONO */}
             <TextInput 
               style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} 
               placeholder="Número de teléfono (Ej: +34 600...)" 
