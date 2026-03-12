@@ -27,20 +27,11 @@ const CYCLE_LABELS: any = {
   lutea: 'Fase Lútea (Posible Fatiga)'
 };
 
-// --- COMPONENTE AYUDANTE: MINI REPRODUCTOR (EFECTO GIF) ---
 const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
   return (
     <View style={styles.miniVideoContainer}>
-      <Video
-        source={{ uri: url }}
-        style={styles.miniVideo}
-        resizeMode={ResizeMode.CONTAIN} 
-        shouldPlay
-        isLooping
-        isMuted
-        playsInLine
-      />
+      <Video source={{ uri: url }} style={styles.miniVideo} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted playsInLine />
       <TouchableOpacity style={styles.expandBtn} onPress={() => onExpand(url)}>
         <Ionicons name="expand" size={16} color="#FFF" />
       </TouchableOpacity>
@@ -62,13 +53,13 @@ export default function AthleteDetailScreen() {
   const [loading, setLoading] = useState(true);
 
   const [expandedWorkouts, setExpandedWorkouts] = useState<Record<string, boolean>>({});
-
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [workoutToDuplicate, setWorkoutToDuplicate] = useState<any>(null);
   const [duplicateDate, setDuplicateDate] = useState(new Date().toISOString().split('T')[0]);
-
-  // Estado para el modal de vídeo a pantalla completa
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
+
+  // NUEVO: Estado para controlar los textos de feedback antes de guardarlos
+  const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
 
   useEffect(() => { loadData(); }, []);
 
@@ -91,17 +82,11 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  const toggleWorkout = (id: string) => {
-    setExpandedWorkouts(prev => ({ ...prev, [id]: !prev[id] }));
-  };
+  const toggleWorkout = (id: string) => setExpandedWorkouts(prev => ({ ...prev, [id]: !prev[id] }));
 
   const executeDeleteWorkout = async (id: string) => {
-    try {
-      await api.deleteWorkout(id);
-      loadData();
-    } catch (e) {
-      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar la sesión.");
-    }
+    try { await api.deleteWorkout(id); loadData(); } 
+    catch (e) { if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar la sesión."); }
   };
 
   const handleDeleteWorkout = (id: string, title: string) => {
@@ -110,57 +95,42 @@ export default function AthleteDetailScreen() {
       if (isConfirmed) executeDeleteWorkout(id);
     } else {
       Alert.alert("Eliminar Sesión", `¿Seguro que quieres borrar "${title}"?`, [
-        { text: "Cancelar", style: "cancel" },
-        { text: "ELIMINAR", style: "destructive", onPress: () => executeDeleteWorkout(id) }
+        { text: "Cancelar", style: "cancel" }, { text: "ELIMINAR", style: "destructive", onPress: () => executeDeleteWorkout(id) }
       ]);
     }
   };
 
   const handleDuplicateWorkout = async () => {
     if (!workoutToDuplicate || !duplicateDate) return;
-    setShowDuplicateModal(false);
-    setLoading(true);
-    
+    setShowDuplicateModal(false); setLoading(true);
     try {
       const cleanExercises = (workoutToDuplicate.exercises || []).map((ex: any) => ({
-        name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight, 
-        rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes, image_path: ex.image_path
+        name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight, rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes, image_path: ex.image_path
       }));
-
-      const payload = {
-        title: workoutToDuplicate.title,
-        date: duplicateDate,
-        notes: workoutToDuplicate.notes || '',
-        athlete_id: params.id!,
-        microciclo_id: workoutToDuplicate.microciclo_id || null,
-        exercises: cleanExercises
-      };
-
+      const payload = { title: workoutToDuplicate.title, date: duplicateDate, notes: workoutToDuplicate.notes || '', athlete_id: params.id!, microciclo_id: workoutToDuplicate.microciclo_id || null, exercises: cleanExercises };
       await api.createWorkout(payload);
       if (Platform.OS !== 'web') Alert.alert("Éxito", `Sesión duplicada para el ${duplicateDate}`);
       loadData();
     } catch (e) {
-      console.log("Error duplicando:", e);
       if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo duplicar la sesión.");
       setLoading(false);
     }
   };
 
+  // CORREGIDO: Guarda y actualiza la UI localmente al instante
   const saveCoachNote = async (workout: any, exerciseIndex: number, noteText: string) => {
     try {
       const payload = {
-        title: workout.title, date: workout.date, notes: workout.notes,
-        athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
-        exercises: workout.exercises, completed: workout.completed,
+        title: workout.title, date: workout.date, notes: workout.notes, athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
+        exercises: workout.exercises, completed: workout.completed, observations: workout.observations,
         completion_data: {
           ...workout.completion_data,
-          exercise_results: workout.completion_data.exercise_results.map((ex: any, i: number) => 
-            i === exerciseIndex ? { ...ex, coach_note: noteText } : ex
-          )
-        },
-        observations: workout.observations
+          exercise_results: workout.completion_data.exercise_results.map((ex: any, i: number) => i === exerciseIndex ? { ...ex, coach_note: noteText } : ex)
+        }
       };
       await api.updateWorkout(workout.id, payload);
+      setWorkouts(prev => prev.map(w => w.id === workout.id ? payload : w));
+      if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
     } catch (e) { console.log("Error guardando la nota del coach:", e); }
   };
 
@@ -168,28 +138,21 @@ export default function AthleteDetailScreen() {
     try {
       const updatedHiitResults = [...workout.completion_data.hiit_results];
       updatedHiitResults[blockIndex].hiit_exercises[exIndex].coach_note = noteText;
-
       const payload = {
-        title: workout.title, date: workout.date, notes: workout.notes,
-        athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
-        exercises: workout.exercises, completed: workout.completed,
-        completion_data: {
-          ...workout.completion_data,
-          hiit_results: updatedHiitResults
-        },
-        observations: workout.observations
+        title: workout.title, date: workout.date, notes: workout.notes, athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
+        exercises: workout.exercises, completed: workout.completed, observations: workout.observations,
+        completion_data: { ...workout.completion_data, hiit_results: updatedHiitResults }
       };
       await api.updateWorkout(workout.id, payload);
+      setWorkouts(prev => prev.map(w => w.id === workout.id ? payload : w));
+      if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
     } catch (e) { console.log("Error guardando la nota del coach en HIIT:", e); }
   };
 
   const getLevelColor = (val: number, inverse = false) => {
     if (!val) return colors.border;
-    if (!inverse) { 
-      if (val <= 2) return colors.success || '#10B981'; if (val === 3) return '#F59E0B'; return colors.error || '#EF4444';
-    } else { 
-      if (val >= 4) return colors.success || '#10B981'; if (val === 3) return '#F59E0B'; return colors.error || '#EF4444';
-    }
+    if (!inverse) { if (val <= 2) return colors.success || '#10B981'; if (val === 3) return '#F59E0B'; return colors.error || '#EF4444'; } 
+    else { if (val >= 4) return colors.success || '#10B981'; if (val === 3) return '#F59E0B'; return colors.error || '#EF4444'; }
   };
 
   const isFemale = ['female', 'mujer', 'femenino'].includes(athlete?.gender?.toLowerCase() || '');
@@ -207,7 +170,6 @@ export default function AthleteDetailScreen() {
           </View>
         </View>
       )}
-
       {isFemale && currentPhase && (
         <View style={[styles.cycleCard, { backgroundColor: CYCLE_COLORS[currentPhase] + '15', borderColor: CYCLE_COLORS[currentPhase] }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
@@ -219,7 +181,6 @@ export default function AthleteDetailScreen() {
           </View>
         </View>
       )}
-
       <Text style={[styles.sectionTitle, { marginTop: (isFemale && currentPhase) ? 10 : 0 }]}>EVOLUCIÓN SEMANAL (FATIGA)</Text>
       <View style={[styles.chartCard, { backgroundColor: colors.surface }]}>
         <View style={styles.barsContainer}>
@@ -231,7 +192,6 @@ export default function AthleteDetailScreen() {
           )) : <Text style={{color: colors.textSecondary, fontSize: 12}}>Esperando datos...</Text>}
         </View>
       </View>
-
       <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
       <View style={[styles.mainCard, { backgroundColor: colors.surface }]}>
         <View style={styles.wellnessRow}>
@@ -243,7 +203,6 @@ export default function AthleteDetailScreen() {
           <View style={[styles.noteBox, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} /><Text style={[styles.noteText, { color: colors.textPrimary }]}>"{summary.latest_wellness.notes}"</Text></View>
         )}
       </View>
-
       <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary, marginTop: 25 }]} onPress={() => router.push(`/periodization?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}>
         <Ionicons name="calendar" size={20} color="#FFF" />
         <Text style={styles.actionBtnText}>PLANIFICACIÓN (MACRO/MICRO)</Text>
@@ -263,34 +222,17 @@ export default function AthleteDetailScreen() {
 
       {workouts.length > 0 ? workouts.map((wk) => (
         <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface }]}>
-          
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity 
-              style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
-              onPress={() => wk.completed && toggleWorkout(wk.id)}
-              activeOpacity={wk.completed ? 0.6 : 1}
-            >
+            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }} onPress={() => wk.completed && toggleWorkout(wk.id)} activeOpacity={wk.completed ? 0.6 : 1}>
               <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
                 <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>
-                  {wk.title}
-                </Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
-                  {wk.date} • {wk.completed ? 'Completado' : 'Pendiente'}
-                </Text>
+                <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>{wk.title}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{wk.date} • {wk.completed ? 'Completado' : 'Pendiente'}</Text>
               </View>
-              {wk.completed && (
-                <Ionicons 
-                  name={expandedWorkouts[wk.id] ? "chevron-up" : "chevron-down"} 
-                  size={20} 
-                  color={colors.textSecondary} 
-                  style={{ marginRight: 10 }} 
-                />
-              )}
+              {wk.completed && <Ionicons name={expandedWorkouts[wk.id] ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} style={{ marginRight: 10 }} />}
             </TouchableOpacity>
-            
             <View style={{ flexDirection: 'row', gap: 5 }}>
               <TouchableOpacity style={styles.iconHitbox} onPress={() => { setWorkoutToDuplicate(wk); setDuplicateDate(new Date().toISOString().split('T')[0]); setShowDuplicateModal(true); }}>
                 <Ionicons name="copy-outline" size={20} color={colors.primary} />
@@ -306,51 +248,43 @@ export default function AthleteDetailScreen() {
 
           {wk.completed && wk.completion_data && expandedWorkouts[wk.id] && (
             <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
                 <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
                   ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
                 </Text>
               </View>
               
-              {/* VISTA FUERZA / TÉCNICA (NUEVO DISEÑO LIMPIO) */}
               {wk.completion_data.exercise_results && wk.completion_data.exercise_results.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
                   <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 10 }}>TÉCNICA Y EJERCICIOS:</Text>
-                  
                   {wk.completion_data.exercise_results.map((ex: any, idx: number) => {
-                    // Extraemos lo planificado del array original de exercises si existe
                     const plannedEx = wk.exercises && wk.exercises[idx] ? wk.exercises[idx] : null;
                     const planText = plannedEx && plannedEx.sets ? `${plannedEx.sets}x${plannedEx.reps}` : 'Libre';
+                    const noteKey = `${wk.id}-force-${idx}`;
+                    const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
+                    const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
 
                     return (
                       <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
-                        
                         <View style={styles.exerciseHeader}>
                           <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
-                          <View style={[styles.planBadge, { backgroundColor: colors.primary + '15' }]}>
-                            <Text style={[styles.planText, { color: colors.primary }]}>{planText}</Text>
-                          </View>
+                          <View style={[styles.planBadge, { backgroundColor: colors.primary + '15' }]}><Text style={[styles.planText, { color: colors.primary }]}>{planText}</Text></View>
                         </View>
-                        
-                        {ex.recorded_video_url && (
-                          <View style={{ marginBottom: 10 }}>
-                            <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
-                          </View>
-                        )}
+                        {ex.recorded_video_url && <View style={{ marginBottom: 10 }}><MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} /></View>}
 
-                        {user?.role === 'trainer' && (
+                        {isTrainer && (
                           <View style={styles.feedbackRow}>
                             <TextInput 
                                style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
-                               placeholder="Añadir feedback..." 
-                               placeholderTextColor={colors.textSecondary} 
-                               defaultValue={ex.coach_note || ''} 
-                               onEndEditing={(e) => saveCoachNote(wk, idx, e.nativeEvent.text)}
+                               placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} 
+                               value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))}
                             />
-                            <View style={[styles.sendBtn, { backgroundColor: ex.coach_note ? (colors.success || '#10B981') : colors.primary }]}>
-                              <Ionicons name={ex.coach_note ? "checkmark-done" : "send"} size={16} color="#FFF" />
-                            </View>
+                            <TouchableOpacity 
+                               style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]}
+                               onPress={() => saveCoachNote(wk, idx, currentNote)}
+                            >
+                              <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
+                            </TouchableOpacity>
                           </View>
                         )}
                       </View>
@@ -359,46 +293,43 @@ export default function AthleteDetailScreen() {
                 </View>
               )}
 
-              {/* VISTA CIRCUITO HIIT (NUEVO DISEÑO LIMPIO) */}
               {wk.completion_data.hiit_results && wk.completion_data.hiit_results.length > 0 && (
                 <View style={{ marginBottom: 10 }}>
                   <Text style={{ color: colors.textSecondary, fontSize: 10, fontWeight: '800', marginBottom: 10 }}>RESUMEN DE CIRCUITO:</Text>
-                  
                   {wk.completion_data.hiit_results.map((block: any, bIdx: number) => (
                     <View key={bIdx} style={{ marginBottom: 15 }}>
                       <Text style={{ color: colors.error || '#EF4444', fontSize: 13, fontWeight: '800', marginBottom: 8, letterSpacing: 1 }}>{block.name.toUpperCase()}</Text>
-                      
-                      {block.hiit_exercises.map((ex: any, eIdx: number) => (
-                        <View key={eIdx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
-                          <View style={styles.exerciseHeader}>
-                            <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
-                            <View style={[styles.planBadge, { backgroundColor: colors.primary + '15' }]}>
-                              <Text style={[styles.planText, { color: colors.primary }]}>{ex.duration_reps}</Text>
-                            </View>
-                          </View>
-                          
-                          {ex.recorded_video_url && (
-                            <View style={{ marginBottom: 10 }}>
-                              <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
-                            </View>
-                          )}
+                      {block.hiit_exercises.map((ex: any, eIdx: number) => {
+                        const noteKey = `${wk.id}-hiit-${bIdx}-${eIdx}`;
+                        const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
+                        const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
 
-                          {user?.role === 'trainer' && (
-                            <View style={styles.feedbackRow}>
-                              <TextInput 
-                                style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
-                                placeholder="Añadir feedback..." 
-                                placeholderTextColor={colors.textSecondary} 
-                                defaultValue={ex.coach_note || ''} 
-                                onEndEditing={(e) => saveHiitCoachNote(wk, bIdx, eIdx, e.nativeEvent.text)}
-                              />
-                              <View style={[styles.sendBtn, { backgroundColor: ex.coach_note ? (colors.success || '#10B981') : colors.primary }]}>
-                                <Ionicons name={ex.coach_note ? "checkmark-done" : "send"} size={16} color="#FFF" />
-                              </View>
+                        return (
+                          <View key={eIdx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+                            <View style={styles.exerciseHeader}>
+                              <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
+                              <View style={[styles.planBadge, { backgroundColor: colors.primary + '15' }]}><Text style={[styles.planText, { color: colors.primary }]}>{ex.duration_reps}</Text></View>
                             </View>
-                          )}
-                        </View>
-                      ))}
+                            {ex.recorded_video_url && <View style={{ marginBottom: 10 }}><MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} /></View>}
+
+                            {isTrainer && (
+                              <View style={styles.feedbackRow}>
+                                <TextInput 
+                                  style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
+                                  placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} 
+                                  value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))}
+                                />
+                                <TouchableOpacity 
+                                  style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]}
+                                  onPress={() => saveHiitCoachNote(wk, bIdx, eIdx, currentNote)}
+                                >
+                                  <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
                     </View>
                   ))}
                 </View>
@@ -425,17 +356,10 @@ export default function AthleteDetailScreen() {
     const progressionData = completed.map(wk => {
       let totalVolume = 0;
       if (wk.completion_data?.exercise_results) {
-        wk.completion_data.exercise_results.forEach((ex: any) => {
-          totalVolume += ((parseFloat(ex.logged_weight) || 0) * (parseInt(ex.logged_reps) || 0) * (parseInt(ex.completed_sets) || 0));
-        });
+        wk.completion_data.exercise_results.forEach((ex: any) => { totalVolume += ((parseFloat(ex.logged_weight) || 0) * (parseInt(ex.logged_reps) || 0) * (parseInt(ex.completed_sets) || 0)); });
       }
-      return { 
-        date: wk.date.split('-').slice(1).reverse().join('/'), 
-        volume: totalVolume, 
-        rpe: wk.completion_data?.rpe || 0 
-      };
+      return { date: wk.date.split('-').slice(1).reverse().join('/'), volume: totalVolume, rpe: wk.completion_data?.rpe || 0 };
     }).slice(-7);
-
     const maxVolume = Math.max(...progressionData.map(d => d.volume), 100);
 
     return (
@@ -452,7 +376,7 @@ export default function AthleteDetailScreen() {
                 </View>
               ))}
             </View>
-          ) : <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 20 }}>Completa sesiones con pesos registrados para ver la evolución.</Text>}
+          ) : <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 20 }}>Completa sesiones para ver evolución.</Text>}
         </View>
 
         <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ESFUERZO PERCIBIDO (RPE)</Text>
@@ -460,19 +384,11 @@ export default function AthleteDetailScreen() {
           {progressionData.length > 0 ? (
             <View style={styles.barsContainer}>
               {progressionData.map((data, idx) => {
-                let rpeColor = '#10B981'; 
-                if (!data.rpe || data.rpe === 0) rpeColor = colors.border || '#D1D5DB'; 
-                else if (data.rpe >= 8) rpeColor = '#EF4444'; 
-                else if (data.rpe >= 5) rpeColor = '#F59E0B'; 
-
-                const barHeight = data.rpe > 0 ? `${(data.rpe / 10) * 100}%` : '5%';
-
+                let rpeColor = '#10B981'; if (!data.rpe || data.rpe === 0) rpeColor = colors.border || '#D1D5DB'; else if (data.rpe >= 8) rpeColor = '#EF4444'; else if (data.rpe >= 5) rpeColor = '#F59E0B'; 
                 return (
                   <View key={idx} style={[styles.barWrapper, { justifyContent: 'flex-end', height: '100%' }]}>
-                    <Text style={[styles.barValue, { color: data.rpe > 0 ? rpeColor : colors.textSecondary }]}>
-                      {data.rpe > 0 ? data.rpe : '-'}
-                    </Text>
-                    <View style={[styles.bar, styles.progressionBar, { height: barHeight, backgroundColor: rpeColor }]} />
+                    <Text style={[styles.barValue, { color: data.rpe > 0 ? rpeColor : colors.textSecondary }]}>{data.rpe > 0 ? data.rpe : '-'}</Text>
+                    <View style={[styles.bar, styles.progressionBar, { height: data.rpe > 0 ? `${(data.rpe / 10) * 100}%` : '5%', backgroundColor: rpeColor }]} />
                     <Text style={styles.barDate}>{data.date}</Text>
                   </View>
                 );
@@ -486,13 +402,7 @@ export default function AthleteDetailScreen() {
 
   const activeContent = () => { if (activeTab === 'dashboard') return renderDashboard(); if (activeTab === 'workouts') return renderWorkouts(); if (activeTab === 'progression') return renderProgression(); };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}>
-        <ActivityIndicator size="large" color={colors.primary}/>
-      </SafeAreaView>
-    );
-  }
+  if (loading) return <SafeAreaView style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}><ActivityIndicator size="large" color={colors.primary}/></SafeAreaView>;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -512,21 +422,17 @@ export default function AthleteDetailScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false}>{activeContent()}</ScrollView>
 
-      {/* BOTÓN FLOTANTE WHATSAPP */}
-      {isTrainer && athlete?.phone ? (
-        <TouchableOpacity 
-          style={styles.whatsappFab} 
-          onPress={() => Linking.openURL(`https://wa.me/${athlete.phone.replace(/\D/g, '')}`)}
-        >
+      {isTrainer && athlete?.phone && (
+        <TouchableOpacity style={styles.whatsappFab} onPress={() => Linking.openURL(`https://wa.me/${athlete.phone.replace(/\D/g, '')}`)}>
           <Ionicons name="logo-whatsapp" size={28} color="#FFF" />
         </TouchableOpacity>
-      ) : null}
+      )}
 
       <Modal visible={showDuplicateModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Duplicar Sesión</Text>
-            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 13 }}>Se creará una copia de "{workoutToDuplicate?.title}" en blanco y lista para entrenar.</Text>
+            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 13 }}>Se creará una copia de "{workoutToDuplicate?.title}".</Text>
             <Text style={[styles.label, { color: colors.textSecondary }]}>NUEVA FECHA</Text>
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} value={duplicateDate} onChangeText={setDuplicateDate} placeholder="YYYY-MM-DD" />
             <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
@@ -537,124 +443,19 @@ export default function AthleteDetailScreen() {
         </View>
       </Modal>
 
-      {/* MODAL DEL REPRODUCTOR A PANTALLA COMPLETA */}
       <Modal visible={!!expandedVideo} transparent animationType="fade">
         <View style={styles.fullscreenVideoOverlay}>
           <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}>
             <Ionicons name="close-circle" size={40} color="#FFF" />
           </TouchableOpacity>
-          {expandedVideo && (
-            <Video
-              source={{ uri: expandedVideo }}
-              style={styles.fullVideo}
-              resizeMode={ResizeMode.CONTAIN}
-              useNativeControls
-              shouldPlay
-            />
-          )}
+          {expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
         </View>
       </Modal>
-
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 }, 
-  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, 
-  headerTitle: { fontSize: 22, fontWeight: '900' }, 
-  tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, 
-  tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, 
-  tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, 
-  tabContainer: { padding: 20, paddingBottom: 100 }, 
-  alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, 
-  cycleCard: { padding: 16, borderRadius: 20, marginBottom: 25, borderWidth: 1 }, 
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, 
-  chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 }, 
-  barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, 
-  barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, 
-  bar: { width: 16, borderRadius: 8, minHeight: 5 }, 
-  barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, 
-  barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, 
-  mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, 
-  wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, 
-  wellBox: { alignItems: 'center' }, 
-  wellVal: { fontSize: 26, fontWeight: '900' }, 
-  wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, 
-  noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, 
-  noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, 
-  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, 
-  actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 },
-  sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, 
-  iconHitbox: { padding: 8 }, 
-  completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 },
-  avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, 
-  cardTitle: { fontSize: 15, fontWeight: '800' }, 
-  progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 }, 
-  progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, 
-  modalContent: { padding: 24, borderRadius: 20 }, 
-  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, 
-  modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, 
-  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, 
-  label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
-  miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' },
-  miniVideo: { width: '100%', height: '100%' },
-  expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 },
-  fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
-  closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
-  fullVideo: { width: '100%', height: '80%' },
-  whatsappFab: {
-    position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30,
-    backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center',
-    elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3,
-  },
-  
-  // NUEVOS ESTILOS PARA LAS TARJETAS DE EJERCICIOS
-  exerciseCard: {
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 10
-  },
-  exerciseHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10
-  },
-  exerciseName: {
-    fontSize: 14,
-    fontWeight: '800'
-  },
-  planBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8
-  },
-  planText: {
-    fontSize: 11,
-    fontWeight: '900'
-  },
-  feedbackRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    marginTop: 5
-  },
-  feedbackInput: {
-    flex: 1,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderRadius: 10,
-    borderWidth: 1,
-    fontSize: 13
-  },
-  sendBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center'
-  }
+  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 100 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 25, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2, marginBottom: 10 }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }, sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 }, progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 }, miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }, fullVideo: { width: '100%', height: '80%' }, whatsappFab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3 },
+  exerciseCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 }, exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, exerciseName: { fontSize: 14, fontWeight: '800' }, planBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }, planText: { fontSize: 11, fontWeight: '900' }, feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, feedbackInput: { flex: 1, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 10, borderWidth: 1, fontSize: 13 }, sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }
 });
