@@ -52,7 +52,6 @@ export default function TestsScreen() {
   const [editTest, setEditTest] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
-  // Estados para el formulario (Sirven para crear nuevo o editar)
   const [formData, setFormData] = useState({
     name: '',
     category: 'strength',
@@ -130,6 +129,7 @@ export default function TestsScreen() {
       valueRight: String(test.value_right ?? ''),
       notes: test.notes || ''
     });
+    setShowCustomModal(true);
   };
 
   const handleSave = async () => {
@@ -183,27 +183,31 @@ export default function TestsScreen() {
           <View style={{ marginBottom: 16 }}>
             <View style={styles.headerRow}>
               <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Tests Físicos</Text>
-              <View style={styles.headerActions}>
-                <TouchableOpacity onPress={onRefresh} style={styles.refreshBtn}>
-                   <Ionicons name="sync-outline" size={24} color={colors.primary} />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.actionBtn, { backgroundColor: colors.accent + '20' }]} 
-                  onPress={() => setShowCategoryModal(true)}
-                >
-                  <Ionicons name="pricetags" size={20} color={colors.accent} />
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.actionBtn, { backgroundColor: colors.primary }]} 
-                  onPress={() => {
-                    setEditTest(null);
-                    setFormData({ name: '', category: 'strength', isBilateral: false, unit: '', value: '', valueLeft: '', valueRight: '', notes: '' });
-                    setShowCustomModal(true);
-                  }} 
-                >
-                  <Ionicons name="add" size={24} color="#FFF" />
-                </TouchableOpacity>
-              </View>
+              
+              {/* SOLO PARA EL ENTRENADOR */}
+              {isTrainer && (
+                <View style={styles.headerActions}>
+                  <TouchableOpacity onPress={onRefresh} style={styles.refreshBtn}>
+                    <Ionicons name="sync-outline" size={24} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border, borderWidth: 1 }]} 
+                    onPress={() => setShowCategoryModal(true)}
+                  >
+                    <Ionicons name="pricetags" size={20} color={colors.accent} />
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.actionBtn, { backgroundColor: colors.primary }]} 
+                    onPress={() => {
+                      setEditTest(null);
+                      setFormData({ name: '', category: 'strength', isBilateral: false, unit: '', value: '', valueLeft: '', valueRight: '', notes: '' });
+                      setShowCustomModal(true);
+                    }} 
+                  >
+                    <Ionicons name="add" size={24} color="#FFF" />
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
@@ -241,14 +245,18 @@ export default function TestsScreen() {
                   {dynamicCategories.find(c => c.key === item.test_type)?.label || item.test_type?.toUpperCase()}
                 </Text>
               </View>
-              <View style={{ flexDirection: 'row', gap: 15 }}>
-                <TouchableOpacity onPress={() => openEditModal(item)}>
-                  <Ionicons name="create-outline" size={20} color={colors.primary} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => deleteTest(item.id, item.custom_name || item.test_name)}>
-                  <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
-                </TouchableOpacity>
-              </View>
+              
+              {/* ACCIONES SOLO PARA ENTRENADOR */}
+              {isTrainer && (
+                <View style={{ flexDirection: 'row', gap: 15 }}>
+                  <TouchableOpacity onPress={() => openEditModal(item)}>
+                    <Ionicons name="create-outline" size={20} color={colors.primary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => deleteTest(item.id, item.custom_name || item.test_name)}>
+                    <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
 
             <Text style={[styles.testName, { color: colors.textPrimary }]}>
@@ -281,10 +289,10 @@ export default function TestsScreen() {
         )}
       />
 
-      {/* MODAL CATEGORÍAS */}
+      {/* MODALES SE MANTIENEN IGUAL PERO CON MEJOR CONTRASTE */}
       <Modal visible={showCategoryModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+          <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nueva Categoría</Text>
             <TextInput 
               style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
@@ -299,11 +307,10 @@ export default function TestsScreen() {
         </View>
       </Modal>
 
-      {/* MODAL TEST PERSONALIZADO / EDICIÓN */}
-      <Modal visible={showCustomModal || !!editTest} transparent animationType="slide">
+      <Modal visible={showCustomModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior="padding" style={{ width: '100%' }}>
-            <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+            <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
               <ScrollView showsVerticalScrollIndicator={false}>
                 <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editTest ? 'Editar Test' : 'Nuevo Test'}</Text>
                 
