@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
@@ -24,12 +25,6 @@ const TEST_TRANSLATIONS: Record<string, string> = {
   tibialis: 'Tibial'
 };
 
-const CATEGORY_COLORS: Record<string, string> = {
-  'FUERZA MÁXIMA': '#EF4444', 
-  'PLIOMETRÍA': '#F59E0B',    
-  'FUERZA': '#10B981',        
-};
-
 // Limpieza básica de nombres
 const normalizeName = (name: string) => {
   if (!name) return "";
@@ -42,9 +37,10 @@ const normalizeName = (name: string) => {
 export default function AnalyticsScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const params = useLocalSearchParams();
   const isTrainer = user?.role === 'trainer';
 
-  const [activeTab, setActiveTab] = useState<'summary' | 'progress'>('summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState<any>(null);
@@ -61,7 +57,7 @@ export default function AnalyticsScreen() {
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [exercisesToMerge, setExercisesToMerge] = useState<string[]>([]);
   const [mergeTargetName, setMergeTargetName] = useState('');
-  const [localAliases, setLocalAliases] = useState<Record<string, string>>({}); // Guarda qué nombre equivale a qué
+  const [localAliases, setLocalAliases] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const init = async () => {
@@ -97,7 +93,7 @@ export default function AnalyticsScreen() {
   const handleSelectAthlete = (athlete: any) => {
     setSelectedAthlete(athlete);
     setShowPicker(false);
-    setLocalAliases({}); // Reseteamos alias al cambiar de atleta
+    setLocalAliases({});
     loadAthleteData(athlete.id);
   };
 
@@ -106,13 +102,10 @@ export default function AnalyticsScreen() {
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
 
-  // Lógica de unificación
   const handleMerge = () => {
     if (exercisesToMerge.length < 2 || !mergeTargetName.trim()) return;
     const newAliases = { ...localAliases };
-    exercisesToMerge.forEach(ex => {
-      newAliases[ex] = mergeTargetName.trim();
-    });
+    exercisesToMerge.forEach(ex => { newAliases[ex] = mergeTargetName.trim(); });
     setLocalAliases(newAliases);
     setShowMergeModal(false);
     setExercisesToMerge([]);
@@ -123,36 +116,24 @@ export default function AnalyticsScreen() {
     setExercisesToMerge(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
   };
 
-  // Procesamos la evolución aplicando los alias locales
   const getCleanProgression = () => {
     const exercises: Record<string, any> = {};
-
     workoutHistory.forEach(w => {
       w.completion_data?.exercise_results?.forEach((r: any) => {
         if (r.completed_sets > 0 && r.name) {
           let rawName = r.name.trim();
-          // Aplicamos el alias manual si existe
-          if (localAliases[rawName]) {
-            rawName = localAliases[rawName];
-          }
-
+          if (localAliases[rawName]) rawName = localAliases[rawName];
           const normKey = normalizeName(rawName);
           const weight = parseFloat(r.logged_weight) || 0;
-          const reps = parseInt(r.logged_reps) || 0;
-
-          if (!exercises[normKey]) {
-            exercises[normKey] = { name: rawName, history: [], maxW: 0 };
-          }
-          exercises[normKey].history.push({ date: w.date, weight, reps });
+          if (!exercises[normKey]) exercises[normKey] = { name: rawName, history: [], maxW: 0 };
+          exercises[normKey].history.push({ date: w.date, weight, reps: parseInt(r.logged_reps) || 0 });
           if (weight > exercises[normKey].maxW) exercises[normKey].maxW = weight;
         }
       });
     });
-
     return Object.values(exercises).sort((a: any, b: any) => a.name.localeCompare(b.name));
   };
 
-  // Extraemos solo los nombres únicos para el modal de unificar
   const getUniqueRawExerciseNames = () => {
     const names = new Set<string>();
     workoutHistory.forEach(w => {
@@ -182,7 +163,7 @@ export default function AnalyticsScreen() {
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartScrollArea}>
           {data.map((h, i) => {
-            const heightPct = ((h.weight - minW) / range) * 75 + 15; // Altura mínima garantizada
+            const heightPct = ((h.weight - minW) / range) * 75 + 15;
             return (
               <View key={i} style={styles.chartCol}>
                 <View style={styles.chartBarArea}>
@@ -204,7 +185,6 @@ export default function AnalyticsScreen() {
     const valL = parseFloat(test.value_left);
     const valR = parseFloat(test.value_right);
     const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
-    
     let asymmetry = 0;
     if (hasSides) {
       const maxVal = Math.max(valL, valR);
@@ -239,12 +219,45 @@ export default function AnalyticsScreen() {
     );
   };
 
+  // --- RENDERIZADO DE LA NUEVA PESTAÑA FEEDBACK ---
+  const renderFeedbackTab = () => {
+    const feedbacks: any[] = [];
+    workoutHistory.forEach(w => {
+      w.completion_data?.exercise_results?.forEach((ex: any) => {
+        if (ex.coach_note) feedbacks.push({ date: w.date, title: w.title, exercise: ex.name, note: ex.coach_note });
+      });
+      w.completion_data?.hiit_results?.forEach((block: any) => {
+        block.hiit_exercises?.forEach((ex: any) => {
+          if (ex.coach_note) feedbacks.push({ date: w.date, title: w.title, exercise: ex.name, note: ex.coach_note });
+        });
+      });
+    });
+
+    if (feedbacks.length === 0) return <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40 }}>Aún no hay correcciones del coach registradas.</Text>;
+
+    return (
+      <View style={{ paddingBottom: 100 }}>
+        {feedbacks.reverse().map((fb, i) => (
+          <View key={i} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: (colors.warning || '#F59E0B') + '40' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 8 }}>
+              <Ionicons name="chatbubble-ellipses" size={20} color={colors.warning || '#F59E0B'} />
+              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{fb.date} • {fb.title}</Text>
+            </View>
+            <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800', marginBottom: 8 }}>{fb.exercise}</Text>
+            <View style={{ backgroundColor: (colors.warning || '#F59E0B') + '15', padding: 12, borderRadius: 10 }}>
+              <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic', lineHeight: 20 }}>"{fb.note}"</Text>
+            </View>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
   const cleanProgression = getCleanProgression();
   const rawExerciseNames = getUniqueRawExerciseNames();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* HEADER CON BOTÓN ACTUALIZAR */}
       <View style={styles.header}>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Rendimiento'}</Text>
         <View style={styles.headerActions}>
@@ -262,6 +275,7 @@ export default function AnalyticsScreen() {
       <View style={[styles.tabsRow, { backgroundColor: colors.surfaceHighlight }]}>
         <TouchableOpacity style={[styles.tabBtn, activeTab === 'summary' && { backgroundColor: colors.primary }]} onPress={() => setActiveTab('summary')}><Text style={{ color: activeTab === 'summary' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Tests</Text></TouchableOpacity>
         <TouchableOpacity style={[styles.tabBtn, activeTab === 'progress' && { backgroundColor: colors.primary }]} onPress={() => setActiveTab('progress')}><Text style={{ color: activeTab === 'progress' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Evolución</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.tabBtn, activeTab === 'feedback' && { backgroundColor: colors.warning || '#F59E0B' }]} onPress={() => setActiveTab('feedback')}><Text style={{ color: activeTab === 'feedback' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Feedback</Text></TouchableOpacity>
       </View>
 
       {activeTab === 'progress' && cleanProgression.length > 0 && (
@@ -278,7 +292,7 @@ export default function AnalyticsScreen() {
           <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/>
         ) : activeTab === 'summary' ? (
           testHistory.length > 0 ? testHistory.map(renderTestCard) : <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40 }}>Sin tests registrados.</Text>
-        ) : (
+        ) : activeTab === 'progress' ? (
           cleanProgression.length > 0 ? (
             cleanProgression.map((item, i) => (
               <View key={i} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -297,6 +311,8 @@ export default function AnalyticsScreen() {
               </View>
             ))
           ) : <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40 }}>Completa entrenamientos para ver tu evolución.</Text>
+        ) : (
+          renderFeedbackTab()
         )}
       </ScrollView>
 
@@ -392,7 +408,7 @@ const styles = StyleSheet.create({
   progHeader: { flexDirection: 'row', padding: 20, alignItems: 'center' },
   progName: { fontSize: 17, fontWeight: '800', marginBottom: 4 },
   
-  chartWrapper: { padding: 20, borderTopWidth: 1, height: 220 }, // Altura fija para el contenedor general del gráfico
+  chartWrapper: { padding: 20, borderTopWidth: 1, height: 220 },
   chartContainer: { flexDirection: 'row', height: '100%' },
   yAxis: { width: 45, justifyContent: 'space-between', paddingRight: 8, borderRightWidth: 1, paddingBottom: 25 }, 
   axisText: { fontSize: 10, fontWeight: '700', textAlign: 'right' },
@@ -407,5 +423,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25 },
   athleteItem: { paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  closeBtn: { marginTop: 20, backgroundColor: '#000', padding: 15, borderRadius: 12, alignItems: 'center' }
+  closeBtn: { marginTop: 20, backgroundColor: '#000', padding: 15, borderRadius: 12, alignItems: 'center' },
+  
+  feedbackCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 }
 });
