@@ -14,6 +14,9 @@ from pathlib import Path
 from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
+import shutil
+from fastapi import Request
+from fastapi.staticfiles import StaticFiles
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -31,6 +34,14 @@ JWT_EXPIRATION_HOURS = 72
 
 security = HTTPBearer()
 app = FastAPI()
+
+security = HTTPBearer()
+app = FastAPI()
+
+# --- CONFIGURACIÓN CARPETA DE VÍDEOS ---
+UPLOAD_DIR = ROOT_DIR / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 @app.get("/ping")
 async def ping():
@@ -495,6 +506,29 @@ async def delete_test(test_id: str, user=Depends(get_current_user)):
         
     await db.tests.delete_one({"id": test_id})
     return {"status": "success"}
+
+# --- SUBIDA DE ARCHIVOS ---
+@api_router.post("/upload")
+async def upload_file(request: Request, file: UploadFile = File(...), user=Depends(get_current_user)):
+    try:
+        # Extraemos la extensión original (ej. mp4) y creamos un nombre seguro
+        file_extension = file.filename.split(".")[-1]
+        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        file_path = UPLOAD_DIR / unique_filename
+
+        # Guardamos el archivo físicamente en el servidor
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Generamos la URL pública que devolveremos a la app
+        base_url = str(request.base_url).rstrip("/")
+        file_url = f"{base_url}/uploads/{unique_filename}"
+
+        return {"url": file_url}
+        
+    except Exception as e:
+        logger.error(f"Error subiendo archivo: {str(e)}")
+        raise HTTPException(status_code=500, detail="Fallo interno al procesar el vídeo")
 
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
