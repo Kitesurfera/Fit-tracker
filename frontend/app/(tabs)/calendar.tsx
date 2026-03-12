@@ -373,12 +373,22 @@ export default function CalendarScreen() {
 
         {/* COLUMNA DERECHA (Detalles del día y Fases) */}
         <ScrollView style={[styles.footer, isDesktop && styles.rightColumnDesktop]} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+          
+          {/* FASES DEL MES */}
           <View style={{ marginBottom: 25 }}>
             <Text style={styles.footerLabel}>FASES DE ESTE MES</Text>
             {microciclosDelMes.length > 0 ? (
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20, marginTop: 10 }}>
                 {microciclosDelMes.map((micro, idx) => (
-                  <View key={idx} style={[styles.microCard, { backgroundColor: colors.surface, borderTopColor: micro.color || colors.primary, borderColor: colors.border }]}>
+                  <TouchableOpacity 
+                    key={idx} 
+                    style={[styles.microCard, { backgroundColor: colors.surface, borderTopColor: micro.color || colors.primary, borderColor: colors.border }]}
+                    onPress={() => {
+                      if (selectedAthlete) {
+                        router.push(`/periodization?athlete_id=${selectedAthlete.id}&name=${encodeURIComponent(selectedAthlete.name)}`);
+                      }
+                    }}
+                  >
                     <Text style={[styles.microMacroName, { color: colors.textSecondary }]} numberOfLines={1}>{micro.macroNombre}</Text>
                     <Text style={[styles.microName, { color: colors.textPrimary }]} numberOfLines={1}>{micro.nombre}</Text>
                     <View style={[styles.microTypeBadge, { backgroundColor: (micro.color || colors.primary) + '15' }]}>
@@ -387,7 +397,7 @@ export default function CalendarScreen() {
                     <Text style={[styles.microDates, { color: colors.textSecondary }]}>
                       {micro.fecha_inicio.split('-').slice(1).reverse().join('/')} al {micro.fecha_fin.split('-').slice(1).reverse().join('/')}
                     </Text>
-                  </View>
+                  </TouchableOpacity>
                 ))}
               </ScrollView>
             ) : (
@@ -462,7 +472,7 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   mainLayout: { flex: 1, flexDirection: 'column' },
   mainLayoutDesktop: { flexDirection: 'row', paddingHorizontal: 20, gap: 30 },
-  leftColumnDesktop: { flex: 1, maxWidth: 500 }, // Evita que el calendario se estire de forma infinita en monitores anchos
+  leftColumnDesktop: { flex: 1, maxWidth: 500 }, 
   rightColumnDesktop: { flex: 1, paddingTop: 0, paddingHorizontal: 0 },
   
   topHeader: { flexDirection: 'row', alignItems: 'center', padding: 20 },
