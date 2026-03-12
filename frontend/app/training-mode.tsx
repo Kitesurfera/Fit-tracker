@@ -269,7 +269,7 @@ export default function TrainingModeScreen() {
     );
   };
 
-  const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
+const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
       let result;
       if (source === 'camera') {
@@ -292,6 +292,38 @@ export default function TrainingModeScreen() {
       }
 
       if (result.canceled || !result.assets || result.assets.length === 0) return;
+      
+      setVideoUploading(key);
+      const asset = result.assets[0];
+      
+      // Le pasamos el ASSET ENTERO a la nueva función de la API
+      const uploaded = await api.uploadFile(asset);
+      
+      const finalUrl = typeof uploaded === 'string' 
+        ? uploaded 
+        : (uploaded?.url || uploaded?.publicUrl || uploaded?.storage_path || uploaded?.file_url || asset.uri);
+
+      setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
+
+      // ¡NUEVO!: Damos confirmación de éxito en pantalla
+      if (Platform.OS === 'web') {
+        window.alert('✅ ¡Vídeo de técnica subido y guardado!');
+      } else {
+        Alert.alert('Éxito', '¡Vídeo de técnica subido y guardado!');
+      }
+
+    } catch (e: any) { 
+      console.error("Error detallado al subir:", e);
+      // ¡NUEVO!: Mostramos el error incluso en la web para no volvernos locas
+      if (Platform.OS === 'web') {
+        window.alert(`❌ Error al subir: ${e.message}`);
+      } else {
+        Alert.alert('Error', `No se pudo subir el vídeo: ${e.message}`); 
+      }
+    } finally { 
+      setVideoUploading(null); 
+    }
+  };
       
       setVideoUploading(key);
       const asset = result.assets[0];
