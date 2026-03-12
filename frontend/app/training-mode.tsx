@@ -48,7 +48,7 @@ export default function TrainingModeScreen() {
   const [videoUploading, setVideoUploading] = useState<string | null>(null);
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
   
-  // NUEVO: Estado para gestionar el texto que escribe el entrenador
+  // Estado para gestionar el texto que escribe el entrenador
   const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
 
   const [hiitBlockIdx, setHiitBlockIdx] = useState(0);
@@ -267,32 +267,41 @@ export default function TrainingModeScreen() {
     } catch (e) { if (Platform.OS !== 'web') Alert.alert("Error", "Hubo un error al guardar."); }
   };
 
-  // NUEVO: Funciones para guardar feedback desde el Training Mode
+  // Funciones para guardar feedback desde el Training Mode
   const saveTrainerFeedbackFuerza = async (exerciseIndex: number, noteText: string) => {
     try {
+      // Clonamos el array para que React detecte el cambio
+      const updatedExerciseResults = (workout.completion_data?.exercise_results || []).map((ex: any, i: number) => {
+        if (i !== exerciseIndex) return ex;
+        return { ...ex, coach_note: noteText };
+      });
+
       const payload = {
-        title: workout.title, date: workout.date, notes: workout.notes, athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
-        exercises: workout.exercises, completed: workout.completed, observations: workout.observations,
+        ...workout,
         completion_data: {
           ...workout.completion_data,
-          exercise_results: workout.completion_data.exercise_results.map((ex: any, i: number) => i === exerciseIndex ? { ...ex, coach_note: noteText } : ex)
+          exercise_results: updatedExerciseResults
         }
       };
+
       await api.updateWorkout(workout.id, payload);
+      
+      // Actualizamos el estado principal para forzar el repintado en verde
       setWorkout(payload);
       setLogs(prev => ({...prev, [exerciseIndex]: {...(prev[exerciseIndex]||{}), coach_note: noteText}}));
+      
       if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
     } catch (e) { console.log("Error guardando nota:", e); }
   };
 
-    const saveTrainerFeedbackHiit = async (blockIndex: number, exIndex: number, noteText: string) => {
+  const saveTrainerFeedbackHiit = async (blockIndex: number, exIndex: number, noteText: string) => {
     try {
-      // Clonación profunda para no mutar el estado directamente
-      const updatedHiitResults = workout.completion_data.hiit_results.map((block: any, bIdx: number) => {
+      // Clonación profunda
+      const updatedHiitResults = (workout.completion_data?.hiit_results || []).map((block: any, bIdx: number) => {
         if (bIdx !== blockIndex) return block;
         return {
           ...block,
-          hiit_exercises: block.hiit_exercises.map((ex: any, eIdx: number) => {
+          hiit_exercises: (block.hiit_exercises || []).map((ex: any, eIdx: number) => {
             if (eIdx !== exIndex) return ex;
             return { ...ex, coach_note: noteText };
           })
@@ -300,15 +309,22 @@ export default function TrainingModeScreen() {
       });
 
       const payload = {
-        title: workout.title, date: workout.date, notes: workout.notes, athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
-        exercises: workout.exercises, completed: workout.completed, observations: workout.observations,
-        completion_data: { ...workout.completion_data, hiit_results: updatedHiitResults }
+        ...workout,
+        completion_data: {
+          ...workout.completion_data,
+          hiit_results: updatedHiitResults
+        }
       };
 
       await api.updateWorkout(workout.id, payload);
+      
+      // Actualizamos el estado para repintar
       setWorkout(payload);
       if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
-    } catch (e) { console.log("Error guardando nota HIIT:", e); }
+      
+    } catch (e) {
+      console.log("Error guardando nota HIIT:", e);
+    }
   };
 
 
@@ -392,12 +408,17 @@ export default function TrainingModeScreen() {
                         <Ionicons name="flame" size={20} color={colors.error || '#EF4444'} />
                         <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800' }}>{block.name}</Text>
                       </View>
+                      
+                      {/* Bucle correcto para pintar ejercicios HIIT */}
                       {block.hiit_exercises.map((ex: any, eIdx: number) => {
                         const videoKey = `${bIdx}-${eIdx}`;
                         const videoUrl = recordedVideos[videoKey] || (workout.completed ? ex.recorded_video_url : null);
+                        
+                        // Leemos la nota directamente de la base de datos
+                        const savedNote = workout.completed ? (workout.completion_data?.hiit_results?.[bIdx]?.hiit_exercises?.[eIdx]?.coach_note || '') : (ex.coach_note || '');
                         const noteKey = `hiit-${bIdx}-${eIdx}`;
-                        const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
-                        const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
+                        const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : savedNote;
+                        const isSaved = currentNote === savedNote && !!savedNote;
                         
                         return (
                           <View key={eIdx} style={{ marginBottom: 15 }}>
@@ -419,12 +440,12 @@ export default function TrainingModeScreen() {
                                 </TouchableOpacity>
                               </View>
                             ) : (
-                              ex.coach_note && (
+                              savedNote ? (
                                 <View style={[styles.feedbackCoachBox, { marginLeft: 10, width: '95%' }]}>
                                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}><Ionicons name="chatbubble-ellipses" size={16} color={colors.warning || '#F59E0B'} /><Text style={{ color: colors.warning || '#F59E0B', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 }}>EL COACH DICE:</Text></View>
-                                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic' }}>"{ex.coach_note}"</Text>
+                                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic' }}>"{savedNote}"</Text>
                                 </View>
-                              )
+                              ) : null
                             )}
                           </View>
                         );
@@ -442,9 +463,11 @@ export default function TrainingModeScreen() {
                     const allSkipped = statusData ? statusData.completed_sets === 0 : setsStatus[i]?.every(s => s !== 'completed');
                     const videoUrl = recordedVideos[i.toString()] || statusData?.recorded_video_url;
                     
+                    // Leemos la nota directamente de la base de datos
+                    const savedNote = statusData?.coach_note || logs[i]?.coach_note || '';
                     const noteKey = `force-${i}`;
-                    const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (logs[i]?.coach_note || '');
-                    const isSaved = currentNote === logs[i]?.coach_note && !!logs[i]?.coach_note;
+                    const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : savedNote;
+                    const isSaved = currentNote === savedNote && !!savedNote;
 
                     return (
                       <View key={i} style={[styles.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -476,12 +499,12 @@ export default function TrainingModeScreen() {
                                     </TouchableOpacity>
                                   </View>
                                 ) : (
-                                  logs[i]?.coach_note && (
+                                  savedNote ? (
                                     <View style={styles.feedbackCoachBox}>
                                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}><Ionicons name="chatbubble-ellipses" size={16} color={colors.warning || '#F59E0B'} /><Text style={{ color: colors.warning || '#F59E0B', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 }}>EL COACH DICE:</Text></View>
-                                      <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic' }}>"{logs[i]?.coach_note}"</Text>
+                                      <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic' }}>"{savedNote}"</Text>
                                     </View>
-                                  )
+                                  ) : null
                                 )}
                               </View>
                             ) : (
@@ -716,8 +739,6 @@ const styles = StyleSheet.create({
   closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   fullVideo: { width: '100%', height: '80%' },
   feedbackCoachBox: { backgroundColor: 'rgba(245, 158, 11, 0.15)', padding: 12, borderRadius: 10, marginTop: 10, width: '100%', borderLeftWidth: 4, borderLeftColor: '#F59E0B' },
-  
-  // NUEVO PARA EL FEEDBACK DEL ENTRENADOR EN MODO LECTURA:
   exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   exerciseName: { fontSize: 14, fontWeight: '800' },
   planBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
