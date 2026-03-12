@@ -126,7 +126,6 @@ export default function CalendarScreen() {
     }
   };
 
-  // NUEVA FUNCIÓN: Eliminar entrenamiento
   const executeDeleteWorkout = async (workoutId: string) => {
     setUpdating(true);
     try {
@@ -472,7 +471,7 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   mainLayout: { flex: 1, flexDirection: 'column' },
   mainLayoutDesktop: { flexDirection: 'row', paddingHorizontal: 20, gap: 30 },
-  leftColumnDesktop: { flex: 1, maxWidth: 500 }, 
+  leftColumnDesktop: { flex: 1, maxWidth: 380, minWidth: 300 }, // ¡Aquí está la magia de la reducción!
   rightColumnDesktop: { flex: 1, paddingTop: 0, paddingHorizontal: 0 },
   
   topHeader: { flexDirection: 'row', alignItems: 'center', padding: 20 },
