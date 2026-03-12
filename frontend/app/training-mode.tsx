@@ -1,17 +1,39 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, TextInput, Alert, Platform, KeyboardAvoidingView
+  ActivityIndicator, Linking, TextInput, Alert, Platform, KeyboardAvoidingView, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { Video, ResizeMode } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useKeepAwake } from 'expo-keep-awake';
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
+
+// --- COMPONENTE AYUDANTE: MINI REPRODUCTOR (EFECTO GIF) ---
+const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
+  if (!url) return null;
+  return (
+    <View style={styles.miniVideoContainer}>
+      <Video
+        source={{ uri: url }}
+        style={styles.miniVideo}
+        resizeMode={ResizeMode.COVER}
+        shouldPlay
+        isLooping
+        isMuted
+        playsInLine
+      />
+      <TouchableOpacity style={styles.expandBtn} onPress={() => onExpand(url)}>
+        <Ionicons name="expand" size={16} color="#FFF" />
+      </TouchableOpacity>
+    </View>
+  );
+};
 
 export default function TrainingModeScreen() {
   useKeepAwake();
@@ -35,6 +57,7 @@ export default function TrainingModeScreen() {
   // --- ESTADOS: VÍDEOS (Compartido) ---
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
   const [videoUploading, setVideoUploading] = useState<string | null>(null);
+  const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
 
   // --- ESTADOS: CIRCUITO HIIT ---
   const [hiitBlockIdx, setHiitBlockIdx] = useState(0);
@@ -256,13 +279,13 @@ export default function TrainingModeScreen() {
           return;
         }
         result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Videos, // CORREGIDO AQUÍ
+          mediaTypes: ImagePicker.MediaTypeOptions.Videos,
           videoMaxDuration: 60,
           quality: 0.7
         });
       } else {
         result = await ImagePicker.launchImageLibraryAsync({ 
-          mediaTypes: ImagePicker.MediaTypeOptions.Videos, // CORREGIDO AQUÍ
+          mediaTypes: ImagePicker.MediaTypeOptions.Videos,
           allowsEditing: true, 
           quality: 0.7 
         });
@@ -276,10 +299,9 @@ export default function TrainingModeScreen() {
       
       const uploaded = await api.uploadFile(asset.uri, fileName, asset.mimeType || 'video/mp4');
       
-      // EXTRACCIÓN DEFENSIVA DE LA URL DEL VÍDEO
       const finalUrl = typeof uploaded === 'string' 
         ? uploaded 
-        : (uploaded?.url || uploaded?.publicUrl || uploaded?.storage_path || uploaded?.file_url || '');
+        : (uploaded?.url || uploaded?.publicUrl || uploaded?.storage_path || uploaded?.file_url || asset.uri);
 
       setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
     } catch (e: any) { 
@@ -338,6 +360,25 @@ export default function TrainingModeScreen() {
       if (Platform.OS !== 'web') Alert.alert("Error", "Hubo un error al guardar.");
     }
   };
+
+  const renderVideoModal = () => (
+    <Modal visible={!!expandedVideo} transparent animationType="fade">
+      <View style={styles.fullscreenVideoOverlay}>
+        <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}>
+          <Ionicons name="close-circle" size={40} color="#FFF" />
+        </TouchableOpacity>
+        {expandedVideo && (
+          <Video
+            source={{ uri: expandedVideo }}
+            style={styles.fullVideo}
+            resizeMode={ResizeMode.CONTAIN}
+            useNativeControls
+            shouldPlay
+          />
+        )}
+      </View>
+    </Modal>
+  );
 
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Entrenamiento no encontrado.</Text><TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.primary }]} onPress={() => router.back()}><Text style={styles.backBtnText}>Volver</Text></TouchableOpacity></SafeAreaView>;
@@ -440,10 +481,9 @@ export default function TrainingModeScreen() {
                           <View key={eIdx} style={{ marginBottom: 10 }}>
                             <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600' }}>• {ex.name}</Text>
                             {videoUrl && (
-                              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6, marginLeft: 10 }} onPress={() => Linking.openURL(videoUrl)}>
-                                <Ionicons name="play-circle" size={18} color={colors.primary} />
-                                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Ver Técnica Grabada</Text>
-                              </TouchableOpacity>
+                              <View style={{ marginTop: 8, marginLeft: 10 }}>
+                                <MiniVideoPlayer url={videoUrl} onExpand={setExpandedVideo} />
+                              </View>
                             )}
                             {ex.coach_note && (
                               <View style={{ backgroundColor: (colors.warning || '#F59E0B') + '15', padding: 10, borderRadius: 8, marginTop: 8, marginLeft: 10 }}>
@@ -481,13 +521,9 @@ export default function TrainingModeScreen() {
                                 <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '900', marginTop: 4 }}>{logs[i]?.weight ? `${logs[i]?.weight} kg` : '- kg'} x {logs[i]?.reps ? `${logs[i]?.reps} reps` : '- reps'}</Text>
                                 
                                 {videoUrl && (
-                                  <TouchableOpacity 
-                                    style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary + '15', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, marginTop: 12, gap: 8 }}
-                                    onPress={() => Linking.openURL(videoUrl)}
-                                  >
-                                    <Ionicons name="play-circle" size={20} color={colors.primary} />
-                                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>Ver Técnica Grabada</Text>
-                                  </TouchableOpacity>
+                                  <View style={{ marginTop: 12, width: '100%', alignItems: 'center' }}>
+                                    <MiniVideoPlayer url={videoUrl} onExpand={setExpandedVideo} />
+                                  </View>
                                 )}
 
                                 {logs[i]?.coach_note && (
@@ -503,8 +539,8 @@ export default function TrainingModeScreen() {
                                 
                                 {recordedVideos[i.toString()] && (
                                   <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 10, borderRadius: 8, marginTop: 12 }}>
-                                    <Ionicons name="videocam" size={16} color={colors.success || '#10B981'} />
-                                    <Text style={{ color: colors.success || '#10B981', marginLeft: 8, fontWeight: '700', fontSize: 12 }}>Vídeo adjuntado correctamente</Text>
+                                    <MiniVideoPlayer url={recordedVideos[i.toString()]} onExpand={setExpandedVideo} />
+                                    <Text style={{ color: colors.success || '#10B981', marginLeft: 12, fontWeight: '700', fontSize: 12, flex: 1 }}>Vídeo adjuntado correctamente</Text>
                                   </View>
                                 )}
                               </View>
@@ -528,6 +564,7 @@ export default function TrainingModeScreen() {
             )}
           </ScrollView>
         </KeyboardAvoidingView>
+        {renderVideoModal()}
       </SafeAreaView>
     );
   }
@@ -579,7 +616,7 @@ export default function TrainingModeScreen() {
                         {ex.video_url ? (
                           <TouchableOpacity style={[styles.hiitRefBtn, { backgroundColor: colors.primary + '15', marginBottom: 10 }]} onPress={() => Linking.openURL(ex.video_url)}>
                             <Ionicons name="logo-youtube" size={16} color={colors.primary} />
-                            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Ver Técnica</Text>
+                            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Ver Vídeo de Referencia</Text>
                           </TouchableOpacity>
                         ) : null}
                         {ex.exercise_notes ? (
@@ -593,11 +630,13 @@ export default function TrainingModeScreen() {
                         <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 5 }}>
                           {recordedVideos[videoKey] ? (
                             <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 10, borderRadius: 8 }}>
-                              <Ionicons name="checkmark-circle" size={18} color={colors.success || '#10B981'} />
-                              <Text style={{ color: colors.success || '#10B981', marginLeft: 6, fontWeight: '700', fontSize: 12, flex: 1 }}>Vídeo de técnica subido</Text>
-                              <TouchableOpacity onPress={() => handleRecordVideoOptions(videoKey)}>
-                                <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' }}>Cambiar</Text>
-                              </TouchableOpacity>
+                              <MiniVideoPlayer url={recordedVideos[videoKey]} onExpand={setExpandedVideo} />
+                              <View style={{ marginLeft: 12, flex: 1 }}>
+                                <Text style={{ color: colors.success || '#10B981', fontWeight: '700', fontSize: 12, marginBottom: 4 }}>Vídeo de técnica subido</Text>
+                                <TouchableOpacity onPress={() => handleRecordVideoOptions(videoKey)}>
+                                  <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' }}>Cambiar</Text>
+                                </TouchableOpacity>
+                              </View>
                             </View>
                           ) : (
                             <TouchableOpacity 
@@ -644,6 +683,7 @@ export default function TrainingModeScreen() {
             )}
           </View>
         </ScrollView>
+        {renderVideoModal()}
       </SafeAreaView>
     );
   }
@@ -710,11 +750,13 @@ export default function TrainingModeScreen() {
           <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
             {recordedVideos[currentExIndex.toString()] ? (
                 <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 12, borderRadius: 10 }}>
-                  <Ionicons name="checkmark-circle" size={20} color={colors.success || '#10B981'} />
-                  <Text style={{ color: colors.success || '#10B981', marginLeft: 8, fontWeight: '700', flex: 1 }}>Vídeo de técnica subido</Text>
-                  <TouchableOpacity onPress={() => handleRecordVideoOptions(currentExIndex.toString())}>
-                    <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' }}>Cambiar</Text>
-                  </TouchableOpacity>
+                  <MiniVideoPlayer url={recordedVideos[currentExIndex.toString()]} onExpand={setExpandedVideo} />
+                  <View style={{ marginLeft: 12, flex: 1 }}>
+                    <Text style={{ color: colors.success || '#10B981', fontWeight: '700', fontSize: 13, marginBottom: 4 }}>Vídeo subido</Text>
+                    <TouchableOpacity onPress={() => handleRecordVideoOptions(currentExIndex.toString())}>
+                      <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' }}>Cambiar vídeo</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
             ) : (
               <TouchableOpacity 
@@ -765,6 +807,7 @@ export default function TrainingModeScreen() {
           <TouchableOpacity style={styles.navBtn} onPress={() => setFinished(true)}><Text style={[styles.navBtnText, { color: colors.success || '#10B981', fontWeight: '700' }]}>Terminar</Text><Ionicons name="flag" size={20} color={colors.success || '#10B981'} /></TouchableOpacity>
         )}
       </View>
+      {renderVideoModal()}
     </SafeAreaView>
   );
 }
@@ -777,4 +820,10 @@ const styles = StyleSheet.create({
   detailsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }, detailBox: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', minWidth: 60 }, detailValue: { fontSize: 20, fontWeight: '700' }, detailLabel: { fontSize: 10, fontWeight: '600', marginTop: 2, textTransform: 'uppercase' }, setsCard: { borderRadius: 16, padding: 20 }, setsTitle: { fontSize: 16, fontWeight: '600', marginBottom: 16 }, setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' }, setNum: { fontSize: 15, fontWeight: '600' }, setActions: { flexDirection: 'row', gap: 10 }, completeSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16 }, completeSetText: { fontSize: 16, fontWeight: '600' }, skipSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, paddingVertical: 16, paddingHorizontal: 16, borderWidth: 1.5 }, skipSetText: { fontSize: 14, fontWeight: '600' }, allDoneBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingVertical: 14 }, bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 28, borderTopWidth: 0.5 }, navBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 }, navBtnText: { fontSize: 15, fontWeight: '500' },
   finishedContainer: { flexGrow: 1, padding: 24, gap: 12, alignItems: 'center' }, finishedIcon: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center' }, finishedTitle: { fontSize: 22, fontWeight: '700', textAlign: 'center' }, finishedSub: { fontSize: 15, textAlign: 'center', alignSelf: 'flex-start' }, wellnessCard: { width: '100%', borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 10 }, wellnessTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, textAlign: 'center' }, rpeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }, rpeBtn: { width: 44, height: 44, borderRadius: 10, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 16, fontWeight: '700' }, sleepGrid: { flexDirection: 'row', gap: 10, justifyContent: 'center' }, sleepBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center' }, sleepText: { fontSize: 14, fontWeight: '700' }, summaryList: { width: '100%', gap: 8 }, summaryRow: { flexDirection: 'column', gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 }, summaryIcon: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }, summaryName: { fontSize: 15, fontWeight: '600' }, logRow: { flexDirection: 'row', gap: 12, marginTop: 10, borderTopWidth: 0.5, borderTopColor: '#CCC', paddingTop: 12 }, logInputWrapper: { flex: 1, gap: 4 }, logInputLabel: { fontSize: 12, fontWeight: '600', marginLeft: 2 }, logInput: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 }, observationsCard: { width: '100%', borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 8, gap: 10 }, observationsLabel: { fontSize: 16, fontWeight: '700' }, observationsInput: { borderRadius: 10, borderWidth: 1, padding: 14, fontSize: 15, minHeight: 80, textAlignVertical: 'top' }, finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16, marginTop: 8, width: '100%' }, finishBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' }, readOnlyReportBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10 }, readOnlyLogBox: { flex: 1, backgroundColor: 'rgba(0,0,0,0.03)', padding: 12, borderRadius: 10, alignItems: 'center' },
   hiitCard: { borderRadius: 20, borderWidth: 1, overflow: 'hidden', paddingBottom: 20 }, hiitHeader: { padding: 20, flexDirection: 'row', alignItems: 'center' }, hiitList: { padding: 20, gap: 0 }, hiitExRowWrapper: { marginBottom: 12 }, hiitExRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20 }, hiitCheck: { width: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center' }, hiitExName: { fontSize: 16 }, hiitExDur: { fontSize: 14 }, hiitRefBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, alignSelf: 'flex-start' }, restTimerCard: { flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 12, padding: 16 }, restTimerContent: { flex: 1 }, restTimerLabel: { fontSize: 11, fontWeight: '800', marginBottom: 2 }, restTimerValue: { fontSize: 36, fontWeight: '900', fontVariant: ['tabular-nums'] }, skipRestBtn: { borderWidth: 2, borderRadius: 10, paddingHorizontal: 16, paddingVertical: 10 },
+  miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' },
+  miniVideo: { width: '100%', height: '100%' },
+  expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 },
+  fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
+  closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
+  fullVideo: { width: '100%', height: '80%' }
 });
