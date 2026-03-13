@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, Link } from 'expo-router'; // <-- AÑADIDO Link
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
@@ -46,7 +46,6 @@ export default function HomeScreen() {
   const [editingAthleteId, setEditingAthleteId] = useState<string | null>(null);
   const [athleteForm, setAthleteForm] = useState({ name: '', email: '', password: '', gender: 'Femenino', sport: '', phone: '' });
 
-  // NUEVO: Estados para controlar la notificación de feedback
   const [feedbackSignature, setFeedbackSignature] = useState('');
   const [hasUnreadFeedback, setHasUnreadFeedback] = useState(false);
 
@@ -115,7 +114,6 @@ export default function HomeScreen() {
     }, [isTrainer, user, authLoading, todayStr])
   );
 
-  // NUEVO: Detectar si hay feedback nuevo usando una "firma"
   useEffect(() => {
     const checkFeedbackStatus = async () => {
       if (!user || isTrainer) return;
@@ -210,7 +208,6 @@ export default function HomeScreen() {
     } catch (e) { console.error("Error guardando fase en el servidor", e); }
   };
 
-  // NUEVO: Función para descartar la notificación temporalmente
   const handleFeedbackClick = async () => {
     if (user) {
       await AsyncStorage.setItem(`feedback_read_${user.id}`, feedbackSignature);
@@ -244,15 +241,18 @@ export default function HomeScreen() {
       }
       renderItem={({ item }) => (
         <View style={[styles.athleteCard, { backgroundColor: colors.surface }]}>
-          <TouchableOpacity style={styles.athleteInfoArea} onPress={() => router.push({ pathname: "/athlete-detail", params: { id: item.id, name: item.name } })}>
-            <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
-              <Text style={{color: colors.primary, fontWeight: '800'}}>{item.name.charAt(0).toUpperCase()}</Text>
-            </View>
-            <View style={{flex: 1}}>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
-              <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{item.sport || 'Deportista multidisciplinar'}</Text>
-            </View>
-          </TouchableOpacity>
+          {/* AQUÍ ESTÁ LA MAGIA DEL LINK PARA WEB */}
+          <Link href={`/athlete-detail?id=${item.id}&name=${encodeURIComponent(item.name)}`} asChild>
+            <TouchableOpacity style={styles.athleteInfoArea}>
+              <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
+                <Text style={{color: colors.primary, fontWeight: '800'}}>{item.name.charAt(0).toUpperCase()}</Text>
+              </View>
+              <View style={{flex: 1}}>
+                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{item.sport || 'Deportista multidisciplinar'}</Text>
+              </View>
+            </TouchableOpacity>
+          </Link>
           <View style={styles.athleteActionsArea}>
             {item.phone && (
               <TouchableOpacity onPress={() => Linking.openURL(`https://wa.me/${item.phone.replace(/\D/g, '')}`)} style={styles.iconHitbox}>
@@ -345,7 +345,6 @@ export default function HomeScreen() {
               <Text style={[styles.actionText, { color: colors.textPrimary }]}>Actualizar Wellness de Hoy</Text>
             </TouchableOpacity>
 
-            {/* SE MUESTRA SOLO SI HAY FEEDBACK SIN LEER */}
             {hasUnreadFeedback && (
               <TouchableOpacity 
                 style={[styles.feedbackAlertCard, { backgroundColor: colors.warning || '#F59E0B' }]} 
