@@ -215,7 +215,7 @@ export default function AnalyticsScreen() {
   };
 
   // --- LÓGICA DEL MAPA DE CALOR ---
-const getMuscleHeat = () => {
+  const getMuscleHeat = () => {
     const heat: Record<string, number> = {
       'Pecho': 0, 'Espalda': 0, 'Cuádriceps': 0, 'Isquiotibiales': 0,
       'Glúteo': 0, 'Hombro': 0, 'Bíceps': 0, 'Tríceps': 0, 'Core': 0,
@@ -245,34 +245,6 @@ const getMuscleHeat = () => {
 
             // BUSCAMOS EN EL MAPA COMBINADO
             for (const [muscle, keywords] of Object.entries(COMBINED_MAP)) {
-              if (keywords.some(k => exName.includes(k))) {
-                heat[muscle] += volume;
-              }
-            }
-          }
-        });
-      }
-    });
-
-    return heat;
-  };
-    
-    // Analizamos los últimos 14 días
-    const twoWeeksAgo = new Date();
-    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-
-    workoutHistory.forEach(w => {
-      const wDate = new Date(w.date);
-      if (wDate >= twoWeeksAgo) {
-        w.completion_data?.exercise_results?.forEach((r: any) => {
-          if (r.completed_sets > 0 && r.name) {
-            const exName = normalizeName(r.name);
-            // Cálculo de volumen base: Reps * Peso * Series. (Si es peso corporal, peso = 1)
-            const weight = parseFloat(r.logged_weight) || 1;
-            const reps = parseInt(r.logged_reps) || 1;
-            const volume = weight * reps * r.completed_sets;
-
-            for (const [muscle, keywords] of Object.entries(MUSCLE_MAP)) {
               if (keywords.some(k => exName.includes(k))) {
                 heat[muscle] += volume;
               }
@@ -328,7 +300,6 @@ const getMuscleHeat = () => {
   };
 
   const renderChart = (history: any[]) => {
-    // ... (Código renderChart se mantiene igual)
     const data = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     if (data.length === 0) return null;
 
@@ -366,7 +337,6 @@ const getMuscleHeat = () => {
   };
 
   const renderTestCard = (test: any, index: number) => {
-    // ... (Código renderTestCard se mantiene igual)
     const valL = parseFloat(test.value_left);
     const valR = parseFloat(test.value_right);
     const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
@@ -405,7 +375,6 @@ const getMuscleHeat = () => {
   };
 
   const renderFeedbackTab = () => {
-    // ... (Código renderFeedbackTab se mantiene igual)
     const feedbacks: any[] = [];
     workoutHistory.forEach(w => {
       w.completion_data?.exercise_results?.forEach((ex: any, idx: number) => {
