@@ -9,6 +9,8 @@ import { useRouter } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
 
 const { width } = Dimensions.get('window');
 
