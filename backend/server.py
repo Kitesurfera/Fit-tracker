@@ -462,9 +462,24 @@ async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = 
     return await db.workouts.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
 
 @api_router.put("/workouts/{workout_id}")
-async def update_workout(workout_id: str, data: WorkoutUpdate, user=Depends(get_current_user)):
+async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    existing = await db.workouts.find_one({"id": workout_id})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+
     update_data = {k: v for k, v in data.dict().items() if v is not None}
     await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
+    
+    # --- NOTIFICACIÓN AL ENTRENADOR: ENTRENAMIENTO COMPLETADO ---
+    if data.completed is True and not existing.get('completed') and user.get('role') == 'athlete' and user.get('trainer_id'):
+        trainer = await db.users.find_one({"id": user['trainer_id']})
+        if trainer and trainer.get('push_token'):
+            athlete_name = user.get('name', 'Un deportista')
+            titulo = "✅ ¡Entrenamiento superado!"
+            mensaje = f"{athlete_name} ha terminado la sesión '{existing.get('title', 'Sin título')}'."
+            
+            background_tasks.add_task(send_push_notification, trainer['push_token'], titulo, mensaje)
+
     return {"status": "success"}
 
 @api_router.delete("/workouts/{workout_id}")
@@ -551,7 +566,7 @@ async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)
 
 # --- RUTAS DE TESTS FÍSICOS ---
 @api_router.post("/tests")
-async def create_test(data: TestCreate, user=Depends(get_current_user)):
+async def create_test(data: TestCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     if user['role'] == 'athlete' and data.athlete_id != user['id']:
         raise HTTPException(status_code=403, detail="No puedes crear tests para otro deportista")
         
@@ -561,6 +576,25 @@ async def create_test(data: TestCreate, user=Depends(get_current_user)):
     
     await db.tests.insert_one(test_doc)
     test_doc.pop('_id', None)
+    
+    # --- NOTIFICACIÓN AL ENTRENADOR: NUEVA MEDIDA / TEST ---
+    if user.get('role') == 'athlete' and user.get('trainer_id'):
+        trainer = await db.users.find_one({"id": user['trainer_id']})
+        if trainer and trainer.get('push_token'):
+            athlete_name = user.get('name', 'Un deportista')
+            nombre_test = data.custom_name if data.custom_name else data.test_name
+            
+            nombres_bonitos = {
+                "weight": "Peso", "biceps": "Bíceps", "waist": "Cintura", 
+                "quadriceps": "Cuádriceps", "shoulders": "Hombros", "calf": "Gemelos"
+            }
+            nombre_mostrar = nombres_bonitos.get(nombre_test, nombre_test).upper()
+            
+            titulo = "📏 Nuevo registro físico"
+            mensaje = f"{athlete_name} ha registrado: {nombre_mostrar} ({data.value} {data.unit})"
+            
+            background_tasks.add_task(send_push_notification, trainer['push_token'], titulo, mensaje)
+
     return {"status": "success", "test": test_doc}
 
 @api_router.get("/tests")
