@@ -20,7 +20,11 @@ const BASE_MUSCLE_MAP: Record<string, string[]> = {
   'Hombro': ['press militar', 'hombro', 'elevaciones', 'deltoides', 'face pull'],
   'Bíceps': ['curl', 'biceps'],
   'Tríceps': ['triceps', 'extensiones triceps', 'fondos', 'dip'],
-  'Core': ['plancha', 'crunch', 'core', 'abs', 'abdominales', 'leg raise', 'rueda']
+  'Core': ['plancha', 'crunch', 'core', 'abs', 'abdominales', 'leg raise', 'rueda'],
+  'Gemelos': ['gemelos', 'gemelo', 'calf', 'calves', 'soleo', 'elevacion talones'],
+  'Antebrazos': ['antebrazos', 'antebrazo', 'forearm', 'curl muñeca', 'paseo granjero', 'agarre'],
+  'Aductores': ['aductores', 'aductor', 'adductor', 'copenhague', 'copenhagen', 'interior pierna'],
+  'Abductores': ['abductores', 'abductor', 'aperturas pierna', 'banda lateral', 'exterior pierna']
 };
 const MUSCLE_GROUPS = Object.keys(BASE_MUSCLE_MAP);
 
