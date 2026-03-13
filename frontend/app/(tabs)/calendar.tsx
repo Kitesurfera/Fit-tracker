@@ -17,11 +17,11 @@ const now = new Date();
 const localTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
 export default function CalendarScreen() {
-  const { user } = useAuth();
+  // AÑADIDO: Importamos authLoading para saber cuándo el usuario ya está listo
+  const { user, loading: authLoading } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
   
-  // Hook para detectar el ancho de la pantalla y dividir columnas en PC
   const { width } = useWindowDimensions();
   const isDesktop = width >= 800; 
   
@@ -38,17 +38,17 @@ export default function CalendarScreen() {
   const [updating, setUpdating] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   
-  // NUEVO: Estado para mostrar información de la fase al deportista
   const [athleteViewMicro, setAthleteViewMicro] = useState<any>(null);
-
-  // Estados para la funcionalidad de Duplicar/Mover
   const [workoutToCopy, setWorkoutToCopy] = useState<any>(null);
 
   const isTrainer = user?.role === 'trainer';
 
+  // CORREGIDO: Ahora el init() se dispara SOLO cuando el usuario ya ha cargado
   useEffect(() => { 
-    init(); 
-  }, []);
+    if (!authLoading && user) {
+      init(); 
+    }
+  }, [authLoading, user?.id]);
 
   useFocusEffect(
     useCallback(() => {
@@ -63,8 +63,11 @@ export default function CalendarScreen() {
     try {
       if (isTrainer) {
         const data = await api.getAthletes();
-        setAthletes(data || []);
-        if (data && data.length > 0) handleSelectAthlete(data[0]);
+        setAthletes(Array.isArray(data) ? data : []);
+        // Evitamos sobreescribir si ya había uno seleccionado
+        if (data && data.length > 0 && !selectedAthlete) {
+          handleSelectAthlete(data[0]);
+        }
       } else {
         handleSelectAthlete(user);
       }
@@ -78,12 +81,16 @@ export default function CalendarScreen() {
   const refreshAthleteData = async (athlete: any) => {
     try {
       const [resTree, resWorkouts] = await Promise.all([
-        api.getPeriodizationTree(athlete.id),
-        api.getWorkouts({ athlete_id: athlete.id })
+        api.getPeriodizationTree(athlete.id).catch(() => ({ macros: [] })),
+        api.getWorkouts({ athlete_id: athlete.id }).catch(() => [])
       ]);
+      
       const macroList = Array.isArray(resTree) ? resTree : (resTree?.macros || []);
+      // CORREGIDO: Capa de seguridad por si el backend devuelve un objeto en vez de array
+      const extractedWorkouts = Array.isArray(resWorkouts) ? resWorkouts : (resWorkouts?.data || []);
+      
       setMacros(macroList);
-      setWorkouts(resWorkouts || []);
+      setWorkouts(extractedWorkouts);
     } catch (e) { 
       console.log("Error recargando datos:", e); 
     } finally { 
@@ -286,7 +293,14 @@ export default function CalendarScreen() {
     }
   };
 
-  if (loading && athletes.length === 0) return <View style={{flex:1, justifyContent:'center', alignItems:'center'}}><ActivityIndicator size="large" color={colors.primary}/></View>;
+  // CORREGIDO: Spinner de carga teniendo en cuenta la autenticación
+  if (authLoading || (loading && athletes.length === 0)) {
+    return (
+      <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}>
+        <ActivityIndicator size="large" color={colors.primary}/>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
