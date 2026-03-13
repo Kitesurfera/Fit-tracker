@@ -1,7 +1,8 @@
 import requests
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Query, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Query, Header, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, Response, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -15,8 +16,6 @@ from pydantic import BaseModel
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 import shutil
-from fastapi import Request
-from fastapi.staticfiles import StaticFiles
 import asyncio
 import time
 
@@ -246,7 +245,7 @@ async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
     return history[::-1]
 
 @api_router.post("/wellness")
-async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
+async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     today = datetime.now(timezone.utc).isoformat().split('T')[0]
     
     wellness_data = {
@@ -269,7 +268,18 @@ async def create_wellness(data: WellnessCreate, user=Depends(get_current_user)):
         wellness_data["date"] = today
         wellness_data["created_at"] = wellness_data["updated_at"]
         await db.wellness.insert_one(wellness_data)
+
+    # --- NOTIFICACIÓN AL ENTRENADOR EN SEGUNDO PLANO ---
+    if user.get('role') == 'athlete' and user.get('trainer_id'):
+        trainer = await db.users.find_one({"id": user['trainer_id']})
         
+        if trainer and trainer.get('push_token'):
+            athlete_name = user.get('name', 'Un deportista')
+            titulo = f"📊 {athlete_name} ha actualizado su estado"
+            mensaje = f"Fatiga: {data.fatigue}/10 | Estrés: {data.stress}/10 | Agujetas: {data.soreness}/10"
+            
+            background_tasks.add_task(send_push_notification, trainer['push_token'], titulo, mensaje)
+            
     return {"status": "success"}
 
 @api_router.get("/analytics/summary")
