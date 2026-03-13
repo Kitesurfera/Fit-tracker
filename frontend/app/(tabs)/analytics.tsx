@@ -9,6 +9,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width } = Dimensions.get('window');
 const GRID_CARD_SIZE = (width - 40) * 0.48;
@@ -59,6 +60,7 @@ export default function AnalyticsScreen() {
 
   // Añadimos la pestaña 'body'
   const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
+  const [customMuscleMap, setCustomMuscleMap] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState<any>(null);
