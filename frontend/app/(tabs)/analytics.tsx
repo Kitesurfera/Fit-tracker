@@ -11,8 +11,6 @@ import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
 
 const { width } = Dimensions.get('window');
-
-// Calculamos el tamaño exacto del cuadrado (48% del ancho disponible quitando el padding de 20 a cada lado)
 const GRID_CARD_SIZE = (width - 40) * 0.48;
 
 const TEST_TRANSLATIONS: Record<string, string> = {
@@ -28,7 +26,19 @@ const TEST_TRANSLATIONS: Record<string, string> = {
   tibialis: 'Tibial'
 };
 
-// Limpieza básica de nombres
+// --- MAPEO DE MÚSCULOS PARA EL MAPA DE CALOR ---
+const MUSCLE_MAP: Record<string, string[]> = {
+  'Pecho': ['press banca', 'flexiones', 'pecho', 'aperturas', 'push up'],
+  'Espalda': ['dominadas', 'remo', 'pull up', 'espalda', 'lat pulldown'],
+  'Cuádriceps': ['sentadilla', 'squat', 'prensa', 'extensiones', 'bulgara', 'lunge', 'zancada'],
+  'Isquiotibiales': ['peso muerto', 'deadlift', 'curl femoral', 'isquios', 'buenos dias'],
+  'Glúteo': ['hip thrust', 'puente', 'gluteo', 'patada'],
+  'Hombro': ['press militar', 'hombro', 'elevaciones', 'deltoides', 'face pull'],
+  'Bíceps': ['curl', 'biceps'],
+  'Tríceps': ['triceps', 'extensiones triceps', 'fondos', 'dip'],
+  'Core': ['plancha', 'crunch', 'core', 'abs', 'abdominales', 'leg raise', 'rueda']
+};
+
 const normalizeName = (name: string) => {
   if (!name) return "";
   let n = name.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -43,7 +53,8 @@ export default function AnalyticsScreen() {
   const params = useLocalSearchParams();
   const isTrainer = user?.role === 'trainer';
 
-  const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
+  // Añadimos la pestaña 'body'
+  const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState<any>(null);
@@ -55,12 +66,9 @@ export default function AnalyticsScreen() {
   const [showPicker, setShowPicker] = useState(false);
   
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
-
-  // --- ESTADOS PARA BÚSQUEDA Y VISTA ---
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
 
-  // --- ESTADOS PARA UNIFICACIÓN MANUAL ---
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [exercisesToMerge, setExercisesToMerge] = useState<string[]>([]);
   const [mergeTargetName, setMergeTargetName] = useState('');
@@ -123,7 +131,6 @@ export default function AnalyticsScreen() {
     setExercisesToMerge(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
   };
 
-  // FUNCIÓN PARA BORRAR FEEDBACK
   const handleDeleteFeedback = (workoutId: string, isHiit: boolean, blockIdx: number, exIdx: number) => {
     if (Platform.OS === 'web') {
       if (window.confirm('¿Seguro que quieres eliminar este feedback?')) {
@@ -163,12 +170,9 @@ export default function AnalyticsScreen() {
       }
 
       await api.updateWorkout(workoutId, updatedData);
-      
       setWorkoutHistory(prev => prev.map(w => w.id === workoutId ? updatedData : w));
-      
       if (Platform.OS !== 'web') Alert.alert("Eliminado", "El feedback ha sido borrado.");
     } catch (e) {
-      console.error("Error al borrar feedback:", e);
       if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo borrar el feedback.");
     }
   };
@@ -201,7 +205,85 @@ export default function AnalyticsScreen() {
     return Array.from(names).sort();
   };
 
+  // --- LÓGICA DEL MAPA DE CALOR ---
+  const getMuscleHeat = () => {
+    const heat: Record<string, number> = {
+      'Pecho': 0, 'Espalda': 0, 'Cuádriceps': 0, 'Isquiotibiales': 0,
+      'Glúteo': 0, 'Hombro': 0, 'Bíceps': 0, 'Tríceps': 0, 'Core': 0
+    };
+    
+    // Analizamos los últimos 14 días
+    const twoWeeksAgo = new Date();
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+    workoutHistory.forEach(w => {
+      const wDate = new Date(w.date);
+      if (wDate >= twoWeeksAgo) {
+        w.completion_data?.exercise_results?.forEach((r: any) => {
+          if (r.completed_sets > 0 && r.name) {
+            const exName = normalizeName(r.name);
+            // Cálculo de volumen base: Reps * Peso * Series. (Si es peso corporal, peso = 1)
+            const weight = parseFloat(r.logged_weight) || 1;
+            const reps = parseInt(r.logged_reps) || 1;
+            const volume = weight * reps * r.completed_sets;
+
+            for (const [muscle, keywords] of Object.entries(MUSCLE_MAP)) {
+              if (keywords.some(k => exName.includes(k))) {
+                heat[muscle] += volume;
+              }
+            }
+          }
+        });
+      }
+    });
+
+    return heat;
+  };
+
+  const renderBodyMap = () => {
+    const heat = getMuscleHeat();
+    const maxVolume = Math.max(...Object.values(heat));
+    
+    // Si no hay datos recientes
+    if (maxVolume === 0) {
+      return (
+        <View style={styles.emptyCard}>
+          <Ionicons name="body-outline" size={48} color={colors.border} />
+          <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 12, fontSize: 15 }}>No hay datos suficientes en los últimos 14 días para mostrar el mapa muscular.</Text>
+        </View>
+      );
+    }
+
+    return (
+      <View style={{ paddingBottom: 100 }}>
+        <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 20, textAlign: 'center' }}>
+          Volumen de trabajo (últimos 14 días)
+        </Text>
+        <View style={[styles.heatmapContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {Object.entries(heat).sort((a, b) => b[1] - a[1]).map(([muscle, volume], idx) => {
+            const intensity = maxVolume > 0 ? volume / maxVolume : 0;
+            // Lógica de colores del Heatmap
+            let barColor = colors.border; // Gris (0%)
+            if (intensity > 0.7) barColor = '#EF4444'; // Rojo Fuego (Alto)
+            else if (intensity > 0.3) barColor = '#F59E0B'; // Naranja (Medio)
+            else if (intensity > 0) barColor = '#3B82F6'; // Azul (Bajo)
+
+            return (
+              <View key={muscle} style={styles.muscleRow}>
+                <Text style={[styles.muscleName, { color: colors.textPrimary }]}>{muscle}</Text>
+                <View style={[styles.heatTrack, { backgroundColor: colors.surfaceHighlight }]}>
+                  <View style={[styles.heatFill, { width: `${intensity * 100}%`, backgroundColor: barColor }]} />
+                </View>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
   const renderChart = (history: any[]) => {
+    // ... (Código renderChart se mantiene igual)
     const data = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     if (data.length === 0) return null;
 
@@ -239,6 +321,7 @@ export default function AnalyticsScreen() {
   };
 
   const renderTestCard = (test: any, index: number) => {
+    // ... (Código renderTestCard se mantiene igual)
     const valL = parseFloat(test.value_left);
     const valR = parseFloat(test.value_right);
     const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
@@ -277,6 +360,7 @@ export default function AnalyticsScreen() {
   };
 
   const renderFeedbackTab = () => {
+    // ... (Código renderFeedbackTab se mantiene igual)
     const feedbacks: any[] = [];
     workoutHistory.forEach(w => {
       w.completion_data?.exercise_results?.forEach((ex: any, idx: number) => {
@@ -332,8 +416,6 @@ export default function AnalyticsScreen() {
 
   const cleanProgression = getCleanProgression();
   const rawExerciseNames = getUniqueRawExerciseNames();
-  
-  // Filtrar progresión basado en la búsqueda
   const filteredProgression = cleanProgression.filter(item => 
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -341,7 +423,7 @@ export default function AnalyticsScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Rendimiento'}</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Analíticas'}</Text>
         <View style={styles.headerActions}>
           <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
             {refreshing ? <ActivityIndicator size="small" color={colors.primary}/> : <Ionicons name="refresh" size={20} color={colors.primary} />}
@@ -354,21 +436,22 @@ export default function AnalyticsScreen() {
         </View>
       </View>
 
-      <View style={[styles.tabsRow, { backgroundColor: colors.surfaceHighlight }]}>
-        <TouchableOpacity style={[styles.tabBtn, activeTab === 'summary' && { backgroundColor: colors.primary }]} onPress={() => setActiveTab('summary')}><Text style={{ color: activeTab === 'summary' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Tests</Text></TouchableOpacity>
-        <TouchableOpacity style={[styles.tabBtn, activeTab === 'progress' && { backgroundColor: colors.primary }]} onPress={() => setActiveTab('progress')}><Text style={{ color: activeTab === 'progress' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Evolución</Text></TouchableOpacity>
-        <TouchableOpacity style={[styles.tabBtn, activeTab === 'feedback' && { backgroundColor: colors.warning || '#F59E0B' }]} onPress={() => setActiveTab('feedback')}><Text style={{ color: activeTab === 'feedback' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Feedback</Text></TouchableOpacity>
+      <View style={{ paddingHorizontal: 20, marginBottom: 15 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.tabsRow, { backgroundColor: colors.surfaceHighlight }]}>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'summary' && { backgroundColor: colors.primary }]} onPress={() => setActiveTab('summary')}><Text style={{ color: activeTab === 'summary' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Tests</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'progress' && { backgroundColor: colors.primary }]} onPress={() => setActiveTab('progress')}><Text style={{ color: activeTab === 'progress' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Evolución</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'body' && { backgroundColor: colors.primary }]} onPress={() => setActiveTab('body')}><Text style={{ color: activeTab === 'body' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Cuerpo</Text></TouchableOpacity>
+          <TouchableOpacity style={[styles.tabBtn, activeTab === 'feedback' && { backgroundColor: colors.warning || '#F59E0B' }]} onPress={() => setActiveTab('feedback')}><Text style={{ color: activeTab === 'feedback' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Feedback</Text></TouchableOpacity>
+        </ScrollView>
       </View>
 
       {activeTab === 'progress' && cleanProgression.length > 0 && (
         <View style={{ paddingHorizontal: 20, marginBottom: 15 }}>
-          {/* BOTÓN UNIFICAR */}
           <TouchableOpacity style={[styles.mergeBtn, { borderColor: colors.primary, marginBottom: 15 }]} onPress={() => setShowMergeModal(true)}>
             <Ionicons name="git-merge-outline" size={18} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontWeight: '700', marginLeft: 8 }}>Unificar nombres de ejercicios</Text>
+            <Text style={{ color: colors.primary, fontWeight: '700', marginLeft: 8 }}>Unificar nombres</Text>
           </TouchableOpacity>
 
-          {/* BARRA DE BÚSQUEDA Y CAMBIO DE VISTA */}
           <View style={styles.controlsRow}>
             <View style={[styles.searchBox, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
               <Ionicons name="search" size={20} color={colors.textSecondary} />
@@ -460,6 +543,8 @@ export default function AnalyticsScreen() {
               <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 12, fontSize: 15 }}>No hay ejercicios que coincidan con tu búsqueda.</Text>
             </View>
           )
+        ) : activeTab === 'body' ? (
+          renderBodyMap()
         ) : (
           renderFeedbackTab()
         )}
@@ -546,8 +631,8 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 24, fontWeight: '900' },
   headerActions: { flexDirection: 'row', gap: 10 },
   iconBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  tabsRow: { flexDirection: 'row', marginHorizontal: 20, borderRadius: 12, padding: 4, marginBottom: 15 },
-  tabBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
+  tabsRow: { flexDirection: 'row', borderRadius: 12, padding: 4 },
+  tabBtn: { paddingHorizontal: 16, paddingVertical: 10, alignItems: 'center', borderRadius: 8, marginRight: 5 },
   testCard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
   testHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   testName: { fontSize: 17, fontWeight: '800' },
@@ -568,9 +653,7 @@ const styles = StyleSheet.create({
 
   listContainer: { flexDirection: 'column' },
   gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  // Se añade height: 'auto' para que al volver de grid recupere la altura original
   listCard: { width: '100%', height: 'auto' },
-  // Usamos el alto calculado matemáticamente en vez de aspectRatio
   gridCard: { width: '48%', height: GRID_CARD_SIZE, justifyContent: 'center', padding: 5 }, 
   
   progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden' },
@@ -600,6 +683,12 @@ const styles = StyleSheet.create({
   closeBtn: { marginTop: 20, padding: 15, borderRadius: 12, alignItems: 'center' },
   
   feedbackCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
-  
-  emptyCard: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, paddingHorizontal: 20 }
+  emptyCard: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, paddingHorizontal: 20 },
+
+  // Estilos del Mapa Muscular
+  heatmapContainer: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  muscleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
+  muscleName: { width: 100, fontSize: 14, fontWeight: '700' },
+  heatTrack: { flex: 1, height: 16, borderRadius: 8, overflow: 'hidden' },
+  heatFill: { height: '100%', borderRadius: 8 }
 });
