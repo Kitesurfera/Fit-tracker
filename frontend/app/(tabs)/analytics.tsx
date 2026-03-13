@@ -82,6 +82,9 @@ export default function AnalyticsScreen() {
 
   useEffect(() => {
     const init = async () => {
+      const storedMap = await AsyncStorage.getItem('custom_muscle_map');
+      if (storedMap) setCustomMuscleMap(JSON.parse(storedMap));
+      
       if (isTrainer) {
         const aths = await api.getAthletes().catch(() => []);
         setAthletes(aths);
@@ -212,12 +215,47 @@ export default function AnalyticsScreen() {
   };
 
   // --- LÓGICA DEL MAPA DE CALOR ---
-  const getMuscleHeat = () => {
+const getMuscleHeat = () => {
     const heat: Record<string, number> = {
       'Pecho': 0, 'Espalda': 0, 'Cuádriceps': 0, 'Isquiotibiales': 0,
       'Glúteo': 0, 'Hombro': 0, 'Bíceps': 0, 'Tríceps': 0, 'Core': 0,
       'Gemelos': 0, 'Antebrazos': 0, 'Aductores': 0, 'Abductores': 0
     };
+    
+    // Combinamos el mapa base con el personalizado
+    const COMBINED_MAP: Record<string, string[]> = { ...MUSCLE_MAP };
+    for (const [muscle, keywords] of Object.entries(customMuscleMap)) {
+      if (COMBINED_MAP[muscle]) {
+        COMBINED_MAP[muscle] = [...new Set([...COMBINED_MAP[muscle], ...keywords])];
+      }
+    }
+
+    const twoWeeksAgo = new Date();
+    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+    workoutHistory.forEach(w => {
+      const wDate = new Date(w.date);
+      if (wDate >= twoWeeksAgo) {
+        w.completion_data?.exercise_results?.forEach((r: any) => {
+          if (r.completed_sets > 0 && r.name) {
+            const exName = normalizeName(r.name);
+            const weight = parseFloat(r.logged_weight) || 1;
+            const reps = parseInt(r.logged_reps) || 1;
+            const volume = weight * reps * r.completed_sets;
+
+            // BUSCAMOS EN EL MAPA COMBINADO
+            for (const [muscle, keywords] of Object.entries(COMBINED_MAP)) {
+              if (keywords.some(k => exName.includes(k))) {
+                heat[muscle] += volume;
+              }
+            }
+          }
+        });
+      }
+    });
+
+    return heat;
+  };
     
     // Analizamos los últimos 14 días
     const twoWeeksAgo = new Date();
