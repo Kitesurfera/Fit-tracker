@@ -25,7 +25,6 @@ const MEASUREMENT_LABELS: Record<MeasurementType, string> = {
   calf: 'Gemelos (cm)'
 };
 
-// Configuración global para que las alertas se muestren incluso con la app abierta
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -43,7 +42,6 @@ export default function SettingsScreen() {
   const [name, setName] = useState(user?.name || '');
   const [saving, setSaving] = useState(false);
 
-  // --- ESTADOS PARA MEDIDAS ---
   const [showMeasureModal, setShowMeasureModal] = useState(false);
   const [measureType, setMeasureType] = useState<MeasurementType>('weight');
   const [measureValue, setMeasureValue] = useState('');
@@ -51,14 +49,17 @@ export default function SettingsScreen() {
   const [activeChartType, setActiveChartType] = useState<MeasurementType>('weight');
 
   useEffect(() => {
-    const fetchMeasures = async () => {
-      try {
-        const data = await api.getTests({ athlete_id: user?.id, test_name: 'body_measure' });
-        setMeasureHistory(data || []);
-      } catch (e) { console.log(e); }
-    };
-    fetchMeasures();
-  }, [user?.id]);
+    // CONDICIÓN: Solo cargamos el historial si es deportista
+    if (user?.role === 'athlete') {
+      const fetchMeasures = async () => {
+        try {
+          const data = await api.getTests({ athlete_id: user?.id, test_name: 'body_measure' });
+          setMeasureHistory(data || []);
+        } catch (e) { console.log(e); }
+      };
+      fetchMeasures();
+    }
+  }, [user?.id, user?.role]);
 
   const handleUpdateProfile = async () => {
     if (!name.trim()) return;
@@ -71,10 +72,9 @@ export default function SettingsScreen() {
     finally { setSaving(false); }
   };
 
-  // --- LÓGICA DE NOTIFICACIONES ---
   const handleEnableNotifications = async () => {
     if (!Device.isDevice) {
-      Alert.alert("Aviso", "Usa un dispositivo físico para recibir notificaciones (el simulador no funciona).");
+      Alert.alert("Aviso", "Usa un dispositivo físico para recibir notificaciones.");
       return;
     }
 
@@ -92,21 +92,18 @@ export default function SettingsScreen() {
         return;
       }
 
-      // Usamos tu llave pública VAPID para generar el token
       const tokenData = await Notifications.getExpoPushTokenAsync({
         vapidPublicKey: 'BM8HDyMsj3MIuLej219I7bvqRCr9OeW8uUM62CbcYduF4IO3J8IWK1U_k1KFXajbqEeuUGPrWAMJ008BmLDQoVg'
       });
 
       const pushToken = tokenData.data;
-      
-      // Guardamos el token en la base de datos vinculado al perfil
       await api.updateProfile({ push_token: pushToken });
       
-      Alert.alert("¡Listos!", "Notificaciones activadas. Ahora recibirás los avisos importantes.");
+      Alert.alert("¡Listos!", "Notificaciones activadas.");
 
     } catch (error) {
       console.log("Error al activar notificaciones:", error);
-      Alert.alert("Error", "Hubo un problema de conexión al registrar el dispositivo.");
+      Alert.alert("Error", "Hubo un problema de conexión.");
     }
   };
 
@@ -204,7 +201,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* --- NUEVA SECCIÓN DE NOTIFICACIONES --- */}
+        {/* --- NOTIFICACIONES DINÁMICAS --- */}
         <Text style={styles.sectionHeader}>NOTIFICACIONES</Text>
         <View style={[styles.card, { backgroundColor: colors.surface, paddingVertical: 15 }]}>
           <TouchableOpacity 
@@ -215,36 +212,43 @@ export default function SettingsScreen() {
               <View style={[styles.iconWrapper, { backgroundColor: colors.primary + '20' }]}>
                 <Ionicons name="notifications" size={20} color={colors.primary} />
               </View>
-              <Text style={{ marginLeft: 15, fontSize: 15, fontWeight: '700', color: colors.textPrimary }}>Activar Alertas de Sesión</Text>
+              <Text style={{ marginLeft: 15, fontSize: 15, fontWeight: '700', color: colors.textPrimary }}>
+                {user?.role === 'trainer' ? 'Activar alertas de deportistas' : 'Activar alertas de sesión'}
+              </Text>
             </View>
             <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
           </TouchableOpacity>
         </View>
 
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-          <Text style={styles.sectionHeader}>MEDIDAS Y EVOLUCIÓN</Text>
-          <TouchableOpacity onPress={() => setShowMeasureModal(true)} style={[styles.addMeasureBtn, { backgroundColor: colors.primary }]}>
-            <Ionicons name="add" size={16} color="#FFF" />
-            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>AÑADIR</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={[styles.card, { backgroundColor: colors.surface }]}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
-            {Object.keys(MEASUREMENT_LABELS).map((type) => (
-              <TouchableOpacity 
-                key={type} 
-                onPress={() => setActiveChartType(type as MeasurementType)}
-                style={[styles.typeChip, activeChartType === type && { backgroundColor: colors.primary }]}
-              >
-                <Text style={{ color: activeChartType === type ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>
-                  {MEASUREMENT_LABELS[type as MeasurementType].split(' ')[0]}
-                </Text>
+        {/* --- MEDIDAS (SOLO DEPORTISTAS) --- */}
+        {user?.role === 'athlete' && (
+          <>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
+              <Text style={styles.sectionHeader}>MEDIDAS Y EVOLUCIÓN</Text>
+              <TouchableOpacity onPress={() => setShowMeasureModal(true)} style={[styles.addMeasureBtn, { backgroundColor: colors.primary }]}>
+                <Ionicons name="add" size={16} color="#FFF" />
+                <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>AÑADIR</Text>
               </TouchableOpacity>
-            ))}
-          </ScrollView>
-          {renderMiniChart(activeChartType)}
-        </View>
+            </View>
+
+            <View style={[styles.card, { backgroundColor: colors.surface }]}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 15 }}>
+                {Object.keys(MEASUREMENT_LABELS).map((type) => (
+                  <TouchableOpacity 
+                    key={type} 
+                    onPress={() => setActiveChartType(type as MeasurementType)}
+                    style={[styles.typeChip, activeChartType === type && { backgroundColor: colors.primary }]}
+                  >
+                    <Text style={{ color: activeChartType === type ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>
+                      {MEASUREMENT_LABELS[type as MeasurementType].split(' ')[0]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {renderMiniChart(activeChartType)}
+            </View>
+          </>
+        )}
 
         <Text style={styles.sectionHeader}>APARIENCIA</Text>
         <View style={[styles.card, { backgroundColor: colors.surface }]}>
@@ -264,41 +268,43 @@ export default function SettingsScreen() {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* MODAL REGISTRO MEDIDAS */}
-      <Modal visible={showMeasureModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Registrar Medida</Text>
-            
-            <Text style={styles.label}>¿QUÉ VAS A MEDIR?</Text>
-            <View style={styles.gridOptions}>
-              {Object.keys(MEASUREMENT_LABELS).map((type) => (
-                <TouchableOpacity 
-                  key={type} 
-                  onPress={() => setMeasureType(type as MeasurementType)}
-                  style={[styles.optionBtn, { borderColor: colors.border }, measureType === type && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                >
-                  <Text style={{ color: measureType === type ? '#FFF' : colors.textPrimary, fontSize: 12 }}>{MEASUREMENT_LABELS[type as MeasurementType].split(' ')[0]}</Text>
-                </TouchableOpacity>
-              ))}
+      {/* MODAL REGISTRO MEDIDAS (SOLO DEPORTISTAS) */}
+      {user?.role === 'athlete' && (
+        <Modal visible={showMeasureModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalCard, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Registrar Medida</Text>
+              
+              <Text style={styles.label}>¿QUÉ VAS A MEDIR?</Text>
+              <View style={styles.gridOptions}>
+                {Object.keys(MEASUREMENT_LABELS).map((type) => (
+                  <TouchableOpacity 
+                    key={type} 
+                    onPress={() => setMeasureType(type as MeasurementType)}
+                    style={[styles.optionBtn, { borderColor: colors.border }, measureType === type && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                  >
+                    <Text style={{ color: measureType === type ? '#FFF' : colors.textPrimary, fontSize: 12 }}>{MEASUREMENT_LABELS[type as MeasurementType].split(' ')[0]}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              <TextInput 
+                style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                placeholder={`Valor en ${measureType === 'weight' ? 'kg' : 'cm'}`}
+                placeholderTextColor={colors.textSecondary}
+                keyboardType="numeric"
+                value={measureValue}
+                onChangeText={setMeasureValue}
+              />
+
+              <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={saveMeasurement}>
+                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR MEDIDA</Text>}
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => setShowMeasureModal(false)}><Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 15 }}>Cancelar</Text></TouchableOpacity>
             </View>
-
-            <TextInput 
-              style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-              placeholder={`Valor en ${measureType === 'weight' ? 'kg' : 'cm'}`}
-              placeholderTextColor={colors.textSecondary}
-              keyboardType="numeric"
-              value={measureValue}
-              onChangeText={setMeasureValue}
-            />
-
-            <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={saveMeasurement}>
-              {saving ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR MEDIDA</Text>}
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowMeasureModal(false)}><Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 15 }}>Cancelar</Text></TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
