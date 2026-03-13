@@ -20,6 +20,9 @@ from fastapi.staticfiles import StaticFiles
 import asyncio
 import time
 
+# IMPORTACIONES PARA PUSH DE EXPO
+from exponent_server_sdk import PushClient, PushMessage, PushServerError
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -47,21 +50,19 @@ async def cleanup_old_videos():
     while True:
         try:
             now = time.time()
-            thirty_days_seconds = 30 * 24 * 60 * 60  # 30 días en segundos
+            thirty_days_seconds = 30 * 24 * 60 * 60  
             
             if UPLOAD_DIR.exists():
                 for file_path in UPLOAD_DIR.iterdir():
                     if file_path.is_file():
-                        # Calcula cuánto tiempo ha pasado desde que se guardó
                         file_age = now - file_path.stat().st_mtime
                         if file_age > thirty_days_seconds:
-                            file_path.unlink() # Borra el vídeo físicamente
-                            logger.info(f"Vídeo antiguo eliminado automáticamente: {file_path.name}")
+                            file_path.unlink() 
+                            logger.info(f"Vídeo antiguo eliminado: {file_path.name}")
                             
         except Exception as e:
-            logger.error(f"Error en la limpieza de vídeos: {str(e)}")
+            logger.error(f"Error en la limpieza: {str(e)}")
         
-        # Se pone a dormir 24 horas (86400 segundos) hasta el próximo repaso
         await asyncio.sleep(86400)
 
 @app.on_event("startup")
@@ -70,7 +71,7 @@ async def start_cleanup_task():
 
 @app.get("/ping")
 async def ping():
-    return {"status": "awake", "message": "El servidor está activo y listo para planificar."}
+    return {"status": "awake", "message": "El servidor está activo."}
 
 api_router = APIRouter(prefix="/api")
 
@@ -109,7 +110,6 @@ class AthleteUpdate(BaseModel):
     sport: Optional[str] = None
     phone: Optional[str] = None 
 
-
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
     sport: Optional[str] = None
@@ -117,6 +117,7 @@ class ProfileUpdate(BaseModel):
     is_injured: Optional[bool] = None
     injury_notes: Optional[str] = None
     equipment: Optional[str] = None
+    push_token: Optional[str] = None # <-- AÑADIDO PARA GUARDAR EL TOKEN PUSH
 
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
@@ -152,7 +153,6 @@ class MicroCreate(BaseModel):
     tipo: str
     color: str
 
-# NUEVOS MODELOS PARA TESTS FÍSICOS
 class TestCreate(BaseModel):
     athlete_id: str
     test_type: str
@@ -171,6 +171,10 @@ class TestUpdate(BaseModel):
     value_right: Optional[float] = None
     unit: Optional[str] = None
     notes: Optional[str] = None
+
+class PushTest(BaseModel):
+    title: str
+    message: str
 
 # --- Auth Helpers ---
 def hash_password(password: str) -> str:
@@ -199,6 +203,35 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return user
+
+# --- UTILIDAD PARA MANDAR NOTIFICACIONES ---
+def send_push_notification(token: str, title: str, message: str, extra=None):
+    try:
+        response = PushClient().publish(
+            PushMessage(to=token, title=title, body=message, data=extra)
+        )
+        return True
+    except PushServerError as exc:
+        logger.error(f"Error de servidor Expo: {exc.errors}")
+        return False
+    except Exception as e:
+        logger.error(f"Fallo enviando push: {str(e)}")
+        return False
+
+# --- RUTA PARA PROBAR NOTIFICACIONES ---
+@api_router.post("/notifications/test")
+async def test_notification(data: PushTest, user=Depends(get_current_user)):
+    target_user = await db.users.find_one({"id": user['id']})
+    token = target_user.get("push_token")
+    
+    if not token:
+        raise HTTPException(status_code=400, detail="No tienes el token configurado en tu perfil.")
+        
+    success = send_push_notification(token, data.title, data.message)
+    if not success:
+        raise HTTPException(status_code=500, detail="Fallo al contactar con el servicio de push.")
+        
+    return {"status": "success", "message": "Notificación disparada"}
 
 # --- Rutas de Wellness ---
 @api_router.get("/wellness/history/{athlete_id}")
@@ -321,7 +354,7 @@ async def create_athlete(data: AthleteCreate, user=Depends(get_current_user)):
     new_athlete = {
         "id": athlete_id, "email": data.email, "password": hash_password(data.password),
         "name": data.name, "gender": data.gender, "role": "athlete",
-        "sport": data.sport, "phone": data.phone, # <-- AÑADIDO
+        "sport": data.sport, "phone": data.phone, 
         "trainer_id": user['id'], "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.users.insert_one(new_athlete)
@@ -337,7 +370,7 @@ async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_
     if hasattr(data, 'sport') and data.sport is not None: 
         update_data["sport"] = data.sport
     if hasattr(data, 'phone') and data.phone is not None: 
-        update_data["phone"] = data.phone # <-- AÑADIDO
+        update_data["phone"] = data.phone 
         
     if data.password and len(data.password) > 0:
         update_data["password"] = hash_password(data.password)
@@ -483,7 +516,6 @@ async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)
         return {"macros": [], "unassigned_workouts": [], "error": str(e)}
 
 # --- RUTAS DE TESTS FÍSICOS ---
-
 @api_router.post("/tests")
 async def create_test(data: TestCreate, user=Depends(get_current_user)):
     if user['role'] == 'athlete' and data.athlete_id != user['id']:
@@ -547,16 +579,13 @@ async def delete_test(test_id: str, user=Depends(get_current_user)):
 @api_router.post("/upload")
 async def upload_file(request: Request, file: UploadFile = File(...), user=Depends(get_current_user)):
     try:
-        # Extraemos la extensión original (ej. mp4) y creamos un nombre seguro
         file_extension = file.filename.split(".")[-1]
         unique_filename = f"{uuid.uuid4()}.{file_extension}"
         file_path = UPLOAD_DIR / unique_filename
 
-        # Guardamos el archivo físicamente en el servidor
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Generamos la URL pública que devolveremos a la app
         base_url = str(request.base_url).rstrip("/")
         file_url = f"{base_url}/uploads/{unique_filename}"
 
