@@ -181,9 +181,14 @@ export default function AddWorkoutScreen() {
 
   // --- GUARDADO REAL EN LA API ---
   const executeSave = async () => {
+    // CORRECCIÓN: Mandamos tanto microciclo_id como microcycle_id
     let payloadData: any = {
-      title: title.trim(), date: date.trim(), notes: notes.trim(),
-      athlete_id: params.athlete_id, microciclo_id: selectedMicroId,
+      title: title.trim(), 
+      date: date.trim(), 
+      notes: notes.trim(),
+      athlete_id: params.athlete_id, 
+      microciclo_id: selectedMicroId,
+      microcycle_id: selectedMicroId // Añadido para mayor compatibilidad
     };
 
     if (workoutType === 'traditional') {
@@ -245,7 +250,6 @@ export default function AddWorkoutScreen() {
             <TouchableOpacity style={[styles.typeBtn, workoutType === 'hiit' && { backgroundColor: colors.error || '#EF4444' }]} onPress={() => setWorkoutType('hiit')}><Text style={{ color: workoutType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito HIIT</Text></TouchableOpacity>
           </View>
 
-          {/* ... (El resto del render de exercises y hiitBlocks se mantiene EXACTAMENTE IGUAL) ... */}
           {workoutType === 'traditional' ? (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -377,7 +381,6 @@ export default function AddWorkoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  // ... (TODOS LOS ESTILOS ORIGINALES SE MANTIENEN IGUAL) ...
   container: { flex: 1 }, 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 }, 
   headerBtn: { minWidth: 60 }, 
