@@ -72,7 +72,8 @@ export default function EditWorkoutScreen() {
           setDate(w.date || '');
           setNotes(w.notes || '');
           setAthleteId(w.athlete_id);
-          setSelectedMicroId(w.microciclo_id || null);
+          // CORRECCIÓN: Leemos tanto microciclo_id como microcycle_id para estar seguros
+          setSelectedMicroId(w.microciclo_id || w.microcycle_id || null);
 
           if (w.athlete_id) {
             api.getPeriodizationTree(w.athlete_id).then((tree) => {
@@ -191,9 +192,14 @@ export default function EditWorkoutScreen() {
   };
 
   const executeSave = async () => {
+    // CORRECCIÓN: Mandamos tanto microciclo_id como microcycle_id para cubrir ambos casos
     let payloadData: any = {
-      title: title.trim(), date: date.trim(), notes: notes.trim(),
-      athlete_id: athleteId, microciclo_id: selectedMicroId,
+      title: title.trim(), 
+      date: date.trim(), 
+      notes: notes.trim(),
+      athlete_id: athleteId, 
+      microciclo_id: selectedMicroId,
+      microcycle_id: selectedMicroId, // Añadido para mayor compatibilidad
     };
 
     if (workoutType === 'traditional') {
@@ -257,7 +263,6 @@ export default function EditWorkoutScreen() {
             <TouchableOpacity style={[styles.typeBtn, workoutType === 'hiit' && { backgroundColor: colors.error || '#EF4444' }]} onPress={() => setWorkoutType('hiit')}><Text style={{ color: workoutType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito HIIT</Text></TouchableOpacity>
           </View>
 
-          {/* ... (Render de ejercicios tradicional e HIIT igual que add-workout.tsx) ... */}
           {workoutType === 'traditional' ? (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -389,7 +394,6 @@ export default function EditWorkoutScreen() {
 }
 
 const styles = StyleSheet.create({
-  // ... (TODOS LOS ESTILOS SE MANTIENEN IGUAL) ...
   container: { flex: 1 }, 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 }, 
   headerBtn: { minWidth: 60 }, 
