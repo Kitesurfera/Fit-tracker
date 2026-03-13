@@ -58,7 +58,6 @@ export default function AnalyticsScreen() {
   const params = useLocalSearchParams();
   const isTrainer = user?.role === 'trainer';
 
-  // Añadimos la pestaña 'body'
   const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
   const [customMuscleMap, setCustomMuscleMap] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
@@ -194,10 +193,25 @@ export default function AnalyticsScreen() {
           let rawName = r.name.trim();
           if (localAliases[rawName]) rawName = localAliases[rawName];
           const normKey = normalizeName(rawName);
-          const weight = parseFloat(r.logged_weight) || 0;
+          
+          // Reemplazamos la coma por punto para evitar errores NaN si se introdujo "12,5"
+          const weight = parseFloat(String(r.logged_weight || '0').replace(',', '.')) || 0;
+          const reps = parseInt(r.logged_reps) || 0;
+          
           if (!exercises[normKey]) exercises[normKey] = { name: rawName, history: [], maxW: 0 };
-          exercises[normKey].history.push({ date: w.date, weight, reps: parseInt(r.logged_reps) || 0 });
+          
           if (weight > exercises[normKey].maxW) exercises[normKey].maxW = weight;
+
+          // Agrupamos por día para que la gráfica de evolución no sume ni acumule barras dobles
+          const existingDay = exercises[normKey].history.find((h: any) => h.date === w.date);
+          if (existingDay) {
+            if (weight > existingDay.weight) {
+              existingDay.weight = weight;
+              existingDay.reps = reps;
+            }
+          } else {
+            exercises[normKey].history.push({ date: w.date, weight, reps });
+          }
         }
       });
     });
@@ -222,7 +236,6 @@ export default function AnalyticsScreen() {
       'Gemelos': 0, 'Antebrazos': 0, 'Aductores': 0, 'Abductores': 0
     };
     
-    // Combinamos el mapa base con el personalizado
     const COMBINED_MAP: Record<string, string[]> = { ...MUSCLE_MAP };
     for (const [muscle, keywords] of Object.entries(customMuscleMap)) {
       if (COMBINED_MAP[muscle]) {
@@ -239,14 +252,12 @@ export default function AnalyticsScreen() {
         w.completion_data?.exercise_results?.forEach((r: any) => {
           if (r.completed_sets > 0 && r.name) {
             const exName = normalizeName(r.name);
-            const weight = parseFloat(r.logged_weight) || 1;
-            const reps = parseInt(r.logged_reps) || 1;
-            const volume = weight * reps * r.completed_sets;
+            // CORRECCIÓN: Contamos solo las series efectivas, no el tonelaje total.
+            const sets = parseInt(r.completed_sets) || 1;
 
-            // BUSCAMOS EN EL MAPA COMBINADO
             for (const [muscle, keywords] of Object.entries(COMBINED_MAP)) {
               if (keywords.some(k => exName.includes(k))) {
-                heat[muscle] += volume;
+                heat[muscle] += sets;
               }
             }
           }
@@ -261,7 +272,6 @@ export default function AnalyticsScreen() {
     const heat = getMuscleHeat();
     const maxVolume = Math.max(...Object.values(heat));
     
-    // Si no hay datos recientes
     if (maxVolume === 0) {
       return (
         <View style={styles.emptyCard}>
@@ -274,16 +284,15 @@ export default function AnalyticsScreen() {
     return (
       <View style={{ paddingBottom: 100 }}>
         <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 20, textAlign: 'center' }}>
-          Volumen de trabajo (últimos 14 días)
+          Volumen de trabajo (Series en los últimos 14 días)
         </Text>
         <View style={[styles.heatmapContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
           {Object.entries(heat).sort((a, b) => b[1] - a[1]).map(([muscle, volume], idx) => {
             const intensity = maxVolume > 0 ? volume / maxVolume : 0;
-            // Lógica de colores del Heatmap
-            let barColor = colors.border; // Gris (0%)
-            if (intensity > 0.7) barColor = '#EF4444'; // Rojo Fuego (Alto)
-            else if (intensity > 0.3) barColor = '#F59E0B'; // Naranja (Medio)
-            else if (intensity > 0) barColor = '#3B82F6'; // Azul (Bajo)
+            let barColor = colors.border;
+            if (intensity > 0.7) barColor = '#EF4444'; 
+            else if (intensity > 0.3) barColor = '#F59E0B'; 
+            else if (intensity > 0) barColor = '#3B82F6'; 
 
             return (
               <View key={muscle} style={styles.muscleRow}>
@@ -699,7 +708,6 @@ const styles = StyleSheet.create({
   feedbackCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
   emptyCard: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, paddingHorizontal: 20 },
 
-  // Estilos del Mapa Muscular
   heatmapContainer: { padding: 20, borderRadius: 20, borderWidth: 1 },
   muscleRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 15 },
   muscleName: { width: 100, fontSize: 14, fontWeight: '700' },
