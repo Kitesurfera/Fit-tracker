@@ -25,6 +25,15 @@ const MEASUREMENT_LABELS: Record<MeasurementType, string> = {
   calf: 'Gemelos (cm)'
 };
 
+// Configuración global para que las alertas se muestren incluso con la app abierta
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 export default function SettingsScreen() {
   const { user, logout, updateUser, loading: authLoading } = useAuth();
   const { colors, themeMode, updateTheme } = useTheme();
@@ -41,7 +50,6 @@ export default function SettingsScreen() {
   const [measureHistory, setMeasureHistory] = useState<any[]>([]);
   const [activeChartType, setActiveChartType] = useState<MeasurementType>('weight');
 
-  // Cargamos historial de medidas (Simulado o desde API si ya existe el endpoint)
   useEffect(() => {
     const fetchMeasures = async () => {
       try {
@@ -50,7 +58,7 @@ export default function SettingsScreen() {
       } catch (e) { console.log(e); }
     };
     fetchMeasures();
-  }, []);
+  }, [user?.id]);
 
   const handleUpdateProfile = async () => {
     if (!name.trim()) return;
@@ -63,6 +71,45 @@ export default function SettingsScreen() {
     finally { setSaving(false); }
   };
 
+  // --- LÓGICA DE NOTIFICACIONES ---
+  const handleEnableNotifications = async () => {
+    if (!Device.isDevice) {
+      Alert.alert("Aviso", "Usa un dispositivo físico para recibir notificaciones (el simulador no funciona).");
+      return;
+    }
+
+    try {
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
+      let finalStatus = existingStatus;
+
+      if (existingStatus !== 'granted') {
+        const { status } = await Notifications.requestPermissionsAsync();
+        finalStatus = status;
+      }
+
+      if (finalStatus !== 'granted') {
+        Alert.alert("Permiso denegado", "No podemos enviarte alertas sin tu permiso.");
+        return;
+      }
+
+      // Usamos tu llave pública VAPID para generar el token
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        vapidPublicKey: 'BM8HDyMsj3MIuLej219I7bvqRCr9OeW8uUM62CbcYduF4IO3J8IWK1U_k1KFXajbqEeuUGPrWAMJ008BmLDQoVg'
+      });
+
+      const pushToken = tokenData.data;
+      
+      // Guardamos el token en la base de datos vinculado al perfil
+      await api.updateProfile({ push_token: pushToken });
+      
+      Alert.alert("¡Listos!", "Notificaciones activadas. Ahora recibirás los avisos importantes.");
+
+    } catch (error) {
+      console.log("Error al activar notificaciones:", error);
+      Alert.alert("Error", "Hubo un problema de conexión al registrar el dispositivo.");
+    }
+  };
+
   const saveMeasurement = async () => {
     if (!measureValue) return;
     setSaving(true);
@@ -70,7 +117,7 @@ export default function SettingsScreen() {
       const payload = {
         athlete_id: user?.id,
         test_name: 'body_measure',
-        custom_name: measureType, // Guardamos el tipo de medida aquí
+        custom_name: measureType,
         value: parseFloat(measureValue),
         unit: measureType === 'weight' ? 'kg' : 'cm',
         date: new Date().toISOString().split('T')[0],
@@ -157,7 +204,23 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* --- NUEVA SECCIÓN DE MEDIDAS --- */}
+        {/* --- NUEVA SECCIÓN DE NOTIFICACIONES --- */}
+        <Text style={styles.sectionHeader}>NOTIFICACIONES</Text>
+        <View style={[styles.card, { backgroundColor: colors.surface, paddingVertical: 15 }]}>
+          <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
+            onPress={handleEnableNotifications}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.iconWrapper, { backgroundColor: colors.primary + '20' }]}>
+                <Ionicons name="notifications" size={20} color={colors.primary} />
+              </View>
+              <Text style={{ marginLeft: 15, fontSize: 15, fontWeight: '700', color: colors.textPrimary }}>Activar Alertas de Sesión</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        </View>
+
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
           <Text style={styles.sectionHeader}>MEDIDAS Y EVOLUCIÓN</Text>
           <TouchableOpacity onPress={() => setShowMeasureModal(true)} style={[styles.addMeasureBtn, { backgroundColor: colors.primary }]}>
@@ -256,6 +319,7 @@ const styles = StyleSheet.create({
   themeOption: { flex: 1, alignItems: 'center', padding: 12, borderRadius: 16, borderWidth: 1 },
   themeLabel: { fontSize: 10, fontWeight: '700', marginTop: 8 },
   logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 20, borderRadius: 22, marginTop: 10 },
+  iconWrapper: { width: 36, height: 36, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
   
   // Estilos Medidas
   addMeasureBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, gap: 4 },
