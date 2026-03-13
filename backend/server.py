@@ -116,7 +116,7 @@ class ProfileUpdate(BaseModel):
     is_injured: Optional[bool] = None
     injury_notes: Optional[str] = None
     equipment: Optional[str] = None
-    push_token: Optional[str] = None # <-- AÑADIDO PARA GUARDAR EL TOKEN PUSH
+    push_token: Optional[str] = None
 
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
@@ -402,7 +402,7 @@ async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
 
 # --- RUTAS DE ENTRENAMIENTOS Y PERIODIZACIÓN ---
 @api_router.post("/workouts")
-async def create_workout(data: WorkoutCreate, user=Depends(get_current_user)):
+async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     workout = data.dict()
     workout["id"] = str(uuid.uuid4())
     workout["completed"] = False 
@@ -410,22 +410,46 @@ async def create_workout(data: WorkoutCreate, user=Depends(get_current_user)):
     
     await db.workouts.insert_one(workout)
     workout.pop('_id', None) 
+    
+    # --- NOTIFICACIÓN AL DEPORTISTA ---
+    if user['role'] == 'trainer':
+        athlete = await db.users.find_one({"id": data.athlete_id})
+        if athlete and athlete.get('push_token'):
+            trainer_name = user.get('name', 'Tu entrenador')
+            titulo = "🏋️‍♂️ ¡Nueva sesión programada!"
+            mensaje = f"{trainer_name} ha añadido '{data.title}' para el {data.date}."
+            background_tasks.add_task(send_push_notification, athlete['push_token'], titulo, mensaje)
+            
     return {"status": "success", "workout": workout}
 
 @api_router.post("/workouts/bulk")
-async def create_workouts_bulk(data: WorkoutBulkCreate, user=Depends(get_current_user)):
+async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     new_workouts = []
+    athlete_ids = set()
+    
     for w in data.workouts:
         workout = w.dict()
         workout["id"] = str(uuid.uuid4())
         workout["completed"] = False
         workout["completion_data"] = None
         new_workouts.append(workout)
+        athlete_ids.add(w.athlete_id)
     
     if new_workouts:
         await db.workouts.insert_many(new_workouts)
         for w in new_workouts:
             w.pop('_id', None) 
+            
+        # --- NOTIFICACIÓN AL DEPORTISTA (Agrupada) ---
+        if user['role'] == 'trainer':
+            trainer_name = user.get('name', 'Tu entrenador')
+            for a_id in athlete_ids:
+                athlete = await db.users.find_one({"id": a_id})
+                if athlete and athlete.get('push_token'):
+                    count = sum(1 for w in data.workouts if w.athlete_id == a_id)
+                    titulo = "📅 ¡Nuevas sesiones programadas!"
+                    mensaje = f"{trainer_name} ha añadido {count} nueva(s) sesión(es) a tu calendario."
+                    background_tasks.add_task(send_push_notification, athlete['push_token'], titulo, mensaje)
             
     return {"status": "success", "inserted": len(new_workouts)}
 
