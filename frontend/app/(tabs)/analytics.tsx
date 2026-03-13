@@ -36,7 +36,11 @@ const MUSCLE_MAP: Record<string, string[]> = {
   'Hombro': ['press militar', 'hombro', 'elevaciones', 'deltoides', 'face pull'],
   'Bíceps': ['curl', 'biceps'],
   'Tríceps': ['triceps', 'extensiones triceps', 'fondos', 'dip'],
-  'Core': ['plancha', 'crunch', 'core', 'abs', 'abdominales', 'leg raise', 'rueda']
+  'Core': ['plancha', 'crunch', 'core', 'abs', 'abdominales', 'leg raise', 'rueda'],
+  'Gemelos': ['gemelos', 'gemelo', 'calf', 'calves', 'soleo', 'elevacion talones'],
+  'Antebrazos': ['antebrazos', 'antebrazo', 'forearm', 'curl muñeca', 'paseo granjero', 'agarre'],
+  'Aductores': ['aductores', 'aductor', 'adductor', 'copenhague', 'copenhagen', 'interior pierna'],
+  'Abductores': ['abductores', 'abductor', 'aperturas pierna', 'banda lateral', 'exterior pierna']
 };
 
 const normalizeName = (name: string) => {
@@ -209,7 +213,8 @@ export default function AnalyticsScreen() {
   const getMuscleHeat = () => {
     const heat: Record<string, number> = {
       'Pecho': 0, 'Espalda': 0, 'Cuádriceps': 0, 'Isquiotibiales': 0,
-      'Glúteo': 0, 'Hombro': 0, 'Bíceps': 0, 'Tríceps': 0, 'Core': 0
+      'Glúteo': 0, 'Hombro': 0, 'Bíceps': 0, 'Tríceps': 0, 'Core': 0,
+      'Gemelos': 0, 'Antebrazos': 0, 'Aductores': 0, 'Abductores': 0
     };
     
     // Analizamos los últimos 14 días
