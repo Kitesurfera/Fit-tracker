@@ -1,13 +1,35 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert, Modal
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
+
+const BASE_MUSCLE_MAP: Record<string, string[]> = {
+  'Pecho': ['press banca', 'flexiones', 'pecho', 'aperturas', 'push up'],
+  'Espalda': ['dominadas', 'remo', 'pull up', 'espalda', 'lat pulldown'],
+  'Cuádriceps': ['sentadilla', 'squat', 'prensa', 'extensiones', 'bulgara', 'lunge', 'zancada'],
+  'Isquiotibiales': ['peso muerto', 'deadlift', 'curl femoral', 'isquios', 'buenos dias'],
+  'Glúteo': ['hip thrust', 'puente', 'gluteo', 'patada'],
+  'Hombro': ['press militar', 'hombro', 'elevaciones', 'deltoides', 'face pull'],
+  'Bíceps': ['curl', 'biceps'],
+  'Tríceps': ['triceps', 'extensiones triceps', 'fondos', 'dip'],
+  'Core': ['plancha', 'crunch', 'core', 'abs', 'abdominales', 'leg raise', 'rueda']
+};
+const MUSCLE_GROUPS = Object.keys(BASE_MUSCLE_MAP);
+
+const normalizeName = (name: string) => {
+  if (!name) return "";
+  let n = name.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  if (n.endsWith('es')) n = n.slice(0, -2);
+  else if (n.endsWith('s')) n = n.slice(0, -1);
+  return n;
+};
 
 export default function EditWorkoutScreen() {
   const { colors } = useTheme();
@@ -30,6 +52,12 @@ export default function EditWorkoutScreen() {
   const [exercises, setExercises] = useState<any[]>([]);
   const [hiitBlocks, setHiitBlocks] = useState<any[]>([]);
 
+  // --- ESTADOS PARA MAPEO DE MÚSCULOS ---
+  const [customMap, setCustomMap] = useState<Record<string, string[]>>({});
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [unknownExercises, setUnknownExercises] = useState<string[]>([]);
+  const [exerciseMappings, setExerciseMappings] = useState<Record<string, string[]>>({});
+
   useEffect(() => {
     const fetchWorkout = async () => {
       try {
@@ -42,7 +70,6 @@ export default function EditWorkoutScreen() {
           setAthleteId(w.athlete_id);
           setSelectedMicroId(w.microciclo_id || null);
 
-          // Cargar Micros para este atleta
           if (w.athlete_id) {
             api.getPeriodizationTree(w.athlete_id).then((tree) => {
               const todosLosMicros = Array.isArray(tree) ? tree.flatMap((macro: any) => macro.microciclos || []) : (tree?.macros || []).flatMap((macro: any) => macro.microciclos || []);
@@ -59,13 +86,14 @@ export default function EditWorkoutScreen() {
             setExercises((w.exercises || []).map((e: any) => ({ ...e, _key: Math.random().toString() })));
           }
         }
-      } catch (e) {
-        console.error("Error al cargar sesión", e);
-      } finally {
-        setLoadingData(false);
-      }
+      } catch (e) { console.error("Error al cargar sesión", e); } 
+      finally { setLoadingData(false); }
     };
     if (params.workoutId) fetchWorkout();
+
+    AsyncStorage.getItem('custom_muscle_map').then(res => {
+      if (res) setCustomMap(JSON.parse(res));
+    });
   }, [params.workoutId]);
 
   const updateExercise = (index: number, field: string, value: string) => {
@@ -76,15 +104,11 @@ export default function EditWorkoutScreen() {
   
   const moveExerciseUp = (index: number) => {
     if (index === 0) return;
-    const newExs = [...exercises];
-    [newExs[index - 1], newExs[index]] = [newExs[index], newExs[index - 1]];
-    setExercises(newExs);
+    const newExs = [...exercises]; [newExs[index - 1], newExs[index]] = [newExs[index], newExs[index - 1]]; setExercises(newExs);
   };
   const moveExerciseDown = (index: number) => {
     if (index === exercises.length - 1) return;
-    const newExs = [...exercises];
-    [newExs[index + 1], newExs[index]] = [newExs[index], newExs[index + 1]];
-    setExercises(newExs);
+    const newExs = [...exercises]; [newExs[index + 1], newExs[index]] = [newExs[index], newExs[index + 1]]; setExercises(newExs);
   };
 
   const addHiitBlock = () => setHiitBlocks([...hiitBlocks, { _key: Math.random().toString(), name: `Bloque ${hiitBlocks.length + 1}`, sets: '3', rest_exercise: '15', rest_block: '60', rest_between_blocks: '120', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '', exercise_notes: '', video_url: '' }] }]);
@@ -97,49 +121,90 @@ export default function EditWorkoutScreen() {
   
   const moveHiitExerciseUp = (bIndex: number, eIndex: number) => {
     if (eIndex === 0) return;
-    const updated = [...hiitBlocks];
-    [updated[bIndex].exercises[eIndex - 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex - 1]];
-    setHiitBlocks(updated);
+    const updated = [...hiitBlocks]; [updated[bIndex].exercises[eIndex - 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex - 1]]; setHiitBlocks(updated);
   };
   const moveHiitExerciseDown = (bIndex: number, eIndex: number) => {
     if (eIndex === hiitBlocks[bIndex].exercises.length - 1) return;
-    const updated = [...hiitBlocks];
-    [updated[bIndex].exercises[eIndex + 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex + 1]];
-    setHiitBlocks(updated);
+    const updated = [...hiitBlocks]; [updated[bIndex].exercises[eIndex + 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex + 1]]; setHiitBlocks(updated);
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     setError('');
     if (!title.trim()) { setError('El título es obligatorio'); return; }
     if (!date.trim()) { setError('La fecha es obligatoria'); return; }
 
+    const exNames = workoutType === 'traditional' 
+      ? exercises.map(e => e.name.trim()).filter(Boolean)
+      : hiitBlocks.flatMap(b => b.exercises.map((e: any) => e.name.trim()).filter(Boolean));
+
+    if (exNames.length === 0) { setError('Añade al menos un ejercicio'); return; }
+
+    const unknowns: string[] = [];
+    exNames.forEach(name => {
+      const norm = normalizeName(name);
+      let found = false;
+      
+      for (const keywords of Object.values(BASE_MUSCLE_MAP)) {
+        if (keywords.some(k => norm.includes(k))) found = true;
+      }
+      for (const keywords of Object.values(customMap)) {
+        if (keywords.some(k => norm.includes(k))) found = true;
+      }
+
+      if (!found && !unknowns.includes(name)) unknowns.push(name);
+    });
+
+    if (unknowns.length > 0) {
+      setUnknownExercises(unknowns);
+      setExerciseMappings({});
+      setShowMapModal(true);
+    } else {
+      executeSave();
+    }
+  };
+
+  const saveMappingsAndContinue = async () => {
+    const updatedMap = { ...customMap };
+    for (const [exName, muscles] of Object.entries(exerciseMappings)) {
+      const norm = normalizeName(exName);
+      muscles.forEach(m => {
+        if (!updatedMap[m]) updatedMap[m] = [];
+        if (!updatedMap[m].includes(norm)) updatedMap[m].push(norm);
+      });
+    }
+    await AsyncStorage.setItem('custom_muscle_map', JSON.stringify(updatedMap));
+    setCustomMap(updatedMap);
+    setShowMapModal(false);
+    executeSave();
+  };
+
+  const toggleMuscleSelection = (exName: string, muscle: string) => {
+    setExerciseMappings(prev => {
+      const current = prev[exName] || [];
+      const updated = current.includes(muscle) ? current.filter(m => m !== muscle) : [...current, muscle];
+      return { ...prev, [exName]: updated };
+    });
+  };
+
+  const executeSave = async () => {
     let payloadData: any = {
-      title: title.trim(),
-      date: date.trim(),
-      notes: notes.trim(),
-      athlete_id: athleteId,
-      microciclo_id: selectedMicroId,
+      title: title.trim(), date: date.trim(), notes: notes.trim(),
+      athlete_id: athleteId, microciclo_id: selectedMicroId,
     };
 
     if (workoutType === 'traditional') {
-      const cleanExercises = exercises.filter(e => e.name.trim()).map(ex => ({
+      payloadData.exercises = exercises.filter(e => e.name.trim()).map(ex => ({
         name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight,
         rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes
       }));
-      if (cleanExercises.length === 0) { setError('Agrega al menos un ejercicio'); return; }
-      payloadData.exercises = cleanExercises;
     } else {
-      const cleanBlocks = hiitBlocks.map(block => {
-        const validExs = block.exercises.filter((e: any) => e.name.trim()).map((e: any) => ({ 
+      payloadData.exercises = hiitBlocks.map(block => ({
+        is_hiit_block: true, name: block.name, sets: block.sets, rest_exercise: block.rest_exercise,
+        rest_block: block.rest_block, rest_between_blocks: block.rest_between_blocks, 
+        hiit_exercises: block.exercises.filter((e: any) => e.name.trim()).map((e: any) => ({ 
           name: e.name, duration_reps: e.duration_reps, exercise_notes: e.exercise_notes, video_url: e.video_url 
-        }));
-        return {
-          is_hiit_block: true, name: block.name, sets: block.sets, rest_exercise: block.rest_exercise,
-          rest_block: block.rest_block, rest_between_blocks: block.rest_between_blocks, hiit_exercises: validExs
-        };
-      }).filter(b => b.hiit_exercises.length > 0);
-      if (cleanBlocks.length === 0) { setError('Añade al menos un bloque con un ejercicio'); return; }
-      payloadData.exercises = cleanBlocks;
+        }))
+      })).filter(b => b.hiit_exercises.length > 0);
     }
 
     setSaving(true);
@@ -188,6 +253,7 @@ export default function EditWorkoutScreen() {
             <TouchableOpacity style={[styles.typeBtn, workoutType === 'hiit' && { backgroundColor: colors.error || '#EF4444' }]} onPress={() => setWorkoutType('hiit')}><Text style={{ color: workoutType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito HIIT</Text></TouchableOpacity>
           </View>
 
+          {/* ... (Render de ejercicios tradicional e HIIT igual que add-workout.tsx) ... */}
           {workoutType === 'traditional' ? (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -268,11 +334,58 @@ export default function EditWorkoutScreen() {
           {error ? <Text style={[styles.errorText, { color: colors.error || '#EF4444' }]}>{error}</Text> : null}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* MODAL PARA MAPEADO DE MÚSCULOS */}
+      <Modal visible={showMapModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 10 }}>Ejercicios Nuevos 🤔</Text>
+            <Text style={{ color: colors.textSecondary, marginBottom: 20, fontSize: 14 }}>
+              Para que el Mapa de Calor sea preciso, indícale a Fit Tracker qué grupos musculares trabajan estos ejercicios:
+            </Text>
+            
+            <ScrollView style={{ flexShrink: 1, marginBottom: 20 }}>
+              {unknownExercises.map(ex => (
+                <View key={ex} style={{ marginBottom: 20 }}>
+                  <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 10 }}>{ex}</Text>
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                    {MUSCLE_GROUPS.map(muscle => {
+                      const isSelected = (exerciseMappings[ex] || []).includes(muscle);
+                      return (
+                        <TouchableOpacity 
+                          key={muscle} 
+                          onPress={() => toggleMuscleSelection(ex, muscle)}
+                          style={[
+                            styles.musclePill, 
+                            { borderColor: colors.border }, 
+                            isSelected && { backgroundColor: colors.primary, borderColor: colors.primary }
+                          ]}
+                        >
+                          <Text style={{ color: isSelected ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{muscle}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity style={[styles.saveBtnBig, { backgroundColor: colors.primary }]} onPress={saveMappingsAndContinue}>
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>GUARDAR Y CONTINUAR</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={executeSave} style={{ marginTop: 15 }}>
+              <Text style={{ color: colors.textSecondary, textAlign: 'center', fontWeight: '600' }}>Ignorar y continuar sin mapear</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  // ... (TODOS LOS ESTILOS SE MANTIENEN IGUAL) ...
   container: { flex: 1 }, 
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, borderBottomWidth: 0.5 }, 
   headerBtn: { minWidth: 60 }, 
@@ -316,5 +429,11 @@ const styles = StyleSheet.create({
   hiitExInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 14, minWidth: 0 }, 
   hiitNotesInput: { borderWidth: 1, borderRadius: 8, padding: 8, fontSize: 12, fontStyle: 'italic', marginTop: 5, marginLeft: 28, minWidth: 0 }, 
   addHiitExBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, marginLeft: 20 }, 
-  errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 }
+  errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 },
+
+  // Estilos Modal Mapa de Músculos
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
+  musclePill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  saveBtnBig: { paddingVertical: 16, borderRadius: 15, alignItems: 'center' }
 });
