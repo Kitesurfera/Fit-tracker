@@ -39,6 +39,9 @@ export default function CalendarScreen() {
   
   const [viewMicroInfo, setViewMicroInfo] = useState<any>(null);
   const [workoutToCopy, setWorkoutToCopy] = useState<any>(null);
+  
+  // ESTADO NUEVO: Para saber qué sesión está desplegada en el popup
+  const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(null);
 
   const isTrainer = user?.role === 'trainer';
 
@@ -334,6 +337,19 @@ export default function CalendarScreen() {
     }
   };
 
+  const handleCloseMicroInfo = () => {
+    setViewMicroInfo(null);
+    setExpandedWorkoutId(null);
+  };
+
+  // Filtrar los entrenamientos que pertenecen al microciclo abierto en el popup
+  const microWorkouts = useMemo(() => {
+    if (!viewMicroInfo) return [];
+    return workouts
+      .filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [workouts, viewMicroInfo]);
+
   if (authLoading || (loading && athletes.length === 0)) {
     return (
       <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}>
@@ -521,12 +537,18 @@ export default function CalendarScreen() {
 
       {/* MODAL DE INFORMACIÓN DE FASE */}
       <Modal visible={!!viewMicroInfo} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setViewMicroInfo(null)}>
-          <View style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
+        <TouchableOpacity style={styles.modalOverlay} onPress={handleCloseMicroInfo}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
             {viewMicroInfo && (
-              <View style={{ alignItems: 'center', width: '100%' }}>
-                <View style={[styles.phaseIconBadge, { backgroundColor: (viewMicroInfo.color || colors.primary) + '15' }]}>
-                  <Ionicons name="flag" size={32} color={viewMicroInfo.color || colors.primary} />
+              <View style={{ alignItems: 'center', width: '100%', flex: 1 }}>
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+                  <View style={[styles.phaseIconBadge, { backgroundColor: (viewMicroInfo.color || colors.primary) + '15' }]}>
+                    <Ionicons name="flag" size={24} color={viewMicroInfo.color || colors.primary} />
+                  </View>
+                  <TouchableOpacity onPress={handleCloseMicroInfo}>
+                    <Ionicons name="close" size={24} color={colors.textSecondary} />
+                  </TouchableOpacity>
                 </View>
                 
                 <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>PERTENECE AL MACROCICLO:</Text>
@@ -537,26 +559,96 @@ export default function CalendarScreen() {
                 <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>FASE ACTUAL (MICROCICLO):</Text>
                 <Text style={[styles.infoTitleMicro, { color: colors.textPrimary }]}>{viewMicroInfo.nombre}</Text>
 
-                <View style={[styles.microTypeBadgeBig, { backgroundColor: (viewMicroInfo.color || colors.primary) }]}>
-                  <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }}>{viewMicroInfo.tipo}</Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
+                  <View style={[styles.microTypeBadgeBig, { backgroundColor: (viewMicroInfo.color || colors.primary) }]}>
+                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }}>{viewMicroInfo.tipo}</Text>
+                  </View>
+                  <View style={[styles.datesRow, { marginTop: 0 }]}>
+                    <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>
+                      {viewMicroInfo.fecha_inicio.split('-').reverse().join('/')} - {viewMicroInfo.fecha_fin.split('-').reverse().join('/')}
+                    </Text>
+                  </View>
                 </View>
 
-                <View style={styles.datesRow}>
-                  <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
-                  <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '600', marginLeft: 6 }}>
-                    {viewMicroInfo.fecha_inicio.split('-').reverse().join('/')} - {viewMicroInfo.fecha_fin.split('-').reverse().join('/')}
+                {/* LISTA DE SESIONES DE LA FASE */}
+                <View style={{ width: '100%', marginTop: 25, flexShrink: 1 }}>
+                  <Text style={[styles.infoLabel, { color: colors.textSecondary, marginBottom: 10, textAlign: 'left' }]}>
+                    SESIONES PROGRAMADAS ({microWorkouts.length})
                   </Text>
+                  
+                  <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={true}>
+                    {microWorkouts.map(wk => (
+                      <View key={wk.id} style={[styles.microWorkoutCard, { borderColor: colors.border }]}>
+                        <TouchableOpacity 
+                          style={[styles.microWorkoutHeader, { backgroundColor: colors.surfaceHighlight }]}
+                          onPress={() => setExpandedWorkoutId(expandedWorkoutId === wk.id ? null : wk.id)}
+                        >
+                          <Ionicons name="barbell-outline" size={18} color={viewMicroInfo.color || colors.primary} />
+                          <View style={{ flex: 1, marginLeft: 10 }}>
+                            <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{wk.title}</Text>
+                            <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{wk.date.split('-').reverse().join('/')}</Text>
+                          </View>
+                          <Ionicons name={expandedWorkoutId === wk.id ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+
+                        {/* DESPLEGABLE DE EJERCICIOS */}
+                        {expandedWorkoutId === wk.id && (
+                          <View style={[styles.microWorkoutExercises, { borderTopColor: colors.border }]}>
+                            {wk.exercises && wk.exercises.length > 0 ? (
+                              wk.exercises.map((ex: any, i: number) => {
+                                if (ex.is_hiit_block) {
+                                  return (
+                                    <View key={i} style={{ marginBottom: 8 }}>
+                                      <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 12 }}>⚡ {ex.name}</Text>
+                                      {ex.hiit_exercises?.map((he: any, j: number) => (
+                                        <Text key={j} style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 15, marginTop: 2 }}>
+                                          • {he.name} <Text style={{fontWeight: '600', color: colors.textPrimary}}>({he.duration_reps})</Text>
+                                        </Text>
+                                      ))}
+                                    </View>
+                                  );
+                                } else {
+                                  return (
+                                    <Text key={i} style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>
+                                      • {ex.name} <Text style={{fontWeight: '600', color: viewMicroInfo.color || colors.primary}}>{ex.sets}x{ex.reps}</Text>
+                                    </Text>
+                                  );
+                                }
+                              })
+                            ) : (
+                              <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic' }}>Sin ejercicios registrados.</Text>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    ))}
+                    {microWorkouts.length === 0 && (
+                      <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', textAlign: 'center', marginTop: 15 }}>
+                        No hay sesiones asignadas a esta fase todavía.
+                      </Text>
+                    )}
+                  </ScrollView>
                 </View>
 
-                <TouchableOpacity 
-                  style={[styles.closePhaseBtn, { backgroundColor: colors.surfaceHighlight }]} 
-                  onPress={() => setViewMicroInfo(null)}
-                >
-                  <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>Cerrar</Text>
-                </TouchableOpacity>
+                {isTrainer && (
+                  <TouchableOpacity 
+                    style={[styles.editPhaseBtn, { borderColor: viewMicroInfo.color || colors.primary }]} 
+                    onPress={() => {
+                      handleCloseMicroInfo();
+                      router.push(`/periodization?athlete_id=${selectedAthlete.id}&name=${encodeURIComponent(selectedAthlete.name)}`);
+                    }}
+                  >
+                    <Ionicons name="pencil" size={18} color={viewMicroInfo.color || colors.primary} />
+                    <Text style={{ color: viewMicroInfo.color || colors.primary, fontWeight: '800', fontSize: 13, marginLeft: 8 }}>
+                      EDITAR PLANIFICACIÓN
+                    </Text>
+                  </TouchableOpacity>
+                )}
+
               </View>
             )}
-          </View>
+          </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
     </SafeAreaView>
@@ -598,18 +690,25 @@ const styles = StyleSheet.create({
   actionIconBtn: { padding: 8 },
   emptyCard: { alignItems: 'center', paddingVertical: 30 },
   
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30, width: '100%', position: 'absolute', bottom: 0 },
   modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20 },
   athleteItem: { paddingVertical: 18, borderBottomWidth: 1 },
 
-  modalContentInfo: { margin: 20, padding: 30, borderRadius: 30, alignItems: 'center', elevation: 5, marginBottom: 'auto', marginTop: 'auto' },
-  phaseIconBadge: { width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  // Estilos del Modal de Fase
+  modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 },
+  phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' },
-  infoTitleMacro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' },
-  divider: { height: 1, width: '80%', marginVertical: 20, opacity: 0.5 },
-  infoTitleMicro: { fontSize: 22, fontWeight: '900', marginTop: 4, textAlign: 'center' },
-  microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, marginTop: 15 },
-  datesRow: { flexDirection: 'row', alignItems: 'center', marginTop: 20, backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 12 },
-  closePhaseBtn: { width: '100%', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginTop: 30 }
+  infoTitleMacro: { fontSize: 18, fontWeight: '900', marginTop: 4, textAlign: 'center' },
+  divider: { height: 1, width: '80%', marginVertical: 15, opacity: 0.5 },
+  infoTitleMicro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' },
+  microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
+  datesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
+  
+  // Estilos de la lista de sesiones y desplegables
+  microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' },
+  microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 },
+  microWorkoutExercises: { padding: 14, borderTopWidth: 1 },
+  
+  editPhaseBtn: { flexDirection: 'row', width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, marginTop: 20 }
 });
