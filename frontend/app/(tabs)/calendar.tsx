@@ -40,7 +40,6 @@ export default function CalendarScreen() {
   const [viewMicroInfo, setViewMicroInfo] = useState<any>(null);
   const [workoutToCopy, setWorkoutToCopy] = useState<any>(null);
   
-  // ESTADO NUEVO: Para saber qué sesión está desplegada en el popup
   const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(null);
 
   const isTrainer = user?.role === 'trainer';
@@ -174,13 +173,13 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
+  // Lógica blindada para detectar microciclos en el mes actual
   const microciclosDelMes = useMemo(() => {
     if (!Array.isArray(macros)) return [];
     const microsResult: any[] = [];
     
-    const firstDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-    const lastDayObj = new Date(currentYear, currentMonth + 1, 0);
-    const lastDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(lastDayObj.getDate()).padStart(2, '0')}`;
+    const firstDayTime = new Date(currentYear, currentMonth, 1).getTime();
+    const lastDayTime = new Date(currentYear, currentMonth + 1, 0).getTime();
 
     macros.forEach(macro => {
       const listaMicros = macro.microciclos || macro.microcycles || [];
@@ -188,117 +187,103 @@ export default function CalendarScreen() {
         listaMicros.forEach((m: any) => {
           const start = m.fecha_inicio || m.start_date;
           const end = m.fecha_fin || m.end_date;
-          if (start && end && start <= lastDayStr && end >= firstDayStr) {
-            microsResult.push({ 
-              ...m, 
-              macroNombre: macro.nombre || macro.name || 'Macro', 
-              nombre: m.nombre || m.name || 'Micro', 
-              fecha_inicio: start, 
-              fecha_fin: end, 
-              tipo: m.tipo || m.type || 'BASE',
-              color: m.color || colors.primary
-            });
+          if (start && end) {
+            const [sY, sM, sD] = start.split('-').map(Number);
+            const [eY, eM, eD] = end.split('-').map(Number);
+            const sTime = new Date(sY, sM - 1, sD).getTime();
+            const eTime = new Date(eY, eM - 1, eD).getTime();
+            
+            if (sTime <= lastDayTime && eTime >= firstDayTime) {
+              microsResult.push({ 
+                ...m, 
+                macroNombre: macro.nombre || macro.name || 'Macro', 
+                nombre: m.nombre || m.name || 'Micro', 
+                fecha_inicio: start, 
+                fecha_fin: end, 
+                tipo: m.tipo || m.type || 'BASE',
+                color: m.color || colors.primary
+              });
+            }
           }
         });
       }
     });
-    return microsResult.sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio));
+    return microsResult.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
   }, [macros, currentMonth, currentYear, colors.primary]);
 
+  // NUEVA LÓGICA: El color del día pertenece al bloque de fechas del microciclo (irrompible)
   const getDayStatus = (day: number | null) => {
     if (!day) return null;
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
     let status: any = { hasWorkout: false, isCompleted: false, phaseColor: null };
 
     const workoutsForDay = workouts?.filter(w => w.date === dateStr) || [];
-
     if (workoutsForDay.length > 0) {
       status.hasWorkout = true;
       status.isCompleted = workoutsForDay.every(w => w.completed);
-      
-      let assignedMicroId = null;
-      for (const w of workoutsForDay) {
-        const mId = w.microciclo_id || w.microcycle_id;
-        if (mId) { assignedMicroId = mId; break; }
-      }
+    }
 
-      if (assignedMicroId) {
-        if (Array.isArray(macros)) {
-          for (const macro of macros) {
-            const listaMicros = macro.microciclos || macro.microcycles || [];
-            const micro = listaMicros.find((m: any) => String(m.id || m._id) === String(assignedMicroId));
-            if (micro) { status.phaseColor = micro.color; break; }
-          }
-        }
-      } else {
-        status.phaseColor = null;
-      }
-    } else {
-      if (Array.isArray(macros)) {
-        for (const macro of macros) {
-          const listaMicros = macro.microciclos || macro.microcycles || [];
-          const micro = listaMicros.find((m: any) => {
-            const start = m.fecha_inicio || m.start_date;
-            const end = m.fecha_fin || m.end_date;
-            return start && end && dateStr >= start && dateStr <= end;
-          });
-          if (micro) { status.phaseColor = micro.color; break; }
+    const currentDayTime = new Date(currentYear, currentMonth, day).getTime();
+
+    if (Array.isArray(macros)) {
+      for (const macro of macros) {
+        const listaMicros = macro.microciclos || macro.microcycles || [];
+        const micro = listaMicros.find((m: any) => {
+          const start = m.fecha_inicio || m.start_date;
+          const end = m.fecha_fin || m.end_date;
+          if(!start || !end) return false;
+          
+          const [sY, sM, sD] = start.split('-').map(Number);
+          const [eY, eM, eD] = end.split('-').map(Number);
+          const sTime = new Date(sY, sM - 1, sD).getTime();
+          const eTime = new Date(eY, eM - 1, eD).getTime();
+          
+          return currentDayTime >= sTime && currentDayTime <= eTime;
+        });
+        
+        if (micro) { 
+          status.phaseColor = micro.color || colors.primary; 
+          break; 
         }
       }
     }
     return status;
   };
 
+  // NUEVA LÓGICA: Extraemos la info basándonos estrictamente en el periodo de fechas
   const getSelectedDateDetails = () => {
     let details: any = { macro: null, micro: null, workouts: [] };
     details.workouts = workouts?.filter(w => w.date === selectedDate) || [];
 
-    if (details.workouts.length > 0) {
-      let assignedMicroId = null;
-      for (const w of details.workouts) {
-        const mId = w.microciclo_id || w.microcycle_id;
-        if (mId) { assignedMicroId = mId; break; }
-      }
+    const [selYear, selMonth, selDay] = selectedDate.split('-').map(Number);
+    const selTime = new Date(selYear, selMonth - 1, selDay).getTime();
 
-      if (assignedMicroId) {
-        if (Array.isArray(macros)) {
-          for (const macro of macros) {
-            const listaMicros = macro.microciclos || macro.microcycles || [];
-            const micro = listaMicros.find((m: any) => String(m.id || m._id) === String(assignedMicroId));
-            if (micro) { 
-              details.macro = { ...macro, nombre: macro.nombre || macro.name || 'Macro' }; 
-              details.micro = { 
-                ...micro, 
-                nombre: micro.nombre || micro.name || 'Micro', 
-                tipo: micro.tipo || micro.type || 'BASE', 
-                fecha_inicio: micro.fecha_inicio || micro.start_date, 
-                fecha_fin: micro.fecha_fin || micro.end_date 
-              }; 
-              break; 
-            }
-          }
-        }
-      }
-    } else {
-      if (Array.isArray(macros)) {
-        for (const macro of macros) {
-          const listaMicros = macro.microciclos || macro.microcycles || [];
-          const micro = listaMicros.find((m: any) => {
-            const start = m.fecha_inicio || m.start_date;
-            const end = m.fecha_fin || m.end_date;
-            return start && end && selectedDate >= start && selectedDate <= end;
-          });
-          if (micro) { 
-            details.macro = { ...macro, nombre: macro.nombre || macro.name || 'Macro' }; 
-            details.micro = { 
-              ...micro, 
-              nombre: micro.nombre || micro.name || 'Micro', 
-              tipo: micro.tipo || micro.type || 'BASE', 
-              fecha_inicio: micro.fecha_inicio || micro.start_date, 
-              fecha_fin: micro.fecha_fin || micro.end_date 
-            }; 
-            break; 
-          }
+    if (Array.isArray(macros)) {
+      for (const macro of macros) {
+        const listaMicros = macro.microciclos || macro.microcycles || [];
+        const micro = listaMicros.find((m: any) => {
+          const start = m.fecha_inicio || m.start_date;
+          const end = m.fecha_fin || m.end_date;
+          if(!start || !end) return false;
+          
+          const [sY, sM, sD] = start.split('-').map(Number);
+          const [eY, eM, eD] = end.split('-').map(Number);
+          const sTime = new Date(sY, sM - 1, sD).getTime();
+          const eTime = new Date(eY, eM - 1, eD).getTime();
+          
+          return selTime >= sTime && selTime <= eTime;
+        });
+        
+        if (micro) { 
+          details.macro = { ...macro, nombre: macro.nombre || macro.name || 'Macro' }; 
+          details.micro = { 
+            ...micro, 
+            nombre: micro.nombre || micro.name || 'Micro', 
+            tipo: micro.tipo || micro.type || 'BASE', 
+            fecha_inicio: micro.fecha_inicio || micro.start_date, 
+            fecha_fin: micro.fecha_fin || micro.end_date 
+          }; 
+          break; 
         }
       }
     }
@@ -342,7 +327,6 @@ export default function CalendarScreen() {
     setExpandedWorkoutId(null);
   };
 
-  // Filtrar los entrenamientos que pertenecen al microciclo abierto en el popup
   const microWorkouts = useMemo(() => {
     if (!viewMicroInfo) return [];
     return workouts
@@ -537,7 +521,7 @@ export default function CalendarScreen() {
 
       {/* MODAL DE INFORMACIÓN DE FASE */}
       <Modal visible={!!viewMicroInfo} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} onPress={handleCloseMicroInfo}>
+        <TouchableOpacity style={styles.modalOverlayCenter} onPress={handleCloseMicroInfo}>
           <TouchableOpacity activeOpacity={1} style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
             {viewMicroInfo && (
               <View style={{ alignItems: 'center', width: '100%', flex: 1 }}>
@@ -690,12 +674,12 @@ const styles = StyleSheet.create({
   actionIconBtn: { padding: 8 },
   emptyCard: { alignItems: 'center', paddingVertical: 30 },
   
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30, width: '100%', position: 'absolute', bottom: 0 },
   modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20 },
   athleteItem: { paddingVertical: 18, borderBottomWidth: 1 },
 
-  // Estilos del Modal de Fase
+  modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 },
   phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
   infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' },
@@ -705,7 +689,6 @@ const styles = StyleSheet.create({
   microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
   datesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   
-  // Estilos de la lista de sesiones y desplegables
   microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' },
   microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 },
   microWorkoutExercises: { padding: 14, borderTopWidth: 1 },
