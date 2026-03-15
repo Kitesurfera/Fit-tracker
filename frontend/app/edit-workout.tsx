@@ -72,13 +72,18 @@ export default function EditWorkoutScreen() {
           setDate(w.date || '');
           setNotes(w.notes || '');
           setAthleteId(w.athlete_id);
-          // CORRECCIÓN: Leemos tanto microciclo_id como microcycle_id para estar seguros
+          
+          // Asignación inicial de microciclo
           setSelectedMicroId(w.microciclo_id || w.microcycle_id || null);
 
           if (w.athlete_id) {
             api.getPeriodizationTree(w.athlete_id).then((tree) => {
-              const todosLosMicros = Array.isArray(tree) ? tree.flatMap((macro: any) => macro.microciclos || []) : (tree?.macros || []).flatMap((macro: any) => macro.microciclos || []);
-              todosLosMicros.sort((a: any, b: any) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+              // Soportamos 'microciclos' y 'microcycles' por seguridad
+              const todosLosMicros = Array.isArray(tree) 
+                ? tree.flatMap((macro: any) => macro.microciclos || macro.microcycles || []) 
+                : (tree?.macros || []).flatMap((macro: any) => macro.microciclos || macro.microcycles || []);
+              
+              todosLosMicros.sort((a: any, b: any) => new Date(a.fecha_inicio || a.start_date).getTime() - new Date(b.fecha_inicio || b.start_date).getTime());
               setMicrociclosDisponibles(todosLosMicros);
             }).catch(console.log);
           }
@@ -192,14 +197,13 @@ export default function EditWorkoutScreen() {
   };
 
   const executeSave = async () => {
-    // CORRECCIÓN: Mandamos tanto microciclo_id como microcycle_id para cubrir ambos casos
     let payloadData: any = {
       title: title.trim(), 
       date: date.trim(), 
       notes: notes.trim(),
       athlete_id: athleteId, 
       microciclo_id: selectedMicroId,
-      microcycle_id: selectedMicroId, // Añadido para mayor compatibilidad
+      microcycle_id: selectedMicroId,
     };
 
     if (workoutType === 'traditional') {
@@ -246,15 +250,30 @@ export default function EditWorkoutScreen() {
 
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>ASIGNAR A SEMANA</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <TouchableOpacity style={[styles.microChip, { borderColor: colors.border }, selectedMicroId === null && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => setSelectedMicroId(null)}>
-                <Text style={{ color: selectedMicroId === null ? '#FFF' : colors.textPrimary, fontSize: 13, fontWeight: '700' }}>Suelto / Sin asignar</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <TouchableOpacity 
+                style={[styles.microChip, { borderColor: colors.border }, !selectedMicroId && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
+                onPress={() => setSelectedMicroId(null)}
+              >
+                <Text style={{ color: !selectedMicroId ? '#FFF' : colors.textPrimary, fontSize: 13, fontWeight: '700' }}>Suelto / Sin asignar</Text>
               </TouchableOpacity>
-              {microciclosDisponibles.map(m => (
-                <TouchableOpacity key={m.id} style={[styles.microChip, { borderColor: colors.border }, selectedMicroId === m.id && { backgroundColor: m.color || colors.primary, borderColor: m.color || colors.primary }]} onPress={() => setSelectedMicroId(m.id)}>
-                  <Text style={{ color: selectedMicroId === m.id ? '#FFF' : colors.textPrimary, fontSize: 13, fontWeight: '700' }}>{m.nombre}</Text>
-                </TouchableOpacity>
-              ))}
+              
+              {microciclosDisponibles.map(m => {
+                const mId = m.id || m._id;
+                const mName = m.nombre || m.name;
+                // Comparamos siempre transformando a String para evitar fallos si uno es Number y otro String
+                const isSelected = selectedMicroId && String(selectedMicroId) === String(mId);
+                
+                return (
+                  <TouchableOpacity 
+                    key={mId} 
+                    style={[styles.microChip, { borderColor: colors.border }, isSelected && { backgroundColor: m.color || colors.primary, borderColor: m.color || colors.primary }]} 
+                    onPress={() => setSelectedMicroId(mId)}
+                  >
+                    <Text style={{ color: isSelected ? '#FFF' : colors.textPrimary, fontSize: 13, fontWeight: '700' }}>{mName}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
           </View>
 
