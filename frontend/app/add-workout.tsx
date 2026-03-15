@@ -63,7 +63,6 @@ export default function AddWorkoutScreen() {
     }
   ]);
 
-  // --- ESTADOS PARA MAPEO DE MÚSCULOS ---
   const [customMap, setCustomMap] = useState<Record<string, string[]>>({});
   const [showMapModal, setShowMapModal] = useState(false);
   const [unknownExercises, setUnknownExercises] = useState<string[]>([]);
@@ -72,13 +71,15 @@ export default function AddWorkoutScreen() {
   useEffect(() => {
     if (params.athlete_id) {
       api.getPeriodizationTree(params.athlete_id).then((tree) => {
-        const todosLosMicros = Array.isArray(tree) ? tree.flatMap((macro: any) => macro.microciclos || []) : (tree?.macros || []).flatMap((macro: any) => macro.microciclos || []);
-        todosLosMicros.sort((a: any, b: any) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+        const todosLosMicros = Array.isArray(tree) 
+          ? tree.flatMap((macro: any) => macro.microciclos || macro.microcycles || []) 
+          : (tree?.macros || []).flatMap((macro: any) => macro.microciclos || macro.microcycles || []);
+        
+        todosLosMicros.sort((a: any, b: any) => new Date(a.fecha_inicio || a.start_date).getTime() - new Date(b.fecha_inicio || b.start_date).getTime());
         setMicrociclosDisponibles(todosLosMicros);
       }).catch((e) => console.log("Error cargando microciclos:", e));
     }
     
-    // Cargar mapa personalizado al iniciar
     AsyncStorage.getItem('custom_muscle_map').then(res => {
       if (res) setCustomMap(JSON.parse(res));
     });
@@ -116,9 +117,6 @@ export default function AddWorkoutScreen() {
     const updated = [...hiitBlocks]; [updated[bIndex].exercises[eIndex + 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex + 1]]; setHiitBlocks(updated);
   };
 
-  const handleImportCSV = async () => { /* ... (se mantiene igual) ... */ };
-
-  // --- INTERCEPTOR DE GUARDADO PARA EL MAPA DE CALOR ---
   const handleSave = () => {
     setError('');
     if (!title.trim()) { setError('El título es obligatorio'); return; }
@@ -135,13 +133,11 @@ export default function AddWorkoutScreen() {
       const norm = normalizeName(name);
       let found = false;
       
-      // Buscar en el mapa base
       for (const keywords of Object.values(BASE_MUSCLE_MAP)) {
-        if (keywords.some(k => norm.includes(k))) found = true;
+        if (keywords.some(k => norm.includes(k) || k === norm)) found = true;
       }
-      // Buscar en el mapa personalizado
       for (const keywords of Object.values(customMap)) {
-        if (keywords.some(k => norm.includes(k))) found = true;
+        if (keywords.some(k => norm.includes(k) || k === norm)) found = true;
       }
 
       if (!found && !unknowns.includes(name)) unknowns.push(name);
@@ -149,26 +145,46 @@ export default function AddWorkoutScreen() {
 
     if (unknowns.length > 0) {
       setUnknownExercises(unknowns);
-      setExerciseMappings({}); // Limpiar selecciones previas
+      setExerciseMappings({}); 
       setShowMapModal(true);
     } else {
       executeSave();
     }
   };
 
+  // --- LÓGICA DE MEMORIA BLINDADA ---
   const saveMappingsAndContinue = async () => {
-    const updatedMap = { ...customMap };
-    for (const [exName, muscles] of Object.entries(exerciseMappings)) {
-      const norm = normalizeName(exName);
-      muscles.forEach(m => {
-        if (!updatedMap[m]) updatedMap[m] = [];
-        if (!updatedMap[m].includes(norm)) updatedMap[m].push(norm);
+    try {
+      // Pedimos el mapa actual a disco duro justo antes de guardar para no machacar datos antiguos
+      const stored = await AsyncStorage.getItem('custom_muscle_map');
+      const currentMap = stored ? JSON.parse(stored) : {};
+
+      // Procesamos TODOS los ejercicios que saltaron, no solo los clickados
+      unknownExercises.forEach(exName => {
+        const norm = normalizeName(exName);
+        const muscles = exerciseMappings[exName] || [];
+
+        // Si el usuario no seleccionó músculo (Ej: Calentamiento), lo recordamos como "Sin_Mapear" para no preguntar más
+        if (muscles.length === 0) {
+          if (!currentMap['Sin_Mapear']) currentMap['Sin_Mapear'] = [];
+          if (!currentMap['Sin_Mapear'].includes(norm)) currentMap['Sin_Mapear'].push(norm);
+        } else {
+          muscles.forEach((m: string) => {
+            if (!currentMap[m]) currentMap[m] = [];
+            if (!currentMap[m].includes(norm)) currentMap[m].push(norm);
+          });
+        }
       });
+
+      await AsyncStorage.setItem('custom_muscle_map', JSON.stringify(currentMap));
+      setCustomMap(currentMap);
+      setShowMapModal(false);
+      executeSave();
+    } catch (e) {
+      console.error("Error guardando mapa:", e);
+      setShowMapModal(false);
+      executeSave();
     }
-    await AsyncStorage.setItem('custom_muscle_map', JSON.stringify(updatedMap));
-    setCustomMap(updatedMap);
-    setShowMapModal(false);
-    executeSave();
   };
 
   const toggleMuscleSelection = (exName: string, muscle: string) => {
@@ -179,16 +195,14 @@ export default function AddWorkoutScreen() {
     });
   };
 
-  // --- GUARDADO REAL EN LA API ---
   const executeSave = async () => {
-    // CORRECCIÓN: Mandamos tanto microciclo_id como microcycle_id
     let payloadData: any = {
       title: title.trim(), 
       date: date.trim(), 
       notes: notes.trim(),
       athlete_id: params.athlete_id, 
       microciclo_id: selectedMicroId,
-      microcycle_id: selectedMicroId // Añadido para mayor compatibilidad
+      microcycle_id: selectedMicroId 
     };
 
     if (workoutType === 'traditional') {
@@ -238,8 +252,8 @@ export default function AddWorkoutScreen() {
                 <Text style={{ color: selectedMicroId === null ? '#FFF' : colors.textPrimary, fontSize: 13, fontWeight: '700' }}>Suelto / Sin asignar</Text>
               </TouchableOpacity>
               {microciclosDisponibles.map(m => (
-                <TouchableOpacity key={m.id} style={[styles.microChip, { borderColor: colors.border }, selectedMicroId === m.id && { backgroundColor: m.color || colors.primary, borderColor: m.color || colors.primary }]} onPress={() => setSelectedMicroId(m.id)}>
-                  <Text style={{ color: selectedMicroId === m.id ? '#FFF' : colors.textPrimary, fontSize: 13, fontWeight: '700' }}>{m.nombre}</Text>
+                <TouchableOpacity key={m.id || m._id} style={[styles.microChip, { borderColor: colors.border }, selectedMicroId === (m.id || m._id) && { backgroundColor: m.color || colors.primary, borderColor: m.color || colors.primary }]} onPress={() => setSelectedMicroId(m.id || m._id)}>
+                  <Text style={{ color: selectedMicroId === (m.id || m._id) ? '#FFF' : colors.textPrimary, fontSize: 13, fontWeight: '700' }}>{m.nombre || m.name}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
