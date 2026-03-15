@@ -120,6 +120,8 @@ class ProfileUpdate(BaseModel):
 
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
+    date: Optional[str] = None        # Añadido para poder editar la fecha
+    athlete_id: Optional[str] = None  # Añadido por seguridad
     exercises: Optional[List[dict]] = None
     notes: Optional[str] = None
     completed: Optional[bool] = None
@@ -467,8 +469,11 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks:
     if not existing:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
-    update_data = {k: v for k, v in data.dict().items() if v is not None}
-    await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
+    # Usamos exclude_unset=True para que si enviamos un valor "null", FastAPI lo procese y actualice en BD
+    update_data = data.dict(exclude_unset=True)
+    
+    if update_data:
+        await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
     
     # --- NOTIFICACIÓN AL ENTRENADOR: ENTRENAMIENTO COMPLETADO ---
     if data.completed is True and not existing.get('completed') and user.get('role') == 'athlete' and user.get('trainer_id'):
