@@ -37,7 +37,7 @@ export default function CalendarScreen() {
   const [updating, setUpdating] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   
-  const [athleteViewMicro, setAthleteViewMicro] = useState<any>(null);
+  const [viewMicroInfo, setViewMicroInfo] = useState<any>(null);
   const [workoutToCopy, setWorkoutToCopy] = useState<any>(null);
 
   const isTrainer = user?.role === 'trainer';
@@ -202,7 +202,6 @@ export default function CalendarScreen() {
     return microsResult.sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio));
   }, [macros, currentMonth, currentYear, colors.primary]);
 
-  // CORRECCIÓN: Nueva lógica estricta para colorear el calendario
   const getDayStatus = (day: number | null) => {
     if (!day) return null;
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -214,7 +213,6 @@ export default function CalendarScreen() {
       status.hasWorkout = true;
       status.isCompleted = workoutsForDay.every(w => w.completed);
       
-      // Buscamos si alguna sesión del día está asignada a un microciclo
       let assignedMicroId = null;
       for (const w of workoutsForDay) {
         const mId = w.microciclo_id || w.microcycle_id;
@@ -230,11 +228,9 @@ export default function CalendarScreen() {
           }
         }
       } else {
-        // Si no hay ID de microciclo, forzamos que no haya color (sesión suelta)
         status.phaseColor = null;
       }
     } else {
-      // Si no hay entrenamiento, pintamos el fondo si el día cae en el rango del microciclo
       if (Array.isArray(macros)) {
         for (const macro of macros) {
           const listaMicros = macro.microciclos || macro.microcycles || [];
@@ -250,7 +246,6 @@ export default function CalendarScreen() {
     return status;
   };
 
-  // CORRECCIÓN: Lógica estricta alineada para obtener los detalles
   const getSelectedDateDetails = () => {
     let details: any = { macro: null, micro: null, workouts: [] };
     details.workouts = workouts?.filter(w => w.date === selectedDate) || [];
@@ -444,15 +439,7 @@ export default function CalendarScreen() {
                   <TouchableOpacity 
                     key={idx} 
                     style={[styles.microCard, { backgroundColor: colors.surface, borderTopColor: micro.color || colors.primary, borderColor: colors.border }]}
-                    onPress={() => {
-                      if (isTrainer) {
-                        if (selectedAthlete) {
-                          router.push(`/periodization?athlete_id=${selectedAthlete.id}&name=${encodeURIComponent(selectedAthlete.name)}`);
-                        }
-                      } else {
-                        setAthleteViewMicro(micro);
-                      }
-                    }}
+                    onPress={() => setViewMicroInfo(micro)}
                   >
                     <Text style={[styles.microMacroName, { color: colors.textSecondary }]} numberOfLines={1}>{micro.macroNombre}</Text>
                     <Text style={[styles.microName, { color: colors.textPrimary }]} numberOfLines={1}>{micro.nombre}</Text>
@@ -532,38 +519,38 @@ export default function CalendarScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* MODAL DE INFORMACIÓN DE FASE (SOLO DEPORTISTAS) */}
-      <Modal visible={!!athleteViewMicro} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} onPress={() => setAthleteViewMicro(null)}>
+      {/* MODAL DE INFORMACIÓN DE FASE */}
+      <Modal visible={!!viewMicroInfo} transparent animationType="fade">
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setViewMicroInfo(null)}>
           <View style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
-            {athleteViewMicro && (
+            {viewMicroInfo && (
               <View style={{ alignItems: 'center', width: '100%' }}>
-                <View style={[styles.phaseIconBadge, { backgroundColor: (athleteViewMicro.color || colors.primary) + '15' }]}>
-                  <Ionicons name="flag" size={32} color={athleteViewMicro.color || colors.primary} />
+                <View style={[styles.phaseIconBadge, { backgroundColor: (viewMicroInfo.color || colors.primary) + '15' }]}>
+                  <Ionicons name="flag" size={32} color={viewMicroInfo.color || colors.primary} />
                 </View>
                 
                 <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>PERTENECE AL MACROCICLO:</Text>
-                <Text style={[styles.infoTitleMacro, { color: colors.textPrimary }]}>{athleteViewMicro.macroNombre}</Text>
+                <Text style={[styles.infoTitleMacro, { color: colors.textPrimary }]}>{viewMicroInfo.macroNombre}</Text>
                 
                 <View style={[styles.divider, { backgroundColor: colors.border }]} />
                 
                 <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>FASE ACTUAL (MICROCICLO):</Text>
-                <Text style={[styles.infoTitleMicro, { color: colors.textPrimary }]}>{athleteViewMicro.nombre}</Text>
+                <Text style={[styles.infoTitleMicro, { color: colors.textPrimary }]}>{viewMicroInfo.nombre}</Text>
 
-                <View style={[styles.microTypeBadgeBig, { backgroundColor: (athleteViewMicro.color || colors.primary) }]}>
-                  <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }}>{athleteViewMicro.tipo}</Text>
+                <View style={[styles.microTypeBadgeBig, { backgroundColor: (viewMicroInfo.color || colors.primary) }]}>
+                  <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }}>{viewMicroInfo.tipo}</Text>
                 </View>
 
                 <View style={styles.datesRow}>
                   <Ionicons name="calendar-outline" size={16} color={colors.textSecondary} />
                   <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '600', marginLeft: 6 }}>
-                    {athleteViewMicro.fecha_inicio.split('-').reverse().join('/')} - {athleteViewMicro.fecha_fin.split('-').reverse().join('/')}
+                    {viewMicroInfo.fecha_inicio.split('-').reverse().join('/')} - {viewMicroInfo.fecha_fin.split('-').reverse().join('/')}
                   </Text>
                 </View>
 
                 <TouchableOpacity 
                   style={[styles.closePhaseBtn, { backgroundColor: colors.surfaceHighlight }]} 
-                  onPress={() => setAthleteViewMicro(null)}
+                  onPress={() => setViewMicroInfo(null)}
                 >
                   <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>Cerrar</Text>
                 </TouchableOpacity>
