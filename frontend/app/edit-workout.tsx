@@ -56,7 +56,6 @@ export default function EditWorkoutScreen() {
   const [exercises, setExercises] = useState<any[]>([]);
   const [hiitBlocks, setHiitBlocks] = useState<any[]>([]);
 
-  // --- ESTADOS PARA MAPEO DE MÚSCULOS ---
   const [customMap, setCustomMap] = useState<Record<string, string[]>>({});
   const [showMapModal, setShowMapModal] = useState(false);
   const [unknownExercises, setUnknownExercises] = useState<string[]>([]);
@@ -73,12 +72,10 @@ export default function EditWorkoutScreen() {
           setNotes(w.notes || '');
           setAthleteId(w.athlete_id);
           
-          // Asignación inicial de microciclo
           setSelectedMicroId(w.microciclo_id || w.microcycle_id || null);
 
           if (w.athlete_id) {
             api.getPeriodizationTree(w.athlete_id).then((tree) => {
-              // Soportamos 'microciclos' y 'microcycles' por seguridad
               const todosLosMicros = Array.isArray(tree) 
                 ? tree.flatMap((macro: any) => macro.microciclos || macro.microcycles || []) 
                 : (tree?.macros || []).flatMap((macro: any) => macro.microciclos || macro.microcycles || []);
@@ -155,10 +152,10 @@ export default function EditWorkoutScreen() {
       let found = false;
       
       for (const keywords of Object.values(BASE_MUSCLE_MAP)) {
-        if (keywords.some(k => norm.includes(k))) found = true;
+        if (keywords.some(k => norm.includes(k) || k === norm)) found = true;
       }
       for (const keywords of Object.values(customMap)) {
-        if (keywords.some(k => norm.includes(k))) found = true;
+        if (keywords.some(k => norm.includes(k) || k === norm)) found = true;
       }
 
       if (!found && !unknowns.includes(name)) unknowns.push(name);
@@ -173,19 +170,36 @@ export default function EditWorkoutScreen() {
     }
   };
 
+  // --- LÓGICA DE MEMORIA BLINDADA ---
   const saveMappingsAndContinue = async () => {
-    const updatedMap = { ...customMap };
-    for (const [exName, muscles] of Object.entries(exerciseMappings)) {
-      const norm = normalizeName(exName);
-      muscles.forEach(m => {
-        if (!updatedMap[m]) updatedMap[m] = [];
-        if (!updatedMap[m].includes(norm)) updatedMap[m].push(norm);
+    try {
+      const stored = await AsyncStorage.getItem('custom_muscle_map');
+      const currentMap = stored ? JSON.parse(stored) : {};
+
+      unknownExercises.forEach(exName => {
+        const norm = normalizeName(exName);
+        const muscles = exerciseMappings[exName] || [];
+
+        if (muscles.length === 0) {
+          if (!currentMap['Sin_Mapear']) currentMap['Sin_Mapear'] = [];
+          if (!currentMap['Sin_Mapear'].includes(norm)) currentMap['Sin_Mapear'].push(norm);
+        } else {
+          muscles.forEach((m: string) => {
+            if (!currentMap[m]) currentMap[m] = [];
+            if (!currentMap[m].includes(norm)) currentMap[m].push(norm);
+          });
+        }
       });
+
+      await AsyncStorage.setItem('custom_muscle_map', JSON.stringify(currentMap));
+      setCustomMap(currentMap);
+      setShowMapModal(false);
+      executeSave();
+    } catch (e) {
+      console.error("Error guardando mapa:", e);
+      setShowMapModal(false);
+      executeSave();
     }
-    await AsyncStorage.setItem('custom_muscle_map', JSON.stringify(updatedMap));
-    setCustomMap(updatedMap);
-    setShowMapModal(false);
-    executeSave();
   };
 
   const toggleMuscleSelection = (exName: string, muscle: string) => {
@@ -261,7 +275,6 @@ export default function EditWorkoutScreen() {
               {microciclosDisponibles.map(m => {
                 const mId = m.id || m._id;
                 const mName = m.nombre || m.name;
-                // Comparamos siempre transformando a String para evitar fallos si uno es Number y otro String
                 const isSelected = selectedMicroId && String(selectedMicroId) === String(mId);
                 
                 return (
