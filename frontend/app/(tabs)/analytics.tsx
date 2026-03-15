@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Dimensions, Modal, TextInput, KeyboardAvoidingView, Platform, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
@@ -79,11 +79,17 @@ export default function AnalyticsScreen() {
   const [mergeTargetName, setMergeTargetName] = useState('');
   const [localAliases, setLocalAliases] = useState<Record<string, string>>({});
 
+  // CORRECCIÓN: Volver a cargar el mapa personalizado cada vez que se entra a la pantalla
+  useFocusEffect(
+    useCallback(() => {
+      AsyncStorage.getItem('custom_muscle_map').then(res => {
+        if (res) setCustomMuscleMap(JSON.parse(res));
+      });
+    }, [])
+  );
+
   useEffect(() => {
     const init = async () => {
-      const storedMap = await AsyncStorage.getItem('custom_muscle_map');
-      if (storedMap) setCustomMuscleMap(JSON.parse(storedMap));
-      
       if (isTrainer) {
         const aths = await api.getAthletes().catch(() => []);
         setAthletes(aths);
@@ -194,7 +200,6 @@ export default function AnalyticsScreen() {
           if (localAliases[rawName]) rawName = localAliases[rawName];
           const normKey = normalizeName(rawName);
           
-          // Reemplazamos la coma por punto para evitar errores NaN si se introdujo "12,5"
           const weight = parseFloat(String(r.logged_weight || '0').replace(',', '.')) || 0;
           const reps = parseInt(r.logged_reps) || 0;
           
@@ -202,7 +207,6 @@ export default function AnalyticsScreen() {
           
           if (weight > exercises[normKey].maxW) exercises[normKey].maxW = weight;
 
-          // Agrupamos por día para que la gráfica de evolución no sume ni acumule barras dobles
           const existingDay = exercises[normKey].history.find((h: any) => h.date === w.date);
           if (existingDay) {
             if (weight > existingDay.weight) {
@@ -252,7 +256,6 @@ export default function AnalyticsScreen() {
         w.completion_data?.exercise_results?.forEach((r: any) => {
           if (r.completed_sets > 0 && r.name) {
             const exName = normalizeName(r.name);
-            // CORRECCIÓN: Contamos solo las series efectivas, no el tonelaje total.
             const sets = parseInt(r.completed_sets) || 1;
 
             for (const [muscle, keywords] of Object.entries(COMBINED_MAP)) {
