@@ -6,9 +6,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { useTheme } from '../../src/hooks/useTheme';
-import { api } from '../../src/api';
-import { useAuth } from '../../src/context/AuthContext';
+import { useTheme } from '../src/hooks/useTheme';
+import { api } from '../src/api';
+import { useAuth } from '../src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Body from 'react-native-body-highlighter';
 
