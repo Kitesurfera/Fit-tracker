@@ -12,8 +12,9 @@ import { useAuth } from '../../src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Body from 'react-native-body-highlighter';
 
-const { width } = Dimensions.get('window');
-const GRID_CARD_SIZE = (width - 40) * 0.48;
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const isDesktop = SCREEN_WIDTH > 768;
+const MAX_CONTENT_WIDTH = 1200;
 
 const TEST_TRANSLATIONS: Record<string, string> = {
   squat_rm: 'Sentadilla RM',
@@ -65,29 +66,13 @@ export default function AnalyticsScreen() {
   const [customExerciseMuscles, setCustomExerciseMuscles] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [summary, setSummary] = useState<any>(null);
   const [testHistory, setTestHistory] = useState<any[]>([]);
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
-  
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
-  const [showPicker, setShowPicker] = useState(false);
-  
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [viewMode, setViewMode] = useState<'list' | 'grid'>('list');
-
-  const [showMergeModal, setShowMergeModal] = useState(false);
-  const [exercisesToMerge, setExercisesToMerge] = useState<string[]>([]);
-  const [mergeTargetName, setMergeTargetName] = useState('');
-  const [localAliases, setLocalAliases] = useState<Record<string, string>>({});
-
-  const [showTestChartModal, setShowTestChartModal] = useState(false);
-  const [selectedTestName, setSelectedTestName] = useState<string>('');
-  const [selectedTestHistory, setSelectedTestHistory] = useState<any[]>([]);
-
   const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(14);
-
   const [showDictModal, setShowDictModal] = useState(false);
   const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
   const [dictSelectedMuscles, setDictSelectedMuscles] = useState<string[]>([]);
@@ -117,14 +102,12 @@ export default function AnalyticsScreen() {
     if (!athleteId) return;
     setLoading(true);
     try {
-      const [sum, ts, wk] = await Promise.all([
-        api.getSummary(athleteId).catch(() => null),
+      const [ts, wk] = await Promise.all([
         api.getTests({ athlete_id: athleteId }).catch(() => []),
         api.getWorkouts({ athlete_id: athleteId }).catch(() => [])
       ]);
-      setSummary(sum);
       setTestHistory(Array.isArray(ts) ? ts.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : []);
-      setWorkoutHistory(Array.isArray(wk) ? wk.filter((w: any) => w.completed && w.completion_data) : []);
+      setWorkoutHistory(Array.isArray(wk) ? wk.filter((w: any) => w.completed) : []);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -133,8 +116,6 @@ export default function AnalyticsScreen() {
 
   const handleSelectAthlete = (athlete: any) => {
     setSelectedAthlete(athlete);
-    setShowPicker(false);
-    setLocalAliases({});
     loadAthleteData(athlete.id);
   };
 
@@ -171,29 +152,6 @@ export default function AnalyticsScreen() {
     setShowDictModal(false);
   };
 
-  const getCleanProgression = () => {
-    const exercises: Record<string, any> = {};
-    workoutHistory.forEach(w => {
-      w.completion_data?.exercise_results?.forEach((r: any) => {
-        if (r.completed_sets > 0 && r.name) {
-          let rawName = r.name.trim();
-          if (localAliases[rawName]) rawName = localAliases[rawName];
-          const normKey = normalizeName(rawName);
-          const weight = parseFloat(String(r.logged_weight || '0').replace(',', '.')) || 0;
-          if (!exercises[normKey]) exercises[normKey] = { name: rawName, history: [], maxW: 0 };
-          if (weight > exercises[normKey].maxW) exercises[normKey].maxW = weight;
-          const existingDay = exercises[normKey].history.find((h: any) => h.date === w.date);
-          if (existingDay) {
-            if (weight > existingDay.weight) { existingDay.weight = weight; }
-          } else {
-            exercises[normKey].history.push({ date: w.date, weight });
-          }
-        }
-      });
-    });
-    return Object.values(exercises).sort((a: any, b: any) => a.name.localeCompare(b.name));
-  };
-
   const getMuscleHeat = () => {
     const heat: Record<string, number> = {
       'Pecho': 0, 'Espalda': 0, 'Cuádriceps': 0, 'Isquiotibiales': 0,
@@ -217,31 +175,23 @@ export default function AnalyticsScreen() {
     return heat;
   };
 
-  // --- FUNCIONES DE RENDERIZADO ---
+  // --- RENDERS DE LAS OTRAS PESTAÑAS (PARA EVITAR PANTALLA NEGRA) ---
 
   const renderTestCard = (test: any, index: number) => {
     const valL = parseFloat(test.value_left);
     const valR = parseFloat(test.value_right);
     const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
-    const testName = test.test_name === 'custom' ? test.custom_name : (TEST_TRANSLATIONS[test.test_name] || test.test_name);
-
     return (
       <View key={index} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-          <View>
-            <Text style={[styles.testName, { color: colors.textPrimary }]}>{testName}</Text>
-            <Text style={{ fontSize: 11, color: colors.textSecondary }}>Récord: {test.date}</Text>
-          </View>
-          <Ionicons name="trophy-outline" size={20} color={colors.primary} />
-        </View>
-        <View style={{ flexDirection: 'row', marginTop: 15 }}>
+        <Text style={[styles.testName, { color: colors.textPrimary }]}>{test.custom_name || TEST_TRANSLATIONS[test.test_name] || test.test_name}</Text>
+        <View style={{ flexDirection: 'row', marginTop: 10 }}>
           {hasSides ? (
             <>
-              <View style={{ flex: 1, alignItems: 'center' }}><Text style={[styles.testValue, { color: '#3B82F6' }]}>{valL}</Text><Text style={styles.sideLabel}>IZQ ({test.unit})</Text></View>
-              <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: colors.border }}><Text style={[styles.testValue, { color: '#EF4444' }]}>{valR}</Text><Text style={styles.sideLabel}>DER ({test.unit})</Text></View>
+              <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#3B82F6' }]}>{valL}</Text><Text style={styles.sideLabel}>IZQ</Text></View>
+              <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#EF4444' }]}>{valR}</Text><Text style={styles.sideLabel}>DER</Text></View>
             </>
           ) : (
-            <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: colors.textPrimary }]}>{test.value} {test.unit}</Text></View>
+            <Text style={[styles.testValue, { color: colors.textPrimary }]}>{test.value} {test.unit}</Text>
           )}
         </View>
       </View>
@@ -250,31 +200,40 @@ export default function AnalyticsScreen() {
 
   const renderFeedbackTab = () => {
     const feedbacks: any[] = [];
-    workoutHistory.forEach(w => {
-      w.completion_data?.exercise_results?.forEach((ex: any) => {
-        if (ex.coach_note) feedbacks.push({ date: w.date, title: w.title, exercise: ex.name, note: ex.coach_note });
-      });
-    });
-
-    if (feedbacks.length === 0) return <View style={styles.emptyCard}><Text style={{color: colors.textSecondary}}>No hay correcciones del coach.</Text></View>;
-
+    workoutHistory.forEach(w => w.completion_data?.exercise_results?.forEach((ex: any) => {
+      if (ex.coach_note) feedbacks.push({ date: w.date, exercise: ex.name, note: ex.coach_note });
+    }));
     return (
       <View>
-        {feedbacks.reverse().map((fb, i) => (
-          <View key={i} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: (colors.warning || '#F59E0B') + '40' }]}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{fb.date} • {fb.title}</Text>
-            <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', marginVertical: 5 }}>{fb.exercise}</Text>
-            <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic' }}>"{fb.note}"</Text>
+        {feedbacks.length > 0 ? feedbacks.reverse().map((fb, i) => (
+          <View key={i} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: colors.warning + '40' }]}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{fb.date}</Text>
+            <Text style={{ color: colors.textPrimary, fontWeight: '800' }}>{fb.exercise}</Text>
+            <Text style={{ color: colors.textPrimary, fontStyle: 'italic' }}>"{fb.note}"</Text>
+          </View>
+        )) : <Text style={{color: colors.textSecondary, textAlign: 'center'}}>No hay correcciones.</Text>}
+      </View>
+    );
+  };
+
+  const renderChart = (history: any[]) => {
+    const data = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    return (
+      <ScrollView horizontal contentContainerStyle={{ gap: 10, alignItems: 'flex-end', height: 150 }}>
+        {data.map((h, i) => (
+          <View key={i} style={{ alignItems: 'center' }}>
+            <View style={{ height: (h.weight / 150) * 100, width: 12, backgroundColor: colors.primary, borderRadius: 4 }} />
+            <Text style={{ fontSize: 9, color: colors.textPrimary }}>{h.weight}kg</Text>
           </View>
         ))}
-      </View>
+      </ScrollView>
     );
   };
 
   const renderBodyMap = () => {
     const heat = getMuscleHeat();
     const totalSets = Object.values(heat).reduce((sum, val) => sum + val, 0);
-    const allMusclesSorted = Object.entries(heat).sort((a, b) => b[1] - a[1]);
+    const sortedMuscles = Object.entries(heat).sort((a, b) => b[1] - a[1]);
 
     const bodyData: { slug: string; intensity: number }[] = [];
     const mapIntensity = (p: number) => {
@@ -308,126 +267,133 @@ export default function AnalyticsScreen() {
     addToBody('Abductores', ['abductors']);
 
     return (
-      <View style={{ paddingBottom: 100 }}>
+      <View style={styles.bodyTabWrapper}>
         <View style={styles.timeFilterContainer}>
           {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
-            <TouchableOpacity key={f.v} style={[styles.timeFilterBtn, bodyTimeFilter === f.v && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.v as any)}>
-              <Text style={{ color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>{f.l}</Text>
+            <TouchableOpacity key={f.v} style={[styles.timeBtn, bodyTimeFilter === f.v && {backgroundColor: colors.primary}]} onPress={() => setBodyTimeFilter(f.v as any)}>
+              <Text style={{color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700'}}>{f.l}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <View style={styles.dualBodyContainer}>
-          <View style={styles.bodyWrapper}><Text style={styles.bodySideLabel}>FRONTAL</Text><Body data={bodyData} gender="female" side="front" scale={0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} /></View>
-          <View style={styles.bodyWrapper}><Text style={styles.bodySideLabel}>DORSAL</Text><Body data={bodyData} gender="female" side="back" scale={0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} /></View>
-        </View>
-
-        <View style={[styles.topMusclesCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {allMusclesSorted.map(([m, s], i) => (
-            <View key={m} style={styles.topMuscleItem}>
-              <Text style={{ color: colors.textPrimary, fontWeight: '600' }}>{m}</Text>
-              <Text style={{ color: colors.primary, fontWeight: '800' }}>{totalSets > 0 ? ((s/totalSets)*100).toFixed(1) : 0}%</Text>
+        <View style={isDesktop ? styles.desktopBodyLayout : styles.mobileBodyLayout}>
+          
+          {/* LADO IZQUIERDO: SILUETAS XXL */}
+          <View style={styles.silhouettesWrapper}>
+            <View style={styles.bodyContainer}>
+              <View style={styles.bodySide}>
+                <Text style={styles.bodySideLabel}>FRONTAL</Text>
+                <Body data={bodyData} gender="female" side="front" scale={isDesktop ? 1.4 : 0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+              </View>
+              <View style={styles.bodySide}>
+                <Text style={styles.bodySideLabel}>DORSAL</Text>
+                <Body data={bodyData} gender="female" side="back" scale={isDesktop ? 1.4 : 0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+              </View>
             </View>
-          ))}
+          </View>
+
+          {/* LADO DERECHO: LEYENDA Y LISTA */}
+          <View style={styles.dataWrapper}>
+            <View style={[styles.legendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Leyenda de % Series</Text>
+              <View style={styles.legendGrid}>
+                <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#E2E8F0' }]} /><Text style={styles.legendText}>0%</Text></View>
+                <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#3B82F6' }]} /><Text style={styles.legendText}>0-20%</Text></View>
+                <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#FBBF24' }]} /><Text style={styles.legendText}>20-40%</Text></View>
+                <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#F97316' }]} /><Text style={styles.legendText}>40-50%</Text></View>
+                <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#EF4444' }]} /><Text style={styles.legendText}>50%+</Text></View>
+              </View>
+            </View>
+
+            <View style={[styles.muscleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Reparto Muscular</Text>
+              {sortedMuscles.map(([m, s]) => {
+                const p = totalSets > 0 ? (s / totalSets) * 100 : 0;
+                return (
+                  <View key={m} style={styles.muscleRow}>
+                    <Text style={{ color: colors.textPrimary, fontWeight: '500' }}>{m}</Text>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ color: colors.primary, fontWeight: '800' }}>{p.toFixed(1)}%</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          </View>
+
         </View>
       </View>
     );
   };
 
-  const renderChart = (history: any[]) => {
-    const data = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-    if (data.length === 0) return null;
-    const weights = data.map(d => d.weight || 0);
-    const maxW = Math.max(...weights);
-    const minW = Math.min(...weights);
-    const range = maxW - minW === 0 ? 10 : maxW - minW;
-
-    return (
-      <View style={styles.chartContainer}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartScrollArea}>
-          {data.map((h, i) => (
-            <View key={i} style={styles.chartCol}>
-              <View style={styles.chartBarArea}><View style={[styles.chartBar, { height: `${((h.weight - minW) / range) * 75 + 15}%`, backgroundColor: colors.primary }]} /></View>
-              <Text style={{fontSize: 10, color: colors.textPrimary, fontWeight:'700'}}>{h.weight}kg</Text>
-              <Text style={{fontSize: 8, color: colors.textSecondary}}>{h.date.split('-').slice(1).join('/')}</Text>
-            </View>
-          ))}
-        </ScrollView>
-      </View>
-    );
-  };
-
-  const uniqueTests = (() => {
-    const prTests: Record<string, any> = {};
-    testHistory.forEach(test => {
-      const key = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
-      const currentVal = Math.max(parseFloat(test.value_left) || 0, parseFloat(test.value_right) || 0, parseFloat(test.value) || 0);
-      if (!prTests[key] || currentVal > (Math.max(parseFloat(prTests[key].value_left) || 0, parseFloat(prTests[key].value_right) || 0, parseFloat(prTests[key].value) || 0))) {
-        prTests[key] = test;
+  const getCleanProgression = () => {
+    const exercises: Record<string, any> = {};
+    workoutHistory.forEach(w => w.completion_data?.exercise_results?.forEach((r: any) => {
+      if (r.completed_sets > 0 && r.name) {
+        const normKey = normalizeName(r.name);
+        const weight = parseFloat(String(r.logged_weight || '0').replace(',', '.')) || 0;
+        if (!exercises[normKey]) exercises[normKey] = { name: r.name, history: [], maxW: 0 };
+        if (weight > exercises[normKey].maxW) exercises[normKey].maxW = weight;
+        exercises[normKey].history.push({ date: w.date, weight });
       }
-    });
-    return Object.values(prTests);
-  })();
-
-  const filteredProgression = getCleanProgression().filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    }));
+    return Object.values(exercises).sort((a: any, b: any) => a.name.localeCompare(b.name));
+  };
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Deportista') : 'Analíticas'}</Text>
-        <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
-          <Ionicons name="refresh" size={20} color={colors.primary} />
-        </TouchableOpacity>
-      </View>
+      <View style={styles.mainCenteredContent}>
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Analíticas'}</Text>
+          <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
+            {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}
+          </TouchableOpacity>
+        </View>
 
-      <View style={{ paddingHorizontal: 20, marginBottom: 15 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsRow}>
+        <View style={styles.tabsContainer}>
           {['summary', 'progress', 'body', 'feedback'].map(tab => (
-            <TouchableOpacity key={tab} style={[styles.tabBtn, { backgroundColor: activeTab === tab ? colors.primary : colors.surfaceHighlight }]} onPress={() => setActiveTab(tab as any)}>
-              <Text style={{ color: activeTab === tab ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>
-                {tab === 'summary' ? 'Tests' : tab === 'progress' ? 'Evolución' : tab === 'body' ? 'Cuerpo' : 'Feedback'}
+            <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && { backgroundColor: colors.primary }]} onPress={() => setActiveTab(tab as any)}>
+              <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>
+                {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'body' ? 'CUERPO' : 'FEEDBACK'}
               </Text>
             </TouchableOpacity>
           ))}
+        </View>
+
+        <ScrollView contentContainerStyle={{ padding: 20 }}>
+          {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" /> : 
+           activeTab === 'summary' ? testHistory.map(renderTestCard) : 
+           activeTab === 'progress' ? (
+              <View>
+                <TextInput style={[styles.searchBar, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Buscar ejercicio..." placeholderTextColor={colors.textSecondary} value={searchQuery} onChangeText={setSearchQuery} />
+                {getCleanProgression().filter(ex => ex.name.toLowerCase().includes(searchQuery.toLowerCase())).map((item, i) => (
+                  <View key={i} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                    <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.name ? null : item.name)} style={styles.progHeader}>
+                      <View style={{flex:1}}><Text style={[styles.progName, {color: colors.textPrimary}]}>{item.name}</Text><Text style={{color: colors.primary, fontWeight:'700'}}>Récord: {item.maxW}kg</Text></View>
+                      <TouchableOpacity onPress={() => openDictModal(item.name)}><Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/></TouchableOpacity>
+                    </TouchableOpacity>
+                    {selectedExercise === item.name && <View style={{padding: 15, borderTopWidth: 1, borderTopColor: colors.border}}>{renderChart(item.history)}</View>}
+                  </View>
+                ))}
+              </View>
+           ) : activeTab === 'body' ? renderBodyMap() : renderFeedbackTab()}
         </ScrollView>
       </View>
-
-      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 0 }}>
-        {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
-         activeTab === 'summary' ? uniqueTests.map(renderTestCard) : 
-         activeTab === 'progress' ? (
-            <View>
-              <TextInput style={[styles.searchInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Buscar ejercicio..." placeholderTextColor={colors.textSecondary} value={searchQuery} onChangeText={setSearchQuery} />
-              {filteredProgression.map((item, i) => (
-                <View key={i} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                  <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.name ? null : item.name)} style={styles.progHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.progName, { color: colors.textPrimary }]}>{item.name}</Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Récord: {item.maxW} kg</Text>
-                    </View>
-                    <TouchableOpacity onPress={() => openDictModal(item.name)} style={styles.dictBtn}><Ionicons name="pricetags-outline" size={18} color={colors.textSecondary} /></TouchableOpacity>
-                  </TouchableOpacity>
-                  {selectedExercise === item.name && <View style={{ padding: 15, borderTopWidth: 1, borderTopColor: colors.border }}>{renderChart(item.history)}</View>}
-                </View>
-              ))}
-            </View>
-          ) : activeTab === 'body' ? renderBodyMap() : renderFeedbackTab()}
-      </ScrollView>
 
       {/* MODAL DICCIONARIO */}
       <Modal visible={showDictModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 5 }}>Editar Diccionario</Text>
-            <Text style={{ color: colors.primary, fontWeight: '600', marginBottom: 20 }}>{dictTargetExercise}</Text>
+            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 15 }}>Editar Diccionario: {dictTargetExercise}</Text>
             <ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
               {ALL_MUSCLES.map(m => (
                 <TouchableOpacity key={m} style={[styles.dictSelectBtn, { borderColor: colors.border }, dictSelectedMuscles.includes(m) && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => toggleDictMuscle(m)}>
-                  <Text style={{ color: dictSelectedMuscles.includes(m) ? '#FFF' : colors.textPrimary, fontWeight: '600', fontSize: 12 }}>{m}</Text>
+                  <Text style={{ color: dictSelectedMuscles.includes(m) ? '#FFF' : colors.textPrimary, fontWeight: '600' }}>{m}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <TouchableOpacity style={[styles.confirmMergeBtn, { backgroundColor: colors.primary, marginTop: 25 }]} onPress={saveDictMuscles}><Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR CAMBIOS</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={saveDictMuscles}><Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR CAMBIOS</Text></TouchableOpacity>
             <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setShowDictModal(false)}><Text style={{ color: colors.textSecondary }}>Cancelar</Text></TouchableOpacity>
           </View>
         </View>
@@ -438,36 +404,48 @@ export default function AnalyticsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' },
-  headerTitle: { fontSize: 24, fontWeight: '900' },
-  iconBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  tabsRow: { flexDirection: 'row', gap: 8 },
-  tabBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
-  testCard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
-  testName: { fontSize: 17, fontWeight: '800' },
-  testValue: { fontSize: 24, fontWeight: '900' },
-  sideLabel: { fontSize: 9, fontWeight: '800', color: '#888' },
+  mainCenteredContent: { flex: 1, width: '100%', maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 25 },
+  headerTitle: { fontSize: 28, fontWeight: '900' },
+  iconBtn: { width: 45, height: 45, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  tabsContainer: { flexDirection: 'row', paddingHorizontal: 25, gap: 10, marginBottom: 10 },
+  tabButton: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.05)' },
+  tabButtonText: { fontSize: 11, fontWeight: '800' },
+  
+  bodyTabWrapper: { flex: 1 },
+  timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 30 },
+  timeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
+  
+  desktopBodyLayout: { flexDirection: 'row', gap: 30, alignItems: 'flex-start' },
+  mobileBodyLayout: { flexDirection: 'column' },
+  
+  silhouettesWrapper: { flex: 1.5, alignItems: 'center', justifyContent: 'center' },
+  bodyContainer: { flexDirection: 'row', justifyContent: 'center', gap: 30 },
+  bodySide: { alignItems: 'center' },
+  bodySideLabel: { fontSize: 11, fontWeight: '900', color: '#888', marginBottom: 20, letterSpacing: 1 },
+  
+  dataWrapper: { flex: 1, gap: 20 },
+  cardTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
+  legendCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 14, height: 14, borderRadius: 4 },
+  legendText: { fontSize: 12, fontWeight: '700', color: '#666' },
+  
+  muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  
+  testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
+  testName: { fontSize: 18, fontWeight: '800' },
+  testValue: { fontSize: 26, fontWeight: '900' },
+  sideLabel: { fontSize: 10, fontWeight: '900', color: '#888' },
   progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden' },
   progHeader: { flexDirection: 'row', padding: 18, alignItems: 'center' },
   progName: { fontSize: 16, fontWeight: '800' },
-  dictBtn: { padding: 8, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 8 },
-  searchInput: { padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 15, fontSize: 15 },
-  chartContainer: { height: 180, marginTop: 10 },
-  chartScrollArea: { gap: 12, alignItems: 'flex-end', paddingBottom: 10 },
-  chartCol: { width: 40, alignItems: 'center' },
-  chartBarArea: { height: 120, justifyContent: 'flex-end' },
-  chartBar: { width: 12, borderRadius: 4 },
-  dualBodyContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 25 },
-  bodyWrapper: { alignItems: 'center', flex: 1 },
-  bodySideLabel: { fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 },
-  timeFilterContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
-  timeFilterBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
-  topMusclesCard: { padding: 15, borderRadius: 20, borderWidth: 1 },
-  topMuscleItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10 },
+  searchBar: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 20 },
   feedbackCard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
-  emptyCard: { padding: 40, alignItems: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25 },
-  dictSelectBtn: { padding: 10, borderRadius: 10, borderWidth: 1 },
-  confirmMergeBtn: { padding: 16, borderRadius: 12, alignItems: 'center' }
+  modalContent: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
+  dictSelectBtn: { padding: 12, borderRadius: 10, borderWidth: 1 },
+  confirmBtn: { padding: 18, borderRadius: 15, alignItems: 'center', marginTop: 30 }
 });
