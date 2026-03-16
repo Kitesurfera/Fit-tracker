@@ -49,9 +49,11 @@ export default function HomeScreen() {
   const [feedbackSignature, setFeedbackSignature] = useState('');
   const [hasUnreadFeedback, setHasUnreadFeedback] = useState(false);
 
-  // NUEVOS ESTADOS PARA EL POPUP DE FASE EN HOME
   const [viewMicroInfo, setViewMicroInfo] = useState<any>(null);
   const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(null);
+  
+  // NUEVO: Estado para desplegar el historial
+  const [showHistory, setShowHistory] = useState(false);
 
   const isTrainer = user?.role === 'trainer';
   const firstName = user?.name?.split(' ')[0] || 'Atleta';
@@ -78,8 +80,6 @@ export default function HomeScreen() {
         setSummary(sData);
 
         let foundMicro = null;
-        
-        // REGLA ESTRICTA: Primero miramos la sesión de hoy
         const todayWorkout = sortedWorkouts.find((w: any) => w.date === todayStr);
         let targetMicroId = todayWorkout?.microciclo_id || todayWorkout?.microcycle_id;
 
@@ -101,7 +101,6 @@ export default function HomeScreen() {
             }
           }
           
-          // Si hoy no hay sesión o no tenía ID, miramos por fechas
           if (!foundMicro) {
             for (const macro of treeData.macros) {
               const micros = macro.microciclos || macro.microcycles || [];
@@ -254,7 +253,6 @@ export default function HomeScreen() {
     setExpandedWorkoutId(null);
   };
 
-  // Filtrar los entrenamientos que pertenecen al microciclo abierto en el popup
   const microWorkouts = useMemo(() => {
     if (!viewMicroInfo) return [];
     return workouts
@@ -262,10 +260,40 @@ export default function HomeScreen() {
       .sort((a, b) => a.date.localeCompare(b.date));
   }, [workouts, viewMicroInfo]);
 
-
   if (authLoading || (!user && !isTrainer)) {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" color={colors.primary} /></View>;
   }
+
+  const renderWorkoutCard = (item: any) => {
+    let hasSessionFeedback = false;
+    if (item.completed && item.completion_data) {
+      item.completion_data.exercise_results?.forEach((ex: any) => { if (ex.coach_note) hasSessionFeedback = true; });
+      item.completion_data.hiit_results?.forEach((block: any) => { block.hiit_exercises?.forEach((ex: any) => { if (ex.coach_note) hasSessionFeedback = true; }); });
+    }
+
+    return (
+      <TouchableOpacity 
+        key={item.id} 
+        style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.8 : 1 }]} 
+        onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
+      >
+        <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
+          <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
+          
+          {hasSessionFeedback && (
+            <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}>
+              <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text>
+            </View>
+          )}
+        </View>
+        <Ionicons name="play" size={18} color={item.completed ? colors.border : colors.primary} />
+      </TouchableOpacity>
+    );
+  };
 
   const renderTrainerView = () => (
     <FlatList
@@ -316,11 +344,20 @@ export default function HomeScreen() {
   const renderAthleteView = () => {
     const currentPhase = summary?.latest_wellness?.cycle_phase;
     
+    // SEPARAMOS LOS ENTRENAMIENTOS
+    const pendingWorkouts = workouts.filter(w => !w.completed);
+    const completedWorkouts = workouts.filter(w => w.completed);
+    
     return (
       <FlatList
-        data={workouts}
+        data={pendingWorkouts}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.primary} />}
+        ListEmptyComponent={
+          <Text style={{ textAlign: 'center', color: colors.textSecondary, marginBottom: 20, fontStyle: 'italic' }}>
+            No tienes sesiones pendientes.
+          </Text>
+        }
         ListHeaderComponent={
           <View style={styles.container}>
             <View style={styles.headerRow}>
@@ -364,7 +401,6 @@ export default function HomeScreen() {
               </View>
             )}
 
-            {/* TARJETA DE MICRO CICLO (AHORA ES CLICABLE) */}
             <TouchableOpacity 
               disabled={!activeMicro}
               onPress={() => setViewMicroInfo(activeMicro)}
@@ -418,32 +454,31 @@ export default function HomeScreen() {
             <Text style={styles.sectionTitle}>SESIONES PROGRAMADAS</Text>
           </View>
         }
-        renderItem={({ item }) => {
-          let hasSessionFeedback = false;
-          if (item.completed && item.completion_data) {
-            item.completion_data.exercise_results?.forEach((ex: any) => { if (ex.coach_note) hasSessionFeedback = true; });
-            item.completion_data.hiit_results?.forEach((block: any) => { block.hiit_exercises?.forEach((ex: any) => { if (ex.coach_note) hasSessionFeedback = true; }); });
-          }
+        renderItem={({ item }) => renderWorkoutCard(item)}
+        ListFooterComponent={
+          <View style={{ paddingBottom: 40 }}>
+            {completedWorkouts.length > 0 && (
+              <View style={{ marginHorizontal: 20, marginTop: 15 }}>
+                <TouchableOpacity 
+                  style={[styles.historyToggleBtn, { backgroundColor: colors.surfaceHighlight }]} 
+                  onPress={() => setShowHistory(!showHistory)}
+                >
+                  <Ionicons name="time-outline" size={22} color={colors.textPrimary} />
+                  <Text style={[styles.historyToggleText, { color: colors.textPrimary }]}>
+                    HISTORIAL DE SESIONES ({completedWorkouts.length})
+                  </Text>
+                  <Ionicons name={showHistory ? 'chevron-up' : 'chevron-down'} size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
 
-          return (
-            <TouchableOpacity style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.7 : 1 }]} onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}>
-              <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
-                <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
-                
-                {hasSessionFeedback && (
-                  <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}>
-                    <Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text>
+                {showHistory && (
+                  <View style={{ marginTop: 10 }}>
+                    {completedWorkouts.map(renderWorkoutCard)}
                   </View>
                 )}
               </View>
-              <Ionicons name="play" size={18} color={item.completed ? colors.border : colors.primary} />
-            </TouchableOpacity>
-          );
-        }}
+            )}
+          </View>
+        }
       />
     );
   };
@@ -644,7 +679,6 @@ const styles = StyleSheet.create({
   dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, 
   feedbackAlertCard: { padding: 18, borderRadius: 20, marginBottom: 25, elevation: 3 },
 
-  // --- Estilos Modales de Fase ---
   modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 },
   phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
@@ -655,8 +689,11 @@ const styles = StyleSheet.create({
   microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 },
   datesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
   
-  // --- Estilos de la lista de sesiones y desplegables ---
   microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' },
   microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 },
-  microWorkoutExercises: { padding: 14, borderTopWidth: 1 }
+  microWorkoutExercises: { padding: 14, borderTopWidth: 1 },
+
+  // --- NUEVOS ESTILOS PARA EL HISTORIAL ---
+  historyToggleBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 5 },
+  historyToggleText: { flex: 1, fontSize: 12, fontWeight: '800', marginLeft: 10, letterSpacing: 1 }
 });
