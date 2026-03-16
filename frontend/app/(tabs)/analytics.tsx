@@ -27,7 +27,6 @@ const TEST_TRANSLATIONS: Record<string, string> = {
   tibialis: 'Tibial'
 };
 
-// --- MAPEO DE MÚSCULOS PARA EL MAPA DE CALOR ---
 const MUSCLE_MAP: Record<string, string[]> = {
   'Pecho': ['press banca', 'flexiones', 'pecho', 'aperturas', 'push up'],
   'Espalda': ['dominadas', 'remo', 'pull up', 'espalda', 'lat pulldown'],
@@ -79,7 +78,11 @@ export default function AnalyticsScreen() {
   const [mergeTargetName, setMergeTargetName] = useState('');
   const [localAliases, setLocalAliases] = useState<Record<string, string>>({});
 
-  // CORRECCIÓN: Volver a cargar el mapa personalizado cada vez que se entra a la pantalla
+  // ESTADOS NUEVOS PARA EL GRÁFICO DE TESTS
+  const [showTestChartModal, setShowTestChartModal] = useState(false);
+  const [selectedTestName, setSelectedTestName] = useState<string>('');
+  const [selectedTestHistory, setSelectedTestHistory] = useState<any[]>([]);
+
   useFocusEffect(
     useCallback(() => {
       AsyncStorage.getItem('custom_muscle_map').then(res => {
@@ -232,7 +235,6 @@ export default function AnalyticsScreen() {
     return Array.from(names).sort();
   };
 
-  // --- LÓGICA DEL MAPA DE CALOR ---
   const getMuscleHeat = () => {
     const heat: Record<string, number> = {
       'Pecho': 0, 'Espalda': 0, 'Cuádriceps': 0, 'Isquiotibiales': 0,
@@ -315,7 +317,7 @@ export default function AnalyticsScreen() {
     const data = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     if (data.length === 0) return null;
 
-    const weights = data.map(d => d.weight);
+    const weights = data.map(d => d.weight || d.value || 0);
     const maxW = Math.max(...weights);
     const minW = Math.min(...weights);
     const range = maxW - minW === 0 ? 10 : maxW - minW;
@@ -323,21 +325,22 @@ export default function AnalyticsScreen() {
     return (
       <View style={styles.chartContainer}>
         <View style={[styles.yAxis, { borderRightColor: colors.border }]}>
-          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{Number(maxW.toFixed(1))}kg</Text>
-          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{Number(((maxW+minW)/2).toFixed(1))}kg</Text>
-          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{Number(minW.toFixed(1))}kg</Text>
+          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{Number(maxW.toFixed(1))}</Text>
+          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{Number(((maxW+minW)/2).toFixed(1))}</Text>
+          <Text style={[styles.axisText, { color: colors.textSecondary }]}>{Number(minW.toFixed(1))}</Text>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartScrollArea}>
           {data.map((h, i) => {
-            const heightPct = ((h.weight - minW) / range) * 75 + 15;
+            const val = h.weight || h.value || 0;
+            const heightPct = ((val - minW) / range) * 75 + 15;
             return (
               <View key={i} style={styles.chartCol}>
                 <View style={styles.chartBarArea}>
                   <View style={[styles.chartBar, { height: `${heightPct}%`, backgroundColor: colors.primary }]} />
                 </View>
                 <View style={styles.chartLabelsArea}>
-                  <Text style={[styles.chartXWeight, { color: colors.textPrimary }]}>{Number(h.weight.toFixed(1))}</Text>
+                  <Text style={[styles.chartXWeight, { color: colors.textPrimary }]}>{Number(val.toFixed(1))}</Text>
                   <Text style={[styles.chartXDate, { color: colors.textSecondary }]}>{h.date.split('-').slice(1).join('/')}</Text>
                 </View>
               </View>
@@ -346,6 +349,50 @@ export default function AnalyticsScreen() {
         </ScrollView>
       </View>
     );
+  };
+
+  // --- LÓGICA PARA TESTS: AGRUPAR Y MOSTRAR MODAL ---
+  const getLatestUniqueTests = () => {
+    const latestTests: Record<string, any> = {};
+    
+    // Suponemos que testHistory viene ordenado por fecha de más reciente a más antiguo
+    testHistory.forEach(test => {
+      // Usamos test_name (o custom_name si es custom) como clave única
+      const key = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
+      if (!latestTests[key]) {
+        latestTests[key] = test;
+      }
+    });
+    
+    return Object.values(latestTests);
+  };
+
+  const handleTestPress = (test: any) => {
+    const testName = test.test_name === 'custom' ? test.custom_name : (TEST_TRANSLATIONS[test.test_name] || test.test_name);
+    
+    // Filtramos todos los registros que correspondan a este test exacto
+    const historyForTest = testHistory.filter(t => 
+      t.test_name === test.test_name && 
+      (test.test_name !== 'custom' || t.custom_name === test.custom_name)
+    );
+    
+    // Adaptamos los datos para que funcionen con la misma función renderChart()
+    const adaptedHistory = historyForTest.map(t => {
+      // Si es bilateral, sacamos la media para pintar el gráfico, o pillamos el global
+      let val = 0;
+      if (t.value_left != null || t.value_right != null) {
+        const l = parseFloat(t.value_left) || 0;
+        const r = parseFloat(t.value_right) || 0;
+        val = (l + r) / 2;
+      } else {
+        val = parseFloat(t.value) || 0;
+      }
+      return { date: t.date, value: val, unit: t.unit };
+    });
+
+    setSelectedTestName(testName);
+    setSelectedTestHistory(adaptedHistory);
+    setShowTestChartModal(true);
   };
 
   const renderTestCard = (test: any, index: number) => {
@@ -360,16 +407,23 @@ export default function AnalyticsScreen() {
     const testName = test.test_name === 'custom' ? test.custom_name : (TEST_TRANSLATIONS[test.test_name] || test.test_name);
 
     return (
-      <View key={index} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <TouchableOpacity 
+        key={index} 
+        style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        onPress={() => handleTestPress(test)}
+        activeOpacity={0.7}
+      >
         <View style={styles.testHeader}>
           <View>
             <Text style={[styles.testName, { color: colors.textPrimary }]}>{testName}</Text>
-            <Text style={[styles.testDate, { color: colors.textSecondary }]}>{test.date}</Text>
+            <Text style={[styles.testDate, { color: colors.textSecondary }]}>Último test: {test.date}</Text>
           </View>
-          {hasSides && (
+          {hasSides ? (
             <View style={[styles.asymBadge, { backgroundColor: asymmetry > 15 ? '#EF4444' : colors.primary + '20' }]}>
               <Text style={{ color: asymmetry > 15 ? '#FFF' : colors.primary, fontSize: 10, fontWeight: '800' }}>{asymmetry.toFixed(1)}% ASIM.</Text>
             </View>
+          ) : (
+             <Ionicons name="bar-chart-outline" size={20} color={colors.primary} />
           )}
         </View>
         <View style={styles.testValuesRow}>
@@ -382,7 +436,7 @@ export default function AnalyticsScreen() {
             <View style={styles.valueBox}><Text style={[styles.testValue, { color: colors.textPrimary }]}>{test.value} <Text style={{fontSize: 14}}>{test.unit}</Text></Text><Text style={styles.sideLabel}>GLOBAL</Text></View>
           )}
         </View>
-      </View>
+      </TouchableOpacity>
     );
   };
 
@@ -445,6 +499,9 @@ export default function AnalyticsScreen() {
   const filteredProgression = cleanProgression.filter(item => 
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
+  
+  // Guardamos en una variable los tests únicos
+  const uniqueTests = getLatestUniqueTests();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -511,8 +568,8 @@ export default function AnalyticsScreen() {
         {loading && !refreshing ? (
           <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/>
         ) : activeTab === 'summary' ? (
-          testHistory.length > 0 ? (
-            testHistory.map(renderTestCard)
+          uniqueTests.length > 0 ? (
+            uniqueTests.map(renderTestCard)
           ) : (
             <View style={styles.emptyCard}>
               <Ionicons name="clipboard-outline" size={48} color={colors.border} />
@@ -575,6 +632,45 @@ export default function AnalyticsScreen() {
           renderFeedbackTab()
         )}
       </ScrollView>
+
+      {/* MODAL PARA GRÁFICO DE TESTS */}
+      <Modal visible={showTestChartModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '80%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Evolución: {selectedTestName}</Text>
+              <TouchableOpacity onPress={() => setShowTestChartModal(false)}>
+                <Ionicons name="close" size={24} color={colors.textPrimary}/>
+              </TouchableOpacity>
+            </View>
+            
+            {selectedTestHistory.length > 1 ? (
+              <>
+                <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 13 }}>
+                  Aquí tienes tu progreso histórico. (En tests asimétricos se muestra la media).
+                </Text>
+                <View style={{ height: 250, width: '100%', marginBottom: 20 }}>
+                  {renderChart(selectedTestHistory)}
+                </View>
+              </>
+            ) : (
+              <View style={[styles.emptyCard, { paddingVertical: 20 }]}>
+                 <Ionicons name="information-circle-outline" size={48} color={colors.border} />
+                 <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 12, fontSize: 15 }}>
+                    Solo tienes un registro de este test. Añade más en el futuro para ver el gráfico de evolución.
+                 </Text>
+              </View>
+            )}
+
+            <TouchableOpacity 
+              style={[styles.closeBtn, { backgroundColor: colors.surfaceHighlight }]} 
+              onPress={() => setShowTestChartModal(false)}
+            >
+              <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>CERRAR</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* MODAL PARA UNIFICAR EJERCICIOS */}
       <Modal visible={showMergeModal} transparent animationType="slide">
