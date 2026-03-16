@@ -86,7 +86,6 @@ export default function AnalyticsScreen() {
   const [selectedTestName, setSelectedTestName] = useState<string>('');
   const [selectedTestHistory, setSelectedTestHistory] = useState<any[]>([]);
 
-  // Filtro de tiempo para el cuerpo
   const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(14);
 
   const [showDictModal, setShowDictModal] = useState(false);
@@ -144,59 +143,6 @@ export default function AnalyticsScreen() {
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
 
-  const handleMerge = () => {
-    if (exercisesToMerge.length < 2 || !mergeTargetName.trim()) return;
-    const newAliases = { ...localAliases };
-    exercisesToMerge.forEach(ex => { newAliases[ex] = mergeTargetName.trim(); });
-    setLocalAliases(newAliases);
-    setShowMergeModal(false);
-    setExercisesToMerge([]);
-    setMergeTargetName('');
-  };
-
-  const toggleMergeSelection = (name: string) => {
-    setExercisesToMerge(prev => prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name]);
-  };
-
-  const handleDeleteFeedback = (workoutId: string, isHiit: boolean, blockIdx: number, exIdx: number) => {
-    if (Platform.OS === 'web') {
-      if (window.confirm('¿Seguro que quieres eliminar este feedback?')) {
-        executeDeleteFeedback(workoutId, isHiit, blockIdx, exIdx);
-      }
-    } else {
-      Alert.alert("Eliminar Feedback", "¿Seguro que quieres borrar la nota de este ejercicio?", [
-        { text: "Cancelar", style: "cancel" },
-        { text: "Eliminar", style: "destructive", onPress: () => executeDeleteFeedback(workoutId, isHiit, blockIdx, exIdx) }
-      ]);
-    }
-  };
-
-  const executeDeleteFeedback = async (workoutId: string, isHiit: boolean, blockIdx: number, exIdx: number) => {
-    const targetWorkout = workoutHistory.find(w => w.id === workoutId);
-    if (!targetWorkout) return;
-    try {
-      let updatedData = { ...targetWorkout };
-      if (isHiit) {
-        const newHiitResults = [...updatedData.completion_data.hiit_results];
-        const newBlock = { ...newHiitResults[blockIdx] };
-        const newExercises = [...newBlock.hiit_exercises];
-        newExercises[exIdx] = { ...newExercises[exIdx], coach_note: "" };
-        newBlock.hiit_exercises = newExercises;
-        newHiitResults[blockIdx] = newBlock;
-        updatedData.completion_data.hiit_results = newHiitResults;
-      } else {
-        const newExResults = [...updatedData.completion_data.exercise_results];
-        newExResults[exIdx] = { ...newExResults[exIdx], coach_note: "" };
-        updatedData.completion_data.exercise_results = newExResults;
-      }
-      await api.updateWorkout(workoutId, updatedData);
-      setWorkoutHistory(prev => prev.map(w => w.id === workoutId ? updatedData : w));
-      if (Platform.OS !== 'web') Alert.alert("Eliminado", "El feedback ha sido borrado.");
-    } catch (e) {
-      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo borrar el feedback.");
-    }
-  };
-
   const getMusclesForExercise = (exerciseName: string) => {
     const normName = normalizeName(exerciseName);
     if (customExerciseMuscles[normName]) return customExerciseMuscles[normName];
@@ -234,29 +180,18 @@ export default function AnalyticsScreen() {
           if (localAliases[rawName]) rawName = localAliases[rawName];
           const normKey = normalizeName(rawName);
           const weight = parseFloat(String(r.logged_weight || '0').replace(',', '.')) || 0;
-          const reps = parseInt(r.logged_reps) || 0;
           if (!exercises[normKey]) exercises[normKey] = { name: rawName, history: [], maxW: 0 };
           if (weight > exercises[normKey].maxW) exercises[normKey].maxW = weight;
           const existingDay = exercises[normKey].history.find((h: any) => h.date === w.date);
           if (existingDay) {
-            if (weight > existingDay.weight) { existingDay.weight = weight; existingDay.reps = reps; }
+            if (weight > existingDay.weight) { existingDay.weight = weight; }
           } else {
-            exercises[normKey].history.push({ date: w.date, weight, reps });
+            exercises[normKey].history.push({ date: w.date, weight });
           }
         }
       });
     });
     return Object.values(exercises).sort((a: any, b: any) => a.name.localeCompare(b.name));
-  };
-
-  const getUniqueRawExerciseNames = () => {
-    const names = new Set<string>();
-    workoutHistory.forEach(w => {
-      w.completion_data?.exercise_results?.forEach((r: any) => {
-        if (r.completed_sets > 0 && r.name) names.add(r.name.trim());
-      });
-    });
-    return Array.from(names).sort();
   };
 
   const getMuscleHeat = () => {
@@ -282,32 +217,79 @@ export default function AnalyticsScreen() {
     return heat;
   };
 
+  // --- FUNCIONES DE RENDERIZADO ---
+
+  const renderTestCard = (test: any, index: number) => {
+    const valL = parseFloat(test.value_left);
+    const valR = parseFloat(test.value_right);
+    const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
+    const testName = test.test_name === 'custom' ? test.custom_name : (TEST_TRANSLATIONS[test.test_name] || test.test_name);
+
+    return (
+      <View key={index} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+          <View>
+            <Text style={[styles.testName, { color: colors.textPrimary }]}>{testName}</Text>
+            <Text style={{ fontSize: 11, color: colors.textSecondary }}>Récord: {test.date}</Text>
+          </View>
+          <Ionicons name="trophy-outline" size={20} color={colors.primary} />
+        </View>
+        <View style={{ flexDirection: 'row', marginTop: 15 }}>
+          {hasSides ? (
+            <>
+              <View style={{ flex: 1, alignItems: 'center' }}><Text style={[styles.testValue, { color: '#3B82F6' }]}>{valL}</Text><Text style={styles.sideLabel}>IZQ ({test.unit})</Text></View>
+              <View style={{ flex: 1, alignItems: 'center', borderLeftWidth: 1, borderLeftColor: colors.border }}><Text style={[styles.testValue, { color: '#EF4444' }]}>{valR}</Text><Text style={styles.sideLabel}>DER ({test.unit})</Text></View>
+            </>
+          ) : (
+            <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: colors.textPrimary }]}>{test.value} {test.unit}</Text></View>
+          )}
+        </View>
+      </View>
+    );
+  };
+
+  const renderFeedbackTab = () => {
+    const feedbacks: any[] = [];
+    workoutHistory.forEach(w => {
+      w.completion_data?.exercise_results?.forEach((ex: any) => {
+        if (ex.coach_note) feedbacks.push({ date: w.date, title: w.title, exercise: ex.name, note: ex.coach_note });
+      });
+    });
+
+    if (feedbacks.length === 0) return <View style={styles.emptyCard}><Text style={{color: colors.textSecondary}}>No hay correcciones del coach.</Text></View>;
+
+    return (
+      <View>
+        {feedbacks.reverse().map((fb, i) => (
+          <View key={i} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: (colors.warning || '#F59E0B') + '40' }]}>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{fb.date} • {fb.title}</Text>
+            <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', marginVertical: 5 }}>{fb.exercise}</Text>
+            <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic' }}>"{fb.note}"</Text>
+          </View>
+        ))}
+      </View>
+    );
+  };
+
   const renderBodyMap = () => {
     const heat = getMuscleHeat();
     const totalSets = Object.values(heat).reduce((sum, val) => sum + val, 0);
     const allMusclesSorted = Object.entries(heat).sort((a, b) => b[1] - a[1]);
 
-    const getFilterText = () => {
-      if (bodyTimeFilter === 1) return 'hoy';
-      if (bodyTimeFilter === 30) return 'último mes';
-      return `últimos ${bodyTimeFilter} días`;
-    };
-
     const bodyData: { slug: string; intensity: number }[] = [];
-    const mapIntensity = (percentage: number) => {
-      if (percentage === 0) return 0;
-      if (percentage <= 20) return 1;
-      if (percentage <= 40) return 2;
-      if (percentage <= 50) return 3;
+    const mapIntensity = (p: number) => {
+      if (p === 0) return 0;
+      if (p <= 20) return 1;
+      if (p <= 40) return 2;
+      if (p <= 50) return 3;
       return 4;
     };
 
-    const addToBody = (muscleName: string, slugs: string[]) => {
-      const sets = heat[muscleName] || 0;
-      if (sets > 0) {
-        const p = (sets / totalSets) * 100;
-        const intensity = mapIntensity(p);
-        slugs.forEach(slug => bodyData.push({ slug, intensity }));
+    const addToBody = (muscle: string, slugs: string[]) => {
+      const s = heat[muscle] || 0;
+      if (s > 0) {
+        const p = (s / totalSets) * 100;
+        slugs.forEach(slug => bodyData.push({ slug, intensity: mapIntensity(p) }));
       }
     };
 
@@ -327,55 +309,26 @@ export default function AnalyticsScreen() {
 
     return (
       <View style={{ paddingBottom: 100 }}>
-        {/* FILTRO TIEMPO */}
         <View style={styles.timeFilterContainer}>
           {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
             <TouchableOpacity key={f.v} style={[styles.timeFilterBtn, bodyTimeFilter === f.v && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.v as any)}>
-              <Text style={{ color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700', fontSize: 13 }}>{f.l}</Text>
+              <Text style={{ color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>{f.l}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* DOBLE SILUETA SIN FILTRO (LADO A LADO) */}
         <View style={styles.dualBodyContainer}>
-          <View style={styles.bodyWrapper}>
-            <Text style={styles.bodySideLabel}>FRONTAL</Text>
-            <Body data={bodyData} gender="female" side="front" scale={1} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-          </View>
-          <View style={styles.bodyWrapper}>
-            <Text style={styles.bodySideLabel}>DORSAL</Text>
-            <Body data={bodyData} gender="female" side="back" scale={1} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-          </View>
+          <View style={styles.bodyWrapper}><Text style={styles.bodySideLabel}>FRONTAL</Text><Body data={bodyData} gender="female" side="front" scale={0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} /></View>
+          <View style={styles.bodyWrapper}><Text style={styles.bodySideLabel}>DORSAL</Text><Body data={bodyData} gender="female" side="back" scale={0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} /></View>
         </View>
 
-        <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15, textAlign: 'center' }}>Distribución ({getFilterText()})</Text>
-        
-        {/* LEYENDA */}
-        <View style={styles.legendRow}>
-          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#E2E8F0' }]} /><Text style={styles.legendText}>0%</Text></View>
-          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#3B82F6' }]} /><Text style={styles.legendText}>0-20%</Text></View>
-          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#FBBF24' }]} /><Text style={styles.legendText}>20-40%</Text></View>
-          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#F97316' }]} /><Text style={styles.legendText}>40-50%</Text></View>
-          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#EF4444' }]} /><Text style={styles.legendText}>50%+</Text></View>
-        </View>
-
-        {/* LISTADO DE MÚSCULOS */}
         <View style={[styles.topMusclesCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {allMusclesSorted.map(([m, s], i) => {
-            const p = totalSets > 0 ? ((s / totalSets) * 100) : 0;
-            return (
-              <View key={m} style={styles.topMuscleItem}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  <Text style={{ color: colors.textSecondary, width: 25, fontWeight: '800' }}>{i + 1}</Text>
-                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600' }}>{m}</Text>
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '800' }}>{p.toFixed(1)}%</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text>
-                </View>
-              </View>
-            );
-          })}
+          {allMusclesSorted.map(([m, s], i) => (
+            <View key={m} style={styles.topMuscleItem}>
+              <Text style={{ color: colors.textPrimary, fontWeight: '600' }}>{m}</Text>
+              <Text style={{ color: colors.primary, fontWeight: '800' }}>{totalSets > 0 ? ((s/totalSets)*100).toFixed(1) : 0}%</Text>
+            </View>
+          ))}
         </View>
       </View>
     );
@@ -391,16 +344,12 @@ export default function AnalyticsScreen() {
 
     return (
       <View style={styles.chartContainer}>
-        <View style={[styles.yAxis, { borderRightColor: colors.border }]}>
-          <Text style={styles.axisText}>{Number(maxW.toFixed(1))}</Text>
-          <Text style={styles.axisText}>{Number(minW.toFixed(1))}</Text>
-        </View>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chartScrollArea}>
           {data.map((h, i) => (
             <View key={i} style={styles.chartCol}>
               <View style={styles.chartBarArea}><View style={[styles.chartBar, { height: `${((h.weight - minW) / range) * 75 + 15}%`, backgroundColor: colors.primary }]} /></View>
-              <Text style={[styles.chartXWeight, { color: colors.textPrimary }]}>{h.weight}</Text>
-              <Text style={[styles.chartXDate, { color: colors.textSecondary }]}>{h.date.split('-').slice(1).join('/')}</Text>
+              <Text style={{fontSize: 10, color: colors.textPrimary, fontWeight:'700'}}>{h.weight}kg</Text>
+              <Text style={{fontSize: 8, color: colors.textSecondary}}>{h.date.split('-').slice(1).join('/')}</Text>
             </View>
           ))}
         </ScrollView>
@@ -408,32 +357,34 @@ export default function AnalyticsScreen() {
     );
   };
 
-  const getPRUniqueTests = () => {
-    const prTests: Record<string, { testDoc: any; maxVal: number }> = {};
+  const uniqueTests = (() => {
+    const prTests: Record<string, any> = {};
     testHistory.forEach(test => {
       const key = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
       const currentVal = Math.max(parseFloat(test.value_left) || 0, parseFloat(test.value_right) || 0, parseFloat(test.value) || 0);
-      if (!prTests[key] || currentVal > prTests[key].maxVal) prTests[key] = { testDoc: test, maxVal: currentVal };
+      if (!prTests[key] || currentVal > (Math.max(parseFloat(prTests[key].value_left) || 0, parseFloat(prTests[key].value_right) || 0, parseFloat(prTests[key].value) || 0))) {
+        prTests[key] = test;
+      }
     });
-    return Object.values(prTests).map(item => item.testDoc);
-  };
+    return Object.values(prTests);
+  })();
 
-  const filteredProgression = cleanProgression.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  const filteredProgression = getCleanProgression().filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Analíticas'}</Text>
-        <TouchableOpacity onPress={onRefresh} disabled={refreshing} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
-          {refreshing ? <ActivityIndicator size="small" color={colors.primary}/> : <Ionicons name="refresh" size={20} color={colors.primary} />}
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Deportista') : 'Analíticas'}</Text>
+        <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
+          <Ionicons name="refresh" size={20} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
       <View style={{ paddingHorizontal: 20, marginBottom: 15 }}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.tabsRow, { backgroundColor: colors.surfaceHighlight }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabsRow}>
           {['summary', 'progress', 'body', 'feedback'].map(tab => (
-            <TouchableOpacity key={tab} style={[styles.tabBtn, activeTab === tab && { backgroundColor: tab === 'feedback' ? (colors.warning || '#F59E0B') : colors.primary }]} onPress={() => setActiveTab(tab as any)}>
-              <Text style={{ color: activeTab === tab ? '#FFF' : colors.textSecondary, fontWeight: '700', textTransform: 'capitalize' }}>
+            <TouchableOpacity key={tab} style={[styles.tabBtn, { backgroundColor: activeTab === tab ? colors.primary : colors.surfaceHighlight }]} onPress={() => setActiveTab(tab as any)}>
+              <Text style={{ color: activeTab === tab ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>
                 {tab === 'summary' ? 'Tests' : tab === 'progress' ? 'Evolución' : tab === 'body' ? 'Cuerpo' : 'Feedback'}
               </Text>
             </TouchableOpacity>
@@ -441,17 +392,18 @@ export default function AnalyticsScreen() {
         </ScrollView>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 0, paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingTop: 0 }}>
         {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
-         activeTab === 'summary' ? getPRUniqueTests().map(renderTestCard) : 
+         activeTab === 'summary' ? uniqueTests.map(renderTestCard) : 
          activeTab === 'progress' ? (
-            <View style={viewMode === 'grid' ? styles.gridContainer : styles.listContainer}>
+            <View>
+              <TextInput style={[styles.searchInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Buscar ejercicio..." placeholderTextColor={colors.textSecondary} value={searchQuery} onChangeText={setSearchQuery} />
               {filteredProgression.map((item, i) => (
-                <View key={i} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }, viewMode === 'grid' && !selectedExercise ? styles.gridCard : styles.listCard]}>
+                <View key={i} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.name ? null : item.name)} style={styles.progHeader}>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.progName, { color: colors.textPrimary }]}>{item.name}</Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Récord: <Text style={{fontWeight:'700', color: colors.primary}}>{item.maxW} kg</Text></Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Récord: {item.maxW} kg</Text>
                     </View>
                     <TouchableOpacity onPress={() => openDictModal(item.name)} style={styles.dictBtn}><Ionicons name="pricetags-outline" size={18} color={colors.textSecondary} /></TouchableOpacity>
                   </TouchableOpacity>
@@ -489,34 +441,33 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' },
   headerTitle: { fontSize: 24, fontWeight: '900' },
   iconBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-  tabsRow: { flexDirection: 'row', borderRadius: 12, padding: 4 },
-  tabBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8, marginRight: 5 },
+  tabsRow: { flexDirection: 'row', gap: 8 },
+  tabBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10 },
+  testCard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
+  testName: { fontSize: 17, fontWeight: '800' },
+  testValue: { fontSize: 24, fontWeight: '900' },
+  sideLabel: { fontSize: 9, fontWeight: '800', color: '#888' },
   progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden' },
   progHeader: { flexDirection: 'row', padding: 18, alignItems: 'center' },
   progName: { fontSize: 16, fontWeight: '800' },
-  dictBtn: { padding: 8, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 8, marginLeft: 10 },
-  chartContainer: { flexDirection: 'row', height: 180 },
-  yAxis: { width: 35, justifyContent: 'space-between', paddingRight: 8, borderRightWidth: 1, paddingBottom: 25 },
-  axisText: { fontSize: 9, color: '#888', fontWeight: '700', textAlign: 'right' },
-  chartScrollArea: { paddingLeft: 10, paddingRight: 20, alignItems: 'flex-end', flexDirection: 'row', gap: 12 },
-  chartCol: { width: 35, alignItems: 'center' },
-  chartBarArea: { height: 120, width: '100%', justifyContent: 'flex-end', alignItems: 'center' },
-  chartBar: { width: 10, borderRadius: 4 },
-  chartXWeight: { fontSize: 10, fontWeight: '800', marginTop: 4 },
-  chartXDate: { fontSize: 8, color: '#888' },
+  dictBtn: { padding: 8, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 8 },
+  searchInput: { padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 15, fontSize: 15 },
+  chartContainer: { height: 180, marginTop: 10 },
+  chartScrollArea: { gap: 12, alignItems: 'flex-end', paddingBottom: 10 },
+  chartCol: { width: 40, alignItems: 'center' },
+  chartBarArea: { height: 120, justifyContent: 'flex-end' },
+  chartBar: { width: 12, borderRadius: 4 },
   dualBodyContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 25 },
   bodyWrapper: { alignItems: 'center', flex: 1 },
   bodySideLabel: { fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 },
   timeFilterContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
   timeFilterBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
-  legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 25, justifyContent: 'center' },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  legendColor: { width: 12, height: 12, borderRadius: 3 },
-  legendText: { fontSize: 10, fontWeight: '600', color: '#888' },
   topMusclesCard: { padding: 15, borderRadius: 20, borderWidth: 1 },
-  topMuscleItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  topMuscleItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10 },
+  feedbackCard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
+  emptyCard: { padding: 40, alignItems: 'center' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25 },
-  dictSelectBtn: { paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+  dictSelectBtn: { padding: 10, borderRadius: 10, borderWidth: 1 },
   confirmMergeBtn: { padding: 16, borderRadius: 12, alignItems: 'center' }
 });
