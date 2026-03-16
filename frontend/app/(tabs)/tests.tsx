@@ -142,12 +142,13 @@ export default function TestsScreen() {
         test_type: formData.category,
       };
 
+      // Transformamos comas a puntos antes de parsear para aceptar decimales sin errores
       if (formData.isBilateral) {
-        payload.value_left = parseFloat(formData.valueLeft) || 0;
-        payload.value_right = parseFloat(formData.valueRight) || 0;
+        payload.value_left = parseFloat(formData.valueLeft.replace(',', '.')) || 0;
+        payload.value_right = parseFloat(formData.valueRight.replace(',', '.')) || 0;
         payload.value = 0;
       } else {
-        payload.value = parseFloat(formData.value) || 0;
+        payload.value = parseFloat(formData.value.replace(',', '.')) || 0;
         payload.value_left = null;
         payload.value_right = null;
       }
@@ -184,13 +185,11 @@ export default function TestsScreen() {
             <View style={styles.headerRow}>
               <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Tests Físicos</Text>
               
-              {/* ACCIONES DE CABECERA: Modificadas para que el deportista vea el + */}
               <View style={styles.headerActions}>
                 <TouchableOpacity onPress={onRefresh} style={styles.refreshBtn}>
                   <Ionicons name="sync-outline" size={24} color={colors.primary} />
                 </TouchableOpacity>
 
-                {/* SOLO PARA EL ENTRENADOR: Gestión de categorías */}
                 {isTrainer && (
                   <TouchableOpacity 
                     style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border, borderWidth: 1 }]} 
@@ -200,7 +199,6 @@ export default function TestsScreen() {
                   </TouchableOpacity>
                 )}
 
-                {/* PARA TODOS: Botón de añadir */}
                 <TouchableOpacity 
                   style={[styles.actionBtn, { backgroundColor: colors.primary }]} 
                   onPress={() => {
@@ -250,7 +248,6 @@ export default function TestsScreen() {
                 </Text>
               </View>
               
-              {/* ACCIONES EN TARJETA: Ahora visibles para todos para que puedan gestionar sus registros */}
               <View style={{ flexDirection: 'row', gap: 15 }}>
                 <TouchableOpacity onPress={() => openEditModal(item)}>
                   <Ionicons name="create-outline" size={20} color={colors.primary} />
@@ -359,17 +356,17 @@ export default function TestsScreen() {
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     <TextInput 
                       style={[styles.modalInput, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                      placeholder="IZQ" keyboardType="numeric" value={formData.valueLeft} onChangeText={(t) => setFormData({...formData, valueLeft: t})}
+                      placeholder="IZQ" keyboardType="decimal-pad" value={formData.valueLeft} onChangeText={(t) => setFormData({...formData, valueLeft: t})}
                     />
                     <TextInput 
                       style={[styles.modalInput, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                      placeholder="DER" keyboardType="numeric" value={formData.valueRight} onChangeText={(t) => setFormData({...formData, valueRight: t})}
+                      placeholder="DER" keyboardType="decimal-pad" value={formData.valueRight} onChangeText={(t) => setFormData({...formData, valueRight: t})}
                     />
                   </View>
                 ) : (
                   <TextInput 
                     style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                    placeholder="Valor" keyboardType="numeric" value={formData.value} onChangeText={(t) => setFormData({...formData, value: t})}
+                    placeholder="Valor" keyboardType="decimal-pad" value={formData.value} onChangeText={(t) => setFormData({...formData, value: t})}
                   />
                 )}
 
