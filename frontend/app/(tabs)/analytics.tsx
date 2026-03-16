@@ -70,7 +70,10 @@ export default function AnalyticsScreen() {
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
+  
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null); // ESTADO PARA DESPLEGAR TESTS
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(14);
   const [showDictModal, setShowDictModal] = useState(false);
@@ -175,23 +178,86 @@ export default function AnalyticsScreen() {
     return heat;
   };
 
+  // --- LÓGICA DE RÉCORDS PERSONALES (PR) RESTAURADA ---
+  const getPRUniqueTests = () => {
+    const prTests: Record<string, { testDoc: any; maxVal: number }> = {};
+    testHistory.forEach(test => {
+      const key = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
+      const currentVal = Math.max(parseFloat(test.value_left) || 0, parseFloat(test.value_right) || 0, parseFloat(test.value) || 0);
+      if (!prTests[key] || currentVal > prTests[key].maxVal) {
+        prTests[key] = { testDoc: test, maxVal: currentVal };
+      }
+    });
+    return Object.values(prTests).map(item => item.testDoc);
+  };
+
+  // --- GRÁFICA DE EVOLUCIÓN DE TESTS RESTAURADA ---
+  const renderTestChart = (testKey: string) => {
+    const history = testHistory.filter(t => (t.test_name === 'custom' ? `custom_${t.custom_name}` : t.test_name) === testKey);
+    const data = history.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(t => {
+       const vL = parseFloat(t.value_left) || 0;
+       const vR = parseFloat(t.value_right) || 0;
+       const v = parseFloat(t.value) || 0;
+       return { date: t.date, val: Math.max(vL, vR, v) };
+    });
+
+    if (data.length === 0) return null;
+    const maxV = Math.max(...data.map(d => d.val));
+    const minV = Math.min(...data.map(d => d.val));
+    const range = maxV - minV === 0 ? 10 : maxV - minV;
+
+    return (
+      <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 15, alignItems: 'flex-end', height: 120 }}>
+          {data.map((h, i) => (
+            <View key={i} style={{ alignItems: 'center', width: 40 }}>
+              <View style={{ height: `${Math.max(((h.val - minV) / range) * 80 + 20, 10)}%`, width: 12, backgroundColor: colors.primary, borderRadius: 4 }} />
+              <Text style={{ fontSize: 10, color: colors.textPrimary, marginTop: 4, fontWeight: '700' }}>{h.val}</Text>
+              <Text style={{ fontSize: 9, color: colors.textSecondary }}>{h.date.split('-').slice(1).join('/')}</Text>
+            </View>
+          ))}
+        </ScrollView>
+      </View>
+    );
+  };
+
   const renderTestCard = (test: any, index: number) => {
     const valL = parseFloat(test.value_left);
     const valR = parseFloat(test.value_right);
     const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
+    const testKey = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
+    const isSelected = selectedTestKey === testKey;
+
     return (
       <View key={index} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, width: isDesktop ? '48%' : '100%' }]}>
-        <Text style={[styles.testName, { color: colors.textPrimary }]}>{test.custom_name || TEST_TRANSLATIONS[test.test_name] || test.test_name}</Text>
-        <View style={{ flexDirection: 'row', marginTop: 10 }}>
-          {hasSides ? (
-            <>
-              <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#3B82F6' }]}>{valL}</Text><Text style={styles.sideLabel}>IZQ</Text></View>
-              <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#EF4444' }]}>{valR}</Text><Text style={styles.sideLabel}>DER</Text></View>
-            </>
-          ) : (
-            <Text style={[styles.testValue, { color: colors.textPrimary }]}>{test.value} {test.unit}</Text>
-          )}
-        </View>
+        <TouchableOpacity onPress={() => setSelectedTestKey(isSelected ? null : testKey)} activeOpacity={0.7}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={[styles.testName, { color: colors.textPrimary, flex: 1 }]}>
+              {test.custom_name || TEST_TRANSLATIONS[test.test_name] || test.test_name}
+            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+              <Ionicons name="trophy" size={16} color={colors.primary} />
+              <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>PR</Text>
+            </View>
+          </View>
+          
+          <View style={{ flexDirection: 'row', marginTop: 15, alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flexDirection: 'row', flex: 1 }}>
+              {hasSides ? (
+                <>
+                  <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#3B82F6' }]}>{valL}</Text><Text style={styles.sideLabel}>IZQ</Text></View>
+                  <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#EF4444' }]}>{valR}</Text><Text style={styles.sideLabel}>DER</Text></View>
+                </>
+              ) : (
+                <Text style={[styles.testValue, { color: colors.textPrimary }]}>{test.value} <Text style={{fontSize: 14, color: colors.textSecondary}}>{test.unit}</Text></Text>
+              )}
+            </View>
+            <Ionicons name={isSelected ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+          </View>
+          <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 10 }}>Logrado el {test.date}</Text>
+        </TouchableOpacity>
+
+        {isSelected && renderTestChart(testKey)}
       </View>
     );
   };
@@ -264,7 +330,6 @@ export default function AnalyticsScreen() {
     addToBody('Aductores', ['adductor']);
     addToBody('Abductores', ['abductors']);
 
-    // --- RENDERIZADO EXCLUSIVO PARA ESCRITORIO ---
     if (isDesktop) {
       return (
         <View style={styles.bodyTabWrapper}>
@@ -320,7 +385,6 @@ export default function AnalyticsScreen() {
       );
     }
 
-    // --- RENDERIZADO EXCLUSIVO PARA MÓVIL (Versión anterior restaurada) ---
     return (
       <View style={{ paddingBottom: 100 }}>
         <View style={styles.timeFilterContainerMobile}>
@@ -413,7 +477,7 @@ export default function AnalyticsScreen() {
           {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
            activeTab === 'summary' ? (
              <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>
-               {testHistory.map(renderTestCard)}
+               {getPRUniqueTests().map(renderTestCard)}
              </View>
            ) : 
            activeTab === 'progress' ? (
@@ -468,7 +532,6 @@ const styles = StyleSheet.create({
   tabButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)', justifyContent: 'center' },
   tabButtonText: { fontSize: 11, fontWeight: '800' },
   
-  /* --- ESTILOS COMPARTIDOS Y ESCRITORIO --- */
   bodyTabWrapper: { flex: 1 },
   timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 30 },
   timeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
@@ -487,7 +550,6 @@ const styles = StyleSheet.create({
   muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
   muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
 
-  /* --- ESTILOS MÓVIL EXACTOS --- */
   timeFilterContainerMobile: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
   timeBtnMobile: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
   dualBodyContainerMobile: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 25 },
@@ -500,7 +562,6 @@ const styles = StyleSheet.create({
   topMusclesCardMobile: { padding: 15, borderRadius: 20, borderWidth: 1 },
   topMuscleItemMobile: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
 
-  /* --- OTROS --- */
   testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
   testName: { fontSize: 18, fontWeight: '800' },
   testValue: { fontSize: 26, fontWeight: '900' },
