@@ -78,7 +78,6 @@ export default function AnalyticsScreen() {
   const [mergeTargetName, setMergeTargetName] = useState('');
   const [localAliases, setLocalAliases] = useState<Record<string, string>>({});
 
-  // ESTADOS NUEVOS PARA EL GRÁFICO DE TESTS
   const [showTestChartModal, setShowTestChartModal] = useState(false);
   const [selectedTestName, setSelectedTestName] = useState<string>('');
   const [selectedTestHistory, setSelectedTestHistory] = useState<any[]>([]);
@@ -351,39 +350,49 @@ export default function AnalyticsScreen() {
     );
   };
 
-  // --- LÓGICA PARA TESTS: AGRUPAR Y MOSTRAR MODAL ---
-  const getLatestUniqueTests = () => {
-    const latestTests: Record<string, any> = {};
+  // --- LÓGICA PARA TESTS: OBTENER EL PR EN LUGAR DEL MÁS RECIENTE ---
+  const getPRUniqueTests = () => {
+    const prTests: Record<string, { testDoc: any; maxVal: number }> = {};
     
-    // Suponemos que testHistory viene ordenado por fecha de más reciente a más antiguo
     testHistory.forEach(test => {
-      // Usamos test_name (o custom_name si es custom) como clave única
       const key = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
-      if (!latestTests[key]) {
-        latestTests[key] = test;
+      
+      // Calculamos un valor representativo para saber si es el PR
+      let currentVal = 0;
+      if (test.value_left != null || test.value_right != null) {
+        const l = parseFloat(test.value_left) || 0;
+        const r = parseFloat(test.value_right) || 0;
+        currentVal = Math.max(l, r); // Tomamos el lado más fuerte como referencia
+      } else {
+        currentVal = parseFloat(test.value) || 0;
+      }
+
+      if (!prTests[key]) {
+        prTests[key] = { testDoc: test, maxVal: currentVal };
+      } else if (currentVal > prTests[key].maxVal) {
+        // Si este test tiene un valor mayor, se convierte en nuestro nuevo PR
+        prTests[key] = { testDoc: test, maxVal: currentVal };
       }
     });
     
-    return Object.values(latestTests);
+    // Devolvemos solo los documentos originales de los tests ganadores
+    return Object.values(prTests).map(item => item.testDoc);
   };
 
   const handleTestPress = (test: any) => {
     const testName = test.test_name === 'custom' ? test.custom_name : (TEST_TRANSLATIONS[test.test_name] || test.test_name);
     
-    // Filtramos todos los registros que correspondan a este test exacto
     const historyForTest = testHistory.filter(t => 
       t.test_name === test.test_name && 
       (test.test_name !== 'custom' || t.custom_name === test.custom_name)
     );
     
-    // Adaptamos los datos para que funcionen con la misma función renderChart()
     const adaptedHistory = historyForTest.map(t => {
-      // Si es bilateral, sacamos la media para pintar el gráfico, o pillamos el global
       let val = 0;
       if (t.value_left != null || t.value_right != null) {
         const l = parseFloat(t.value_left) || 0;
         const r = parseFloat(t.value_right) || 0;
-        val = (l + r) / 2;
+        val = (l + r) / 2; // Media en el gráfico histórico
       } else {
         val = parseFloat(t.value) || 0;
       }
@@ -416,7 +425,8 @@ export default function AnalyticsScreen() {
         <View style={styles.testHeader}>
           <View>
             <Text style={[styles.testName, { color: colors.textPrimary }]}>{testName}</Text>
-            <Text style={[styles.testDate, { color: colors.textSecondary }]}>Último test: {test.date}</Text>
+            {/* Texto cambiado para reflejar que es un PR y su fecha */}
+            <Text style={[styles.testDate, { color: colors.textSecondary }]}>Récord: {test.date}</Text>
           </View>
           {hasSides ? (
             <View style={[styles.asymBadge, { backgroundColor: asymmetry > 15 ? '#EF4444' : colors.primary + '20' }]}>
@@ -500,8 +510,8 @@ export default function AnalyticsScreen() {
     item.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
   
-  // Guardamos en una variable los tests únicos
-  const uniqueTests = getLatestUniqueTests();
+  // Usamos nuestra nueva función para quedarnos con los PR
+  const uniqueTests = getPRUniqueTests();
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
