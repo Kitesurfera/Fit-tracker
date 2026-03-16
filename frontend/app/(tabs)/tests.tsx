@@ -78,7 +78,7 @@ export default function TestsScreen() {
       setTests(Array.isArray(ts) ? ts : (ts?.data || []));
       setAthletes(Array.isArray(ath) ? ath : (ath?.data || []));
     } catch (e) {
-      console.log("Error:", e);
+      console.log("Error cargando tests:", e);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -88,14 +88,6 @@ export default function TestsScreen() {
   useEffect(() => { loadData(); }, [selectedCategory, selectedAthlete]);
 
   const onRefresh = () => { setRefreshing(true); loadData(); };
-
-  const addCategory = () => {
-    if (!newCategoryName.trim()) return;
-    const key = newCategoryName.toLowerCase().trim().replace(/\s+/g, '_');
-    setDynamicCategories([...dynamicCategories, { key, label: newCategoryName.trim() }]);
-    setNewCategoryName('');
-    setShowCategoryModal(false);
-  };
 
   const deleteTest = (testId: string, testName: string) => {
     const performDelete = async () => {
@@ -130,16 +122,16 @@ export default function TestsScreen() {
   };
 
   const handleSave = async () => {
-    if (!formData.name.trim()) return Alert.alert("Error", "Nombre obligatorio.");
+    if (!formData.name.trim()) return Alert.alert("Error", "El nombre es obligatorio.");
     setSaving(true);
     try {
       const payload: any = {
         unit: formData.unit.trim(),
         notes: formData.notes.trim(),
         test_type: formData.category,
-        value: formData.isBilateral ? 0 : parseFloat(formData.value || '0'),
-        value_left: formData.isBilateral ? parseFloat(formData.valueLeft || '0') : null,
-        value_right: formData.isBilateral ? parseFloat(formData.valueRight || '0') : null,
+        value: formData.isBilateral ? 0 : parseFloat(formData.value.replace(',', '.') || '0'),
+        value_left: formData.isBilateral ? parseFloat(formData.valueLeft.replace(',', '.') || '0') : null,
+        value_right: formData.isBilateral ? parseFloat(formData.valueRight.replace(',', '.') || '0') : null,
       };
 
       if (editTest) {
@@ -154,17 +146,12 @@ export default function TestsScreen() {
         setTests([created, ...tests]);
       }
       setShowCustomModal(false);
-    } catch (e) { Alert.alert("Error al guardar"); }
-    finally { setSaving(false); }
+    } catch (e) {
+      Alert.alert("Error", "No se pudo guardar el test.");
+    } finally {
+      setSaving(false);
+    }
   };
-
-  if (loading && tests.length === 0) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </SafeAreaView>
-    );
-  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -172,22 +159,27 @@ export default function TestsScreen() {
         <FlatList
           data={tests}
           keyExtractor={(item) => item.id}
-          key={isDesktop ? 'desktop' : 'mobile'}
+          key={isDesktop ? 'desktop-grid' : 'mobile-list'}
           numColumns={isDesktop ? 2 : 1}
-          columnWrapperStyle={isDesktop ? { gap: 15 } : null}
+          columnWrapperStyle={isDesktop ? { gap: 20 } : null}
           contentContainerStyle={styles.listContent}
+          showsVerticalScrollIndicator={false}
           ListHeaderComponent={
-            <View style={{ marginBottom: 16 }}>
+            <View style={{ marginBottom: 20 }}>
               <View style={styles.headerRow}>
                 <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Tests Físicos</Text>
                 <View style={styles.headerActions}>
-                  <TouchableOpacity onPress={onRefresh}>{refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={24} color={colors.primary} />}</TouchableOpacity>
-                  {isTrainer && (
-                    <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setShowCategoryModal(true)}>
-                      <Ionicons name="pricetags" size={20} color={colors.accent} />
-                    </TouchableOpacity>
-                  )}
-                  <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary }]} onPress={() => setShowCustomModal(true)}>
+                  <TouchableOpacity onPress={onRefresh} style={styles.refreshIcon}>
+                    {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={24} color={colors.primary} />}
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.actionBtn, { backgroundColor: colors.primary }]} 
+                    onPress={() => {
+                      setEditTest(null);
+                      setFormData({ name: '', category: 'strength', isBilateral: false, unit: '', value: '', valueLeft: '', valueRight: '', notes: '' });
+                      setShowCustomModal(true);
+                    }}
+                  >
                     <Ionicons name="add" size={24} color="#FFF" />
                   </TouchableOpacity>
                 </View>
@@ -195,7 +187,11 @@ export default function TestsScreen() {
 
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
                 {dynamicCategories.map(cat => (
-                  <TouchableOpacity key={cat.key} style={[styles.filterChip, { borderColor: colors.border }, selectedCategory === cat.key && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => setSelectedCategory(cat.key)}>
+                  <TouchableOpacity 
+                    key={cat.key} 
+                    style={[styles.filterChip, { borderColor: colors.border }, selectedCategory === cat.key && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
+                    onPress={() => setSelectedCategory(cat.key)}
+                  >
                     <Text style={[styles.filterText, { color: colors.textSecondary }, selectedCategory === cat.key && { color: '#FFF' }]}>{cat.label}</Text>
                   </TouchableOpacity>
                 ))}
@@ -205,40 +201,53 @@ export default function TestsScreen() {
           renderItem={({ item }) => (
             <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, flex: isDesktop ? 0.5 : 1 }]}>
               <View style={styles.testHeader}>
-                <View style={[styles.typeBadge, { backgroundColor: colors.primary + '15' }]}><Text style={[styles.typeBadgeText, { color: colors.primary }]}>{item.test_type?.toUpperCase()}</Text></View>
-                <View style={{ flexDirection: 'row', gap: 15 }}>
+                <View style={[styles.typeBadge, { backgroundColor: colors.primary + '15' }]}>
+                  <Text style={[styles.typeBadgeText, { color: colors.primary }]}>{item.test_type?.toUpperCase()}</Text>
+                </View>
+                <View style={styles.cardActions}>
                   <TouchableOpacity onPress={() => openEditModal(item)}><Ionicons name="create-outline" size={20} color={colors.primary} /></TouchableOpacity>
                   <TouchableOpacity onPress={() => deleteTest(item.id, item.custom_name || item.test_name)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
                 </View>
               </View>
               <Text style={[styles.testName, { color: colors.textPrimary }]}>{item.custom_name || TEST_LABELS[item.test_name] || item.test_name}</Text>
+              
               {item.value_left != null || item.value_right != null ? (
-                <View style={styles.bilateralValues}>
-                  <View style={styles.bilateralSide}><Text style={[styles.testValue, { color: colors.textPrimary }]}>{item.value_left}</Text><Text style={styles.sideLabel}>IZQ</Text></View>
-                  <View style={styles.bilateralSide}><Text style={[styles.testValue, { color: colors.textPrimary }]}>{item.value_right}</Text><Text style={styles.sideLabel}>DER</Text></View>
+                <View style={styles.bilateralRow}>
+                  <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value_left}</Text><Text style={styles.sideLabel}>IZQ ({item.unit})</Text></View>
+                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                  <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value_right}</Text><Text style={styles.sideLabel}>DER ({item.unit})</Text></View>
                 </View>
               ) : (
-                <View style={styles.testValueRow}><Text style={[styles.testValue, { color: colors.textPrimary }]}>{item.value}</Text><Text style={[styles.testUnit, { color: colors.textSecondary }]}>{item.unit}</Text></View>
+                <View style={styles.valueRow}>
+                  <Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value}</Text>
+                  <Text style={[styles.unitText, { color: colors.textSecondary }]}>{item.unit}</Text>
+                </View>
               )}
-              <Text style={[styles.testDate, { color: colors.textSecondary }]}>{item.date}</Text>
+              <Text style={[styles.dateText, { color: colors.textSecondary }]}>{item.date}</Text>
             </View>
           )}
-        </FlatList>
+        />
       </View>
 
-      {/* MODALES CON ANCHO LIMITADO PARA PC */}
-      <Modal visible={showCustomModal} transparent animationType="slide">
+      {/* MODAL NUEVO/EDITAR */}
+      <Modal visible={showCustomModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView behavior="padding" style={styles.modalKeyboard}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboard}>
             <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <ScrollView>
-                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editTest ? 'Editar Test' : 'Nuevo Test'}</Text>
-                <TextInput style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Nombre" value={formData.name} onChangeText={(t) => setFormData({...formData, name: t})} />
-                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary }]} onPress={handleSave} disabled={saving}>
-                  {saving ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR</Text>}
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editTest ? 'Editar Test' : 'Nuevo Test'}</Text>
+              <TextInput 
+                style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
+                placeholder="Nombre del test" 
+                placeholderTextColor={colors.textSecondary}
+                value={formData.name} 
+                onChangeText={(t) => setFormData({...formData, name: t})} 
+              />
+              <View style={styles.modalActions}>
+                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setShowCustomModal(false)}><Text style={{color: colors.textPrimary}}>Cancelar</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleSave} disabled={saving}>
+                  {saving ? <ActivityIndicator color="#FFF" /> : <Text style={{color: '#FFF', fontWeight: '700'}}>Guardar</Text>}
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowCustomModal(false)}><Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 15 }}>Cerrar</Text></TouchableOpacity>
-              </ScrollView>
+              </View>
             </View>
           </KeyboardAvoidingView>
         </View>
@@ -252,27 +261,32 @@ const styles = StyleSheet.create({
   contentWrapper: { flex: 1, width: '100%', maxWidth: MAX_WIDTH, alignSelf: 'center' },
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 10 },
   screenTitle: { fontSize: 26, fontWeight: '900' },
-  headerActions: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  headerActions: { flexDirection: 'row', gap: 12, alignItems: 'center' },
+  refreshIcon: { padding: 5 },
   actionBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  filterRow: { paddingHorizontal: 20, paddingTop: 20, gap: 10 },
+  filterRow: { paddingHorizontal: 20, paddingTop: 15, gap: 10 },
   filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
   filterText: { fontSize: 13, fontWeight: '700' },
   listContent: { paddingBottom: 40, paddingHorizontal: 20 },
-  testCard: { borderRadius: 20, padding: 20, marginBottom: 15, borderWidth: 1 },
-  testHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
-  typeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  testName: { fontSize: 18, fontWeight: '800', marginBottom: 10 },
-  testValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
-  testValue: { fontSize: 32, fontWeight: '900' },
-  testUnit: { fontSize: 16 },
-  bilateralValues: { flexDirection: 'row' },
-  bilateralSide: { flex: 1, alignItems: 'center' },
-  sideLabel: { fontSize: 10, fontWeight: '900', color: '#888' },
-  testDate: { fontSize: 12, marginTop: 10, opacity: 0.6 },
+  testCard: { borderRadius: 24, padding: 20, marginBottom: 20, borderWidth: 1 },
+  testHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  typeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  typeBadgeText: { fontSize: 10, fontWeight: '800' },
+  cardActions: { flexDirection: 'row', gap: 15 },
+  testName: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
+  valueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
+  bilateralRow: { flexDirection: 'row', alignItems: 'center' },
+  sideValue: { flex: 1, alignItems: 'center' },
+  divider: { width: 1, height: 40, marginHorizontal: 10, opacity: 0.3 },
+  valNum: { fontSize: 32, fontWeight: '900' },
+  unitText: { fontSize: 16, fontWeight: '600' },
+  sideLabel: { fontSize: 10, fontWeight: '700', color: '#888', marginTop: 4 },
+  dateText: { fontSize: 12, marginTop: 15, opacity: 0.6 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
-  modalKeyboard: { width: '100%', maxWidth: 500 },
-  modalCard: { padding: 25, borderRadius: 25, width: '90%', alignSelf: 'center', borderWidth: 1 },
-  modalTitle: { fontSize: 20, fontWeight: '900', marginBottom: 15 },
-  modalInput: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 15 },
-  saveBtn: { padding: 16, borderRadius: 12, alignItems: 'center' },
+  modalKeyboard: { width: '100%', maxWidth: 450, padding: 20 },
+  modalCard: { padding: 25, borderRadius: 25, borderWidth: 1 },
+  modalTitle: { fontSize: 20, fontWeight: '900', marginBottom: 20 },
+  modalInput: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 20, fontSize: 16 },
+  modalActions: { flexDirection: 'row', gap: 12 },
+  modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' }
 });
