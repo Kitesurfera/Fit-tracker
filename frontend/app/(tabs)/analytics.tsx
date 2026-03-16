@@ -6,9 +6,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { useTheme } from '../../src/hooks/useTheme';
-import { api } from '../../src/api';
-import { useAuth } from '../../src/context/AuthContext';
+import { useTheme } from '../src/hooks/useTheme';
+import { api } from '../src/api';
+import { useAuth } from '../src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Body from 'react-native-body-highlighter';
 
@@ -63,7 +63,6 @@ export default function AnalyticsScreen() {
 
   const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
   
-  // customMuscleMap ahora guarda un registro de EJERCICIO -> [Músculos] (ej: "sentadilla bulgara" -> ["Cuádriceps", "Glúteo"])
   const [customExerciseMuscles, setCustomExerciseMuscles] = useState<Record<string, string[]>>({});
   
   const [loading, setLoading] = useState(true);
@@ -89,16 +88,16 @@ export default function AnalyticsScreen() {
   const [selectedTestName, setSelectedTestName] = useState<string>('');
   const [selectedTestHistory, setSelectedTestHistory] = useState<any[]>([]);
 
+  // Filtros del mapa muscular
   const [bodyView, setBodyView] = useState<'frontal' | 'dorsal'>('frontal');
+  const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(14);
 
-  // NUEVO: Estados para el modal del diccionario
   const [showDictModal, setShowDictModal] = useState(false);
   const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
   const [dictSelectedMuscles, setDictSelectedMuscles] = useState<string[]>([]);
 
   useFocusEffect(
     useCallback(() => {
-      // Cargamos el diccionario de ejercicios personalizados al iniciar
       AsyncStorage.getItem('custom_exercise_muscles').then(res => {
         if (res) setCustomExerciseMuscles(JSON.parse(res));
       });
@@ -201,23 +200,13 @@ export default function AnalyticsScreen() {
     }
   };
 
-  // --- NUEVA LÓGICA DICCIONARIO MUSCULAR ---
-  
-  // Función para determinar qué músculos trabaja un ejercicio
   const getMusclesForExercise = (exerciseName: string) => {
     const normName = normalizeName(exerciseName);
-    
-    // Primero mira si el usuario lo ha guardado a mano
-    if (customExerciseMuscles[normName]) {
-      return customExerciseMuscles[normName];
-    }
+    if (customExerciseMuscles[normName]) return customExerciseMuscles[normName];
 
-    // Si no, lo busca en el mapa por defecto
     const musclesFound: string[] = [];
     for (const [muscle, keywords] of Object.entries(DEFAULT_MUSCLE_MAP)) {
-      if (keywords.some(k => normName.includes(k))) {
-        musclesFound.push(muscle);
-      }
+      if (keywords.some(k => normName.includes(k))) musclesFound.push(muscle);
     }
     return musclesFound;
   };
@@ -229,21 +218,16 @@ export default function AnalyticsScreen() {
   };
 
   const toggleDictMuscle = (muscle: string) => {
-    setDictSelectedMuscles(prev => 
-      prev.includes(muscle) ? prev.filter(m => m !== muscle) : [...prev, muscle]
-    );
+    setDictSelectedMuscles(prev => prev.includes(muscle) ? prev.filter(m => m !== muscle) : [...prev, muscle]);
   };
 
   const saveDictMuscles = async () => {
     const normKey = normalizeName(dictTargetExercise);
     const updatedMap = { ...customExerciseMuscles, [normKey]: dictSelectedMuscles };
-    
     setCustomExerciseMuscles(updatedMap);
     await AsyncStorage.setItem('custom_exercise_muscles', JSON.stringify(updatedMap));
-    
     setShowDictModal(false);
   };
-
 
   const getCleanProgression = () => {
     const exercises: Record<string, any> = {};
@@ -288,16 +272,20 @@ export default function AnalyticsScreen() {
       'Gemelos': 0, 'Antebrazos': 0, 'Aductores': 0, 'Abductores': 0, 'Tibial': 0
     };
     
-    const twoWeeksAgo = new Date();
-    twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+    // Lógica del nuevo filtro de tiempo
+    const limitDate = new Date();
+    if (bodyTimeFilter === 1) {
+      limitDate.setHours(0, 0, 0, 0); // Desde esta medianoche
+    } else {
+      limitDate.setDate(limitDate.getDate() - bodyTimeFilter);
+    }
 
     workoutHistory.forEach(w => {
       const wDate = new Date(w.date);
-      if (wDate >= twoWeeksAgo) {
+      if (wDate >= limitDate) {
         w.completion_data?.exercise_results?.forEach((r: any) => {
           if (r.completed_sets > 0 && r.name) {
             const sets = parseInt(r.completed_sets) || 1;
-            // Usamos nuestra nueva función para saber qué sumar
             const workedMuscles = getMusclesForExercise(r.name);
             workedMuscles.forEach(muscle => {
               if (heat[muscle] !== undefined) heat[muscle] += sets;
@@ -311,30 +299,48 @@ export default function AnalyticsScreen() {
 
   const renderBodyMap = () => {
     const heat = getMuscleHeat();
-    const topMuscles = Object.entries(heat).filter(([_, sets]) => sets > 0).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    
+    const totalSets = Object.values(heat).reduce((sum, val) => sum + val, 0);
+    const allMusclesSorted = Object.entries(heat).sort((a, b) => b[1] - a[1]);
 
-    if (topMuscles.length === 0) {
+    const getFilterText = () => {
+      if (bodyTimeFilter === 1) return 'hoy';
+      if (bodyTimeFilter === 30) return 'último mes';
+      return `últimos ${bodyTimeFilter} días`;
+    };
+
+    if (totalSets === 0) {
       return (
         <View style={styles.emptyCard}>
-          <Ionicons name="body-outline" size={48} color={colors.border} />
-          <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 12, fontSize: 15 }}>No hay datos suficientes en los últimos 14 días para mostrar el mapa muscular.</Text>
+          <View style={styles.timeFilterContainer}>
+            {[ {label: 'Hoy', val: 1}, {label: '7D', val: 7}, {label: '14D', val: 14}, {label: '1 Mes', val: 30} ].map(f => (
+              <TouchableOpacity key={f.val} style={[styles.timeFilterBtn, bodyTimeFilter === f.val && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.val as any)}>
+                <Text style={{ color: bodyTimeFilter === f.val ? '#FFF' : colors.textSecondary, fontWeight: '700', fontSize: 13 }}>{f.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Ionicons name="body-outline" size={48} color={colors.border} style={{ marginTop: 20 }}/>
+          <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 12, fontSize: 15 }}>
+            No hay entrenamientos registrados para el filtro: {getFilterText()}.
+          </Text>
         </View>
       );
     }
 
     const bodyData: { slug: string; intensity: number }[] = [];
-    const mapIntensity = (sets: number) => {
-      if (sets === 0) return 0;
-      if (sets <= 5) return 1;
-      if (sets <= 10) return 2;
-      if (sets <= 15) return 3;
+    const mapIntensity = (percentage: number) => {
+      if (percentage === 0) return 0;
+      if (percentage <= 20) return 1;
+      if (percentage <= 40) return 2;
+      if (percentage <= 50) return 3;
       return 4;
     };
 
     const addToBody = (muscleName: string, slugs: string[]) => {
       const sets = heat[muscleName] || 0;
       if (sets > 0) {
-        const intensity = mapIntensity(sets);
+        const percentage = (sets / totalSets) * 100;
+        const intensity = mapIntensity(percentage);
         slugs.forEach(slug => bodyData.push({ slug, intensity }));
       }
     };
@@ -355,6 +361,21 @@ export default function AnalyticsScreen() {
 
     return (
       <View style={{ paddingBottom: 100 }}>
+        
+        {/* TABS DE TIEMPO */}
+        <View style={styles.timeFilterContainer}>
+          {[ {label: 'Hoy', val: 1}, {label: '7D', val: 7}, {label: '14D', val: 14}, {label: '1 Mes', val: 30} ].map(f => (
+            <TouchableOpacity 
+              key={f.val}
+              style={[styles.timeFilterBtn, bodyTimeFilter === f.val && { backgroundColor: colors.primary }]}
+              onPress={() => setBodyTimeFilter(f.val as any)}
+            >
+              <Text style={{ color: bodyTimeFilter === f.val ? '#FFF' : colors.textSecondary, fontWeight: '700', fontSize: 13 }}>{f.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* TABS FRONT / BACK */}
         <View style={styles.bodyToggleContainer}>
           <TouchableOpacity 
             style={[styles.bodyToggleBtn, bodyView === 'frontal' && { backgroundColor: colors.surfaceHighlight }]}
@@ -380,26 +401,34 @@ export default function AnalyticsScreen() {
           />
         </View>
 
-        <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15 }}>Volumen (Series últimos 14 días)</Text>
+        <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15 }}>
+          Volumen ({getFilterText()})
+        </Text>
         <View style={styles.legendRow}>
-          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#E2E8F0' }]} /><Text style={[styles.legendText, { color: colors.textSecondary }]}>0 series</Text></View>
-          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#3B82F6' }]} /><Text style={[styles.legendText, { color: colors.textSecondary }]}>1 - 5</Text></View>
-          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#FBBF24' }]} /><Text style={[styles.legendText, { color: colors.textSecondary }]}>6 - 10</Text></View>
-          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#F97316' }]} /><Text style={[styles.legendText, { color: colors.textSecondary }]}>11 - 15</Text></View>
-          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#EF4444' }]} /><Text style={[styles.legendText, { color: colors.textSecondary }]}>15+</Text></View>
+          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#E2E8F0' }]} /><Text style={[styles.legendText, { color: colors.textSecondary }]}>0%</Text></View>
+          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#3B82F6' }]} /><Text style={[styles.legendText, { color: colors.textSecondary }]}>{'>'}0-20%</Text></View>
+          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#FBBF24' }]} /><Text style={[styles.legendText, { color: colors.textSecondary }]}>20-40%</Text></View>
+          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#F97316' }]} /><Text style={[styles.legendText, { color: colors.textSecondary }]}>40-50%</Text></View>
+          <View style={styles.legendItem}><View style={[styles.legendColor, { backgroundColor: '#EF4444' }]} /><Text style={[styles.legendText, { color: colors.textSecondary }]}>50%+</Text></View>
         </View>
 
         <View style={[styles.topMusclesCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15 }}>Músculos más trabajados</Text>
-          {topMuscles.map(([muscle, sets], i) => (
-            <View key={muscle} style={styles.topMuscleItem}>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Text style={{ color: colors.textSecondary, width: 20, fontWeight: '800' }}>{i + 1}</Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '600' }}>{muscle}</Text>
+          <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15 }}>Todos los grupos musculares</Text>
+          {allMusclesSorted.map(([muscle, sets], i) => {
+            const percentage = totalSets > 0 ? ((sets / totalSets) * 100) : 0;
+            return (
+              <View key={muscle} style={styles.topMuscleItem}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ color: colors.textSecondary, width: 25, fontWeight: '800' }}>{i + 1}</Text>
+                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '600' }}>{muscle}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800' }}>{percentage.toFixed(1)}%</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{sets} series</Text>
+                </View>
               </View>
-              <Text style={{ color: colors.textSecondary, fontSize: 14 }}>{sets} series</Text>
-            </View>
-          ))}
+            );
+          })}
         </View>
       </View>
     );
@@ -587,7 +616,6 @@ export default function AnalyticsScreen() {
                         <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: isGridFormat ? 'center' : 'left' }}>{isGridFormat ? 'Récord:\n' : 'Récord Histórico: '}<Text style={{fontWeight:'700', color: colors.primary}}>{Number(item.maxW.toFixed(1))} kg</Text></Text>
                       </TouchableOpacity>
                       
-                      {/* BOTÓN DE DICCIONARIO / ETIQUETAS */}
                       {!isGridFormat && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                           <TouchableOpacity onPress={() => openDictModal(item.name)} style={styles.dictBtn}>
@@ -600,7 +628,6 @@ export default function AnalyticsScreen() {
                       )}
                     </View>
 
-                    {/* MOSTRAR ETIQUETAS CUANDO ESTÁ DESPLEGADO */}
                     {isSelected && (
                       <View style={[styles.chartWrapper, { borderTopColor: colors.border }]}>
                         {workedMuscles.length > 0 && (
@@ -621,7 +648,6 @@ export default function AnalyticsScreen() {
          activeTab === 'body' ? (renderBodyMap()) : (renderFeedbackTab())}
       </ScrollView>
 
-      {/* --- MODAL PARA EDITAR DICCIONARIO MUSCULAR --- */}
       <Modal visible={showDictModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
@@ -769,6 +795,9 @@ const styles = StyleSheet.create({
   closeBtn: { marginTop: 20, padding: 15, borderRadius: 12, alignItems: 'center' },
   emptyCard: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, paddingHorizontal: 20 },
   feedbackCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
+
+  timeFilterContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 20, marginHorizontal: 20 },
+  timeFilterBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
 
   bodyToggleContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 10, marginHorizontal: 40 },
   bodyToggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
