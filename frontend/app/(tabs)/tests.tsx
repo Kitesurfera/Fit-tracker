@@ -69,20 +69,31 @@ export default function TestsScreen() {
       if (selectedCategory !== 'all') params.test_type = selectedCategory;
       if (selectedAthlete) params.athlete_id = selectedAthlete;
       
-      const [ts, ath] = await Promise.all([
-        api.getTests(params).catch(() => []), 
-        isTrainer ? api.getAthletes().catch(() => []) : Promise.resolve([]),
-      ]);
+      // POR SI ACASO: Aseguramos que el deportista manda su propio ID
+      if (!isTrainer && user?.id) {
+        params.athlete_id = user.id;
+      }
+
+      const ts = await api.getTests(params);
+      let ath = [];
+      if (isTrainer) {
+        ath = await api.getAthletes();
+      }
       
-      setTests(Array.isArray(ts) ? ts : []);
-      setAthletes(Array.isArray(ath) ? ath : []);
-    } catch (e) {
-      console.log("Error:", e);
+      // Manejamos por si el backend devuelve { data: [...] } en vez de [...] directamente
+      setTests(Array.isArray(ts) ? ts : (ts?.data || []));
+      setAthletes(Array.isArray(ath) ? ath : (ath?.data || []));
+      
+    } catch (e: any) {
+      console.log("Error en loadData:", e);
+      // ESTO NOS DIRÁ QUÉ ESTÁ FALLANDO REALMENTE
+      Alert.alert("Aviso del Servidor", "Error al cargar: " + (e.message || "Desconocido"));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
+
 
   useEffect(() => { loadData(); }, [selectedCategory, selectedAthlete]);
 
