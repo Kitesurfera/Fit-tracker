@@ -28,7 +28,7 @@ const TEST_TRANSLATIONS: Record<string, string> = {
   tibialis: 'Tibial'
 };
 
-const MUSCLE_MAP: Record<string, string[]> = {
+const DEFAULT_MUSCLE_MAP: Record<string, string[]> = {
   'Pecho': ['press banca', 'flexiones', 'pecho', 'aperturas', 'push up'],
   'Espalda': ['dominadas', 'remo', 'pull up', 'espalda', 'lat pulldown'],
   'Cuádriceps': ['sentadilla', 'squat', 'prensa', 'extensiones', 'bulgara', 'lunge', 'zancada'],
@@ -45,6 +45,8 @@ const MUSCLE_MAP: Record<string, string[]> = {
   'Tibial': ['tibial', 'tibiales', 'tibialis']
 };
 
+const ALL_MUSCLES = Object.keys(DEFAULT_MUSCLE_MAP);
+
 const normalizeName = (name: string) => {
   if (!name) return "";
   let n = name.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
@@ -60,7 +62,10 @@ export default function AnalyticsScreen() {
   const isTrainer = user?.role === 'trainer';
 
   const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
-  const [customMuscleMap, setCustomMuscleMap] = useState<Record<string, string[]>>({});
+  
+  // customMuscleMap ahora guarda un registro de EJERCICIO -> [Músculos] (ej: "sentadilla bulgara" -> ["Cuádriceps", "Glúteo"])
+  const [customExerciseMuscles, setCustomExerciseMuscles] = useState<Record<string, string[]>>({});
+  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [summary, setSummary] = useState<any>(null);
@@ -86,10 +91,16 @@ export default function AnalyticsScreen() {
 
   const [bodyView, setBodyView] = useState<'frontal' | 'dorsal'>('frontal');
 
+  // NUEVO: Estados para el modal del diccionario
+  const [showDictModal, setShowDictModal] = useState(false);
+  const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
+  const [dictSelectedMuscles, setDictSelectedMuscles] = useState<string[]>([]);
+
   useFocusEffect(
     useCallback(() => {
-      AsyncStorage.getItem('custom_muscle_map').then(res => {
-        if (res) setCustomMuscleMap(JSON.parse(res));
+      // Cargamos el diccionario de ejercicios personalizados al iniciar
+      AsyncStorage.getItem('custom_exercise_muscles').then(res => {
+        if (res) setCustomExerciseMuscles(JSON.parse(res));
       });
     }, [])
   );
@@ -190,6 +201,50 @@ export default function AnalyticsScreen() {
     }
   };
 
+  // --- NUEVA LÓGICA DICCIONARIO MUSCULAR ---
+  
+  // Función para determinar qué músculos trabaja un ejercicio
+  const getMusclesForExercise = (exerciseName: string) => {
+    const normName = normalizeName(exerciseName);
+    
+    // Primero mira si el usuario lo ha guardado a mano
+    if (customExerciseMuscles[normName]) {
+      return customExerciseMuscles[normName];
+    }
+
+    // Si no, lo busca en el mapa por defecto
+    const musclesFound: string[] = [];
+    for (const [muscle, keywords] of Object.entries(DEFAULT_MUSCLE_MAP)) {
+      if (keywords.some(k => normName.includes(k))) {
+        musclesFound.push(muscle);
+      }
+    }
+    return musclesFound;
+  };
+
+  const openDictModal = (exerciseName: string) => {
+    setDictTargetExercise(exerciseName);
+    setDictSelectedMuscles(getMusclesForExercise(exerciseName));
+    setShowDictModal(true);
+  };
+
+  const toggleDictMuscle = (muscle: string) => {
+    setDictSelectedMuscles(prev => 
+      prev.includes(muscle) ? prev.filter(m => m !== muscle) : [...prev, muscle]
+    );
+  };
+
+  const saveDictMuscles = async () => {
+    const normKey = normalizeName(dictTargetExercise);
+    const updatedMap = { ...customExerciseMuscles, [normKey]: dictSelectedMuscles };
+    
+    setCustomExerciseMuscles(updatedMap);
+    await AsyncStorage.setItem('custom_exercise_muscles', JSON.stringify(updatedMap));
+    
+    setShowDictModal(false);
+  };
+
+
   const getCleanProgression = () => {
     const exercises: Record<string, any> = {};
     workoutHistory.forEach(w => {
@@ -233,11 +288,6 @@ export default function AnalyticsScreen() {
       'Gemelos': 0, 'Antebrazos': 0, 'Aductores': 0, 'Abductores': 0, 'Tibial': 0
     };
     
-    const COMBINED_MAP: Record<string, string[]> = { ...MUSCLE_MAP };
-    for (const [muscle, keywords] of Object.entries(customMuscleMap)) {
-      if (COMBINED_MAP[muscle]) COMBINED_MAP[muscle] = [...new Set([...COMBINED_MAP[muscle], ...keywords])];
-    }
-
     const twoWeeksAgo = new Date();
     twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
 
@@ -246,11 +296,12 @@ export default function AnalyticsScreen() {
       if (wDate >= twoWeeksAgo) {
         w.completion_data?.exercise_results?.forEach((r: any) => {
           if (r.completed_sets > 0 && r.name) {
-            const exName = normalizeName(r.name);
             const sets = parseInt(r.completed_sets) || 1;
-            for (const [muscle, keywords] of Object.entries(COMBINED_MAP)) {
-              if (keywords.some(k => exName.includes(k))) heat[muscle] += sets;
-            }
+            // Usamos nuestra nueva función para saber qué sumar
+            const workedMuscles = getMusclesForExercise(r.name);
+            workedMuscles.forEach(muscle => {
+              if (heat[muscle] !== undefined) heat[muscle] += sets;
+            });
           }
         });
       }
@@ -526,13 +577,42 @@ export default function AnalyticsScreen() {
               {filteredProgression.map((item, i) => {
                 const isSelected = selectedExercise === item.name;
                 const isGridFormat = viewMode === 'grid' && !isSelected;
+                const workedMuscles = getMusclesForExercise(item.name);
+
                 return (
                   <View key={i} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }, isGridFormat ? styles.gridCard : styles.listCard]}>
-                    <TouchableOpacity onPress={() => setSelectedExercise(isSelected ? null : item.name)} style={isGridFormat ? styles.gridHeader : styles.progHeader}>
-                      <View style={{ flex: 1, alignItems: isGridFormat ? 'center' : 'flex-start' }}><Text style={[styles.progName, { color: colors.textPrimary, textAlign: isGridFormat ? 'center' : 'left' }, isGridFormat && { fontSize: 14 }]}>{item.name}</Text><Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: isGridFormat ? 'center' : 'left' }}>{isGridFormat ? 'Récord:\n' : 'Récord Histórico: '}<Text style={{fontWeight:'700', color: colors.primary}}>{Number(item.maxW.toFixed(1))} kg</Text></Text></View>
-                      {!isGridFormat && (<Ionicons name={isSelected ? "chevron-up" : "bar-chart-outline"} size={22} color={colors.primary} />)}
-                    </TouchableOpacity>
-                    {isSelected && (<View style={[styles.chartWrapper, { borderTopColor: colors.border }]}>{renderChart(item.history)}</View>)}
+                    <View style={isGridFormat ? styles.gridHeader : styles.progHeader}>
+                      <TouchableOpacity onPress={() => setSelectedExercise(isSelected ? null : item.name)} style={{ flex: 1, alignItems: isGridFormat ? 'center' : 'flex-start' }}>
+                        <Text style={[styles.progName, { color: colors.textPrimary, textAlign: isGridFormat ? 'center' : 'left' }, isGridFormat && { fontSize: 14 }]}>{item.name}</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: isGridFormat ? 'center' : 'left' }}>{isGridFormat ? 'Récord:\n' : 'Récord Histórico: '}<Text style={{fontWeight:'700', color: colors.primary}}>{Number(item.maxW.toFixed(1))} kg</Text></Text>
+                      </TouchableOpacity>
+                      
+                      {/* BOTÓN DE DICCIONARIO / ETIQUETAS */}
+                      {!isGridFormat && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                          <TouchableOpacity onPress={() => openDictModal(item.name)} style={styles.dictBtn}>
+                            <Ionicons name="pricetags-outline" size={20} color={colors.textSecondary} />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => setSelectedExercise(isSelected ? null : item.name)}>
+                            <Ionicons name={isSelected ? "chevron-up" : "bar-chart-outline"} size={22} color={colors.primary} />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* MOSTRAR ETIQUETAS CUANDO ESTÁ DESPLEGADO */}
+                    {isSelected && (
+                      <View style={[styles.chartWrapper, { borderTopColor: colors.border }]}>
+                        {workedMuscles.length > 0 && (
+                          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 15 }}>
+                            {workedMuscles.map((m, idx) => (
+                              <View key={idx} style={[styles.muscleTag, { backgroundColor: colors.surfaceHighlight }]}><Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '700' }}>{m}</Text></View>
+                            ))}
+                          </View>
+                        )}
+                        {renderChart(item.history)}
+                      </View>
+                    )}
                   </View>
                 );
               })}
@@ -540,6 +620,44 @@ export default function AnalyticsScreen() {
           ) : (<View style={styles.emptyCard}><Ionicons name="bar-chart-outline" size={48} color={colors.border} /><Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 12, fontSize: 15 }}>No hay ejercicios que coincidan.</Text></View>)) : 
          activeTab === 'body' ? (renderBodyMap()) : (renderFeedbackTab())}
       </ScrollView>
+
+      {/* --- MODAL PARA EDITAR DICCIONARIO MUSCULAR --- */}
+      <Modal visible={showDictModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <View>
+                <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Editar Diccionario</Text>
+                <Text style={{ color: colors.primary, fontWeight: '600' }}>{dictTargetExercise}</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowDictModal(false)}><Ionicons name="close" size={24} color={colors.textPrimary}/></TouchableOpacity>
+            </View>
+            
+            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 13 }}>
+              Selecciona los grupos musculares que se trabajan en este ejercicio. Esto actualizará tu mapa de calor.
+            </Text>
+
+            <ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingBottom: 20 }}>
+              {ALL_MUSCLES.map(muscle => {
+                const isSelected = dictSelectedMuscles.includes(muscle);
+                return (
+                  <TouchableOpacity 
+                    key={muscle} 
+                    style={[styles.dictSelectBtn, { borderColor: colors.border }, isSelected && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    onPress={() => toggleDictMuscle(muscle)}
+                  >
+                    <Text style={{ color: isSelected ? '#FFF' : colors.textPrimary, fontWeight: '600', fontSize: 13 }}>{muscle}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity style={[styles.confirmMergeBtn, { backgroundColor: colors.primary }]} onPress={saveDictMuscles}>
+              <Text style={{ color: '#FFF', fontWeight: '800', textAlign: 'center' }}>GUARDAR CAMBIOS</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={showTestChartModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -633,8 +751,8 @@ const styles = StyleSheet.create({
   gridHeader: { alignItems: 'center', justifyContent: 'center', flex: 1, padding: 10, gap: 5 },
   progName: { fontSize: 17, fontWeight: '800', marginBottom: 4 },
   
-  chartWrapper: { padding: 20, borderTopWidth: 1, height: 220 },
-  chartContainer: { flexDirection: 'row', height: '100%' },
+  chartWrapper: { padding: 20, borderTopWidth: 1, height: 260 },
+  chartContainer: { flexDirection: 'row', height: 200 },
   yAxis: { width: 45, justifyContent: 'space-between', paddingRight: 8, borderRightWidth: 1, paddingBottom: 25 }, 
   axisText: { fontSize: 10, fontWeight: '700', textAlign: 'right' },
   chartScrollArea: { paddingLeft: 10, paddingRight: 20, height: '100%', alignItems: 'flex-end', flexDirection: 'row', gap: 15 },
@@ -652,7 +770,6 @@ const styles = StyleSheet.create({
   emptyCard: { alignItems: 'center', justifyContent: 'center', paddingVertical: 40, paddingHorizontal: 20 },
   feedbackCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
 
-  // Estilos del Mapa Muscular
   bodyToggleContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 10, marginHorizontal: 40 },
   bodyToggleBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 10 },
   legendRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 30 },
@@ -663,5 +780,9 @@ const styles = StyleSheet.create({
   topMuscleItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   mergeItem: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 10, borderWidth: 1, marginBottom: 8 },
   mergeInput: { padding: 14, borderRadius: 10, borderWidth: 1, fontSize: 16, marginBottom: 15 },
-  confirmMergeBtn: { padding: 16, borderRadius: 12 }
+  confirmMergeBtn: { padding: 16, borderRadius: 12, marginTop: 10 },
+  
+  dictBtn: { padding: 8, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 8 },
+  muscleTag: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  dictSelectBtn: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1 }
 });
