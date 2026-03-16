@@ -469,7 +469,6 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks:
     if not existing:
         raise HTTPException(status_code=404, detail="Sesión no encontrada")
 
-    # Usamos exclude_unset=True para que si enviamos un valor "null", FastAPI lo procese y actualice en BD
     update_data = data.dict(exclude_unset=True)
     
     if update_data:
@@ -491,6 +490,82 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks:
 async def delete_workout(workout_id: str, user=Depends(get_current_user)):
     await db.workouts.delete_one({"id": workout_id})
     return {"status": "success"}
+
+# --- RUTA DE SUSCRIPCIÓN A CALENDARIO (NUEVA Y GENÉRICA) ---
+@api_router.get("/calendar/{athlete_id}/entrenamientos.ics")
+async def get_athlete_calendar(athlete_id: str):
+    """
+    Ruta PÚBLICA (sin auth) para que Apple/Google Calendar puedan leer las sesiones.
+    El cliente se suscribe usando webcal://midominio.com/api/calendar/{id}/entrenamientos.ics
+    """
+    try:
+        user = await db.users.find_one({"id": athlete_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="Deportista no encontrado")
+
+        workouts = await db.workouts.find({
+            "athlete_id": athlete_id,
+            "date": {"$exists": True, "$ne": None, "$ne": ""}
+        }).sort("date", 1).to_list(None)
+
+        ics = "BEGIN:VCALENDAR\r\n"
+        ics += "VERSION:2.0\r\n"
+        ics += "PRODID:-//Athlete Coach App//ES\r\n"
+        ics += "CALSCALE:GREGORIAN\r\n"
+        ics += "METHOD:PUBLISH\r\n"
+        ics += f"X-WR-CALNAME:Entrenos {user.get('name', 'Deportista')}\r\n"
+        ics += "X-PUBLISHED-TTL:PT1H\r\n"
+
+        for wk in workouts:
+            try:
+                clean_date = wk['date'].replace('-', '')
+                dtstart = f"{clean_date}T090000"
+                dtend = f"{clean_date}T103000"
+                
+                uid = f"{wk['id']}@athletecoach.app"
+                status_icon = "✅" if wk.get('completed') else "💪"
+                
+                ics += "BEGIN:VEVENT\r\n"
+                ics += f"UID:{uid}\r\n"
+                ics += f"DTSTAMP:{dtstart}Z\r\n"
+                ics += f"DTSTART;TZID=Europe/Madrid:{dtstart}\r\n"
+                ics += f"DTEND;TZID=Europe/Madrid:{dtend}\r\n"
+                ics += f"SUMMARY:{status_icon} Entreno: {wk.get('title', 'Sesión')}\r\n"
+                
+                desc = "Sesión programada en tu app de entrenamiento.\\n"
+                if wk.get('notes'):
+                    desc += f"Notas: {wk.get('notes')}\\n"
+                if wk.get('completed'):
+                    desc += "¡ENTRENO COMPLETADO!\\n"
+                    
+                ics += f"DESCRIPTION:{desc}\r\n"
+                
+                if not wk.get('completed'):
+                    ics += "BEGIN:VALARM\r\n"
+                    ics += "TRIGGER:-PT15M\r\n"
+                    ics += "ACTION:DISPLAY\r\n"
+                    ics += "DESCRIPTION:Recordatorio de entreno\r\n"
+                    ics += "END:VALARM\r\n"
+                
+                ics += "END:VEVENT\r\n"
+            except Exception as e:
+                logger.error(f"Error procesando sesión {wk.get('id')} para calendario: {str(e)}")
+                continue
+
+        ics += "END:VCALENDAR"
+
+        headers = {
+            "Content-Type": "text/calendar; charset=utf-8",
+            "Content-Disposition": f'attachment; filename="entrenos_{athlete_id}.ics"',
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+
+        return Response(content=ics, media_type="text/calendar", headers=headers)
+
+    except Exception as e:
+        logger.error(f"Error fatal generando calendario para {athlete_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error interno del servidor")
+
 
 @api_router.post("/macrociclos")
 async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
