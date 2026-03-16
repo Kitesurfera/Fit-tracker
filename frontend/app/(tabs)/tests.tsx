@@ -41,6 +41,8 @@ export default function TestsScreen() {
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedAthlete, setSelectedAthlete] = useState<string | null>(null);
+  
+  // Lo empezamos en true para que muestre el spinner nada más entrar
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   
@@ -63,41 +65,50 @@ export default function TestsScreen() {
     notes: ''
   });
 
+  // --- LÓGICA DE CARGA BLINDADA ---
   const loadData = async () => {
     try {
       const params: any = {};
       if (selectedCategory !== 'all') params.test_type = selectedCategory;
       if (selectedAthlete) params.athlete_id = selectedAthlete;
       
-      // POR SI ACASO: Aseguramos que el deportista manda su propio ID
+      // Asegurarnos de que si eres deportista envías tu propio ID
       if (!isTrainer && user?.id) {
         params.athlete_id = user.id;
       }
 
+      // Quitamos el .catch(() => []) para que si el servidor falla o duerme nos avise el error
       const ts = await api.getTests(params);
       let ath = [];
       if (isTrainer) {
         ath = await api.getAthletes();
       }
-      
-      // Manejamos por si el backend devuelve { data: [...] } en vez de [...] directamente
+
+      // Prevemos que a veces las APIs mandan { data: [...] } en lugar de [...]
       setTests(Array.isArray(ts) ? ts : (ts?.data || []));
       setAthletes(Array.isArray(ath) ? ath : (ath?.data || []));
       
     } catch (e: any) {
-      console.log("Error en loadData:", e);
-      // ESTO NOS DIRÁ QUÉ ESTÁ FALLANDO REALMENTE
-      Alert.alert("Aviso del Servidor", "Error al cargar: " + (e.message || "Desconocido"));
+      console.log("Error en loadData de Tests:", e);
+      Alert.alert(
+        "Aviso del Servidor 🥱", 
+        "Parece que el servidor estaba dormido o hay un problema de conexión. Espera un minutito y pulsa el botón de refrescar."
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
+  useEffect(() => { 
+    setLoading(true); 
+    loadData(); 
+  }, [selectedCategory, selectedAthlete]);
 
-  useEffect(() => { loadData(); }, [selectedCategory, selectedAthlete]);
-
-  const onRefresh = () => { setRefreshing(true); loadData(); };
+  const onRefresh = () => { 
+    setRefreshing(true); 
+    loadData(); 
+  };
 
   const addCategory = () => {
     if (!newCategoryName.trim()) return;
@@ -119,9 +130,9 @@ export default function TestsScreen() {
       } catch (e) { console.log(e); }
     };
     if (Platform.OS === 'web') {
-      if (window.confirm(`¿Eliminar "${testName}"?`)) performDelete();
+      if (window.confirm(`¿Seguro que quieres eliminar "${testName}"?`)) performDelete();
     } else {
-      Alert.alert('Eliminar test', `¿Eliminar "${testName}"?`, [
+      Alert.alert('Eliminar test', `¿Seguro que quieres eliminar "${testName}"?`, [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Eliminar', style: 'destructive', onPress: performDelete },
       ]);
@@ -135,6 +146,7 @@ export default function TestsScreen() {
       category: test.test_type || 'strength',
       isBilateral: test.value_left != null || test.value_right != null,
       unit: test.unit || '',
+      // Extra seguridad por si el valor es null en la base de datos
       value: String(test.value ?? ''),
       valueLeft: String(test.value_left ?? ''),
       valueRight: String(test.value_right ?? ''),
@@ -143,8 +155,16 @@ export default function TestsScreen() {
     setShowCustomModal(true);
   };
 
+  // Conversor ultra-seguro para asegurar que no nos da un NaN si alguien manda un string raro
+  const safeParseFloat = (val: any) => {
+    if (!val) return 0;
+    const stringVal = String(val).replace(',', '.');
+    const parsed = parseFloat(stringVal);
+    return isNaN(parsed) ? 0 : parsed;
+  };
+
   const handleSave = async () => {
-    if (!formData.name.trim()) return Alert.alert("Error", "El nombre es obligatorio.");
+    if (!formData.name.trim()) return Alert.alert("Error", "El nombre del test es obligatorio.");
     setSaving(true);
     try {
       const payload: any = {
@@ -153,13 +173,12 @@ export default function TestsScreen() {
         test_type: formData.category,
       };
 
-      // Transformamos comas a puntos antes de parsear para aceptar decimales sin errores
       if (formData.isBilateral) {
-        payload.value_left = parseFloat(formData.valueLeft.replace(',', '.')) || 0;
-        payload.value_right = parseFloat(formData.valueRight.replace(',', '.')) || 0;
+        payload.value_left = safeParseFloat(formData.valueLeft);
+        payload.value_right = safeParseFloat(formData.valueRight);
         payload.value = 0;
       } else {
-        payload.value = parseFloat(formData.value.replace(',', '.')) || 0;
+        payload.value = safeParseFloat(formData.value);
         payload.value_left = null;
         payload.value_right = null;
       }
@@ -178,11 +197,23 @@ export default function TestsScreen() {
       setShowCustomModal(false);
       setEditTest(null);
     } catch (e) {
-      Alert.alert("Error", "No se pudo guardar.");
+      Alert.alert("Error", "No se pudo guardar el test. Puede que el servidor siga durmiendo.");
     } finally {
       setSaving(false);
     }
   };
+
+  // Evitamos pantalla en blanco si sigue cargando de fondo la primera vez
+  if (loading && tests.length === 0) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={{ marginTop: 20, color: colors.textSecondary, fontWeight: '600' }}>
+          Conectando con el servidor... 🥱
+        </Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -198,7 +229,7 @@ export default function TestsScreen() {
               
               <View style={styles.headerActions}>
                 <TouchableOpacity onPress={onRefresh} style={styles.refreshBtn}>
-                  <Ionicons name="sync-outline" size={24} color={colors.primary} />
+                  {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={24} color={colors.primary} />}
                 </TouchableOpacity>
 
                 {isTrainer && (
@@ -306,7 +337,7 @@ export default function TestsScreen() {
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nueva Categoría</Text>
             <TextInput 
               style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-              placeholder="Ej: Resistencia, Kitesurf..." placeholderTextColor={colors.textSecondary}
+              placeholder="Ej: Kitesurf, Resistencia..." placeholderTextColor={colors.textSecondary}
               value={newCategoryName} onChangeText={setNewCategoryName}
             />
             <View style={styles.modalBtns}>
@@ -319,7 +350,7 @@ export default function TestsScreen() {
 
       <Modal visible={showCustomModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView behavior="padding" style={{ width: '100%' }}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
             <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border, borderWidth: 1 }]}>
               <ScrollView showsVerticalScrollIndicator={false}>
                 <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editTest ? 'Editar Test' : 'Nuevo Test'}</Text>
@@ -436,7 +467,7 @@ const styles = StyleSheet.create({
   bilateralDivider: { width: 1, height: 40, marginHorizontal: 15 },
   testDate: { fontSize: 12, marginTop: 10, opacity: 0.6 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', padding: 25 },
-  modalCard: { padding: 25, borderRadius: 25 },
+  modalCard: { padding: 25, borderRadius: 25, maxHeight: '90%' },
   modalTitle: { fontSize: 20, fontWeight: '900', marginBottom: 15 },
   modalInput: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 15, fontSize: 16 },
   modalBtns: { flexDirection: 'row', gap: 10 },
