@@ -15,10 +15,8 @@ export default function SettingsScreen() {
   const router = useRouter();
 
   const handleSubscribeCalendar = () => {
-    // Aquí necesitas la URL real de tu backend que devuelva el .ics
-    // El protocolo webcal:// fuerza a iOS/Android a abrir la app de calendario
-    // Asegúrate de pasar el ID del usuario para que el backend sepa de quién son los entrenos
-    const backendIcsUrl = `webcal://api.tudominio.com/calendar/${user?.id}/freestyle.ics`;
+    // URL real apuntando al backend en Render usando el protocolo webcal
+    const backendIcsUrl = `webcal://fit-tracker-backend-rtx2.onrender.com/api/calendar/${user?.id}/entrenamientos.ics`;
     
     Linking.openURL(backendIcsUrl).catch((err) => {
       console.error("Error abriendo el calendario", err);
