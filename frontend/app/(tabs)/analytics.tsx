@@ -175,14 +175,12 @@ export default function AnalyticsScreen() {
     return heat;
   };
 
-  // --- RENDERS DE LAS OTRAS PESTAÑAS (PARA EVITAR PANTALLA NEGRA) ---
-
   const renderTestCard = (test: any, index: number) => {
     const valL = parseFloat(test.value_left);
     const valR = parseFloat(test.value_right);
     const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
     return (
-      <View key={index} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <View key={index} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, width: isDesktop ? '48%' : '100%' }]}>
         <Text style={[styles.testName, { color: colors.textPrimary }]}>{test.custom_name || TEST_TRANSLATIONS[test.test_name] || test.test_name}</Text>
         <View style={{ flexDirection: 'row', marginTop: 10 }}>
           {hasSides ? (
@@ -219,11 +217,11 @@ export default function AnalyticsScreen() {
   const renderChart = (history: any[]) => {
     const data = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     return (
-      <ScrollView horizontal contentContainerStyle={{ gap: 10, alignItems: 'flex-end', height: 150 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, alignItems: 'flex-end', height: 150 }}>
         {data.map((h, i) => (
           <View key={i} style={{ alignItems: 'center' }}>
             <View style={{ height: (h.weight / 150) * 100, width: 12, backgroundColor: colors.primary, borderRadius: 4 }} />
-            <Text style={{ fontSize: 9, color: colors.textPrimary }}>{h.weight}kg</Text>
+            <Text style={{ fontSize: 9, color: colors.textPrimary, marginTop: 4 }}>{h.weight}kg</Text>
           </View>
         ))}
       </ScrollView>
@@ -266,62 +264,110 @@ export default function AnalyticsScreen() {
     addToBody('Aductores', ['adductor']);
     addToBody('Abductores', ['abductors']);
 
+    // --- RENDERIZADO EXCLUSIVO PARA ESCRITORIO ---
+    if (isDesktop) {
+      return (
+        <View style={styles.bodyTabWrapper}>
+          <View style={styles.timeFilterContainer}>
+            {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
+              <TouchableOpacity key={f.v} style={[styles.timeBtn, bodyTimeFilter === f.v && {backgroundColor: colors.primary}]} onPress={() => setBodyTimeFilter(f.v as any)}>
+                <Text style={{color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700'}}>{f.l}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.desktopBodyLayout}>
+            <View style={styles.silhouettesWrapper}>
+              <View style={styles.bodyContainer}>
+                <View style={styles.bodySide}>
+                  <Text style={styles.bodySideLabel}>FRONTAL</Text>
+                  <Body data={bodyData} gender="female" side="front" scale={1.4} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+                </View>
+                <View style={styles.bodySide}>
+                  <Text style={styles.bodySideLabel}>DORSAL</Text>
+                  <Body data={bodyData} gender="female" side="back" scale={1.4} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+                </View>
+              </View>
+            </View>
+            <View style={styles.dataWrapper}>
+              <View style={[styles.legendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Leyenda de % Series</Text>
+                <View style={styles.legendGrid}>
+                  <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#E2E8F0' }]} /><Text style={styles.legendText}>0%</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#3B82F6' }]} /><Text style={styles.legendText}>0-20%</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#FBBF24' }]} /><Text style={styles.legendText}>20-40%</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#F97316' }]} /><Text style={styles.legendText}>40-50%</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#EF4444' }]} /><Text style={styles.legendText}>50%+</Text></View>
+                </View>
+              </View>
+              <View style={[styles.muscleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Reparto Muscular</Text>
+                {sortedMuscles.map(([m, s]) => {
+                  const p = totalSets > 0 ? (s / totalSets) * 100 : 0;
+                  return (
+                    <View key={m} style={styles.muscleRow}>
+                      <Text style={{ color: colors.textPrimary, fontWeight: '500' }}>{m}</Text>
+                      <View style={{ alignItems: 'flex-end' }}>
+                        <Text style={{ color: colors.primary, fontWeight: '800' }}>{p.toFixed(1)}%</Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // --- RENDERIZADO EXCLUSIVO PARA MÓVIL (Versión anterior restaurada) ---
     return (
-      <View style={styles.bodyTabWrapper}>
-        <View style={styles.timeFilterContainer}>
+      <View style={{ paddingBottom: 100 }}>
+        <View style={styles.timeFilterContainerMobile}>
           {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
-            <TouchableOpacity key={f.v} style={[styles.timeBtn, bodyTimeFilter === f.v && {backgroundColor: colors.primary}]} onPress={() => setBodyTimeFilter(f.v as any)}>
-              <Text style={{color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700'}}>{f.l}</Text>
+            <TouchableOpacity key={f.v} style={[styles.timeBtnMobile, bodyTimeFilter === f.v && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.v as any)}>
+              <Text style={{ color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700', fontSize: 13 }}>{f.l}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <View style={isDesktop ? styles.desktopBodyLayout : styles.mobileBodyLayout}>
-          
-          {/* LADO IZQUIERDO: SILUETAS XXL */}
-          <View style={styles.silhouettesWrapper}>
-            <View style={styles.bodyContainer}>
-              <View style={styles.bodySide}>
-                <Text style={styles.bodySideLabel}>FRONTAL</Text>
-                <Body data={bodyData} gender="female" side="front" scale={isDesktop ? 1.4 : 0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-              </View>
-              <View style={styles.bodySide}>
-                <Text style={styles.bodySideLabel}>DORSAL</Text>
-                <Body data={bodyData} gender="female" side="back" scale={isDesktop ? 1.4 : 0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-              </View>
-            </View>
+        <View style={styles.dualBodyContainerMobile}>
+          <View style={styles.bodyWrapperMobile}>
+            <Text style={styles.bodySideLabelMobile}>FRONTAL</Text>
+            <Body data={bodyData} gender="female" side="front" scale={0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
           </View>
-
-          {/* LADO DERECHO: LEYENDA Y LISTA */}
-          <View style={styles.dataWrapper}>
-            <View style={[styles.legendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Leyenda de % Series</Text>
-              <View style={styles.legendGrid}>
-                <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#E2E8F0' }]} /><Text style={styles.legendText}>0%</Text></View>
-                <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#3B82F6' }]} /><Text style={styles.legendText}>0-20%</Text></View>
-                <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#FBBF24' }]} /><Text style={styles.legendText}>20-40%</Text></View>
-                <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#F97316' }]} /><Text style={styles.legendText}>40-50%</Text></View>
-                <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#EF4444' }]} /><Text style={styles.legendText}>50%+</Text></View>
-              </View>
-            </View>
-
-            <View style={[styles.muscleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Reparto Muscular</Text>
-              {sortedMuscles.map(([m, s]) => {
-                const p = totalSets > 0 ? (s / totalSets) * 100 : 0;
-                return (
-                  <View key={m} style={styles.muscleRow}>
-                    <Text style={{ color: colors.textPrimary, fontWeight: '500' }}>{m}</Text>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ color: colors.primary, fontWeight: '800' }}>{p.toFixed(1)}%</Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
+          <View style={styles.bodyWrapperMobile}>
+            <Text style={styles.bodySideLabelMobile}>DORSAL</Text>
+            <Body data={bodyData} gender="female" side="back" scale={0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
           </View>
+        </View>
 
+        <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15, textAlign: 'center' }}>Distribución</Text>
+        
+        <View style={styles.legendRowMobile}>
+          <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#E2E8F0' }]} /><Text style={styles.legendTextMobile}>0%</Text></View>
+          <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#3B82F6' }]} /><Text style={styles.legendTextMobile}>0-20%</Text></View>
+          <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#FBBF24' }]} /><Text style={styles.legendTextMobile}>20-40%</Text></View>
+          <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#F97316' }]} /><Text style={styles.legendTextMobile}>40-50%</Text></View>
+          <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#EF4444' }]} /><Text style={styles.legendTextMobile}>50%+</Text></View>
+        </View>
+
+        <View style={[styles.topMusclesCardMobile, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {sortedMuscles.map(([m, s], i) => {
+            const p = totalSets > 0 ? ((s / totalSets) * 100) : 0;
+            return (
+              <View key={m} style={styles.topMuscleItemMobile}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ color: colors.textSecondary, width: 25, fontWeight: '800' }}>{i + 1}</Text>
+                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600' }}>{m}</Text>
+                </View>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '800' }}>{p.toFixed(1)}%</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text>
+                </View>
+              </View>
+            );
+          })}
         </View>
       </View>
     );
@@ -343,7 +389,7 @@ export default function AnalyticsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.mainCenteredContent}>
+      <View style={[styles.mainWrapper, isDesktop && styles.desktopWrapper]}>
         <View style={styles.header}>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Analíticas'}</Text>
           <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
@@ -351,19 +397,25 @@ export default function AnalyticsScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.tabsContainer}>
-          {['summary', 'progress', 'body', 'feedback'].map(tab => (
-            <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && { backgroundColor: colors.primary }]} onPress={() => setActiveTab(tab as any)}>
-              <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>
-                {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'body' ? 'CUERPO' : 'FEEDBACK'}
-              </Text>
-            </TouchableOpacity>
-          ))}
+        <View style={{ paddingHorizontal: isDesktop ? 25 : 20, marginBottom: 15 }}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={isDesktop ? styles.tabsContainerDesktop : styles.tabsContainerMobile}>
+            {['summary', 'progress', 'body', 'feedback'].map(tab => (
+              <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && { backgroundColor: colors.primary }]} onPress={() => setActiveTab(tab as any)}>
+                <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>
+                  {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'body' ? 'CUERPO' : 'FEEDBACK'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
         </View>
 
-        <ScrollView contentContainerStyle={{ padding: 20 }}>
-          {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" /> : 
-           activeTab === 'summary' ? testHistory.map(renderTestCard) : 
+        <ScrollView contentContainerStyle={{ padding: isDesktop ? 25 : 20 }}>
+          {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
+           activeTab === 'summary' ? (
+             <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>
+               {testHistory.map(renderTestCard)}
+             </View>
+           ) : 
            activeTab === 'progress' ? (
               <View>
                 <TextInput style={[styles.searchBar, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Buscar ejercicio..." placeholderTextColor={colors.textSecondary} value={searchQuery} onChangeText={setSearchQuery} />
@@ -404,26 +456,27 @@ export default function AnalyticsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  mainCenteredContent: { flex: 1, width: '100%', maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 25 },
-  headerTitle: { fontSize: 28, fontWeight: '900' },
+  mainWrapper: { flex: 1, width: '100%' },
+  desktopWrapper: { maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
+  
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
+  headerTitle: { fontSize: 24, fontWeight: '900' },
   iconBtn: { width: 45, height: 45, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  tabsContainer: { flexDirection: 'row', paddingHorizontal: 25, gap: 10, marginBottom: 10 },
-  tabButton: { flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.05)' },
+  
+  tabsContainerDesktop: { gap: 10, flex: 1 },
+  tabsContainerMobile: { gap: 8, paddingRight: 20 },
+  tabButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)', justifyContent: 'center' },
   tabButtonText: { fontSize: 11, fontWeight: '800' },
   
+  /* --- ESTILOS COMPARTIDOS Y ESCRITORIO --- */
   bodyTabWrapper: { flex: 1 },
   timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 30 },
   timeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
-  
   desktopBodyLayout: { flexDirection: 'row', gap: 30, alignItems: 'flex-start' },
-  mobileBodyLayout: { flexDirection: 'column' },
-  
   silhouettesWrapper: { flex: 1.5, alignItems: 'center', justifyContent: 'center' },
   bodyContainer: { flexDirection: 'row', justifyContent: 'center', gap: 30 },
   bodySide: { alignItems: 'center' },
   bodySideLabel: { fontSize: 11, fontWeight: '900', color: '#888', marginBottom: 20, letterSpacing: 1 },
-  
   dataWrapper: { flex: 1, gap: 20 },
   cardTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
   legendCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
@@ -431,10 +484,23 @@ const styles = StyleSheet.create({
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 14, height: 14, borderRadius: 4 },
   legendText: { fontSize: 12, fontWeight: '700', color: '#666' },
-  
   muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
   muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  
+
+  /* --- ESTILOS MÓVIL EXACTOS --- */
+  timeFilterContainerMobile: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
+  timeBtnMobile: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  dualBodyContainerMobile: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 25 },
+  bodyWrapperMobile: { alignItems: 'center', flex: 1 },
+  bodySideLabelMobile: { fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 },
+  legendRowMobile: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 25, justifyContent: 'center' },
+  legendItemMobile: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dotMobile: { width: 12, height: 12, borderRadius: 3 },
+  legendTextMobile: { fontSize: 10, fontWeight: '600', color: '#888' },
+  topMusclesCardMobile: { padding: 15, borderRadius: 20, borderWidth: 1 },
+  topMuscleItemMobile: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+
+  /* --- OTROS --- */
   testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
   testName: { fontSize: 18, fontWeight: '800' },
   testValue: { fontSize: 26, fontWeight: '900' },
