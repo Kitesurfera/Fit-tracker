@@ -53,6 +53,7 @@ export default function AthleteDetailScreen() {
   const [loading, setLoading] = useState(true);
 
   const [expandedWorkouts, setExpandedWorkouts] = useState<Record<string, boolean>>({});
+  const [showHistory, setShowHistory] = useState(false); // NUEVO ESTADO PARA EL DESPLEGABLE DE HISTORIAL
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [workoutToDuplicate, setWorkoutToDuplicate] = useState<any>(null);
   const [duplicateDate, setDuplicateDate] = useState(new Date().toISOString().split('T')[0]);
@@ -131,29 +132,6 @@ export default function AthleteDetailScreen() {
     } catch (e) { console.log("Error guardando la nota del coach:", e); }
   };
 
-  const saveHiitCoachNote = async (workout: any, blockIndex: number, exIndex: number, noteText: string) => {
-    try {
-      const updatedHiitResults = workout.completion_data.hiit_results.map((block: any, bIdx: number) => {
-        if (bIdx !== blockIndex) return block;
-        return {
-          ...block,
-          hiit_exercises: block.hiit_exercises.map((ex: any, eIdx: number) => {
-            if (eIdx !== exIndex) return ex;
-            return { ...ex, coach_note: noteText };
-          })
-        };
-      });
-      const payload = {
-        title: workout.title, date: workout.date, notes: workout.notes, athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
-        exercises: workout.exercises, completed: workout.completed, observations: workout.observations,
-        completion_data: { ...workout.completion_data, hiit_results: updatedHiitResults }
-      };
-      await api.updateWorkout(workout.id, payload);
-      setWorkouts(prev => prev.map(w => w.id === workout.id ? payload : w));
-      if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
-    } catch (e) { console.log("Error guardando la nota del coach en HIIT:", e); }
-  };
-
   const getLevelColor = (val: number, inverse = false) => {
     if (!val) return colors.border;
     if (!inverse) { if (val <= 2) return colors.success || '#10B981'; if (val === 3) return '#F59E0B'; return colors.error || '#EF4444'; } 
@@ -188,7 +166,6 @@ export default function AthleteDetailScreen() {
         </View>
       )}
 
-      {/* BOTÓN MOVIDO ARRIBA */}
       <TouchableOpacity 
         style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: 25, marginTop: (isFemale && currentPhase) ? 0 : 5 }]} 
         onPress={() => router.push(`/periodization?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
@@ -223,75 +200,129 @@ export default function AthleteDetailScreen() {
     </View>
   );
 
-  const renderWorkouts = () => (
-    <View style={styles.tabContainer}>
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-        <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>HISTORIAL DE SESIONES</Text>
-        <TouchableOpacity style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}>
-          <Ionicons name="add" size={16} color="#FFF" />
-          <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>NUEVO</Text>
-        </TouchableOpacity>
-      </View>
-      {workouts.length > 0 ? workouts.map((wk) => (
-        <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }} onPress={() => wk.completed && toggleWorkout(wk.id)} activeOpacity={wk.completed ? 0.6 : 1}>
-              <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
-                <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>{wk.title}</Text>
-                <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{wk.date} • {wk.completed ? 'Completado' : 'Pendiente'}</Text>
-              </View>
-              {wk.completed && <Ionicons name={expandedWorkouts[wk.id] ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} style={{ marginRight: 10 }} />}
-            </TouchableOpacity>
-            <View style={{ flexDirection: 'row', gap: 5 }}>
-              <TouchableOpacity style={styles.iconHitbox} onPress={() => { setWorkoutToDuplicate(wk); setDuplicateDate(new Date().toISOString().split('T')[0]); setShowDuplicateModal(true); }}>
-                <Ionicons name="copy-outline" size={20} color={colors.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconHitbox} onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}>
-                <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.iconHitbox} onPress={() => handleDeleteWorkout(wk.id, wk.title)}>
-                <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
-              </TouchableOpacity>
-            </View>
+  const renderWorkoutItem = (wk: any) => (
+    <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface }]}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }} onPress={() => toggleWorkout(wk.id)} activeOpacity={0.6}>
+          <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
+            <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
           </View>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>{wk.title}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{wk.date} • {wk.completed ? 'Completado' : 'Pendiente'}</Text>
+          </View>
+          <Ionicons name={expandedWorkouts[wk.id] ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} style={{ marginRight: 10 }} />
+        </TouchableOpacity>
+        <View style={{ flexDirection: 'row', gap: 5 }}>
+          <TouchableOpacity style={styles.iconHitbox} onPress={() => { setWorkoutToDuplicate(wk); setDuplicateDate(new Date().toISOString().split('T')[0]); setShowDuplicateModal(true); }}>
+            <Ionicons name="copy-outline" size={20} color={colors.primary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconHitbox} onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}>
+            <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.iconHitbox} onPress={() => handleDeleteWorkout(wk.id, wk.title)}>
+            <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
+          </TouchableOpacity>
+        </View>
+      </View>
 
-          {wk.completed && wk.completion_data && expandedWorkouts[wk.id] && (
-            <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-                <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
-                  ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
-                </Text>
-              </View>
-              {wk.completion_data.exercise_results?.map((ex: any, idx: number) => {
-                const noteKey = `${wk.id}-force-${idx}`;
-                const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
-                const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
-                return (
-                  <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
-                    <View style={styles.exerciseHeader}>
-                      <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
-                    </View>
-                    {ex.recorded_video_url && <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />}
-                    {isTrainer && (
-                      <View style={styles.feedbackRow}>
-                        <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
-                        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? colors.success : colors.primary }]} onPress={() => saveCoachNote(wk, idx, currentNote)}>
-                          <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
-                        </TouchableOpacity>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
+      {expandedWorkouts[wk.id] && (
+        <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          {wk.completed && wk.completion_data && (
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
+              <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
+                ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
+              </Text>
             </View>
           )}
+
+          {/* Renderizado de ejercicios: Si está completa pilla los resultados, si no, lo programado */}
+          {(wk.completed && wk.completion_data ? wk.completion_data.exercise_results : wk.exercises)?.map((ex: any, idx: number) => {
+            const noteKey = `${wk.id}-force-${idx}`;
+            const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
+            const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
+            
+            return (
+              <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+                <View style={styles.exerciseHeader}>
+                  <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
+                  
+                  {/* Si es una sesión pendiente, enseñamos lo que toca hacer */}
+                  {!wk.completed && (
+                    <View style={{alignItems: 'flex-end'}}>
+                      {ex.sets && ex.reps && <Text style={{color: colors.primary, fontWeight: '700', fontSize: 12}}>{ex.sets}x{ex.reps}</Text>}
+                      {ex.weight ? <Text style={{color: colors.textSecondary, fontSize: 11}}>{ex.weight} kg</Text> : null}
+                    </View>
+                  )}
+                </View>
+                
+                {wk.completed && ex.recorded_video_url && <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />}
+                
+                {/* Referencia de Youtube si está pendiente */}
+                {!wk.completed && ex.video_url && (
+                  <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
+                    <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
+                    <Text style={{color: colors.error || '#EF4444', fontSize: 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
+                  </TouchableOpacity>
+                )}
+                
+                {isTrainer && wk.completed && (
+                  <View style={styles.feedbackRow}>
+                    <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
+                    <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? colors.success : colors.primary }]} onPress={() => saveCoachNote(wk, idx, currentNote)}>
+                      <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            );
+          })}
         </View>
-      )) : <View style={{ alignItems: 'center', padding: 30 }}><Ionicons name="folder-open-outline" size={40} color={colors.border} /><Text style={{ color: colors.textSecondary, marginTop: 10 }}>No hay sesiones registradas.</Text></View>}
+      )}
     </View>
   );
+
+  const renderWorkouts = () => {
+    // Filtramos y ordenamos de más reciente a más antiguo
+    const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => b.date.localeCompare(a.date));
+    const completedWorkouts = workouts.filter(w => w.completed).sort((a,b) => b.date.localeCompare(a.date));
+
+    return (
+      <View style={styles.tabContainer}>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+          <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>SESIONES PENDIENTES</Text>
+          <TouchableOpacity style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}>
+            <Ionicons name="add" size={16} color="#FFF" />
+            <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>NUEVA</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {pendingWorkouts.length > 0 ? (
+          pendingWorkouts.map(renderWorkoutItem)
+        ) : (
+          <Text style={{ color: colors.textSecondary, marginBottom: 20 }}>No hay sesiones pendientes.</Text>
+        )}
+
+        {/* BOTÓN DESPLEGABLE HISTORIAL */}
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: colors.surfaceHighlight, borderRadius: 12, marginTop: 10, marginBottom: 15 }} 
+          onPress={() => setShowHistory(!showHistory)}
+          activeOpacity={0.7}
+        >
+          <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14 }}>HISTORIAL (Ya hechas)</Text>
+          <Ionicons name={showHistory ? "chevron-up" : "chevron-down"} size={20} color={colors.textPrimary} />
+        </TouchableOpacity>
+
+        {showHistory && (
+          completedWorkouts.length > 0 ? (
+            completedWorkouts.map(renderWorkoutItem)
+          ) : (
+            <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>No hay sesiones completadas.</Text>
+          )
+        )}
+      </View>
+    );
+  };
 
   const renderProgression = () => (
     <View style={styles.tabContainer}>
