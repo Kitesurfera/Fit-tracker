@@ -183,7 +183,6 @@ export default function AnalyticsScreen() {
     const measures: Record<string, any> = {};
     testHistory.forEach(test => {
       if (test.test_type === 'medicion') {
-        // Como testHistory ya está ordenado por fecha más reciente, el primero que encontramos es el último guardado
         if (!measures[test.test_name]) {
           measures[test.test_name] = test;
         }
@@ -196,7 +195,7 @@ export default function AnalyticsScreen() {
   const getPRUniqueTests = () => {
     const prTests: Record<string, { testDoc: any; maxVal: number }> = {};
     testHistory.forEach(test => {
-      if (test.test_type === 'medicion') return; // Excluimos el peso y medidas corporales
+      if (test.test_type === 'medicion') return; 
       
       const key = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
       const currentVal = Math.max(parseFloat(test.value_left) || 0, parseFloat(test.value_right) || 0, parseFloat(test.value) || 0);
@@ -318,7 +317,7 @@ export default function AnalyticsScreen() {
     };
 
     return (
-      <View style={[styles.measurementsContainer, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: isDesktop ? 20 : 0, marginBottom: isDesktop ? 0 : 25 }]}>
+      <View style={[styles.measurementsContainer, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 20 }]}>
         <Text style={[styles.cardTitle, { color: colors.textPrimary, textAlign: isDesktop ? 'left' : 'center', marginBottom: 15 }]}>Últimas Mediciones</Text>
         <View style={styles.measurementsGrid}>
           {Object.entries(displayNames).map(([key, label]) => {
@@ -378,6 +377,9 @@ export default function AnalyticsScreen() {
     if (isDesktop) {
       return (
         <View style={styles.bodyTabWrapper}>
+          {/* TARJETAS DE MEDICIONES - ARRIBA */}
+          {renderMeasurementsCard()}
+
           <View style={styles.timeFilterContainer}>
             {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
               <TouchableOpacity key={f.v} style={[styles.timeBtn, bodyTimeFilter === f.v && {backgroundColor: colors.primary}]} onPress={() => setBodyTimeFilter(f.v as any)}>
@@ -424,9 +426,6 @@ export default function AnalyticsScreen() {
                   );
                 })}
               </View>
-
-              {/* TARJETAS DE MEDICIONES - ESCRITORIO */}
-              {renderMeasurementsCard()}
             </View>
           </View>
         </View>
@@ -435,6 +434,9 @@ export default function AnalyticsScreen() {
 
     return (
       <View style={{ paddingBottom: 100 }}>
+        {/* TARJETAS DE MEDICIONES - ARRIBA */}
+        {renderMeasurementsCard()}
+
         <View style={styles.timeFilterContainerMobile}>
           {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
             <TouchableOpacity key={f.v} style={[styles.timeBtnMobile, bodyTimeFilter === f.v && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.v as any)}>
@@ -453,9 +455,6 @@ export default function AnalyticsScreen() {
             <Body data={bodyData} gender="female" side="back" scale={0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
           </View>
         </View>
-
-        {/* TARJETAS DE MEDICIONES - MÓVIL */}
-        {renderMeasurementsCard()}
 
         <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15, textAlign: 'center' }}>Distribución de Carga</Text>
         
@@ -613,7 +612,7 @@ const styles = StyleSheet.create({
   topMusclesCardMobile: { padding: 15, borderRadius: 20, borderWidth: 1 },
   topMuscleItemMobile: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
 
-  measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
   measurementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
   measureBadge: { flex: 1, minWidth: '45%', padding: 12, borderRadius: 14, borderWidth: 1 },
 
