@@ -9,9 +9,9 @@ import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 
 const CYCLE_PHASES = [
-  { id: 'menstrual', label: 'Menstruación', color: '#EF4444' },
+  { id: 'menstruacion', label: 'Menstruación', color: '#EF4444' },
   { id: 'folicular', label: 'Folicular', color: '#10B981' },
-  { id: 'ovulatoria', label: 'Ovulación', color: '#F59E0B' },
+  { id: 'ovulacion', label: 'Ovulación', color: '#F59E0B' },
   { id: 'lutea', label: 'Fase Lútea', color: '#8B5CF6' }
 ];
 
@@ -19,6 +19,7 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
   const { colors } = useTheme();
   const { user } = useAuth(); 
   const [loading, setLoading] = useState(false);
+  const [menstruationDay, setMenstruationDay] = useState(1);
   
   const [form, setForm] = useState({
     fatigue: 3,
@@ -34,13 +35,28 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
   const handleSave = async () => {
     setLoading(true);
     try {
-      await api.postWellness(form);
-      onClose(); // <-- CIERRE AUTOMÁTICO INMEDIATO
+      // Si seleccionó menstruación, nos aseguramos de que el día vaya en el string (ej: menstruacion_3)
+      const finalForm = { ...form };
+      if (form.cycle_phase.startsWith('menstruacion')) {
+        finalForm.cycle_phase = `menstruacion_${menstruationDay}`;
+      }
+
+      await api.postWellness(finalForm);
+      onClose();
     } catch (e: any) {
       if (Platform.OS !== 'web') Alert.alert("Error de envío", e.message || "No se pudo conectar con el servidor.");
       else console.error("Error guardando wellness:", e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handlePhaseSelect = (phaseId: string) => {
+    if (form.cycle_phase.startsWith(phaseId)) {
+      setForm(prev => ({ ...prev, cycle_phase: '' })); // Deseleccionar
+    } else {
+      setForm(prev => ({ ...prev, cycle_phase: phaseId }));
+      if (phaseId === 'menstruacion') setMenstruationDay(1); // Reset al día 1 por defecto
     }
   };
 
@@ -91,27 +107,60 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
                 <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>
                   <Ionicons name="water" size={12} color="#EF4444" /> FASE DEL CICLO MENSTRUAL
                 </Text>
+                
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                  {CYCLE_PHASES.map((phase) => (
-                    <TouchableOpacity
-                      key={phase.id}
-                      style={[
-                        styles.phaseChip,
-                        { borderColor: colors.border },
-                        form.cycle_phase === phase.id && { backgroundColor: phase.color + '20', borderColor: phase.color }
-                      ]}
-                      onPress={() => setForm(prev => ({ ...prev, cycle_phase: form.cycle_phase === phase.id ? '' : phase.id }))}
-                    >
-                      <Text style={{ 
-                        fontSize: 12, 
-                        fontWeight: form.cycle_phase === phase.id ? '800' : '600',
-                        color: form.cycle_phase === phase.id ? phase.color : colors.textSecondary 
-                      }}>
-                        {phase.label}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
+                  {CYCLE_PHASES.map((phase) => {
+                    const isSelected = form.cycle_phase.startsWith(phase.id);
+                    return (
+                      <TouchableOpacity
+                        key={phase.id}
+                        style={[
+                          styles.phaseChip,
+                          { borderColor: colors.border },
+                          isSelected && { backgroundColor: phase.color + '20', borderColor: phase.color }
+                        ]}
+                        onPress={() => handlePhaseSelect(phase.id)}
+                      >
+                        <Text style={{ 
+                          fontSize: 12, 
+                          fontWeight: isSelected ? '800' : '600',
+                          color: isSelected ? phase.color : colors.textSecondary 
+                        }}>
+                          {phase.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </ScrollView>
+
+                {/* SELECTOR DE DÍA DE REGLA */}
+                {form.cycle_phase.startsWith('menstruacion') && (
+                  <View style={styles.periodDayContainer}>
+                    <Text style={[styles.periodDayTitle, { color: colors.textPrimary }]}>
+                      ¿Qué día de sangrado es hoy?
+                    </Text>
+                    <View style={styles.periodDaysRow}>
+                      {[1, 2, 3, 4, 5, 6].map((day) => (
+                        <TouchableOpacity 
+                          key={day}
+                          style={[
+                            styles.periodDayCircle, 
+                            { borderColor: '#EF4444' },
+                            menstruationDay === day && { backgroundColor: '#EF4444' }
+                          ]}
+                          onPress={() => setMenstruationDay(day)}
+                        >
+                          <Text style={{ 
+                            color: menstruationDay === day ? '#FFF' : colors.textPrimary, 
+                            fontWeight: '900', fontSize: 16
+                          }}>
+                            {day}{day === 6 ? '+' : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                )}
               </View>
             )}
 
@@ -158,5 +207,11 @@ const styles = StyleSheet.create({
   textArea: { height: 80, textAlignVertical: 'top' },
   saveBtn: { padding: 20, borderRadius: 18, alignItems: 'center', marginTop: 15 },
   saveBtnText: { color: '#FFF', fontWeight: '900', letterSpacing: 1, fontSize: 16 },
-  phaseChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, marginRight: 8 }
+  phaseChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, marginRight: 8 },
+  
+  // Estilos nuevos para el selector de día
+  periodDayContainer: { marginTop: 25, backgroundColor: 'rgba(239, 68, 68, 0.05)', padding: 15, borderRadius: 20 },
+  periodDayTitle: { fontWeight: '800', marginBottom: 15, textAlign: 'center', fontSize: 13 },
+  periodDaysRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 5 },
+  periodDayCircle: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }
 });
