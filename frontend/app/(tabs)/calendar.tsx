@@ -32,6 +32,7 @@ export default function CalendarScreen() {
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
   const [macros, setMacros] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
+  const [wellnessHistory, setWellnessHistory] = useState<any[]>([]); // <- NUEVO ESTADO
   
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
@@ -79,16 +80,19 @@ export default function CalendarScreen() {
 
   const refreshAthleteData = async (athlete: any) => {
     try {
-      const [resTree, resWorkouts] = await Promise.all([
+      const [resTree, resWorkouts, resWellness] = await Promise.all([
         api.getPeriodizationTree(athlete.id).catch(() => ({ macros: [] })),
-        api.getWorkouts({ athlete_id: athlete.id }).catch(() => [])
+        api.getWorkouts({ athlete_id: athlete.id }).catch(() => []),
+        api.getWellnessHistory(athlete.id).catch(() => []) // <- BAJAMOS EL HISTORIAL
       ]);
       
       const macroList = Array.isArray(resTree) ? resTree : (resTree?.macros || []);
       const extractedWorkouts = Array.isArray(resWorkouts) ? resWorkouts : (resWorkouts?.data || []);
+      const extractedWellness = Array.isArray(resWellness) ? resWellness : (resWellness?.data || []);
       
       setMacros(macroList);
       setWorkouts(extractedWorkouts);
+      setWellnessHistory(extractedWellness);
     } catch (e) { 
       console.log("Error recargando datos:", e); 
     } finally { 
@@ -173,7 +177,6 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
-  // Lógica blindada para detectar microciclos en el mes actual
   const microciclosDelMes = useMemo(() => {
     if (!Array.isArray(macros)) return [];
     const microsResult: any[] = [];
@@ -211,16 +214,57 @@ export default function CalendarScreen() {
     return microsResult.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
   }, [macros, currentMonth, currentYear, colors.primary]);
 
-  // NUEVA LÓGICA: El color del día pertenece al bloque de fechas del microciclo (irrompible)
+  // --- NUEVA LÓGICA: CÁLCULO DE LA REGLA ---
+  const predictedPeriodDays = useMemo(() => {
+    const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
+    if (!isFemale || !wellnessHistory || wellnessHistory.length === 0) return {};
+
+    // 1. Buscamos el último registro que sea menstruación
+    const lastPeriodLog = [...wellnessHistory]
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .find(w => w.cycle_phase?.startsWith('menstruacion_'));
+    
+    if (!lastPeriodLog) return {};
+
+    // 2. Extraer el día exacto
+    const [logY, logM, logD] = lastPeriodLog.date.split('-').map(Number);
+    const loggedDate = new Date(logY, logM - 1, logD);
+    const dayOfPeriod = parseInt(lastPeriodLog.cycle_phase.split('_')[1] || '1');
+    
+    // Calculamos el Día 1 real de su último ciclo
+    const actualDayOne = new Date(loggedDate);
+    actualDayOne.setDate(loggedDate.getDate() - (dayOfPeriod - 1));
+
+    // 3. Proyectamos el siguiente ciclo (28 días de margen)
+    const nextDayOne = new Date(actualDayOne);
+    nextDayOne.setDate(actualDayOne.getDate() + 28);
+
+    // 4. Llenamos el diccionario con 5 días marcados
+    const predicted: Record<string, boolean> = {};
+    for (let i = 0; i < 5; i++) {
+      const pred = new Date(nextDayOne);
+      pred.setDate(nextDayOne.getDate() + i);
+      const dateStr = `${pred.getFullYear()}-${String(pred.getMonth() + 1).padStart(2, '0')}-${String(pred.getDate()).padStart(2, '0')}`;
+      predicted[dateStr] = true;
+    }
+    
+    return predicted;
+  }, [wellnessHistory, selectedAthlete]);
+
   const getDayStatus = (day: number | null) => {
     if (!day) return null;
     const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    let status: any = { hasWorkout: false, isCompleted: false, phaseColor: null };
+    let status: any = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriodPredicted: false };
 
     const workoutsForDay = workouts?.filter(w => w.date === dateStr) || [];
     if (workoutsForDay.length > 0) {
       status.hasWorkout = true;
       status.isCompleted = workoutsForDay.every(w => w.completed);
+    }
+
+    // Comprobamos predicción de regla
+    if (predictedPeriodDays[dateStr]) {
+      status.isPeriodPredicted = true;
     }
 
     const currentDayTime = new Date(currentYear, currentMonth, day).getTime();
@@ -250,7 +294,6 @@ export default function CalendarScreen() {
     return status;
   };
 
-  // NUEVA LÓGICA: Extraemos la info basándonos estrictamente en el periodo de fechas
   const getSelectedDateDetails = () => {
     let details: any = { macro: null, micro: null, workouts: [] };
     details.workouts = workouts?.filter(w => w.date === selectedDate) || [];
@@ -398,6 +441,13 @@ export default function CalendarScreen() {
                     style={[
                       styles.dayCell, 
                       status?.phaseColor && { backgroundColor: status.phaseColor + '15', borderRadius: 12 },
+                      status?.isPeriodPredicted && { 
+                        backgroundColor: '#FEE2E2', 
+                        borderWidth: 1, 
+                        borderColor: '#EF4444', 
+                        borderStyle: 'dashed', 
+                        borderRadius: 12 
+                      },
                       isSelected && { backgroundColor: (status?.phaseColor || colors.primary) + '40', borderWidth: 2, borderColor: status?.phaseColor || colors.primary, borderRadius: 12 },
                       status?.hasWorkout && !isSelected && { borderWidth: 1, borderColor: status.isCompleted ? (colors.success || '#10B981') : colors.primary, borderRadius: 12 }
                     ]}
@@ -410,6 +460,7 @@ export default function CalendarScreen() {
                           styles.dayText, 
                           { color: colors.textPrimary }, 
                           status?.phaseColor && { color: status.phaseColor, fontWeight: '800' },
+                          status?.isPeriodPredicted && { color: '#EF4444', fontWeight: '900' },
                           isSelected && { color: status?.phaseColor || colors.primary, fontWeight: '900' },
                           isToday && !isSelected && { color: colors.error || '#EF4444', fontWeight: '900' }
                         ]}>
@@ -417,6 +468,10 @@ export default function CalendarScreen() {
                         </Text>
                         {status?.hasWorkout && status?.isCompleted && (
                           <Ionicons name="checkmark-circle" size={12} color={colors.success || '#10B981'} style={{ position: 'absolute', top: 2, right: 2 }} />
+                        )}
+                        {/* Pequeña gotita indicadora de regla */}
+                        {status?.isPeriodPredicted && (
+                          <Ionicons name="water" size={10} color="#EF4444" style={{ position: 'absolute', bottom: 2, right: 4 }} />
                         )}
                       </>
                     )}
@@ -430,6 +485,17 @@ export default function CalendarScreen() {
         {/* COLUMNA DERECHA (Detalles del día y Fases) */}
         <ScrollView style={[styles.footer, isDesktop && styles.rightColumnDesktop]} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
           
+          {/* AVISO REGLA EN EL DÍA SELECCIONADO */}
+          {predictedPeriodDays[selectedDate] && (
+            <View style={[styles.periodWarning, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
+              <Ionicons name="water" size={20} color="#EF4444" />
+              <View style={{ marginLeft: 10, flex: 1 }}>
+                <Text style={{ color: '#991B1B', fontWeight: '800', fontSize: 13 }}>Sangrado menstrual estimado</Text>
+                <Text style={{ color: '#B91C1C', fontSize: 11, marginTop: 2 }}>El rendimiento y la fuerza máxima podrían verse alterados.</Text>
+              </View>
+            </View>
+          )}
+
           {/* FASES DEL MES */}
           <View style={{ marginBottom: 25 }}>
             <Text style={styles.footerLabel}>FASES DE ESTE MES</Text>
@@ -505,7 +571,7 @@ export default function CalendarScreen() {
         </ScrollView>
       </View>
 
-      {/* MODAL PARA CAMBIAR DE DEPORTISTA (SOLO ENTRENADORES) */}
+      {/* MODAL PARA CAMBIAR DE DEPORTISTA */}
       <Modal visible={showPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPicker(false)}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -576,7 +642,6 @@ export default function CalendarScreen() {
                           <Ionicons name={expandedWorkoutId === wk.id ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
                         </TouchableOpacity>
 
-                        {/* DESPLEGABLE DE EJERCICIOS */}
                         {expandedWorkoutId === wk.id && (
                           <View style={[styles.microWorkoutExercises, { borderTopColor: colors.border }]}>
                             {wk.exercises && wk.exercises.length > 0 ? (
@@ -662,6 +727,10 @@ const styles = StyleSheet.create({
   
   footer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 },
   footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1, textTransform: 'uppercase' },
+  
+  // Nuevo estilo para el aviso de regla
+  periodWarning: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, borderWidth: 1, marginBottom: 25 },
+  
   microCard: { padding: 14, borderRadius: 16, borderTopWidth: 4, borderWidth: 1, width: 160, marginRight: 12 },
   microMacroName: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 },
   microName: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
