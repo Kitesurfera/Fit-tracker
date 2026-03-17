@@ -214,7 +214,6 @@ export default function CalendarScreen() {
     return microsResult.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
   }, [macros, currentMonth, currentYear, colors.primary]);
 
-  // --- LÓGICA MEJORADA: CÁLCULO DE LA REGLA ACTUAL Y PREVISTA ---
   const periodDays = useMemo(() => {
     const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
     if (!isFemale || !wellnessHistory || wellnessHistory.length === 0) return {};
@@ -271,7 +270,6 @@ export default function CalendarScreen() {
       status.isCompleted = workoutsForDay.every(w => w.completed);
     }
 
-    // Comprobamos menstruación actual o prevista
     if (periodDays[dateStr]) {
       status.isPeriod = true;
       status.periodType = periodDays[dateStr].type;
@@ -366,12 +364,12 @@ export default function CalendarScreen() {
   const handleWorkoutPress = (workout: any) => {
     if (isTrainer) {
       if (workout.completed) {
-        router.push({ pathname: '/training-mode', params: { workoutId: workout.id } });
+        router.push(`/training-mode?workoutId=${workout.id}`); // <-- CORREGIDO
       } else {
-        router.push({ pathname: '/edit-workout', params: { workoutId: workout.id } });
+        router.push(`/edit-workout?workoutId=${workout.id}`);  // <-- CORREGIDO
       }
     } else {
-      router.push({ pathname: '/training-mode', params: { workoutId: workout.id } });
+      router.push(`/training-mode?workoutId=${workout.id}`); // <-- CORREGIDO
     }
   };
 
@@ -546,7 +544,7 @@ export default function CalendarScreen() {
               <View key={wk.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
                 <TouchableOpacity 
                   style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
-                  onPress={() => handleWorkoutPress(wk)}
+                  onPress={() => handleWorkoutPress(wk)} // <-- AQUÍ
                 >
                   <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
                     <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
@@ -656,6 +654,7 @@ export default function CalendarScreen() {
                           <Ionicons name={expandedWorkoutId === wk.id ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
                         </TouchableOpacity>
 
+                        {/* DESPLEGABLE DE EJERCICIOS */}
                         {expandedWorkoutId === wk.id && (
                           <View style={[styles.microWorkoutExercises, { borderTopColor: colors.border }]}>
                             {wk.exercises && wk.exercises.length > 0 ? (
@@ -714,6 +713,7 @@ export default function CalendarScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
     </SafeAreaView>
   );
 }
