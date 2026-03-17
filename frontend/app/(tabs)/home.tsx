@@ -20,7 +20,6 @@ const ELITE_TIPS = [
   "Pequeñas mejoras diarias crean resultados excepcionales."
 ];
 
-// ACTUALIZADO: Hemos igualado los IDs con los del WellnessModal
 const CYCLE_PHASES = [
   { id: 'menstruacion', label: 'Menstruación', color: '#EF4444' },
   { id: 'folicular', label: 'Folicular', color: '#10B981' },
@@ -225,8 +224,6 @@ export default function HomeScreen() {
   };
 
   const handleQuickPhaseUpdate = async (phaseId: string) => {
-    // Si la usuaria pulsa Menstruación desde la Home, abrimos el modal
-    // para que pueda elegir qué día de regla es exactamente.
     if (phaseId === 'menstruacion') {
       setShowWellness(true);
       return;
@@ -252,7 +249,7 @@ export default function HomeScreen() {
       await AsyncStorage.setItem(`feedback_read_${user.id}`, feedbackSignature);
     }
     setHasUnreadFeedback(false);
-    router.push({ pathname: '/analytics', params: { tab: 'feedback' } });
+    router.push(`/analytics?tab=feedback`); // <-- CORREGIDO
   };
 
   const handleCloseMicroInfo = () => {
@@ -282,7 +279,7 @@ export default function HomeScreen() {
       <TouchableOpacity 
         key={item.id} 
         style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.8 : 1 }]} 
-        onPress={() => router.push({ pathname: '/training-mode', params: { workoutId: item.id } })}
+        onPress={() => router.push(`/training-mode?workoutId=${item.id}`)} // <-- CORREGIDO
       >
         <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
           <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} />
