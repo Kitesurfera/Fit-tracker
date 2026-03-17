@@ -109,7 +109,8 @@ export default function AnalyticsScreen() {
         api.getTests({ athlete_id: athleteId }).catch(() => []),
         api.getWorkouts({ athlete_id: athleteId }).catch(() => [])
       ]);
-      setTestHistory(Array.isArray(ts) ? ts.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : []);
+      // CORRECCIÓN: Usamos localeCompare para evitar el bug de new Date() en React Native
+      setTestHistory(Array.isArray(ts) ? ts.sort((a,b) => b.date.localeCompare(a.date)) : []);
       setWorkoutHistory(Array.isArray(wk) ? wk.filter((w: any) => w.completed) : []);
     } finally {
       setLoading(false);
@@ -161,12 +162,16 @@ export default function AnalyticsScreen() {
       'Glúteo': 0, 'Hombro': 0, 'Bíceps': 0, 'Tríceps': 0, 'Core': 0,
       'Gemelos': 0, 'Antebrazos': 0, 'Aductores': 0, 'Abductores': 0, 'Tibial': 0
     };
+    
+    // CORRECCIÓN: Filtro de fecha en texto seguro
     const limitDate = new Date();
     if (bodyTimeFilter === 1) limitDate.setHours(0, 0, 0, 0);
     else limitDate.setDate(limitDate.getDate() - bodyTimeFilter);
+    const limitDateStr = limitDate.toISOString().split('T')[0];
 
     workoutHistory.forEach(w => {
-      if (new Date(w.date) >= limitDate) {
+      // Comparación de strings es perfecta para AAAA-MM-DD
+      if (w.date >= limitDateStr) {
         w.completion_data?.exercise_results?.forEach((r: any) => {
           if (r.completed_sets > 0 && r.name) {
             const sets = parseInt(r.completed_sets) || 1;
@@ -178,20 +183,26 @@ export default function AnalyticsScreen() {
     return heat;
   };
 
-  // --- OBTENER MEDIDAS RECIENTES ---
+  // --- CORRECCIÓN: OBTENER MEDICIONES RECIENTES ROBUSTO ---
   const getLatestMeasurements = () => {
     const measures: Record<string, any> = {};
+    
     testHistory.forEach(test => {
       if (test.test_type === 'medicion') {
         if (!measures[test.test_name]) {
           measures[test.test_name] = test;
+        } else {
+          // Si la fecha del test que estamos leyendo es MAYOR o IGUAL a la guardada, lo sobreescribimos.
+          // El >= hace que si has metido 2 mediciones el mismo día, te coja siempre la última corrección.
+          if (test.date >= measures[test.test_name].date) {
+            measures[test.test_name] = test;
+          }
         }
       }
     });
     return measures;
   };
 
-  // --- FILTRAR TESTS EXCLUYENDO MEDICIONES ---
   const getPRUniqueTests = () => {
     const prTests: Record<string, { testDoc: any; maxVal: number }> = {};
     testHistory.forEach(test => {
@@ -208,7 +219,8 @@ export default function AnalyticsScreen() {
 
   const renderTestChart = (testKey: string) => {
     const history = testHistory.filter(t => (t.test_name === 'custom' ? `custom_${t.custom_name}` : t.test_name) === testKey);
-    const data = history.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(t => {
+    // CORRECCIÓN: localeCompare para ordernar sin romper en React Native
+    const data = history.sort((a, b) => a.date.localeCompare(b.date)).map(t => {
        const vL = parseFloat(t.value_left) || 0;
        const vR = parseFloat(t.value_right) || 0;
        const v = parseFloat(t.value) || 0;
@@ -295,7 +307,8 @@ export default function AnalyticsScreen() {
   };
 
   const renderChart = (history: any[]) => {
-    const data = [...history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    // CORRECCIÓN: localeCompare para que el gráfico no falle
+    const data = [...history].sort((a, b) => a.date.localeCompare(b.date));
     return (
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, alignItems: 'flex-end', height: 150 }}>
         {data.map((h, i) => (
