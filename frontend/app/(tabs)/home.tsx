@@ -20,10 +20,11 @@ const ELITE_TIPS = [
   "Pequeñas mejoras diarias crean resultados excepcionales."
 ];
 
+// ACTUALIZADO: Hemos igualado los IDs con los del WellnessModal
 const CYCLE_PHASES = [
-  { id: 'menstrual', label: 'Menstrual', color: '#EF4444' },
+  { id: 'menstruacion', label: 'Menstruación', color: '#EF4444' },
   { id: 'folicular', label: 'Folicular', color: '#10B981' },
-  { id: 'ovulatoria', label: 'Ovulatoria', color: '#F59E0B' },
+  { id: 'ovulacion', label: 'Ovulación', color: '#F59E0B' },
   { id: 'lutea', label: 'Lútea', color: '#8B5CF6' }
 ];
 
@@ -52,7 +53,6 @@ export default function HomeScreen() {
   const [viewMicroInfo, setViewMicroInfo] = useState<any>(null);
   const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(null);
   
-  // NUEVO: Estado para desplegar el historial
   const [showHistory, setShowHistory] = useState(false);
 
   const isTrainer = user?.role === 'trainer';
@@ -225,6 +225,13 @@ export default function HomeScreen() {
   };
 
   const handleQuickPhaseUpdate = async (phaseId: string) => {
+    // Si la usuaria pulsa Menstruación desde la Home, abrimos el modal
+    // para que pueda elegir qué día de regla es exactamente.
+    if (phaseId === 'menstruacion') {
+      setShowWellness(true);
+      return;
+    }
+
     setSummary((prev: any) => ({
       ...prev,
       latest_wellness: { ...(prev?.latest_wellness || { fatigue: 3, stress: 3, sleep_quality: 3, soreness: 3, notes: '' }), cycle_phase: phaseId }
@@ -342,9 +349,8 @@ export default function HomeScreen() {
   );
 
   const renderAthleteView = () => {
-    const currentPhase = summary?.latest_wellness?.cycle_phase;
+    const currentPhase = summary?.latest_wellness?.cycle_phase || '';
     
-    // SEPARAMOS LOS ENTRENAMIENTOS
     const pendingWorkouts = workouts.filter(w => !w.completed);
     const completedWorkouts = workouts.filter(w => w.completed);
     
@@ -380,7 +386,7 @@ export default function HomeScreen() {
                 <Text style={styles.sectionTitle}>TU CICLO ACTUAL</Text>
                 <View style={styles.cycleChipsContainer}>
                   {CYCLE_PHASES.map(phase => {
-                    const isActive = currentPhase === phase.id;
+                    const isActive = currentPhase.startsWith(phase.id);
                     return (
                       <TouchableOpacity 
                         key={phase.id}
@@ -693,7 +699,6 @@ const styles = StyleSheet.create({
   microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 },
   microWorkoutExercises: { padding: 14, borderTopWidth: 1 },
 
-  // --- NUEVOS ESTILOS PARA EL HISTORIAL ---
   historyToggleBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 5 },
   historyToggleText: { flex: 1, fontSize: 12, fontWeight: '800', marginLeft: 10, letterSpacing: 1 }
 });
