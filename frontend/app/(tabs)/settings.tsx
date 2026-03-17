@@ -31,7 +31,6 @@ export default function SettingsScreen() {
     if (!name.trim()) return;
     setSavingProfile(true);
     try {
-      // Asegúrate de tener este método en tu archivo api.ts apuntando a PUT /api/profile
       if (api.updateProfile) {
         await api.updateProfile({ name });
       }
@@ -113,117 +112,134 @@ export default function SettingsScreen() {
     }
   };
 
+  const renderInputBox = (
+    label: string, 
+    iconName: keyof typeof Ionicons.glyphMap, 
+    value: string, 
+    onChange: (t: string) => void, 
+    placeholder: string
+  ) => (
+    <View style={styles.measureCol}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 6 }}>
+        <Ionicons name={iconName} size={14} color={colors.textSecondary} />
+        <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
+      </View>
+      <TextInput 
+        style={[styles.input, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} 
+        keyboardType="numeric" 
+        value={value} 
+        onChangeText={onChange} 
+        placeholder={placeholder} 
+        placeholderTextColor={colors.border} 
+      />
+    </View>
+  );
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+            <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Ajustes</Text>
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           
-          {/* SECCIÓN PERFIL */}
-          <Text style={styles.sectionTitle}>PERFIL</Text>
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Nombre de {isAthlete ? 'Deportista' : 'Entrenador'}</Text>
+          {/* AVATAR Y PERFIL */}
+          <View style={styles.profileHeader}>
+            <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '20' }]}>
+              <Ionicons name="person" size={48} color={colors.primary} />
+            </View>
+            <Text style={[styles.roleText, { color: colors.textSecondary }]}>
+              {isAthlete ? 'PERFIL DE DEPORTISTA' : 'PERFIL DE ENTRENADOR'}
+            </Text>
+          </View>
+
+          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.inputLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Nombre Completo</Text>
             <TextInput 
-              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, backgroundColor: colors.background }]} 
+              style={[styles.input, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} 
               value={name}
               onChangeText={setName}
               placeholder="Tu nombre completo"
               placeholderTextColor={colors.textSecondary}
             />
             <TouchableOpacity 
-              style={[styles.saveBtn, { backgroundColor: colors.primary }]} 
+              style={[styles.saveBtn, { backgroundColor: name.trim() !== user?.name ? colors.primary : colors.surfaceHighlight }]} 
               onPress={handleSaveProfile}
-              disabled={savingProfile}
+              disabled={savingProfile || name.trim() === user?.name}
             >
-              {savingProfile ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Guardar Perfil</Text>}
+              {savingProfile ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.saveBtnText, { color: name.trim() !== user?.name ? '#FFF' : colors.textSecondary }]}>Actualizar Perfil</Text>}
             </TouchableOpacity>
           </View>
 
           {/* SECCIÓN MEDICIONES (SOLO ATLETAS) */}
           {isAthlete && (
             <>
-              <Text style={[styles.sectionTitle, { marginTop: 20 }]}>MEDICIONES CORPORALES</Text>
-              <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ACTUALIZAR MEDICIONES</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface }]}>
+                
                 <View style={styles.measureRow}>
-                  <View style={styles.measureCol}>
-                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Peso (kg)</Text>
-                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} keyboardType="numeric" value={measurements.weight} onChangeText={(t) => setMeasurements({...measurements, weight: t})} placeholder="Ej: 75.5" placeholderTextColor={colors.border} />
-                  </View>
-                  <View style={styles.measureCol}>
-                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Hombros (cm)</Text>
-                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} keyboardType="numeric" value={measurements.shoulders} onChangeText={(t) => setMeasurements({...measurements, shoulders: t})} placeholder="Ej: 110" placeholderTextColor={colors.border} />
-                  </View>
+                  {renderInputBox("Peso (kg)", "scale-outline", measurements.weight, (t) => setMeasurements({...measurements, weight: t}), "Ej: 75.5")}
+                  {renderInputBox("Hombros (cm)", "resize-outline", measurements.shoulders, (t) => setMeasurements({...measurements, shoulders: t}), "Ej: 110")}
                 </View>
 
                 <View style={styles.measureRow}>
-                  <View style={styles.measureCol}>
-                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Pecho (cm)</Text>
-                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} keyboardType="numeric" value={measurements.chest} onChangeText={(t) => setMeasurements({...measurements, chest: t})} placeholder="Ej: 98" placeholderTextColor={colors.border} />
-                  </View>
-                  <View style={styles.measureCol}>
-                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Brazo (cm)</Text>
-                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} keyboardType="numeric" value={measurements.arm} onChangeText={(t) => setMeasurements({...measurements, arm: t})} placeholder="Ej: 35" placeholderTextColor={colors.border} />
-                  </View>
+                  {renderInputBox("Pecho (cm)", "shirt-outline", measurements.chest, (t) => setMeasurements({...measurements, chest: t}), "Ej: 98")}
+                  {renderInputBox("Brazo (cm)", "fitness-outline", measurements.arm, (t) => setMeasurements({...measurements, arm: t}), "Ej: 35")}
                 </View>
 
                 <View style={styles.measureRow}>
-                  <View style={styles.measureCol}>
-                    <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>Muslo (cm)</Text>
-                    <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} keyboardType="numeric" value={measurements.thigh} onChangeText={(t) => setMeasurements({...measurements, thigh: t})} placeholder="Ej: 60" placeholderTextColor={colors.border} />
-                  </View>
+                  {renderInputBox("Muslo (cm)", "walk-outline", measurements.thigh, (t) => setMeasurements({...measurements, thigh: t}), "Ej: 60")}
                   <View style={styles.measureCol} /> {/* Espacio vacío para alinear */}
                 </View>
 
                 <TouchableOpacity 
-                  style={[styles.saveBtn, { backgroundColor: colors.primary, marginTop: 10 }]} 
+                  style={[styles.saveBtn, { backgroundColor: colors.primary, marginTop: 15 }]} 
                   onPress={handleSaveMeasurements}
                   disabled={savingMeasures}
                 >
-                  {savingMeasures ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Guardar Mediciones</Text>}
+                  {savingMeasures ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Guardar Mediciones</Text>}
                 </TouchableOpacity>
               </View>
             </>
           )}
 
           {/* SECCIÓN SISTEMA Y AVISOS */}
-          <Text style={[styles.sectionTitle, { marginTop: 20 }]}>SISTEMA Y AVISOS</Text>
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, padding: 0 }]}>
-            <TouchableOpacity style={styles.settingRowAction} onPress={handleSubscribeCalendar}>
+          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>INTEGRACIONES</Text>
+          <View style={[styles.listCard, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity style={styles.settingRowAction} onPress={handleSubscribeCalendar} activeOpacity={0.7}>
               <View style={styles.settingIconText}>
                 <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}>
-                  <Ionicons name="calendar-outline" size={20} color={colors.primary} />
+                  <Ionicons name="calendar-outline" size={22} color={colors.primary} />
                 </View>
-                <View>
-                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Suscribirse al Calendario</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>Se actualiza solo cuando hay nuevas sesiones</Text>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Sincronizar Calendario</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Se actualiza con tus nuevas sesiones</Text>
                 </View>
               </View>
-              <Ionicons name="link-outline" size={22} color={colors.primary} />
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
 
           {/* SECCIÓN CUENTA */}
-          <Text style={[styles.sectionTitle, { marginTop: 20 }]}>CUENTA</Text>
-          <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border, padding: 0 }]}>
-            <TouchableOpacity style={styles.settingRowAction} onPress={handleLogout}>
+          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>CUENTA</Text>
+          <View style={[styles.listCard, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity style={styles.settingRowAction} onPress={handleLogout} activeOpacity={0.7}>
               <View style={styles.settingIconText}>
                 <View style={[styles.iconBox, { backgroundColor: (colors.error || '#EF4444') + '15' }]}>
-                  <Ionicons name="log-out" size={20} color={colors.error || '#EF4444'} />
+                  <Ionicons name="log-out-outline" size={22} color={colors.error || '#EF4444'} />
                 </View>
-                <Text style={[styles.settingText, { color: colors.error || '#EF4444', fontWeight: '800' }]}>Cerrar Sesión</Text>
+                <Text style={[styles.settingText, { color: colors.error || '#EF4444' }]}>Cerrar Sesión</Text>
               </View>
             </TouchableOpacity>
           </View>
 
-          <View style={{ height: 40 }} />
+          <View style={{ height: 60 }} />
 
         </ScrollView>
       </KeyboardAvoidingView>
@@ -235,21 +251,28 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
   backBtn: { width: 40, height: 40, justifyContent: 'center' },
-  headerTitle: { fontSize: 20, fontWeight: '900' },
-  content: { padding: 20 },
-  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 10, letterSpacing: 1.5, marginLeft: 10 },
-  card: { borderRadius: 20, borderWidth: 1, overflow: 'hidden', padding: 18 },
+  headerTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
+  content: { paddingHorizontal: 20, paddingTop: 10 },
   
-  inputLabel: { fontSize: 12, fontWeight: '700', marginBottom: 8, marginLeft: 4 },
-  input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15, marginBottom: 15 },
-  saveBtn: { padding: 16, borderRadius: 14, alignItems: 'center' },
-  saveBtnText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
+  profileHeader: { alignItems: 'center', marginBottom: 25 },
+  avatarCircle: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
+  roleText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
+  
+  sectionTitle: { fontSize: 12, fontWeight: '800', color: '#888', marginBottom: 12, letterSpacing: 1, marginLeft: 8 },
+  card: { borderRadius: 24, padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 2 },
+  listCard: { borderRadius: 20, overflow: 'hidden' },
+  
+  inputLabel: { fontSize: 13, fontWeight: '700' },
+  input: { borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 15 },
+  
+  saveBtn: { paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
+  saveBtnText: { fontWeight: '800', fontSize: 15 },
   
   measureRow: { flexDirection: 'row', gap: 15 },
   measureCol: { flex: 1 },
   
-  settingRowAction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 18 },
-  settingIconText: { flexDirection: 'row', alignItems: 'center', gap: 15, flex: 1 },
-  iconBox: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  settingText: { fontSize: 15, fontWeight: '700' }
+  settingRowAction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
+  settingIconText: { flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 },
+  iconBox: { width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  settingText: { fontSize: 16, fontWeight: '700' }
 });
