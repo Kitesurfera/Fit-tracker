@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Dimensions, Modal, TextInput, KeyboardAvoidingView, Platform, Alert
+  ActivityIndicator, Dimensions, Modal, TextInput, Platform
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -72,7 +72,7 @@ export default function AnalyticsScreen() {
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
   
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
-  const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null); // ESTADO PARA DESPLEGAR TESTS
+  const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null); 
   
   const [searchQuery, setSearchQuery] = useState('');
   const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(14);
@@ -178,10 +178,26 @@ export default function AnalyticsScreen() {
     return heat;
   };
 
-  // --- LÓGICA DE RÉCORDS PERSONALES (PR) RESTAURADA ---
+  // --- OBTENER MEDIDAS RECIENTES ---
+  const getLatestMeasurements = () => {
+    const measures: Record<string, any> = {};
+    testHistory.forEach(test => {
+      if (test.test_type === 'medicion') {
+        // Como testHistory ya está ordenado por fecha más reciente, el primero que encontramos es el último guardado
+        if (!measures[test.test_name]) {
+          measures[test.test_name] = test;
+        }
+      }
+    });
+    return measures;
+  };
+
+  // --- FILTRAR TESTS EXCLUYENDO MEDICIONES ---
   const getPRUniqueTests = () => {
     const prTests: Record<string, { testDoc: any; maxVal: number }> = {};
     testHistory.forEach(test => {
+      if (test.test_type === 'medicion') return; // Excluimos el peso y medidas corporales
+      
       const key = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
       const currentVal = Math.max(parseFloat(test.value_left) || 0, parseFloat(test.value_right) || 0, parseFloat(test.value) || 0);
       if (!prTests[key] || currentVal > prTests[key].maxVal) {
@@ -191,7 +207,6 @@ export default function AnalyticsScreen() {
     return Object.values(prTests).map(item => item.testDoc);
   };
 
-  // --- GRÁFICA DE EVOLUCIÓN DE TESTS RESTAURADA ---
   const renderTestChart = (testKey: string) => {
     const history = testHistory.filter(t => (t.test_name === 'custom' ? `custom_${t.custom_name}` : t.test_name) === testKey);
     const data = history.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()).map(t => {
@@ -294,6 +309,36 @@ export default function AnalyticsScreen() {
     );
   };
 
+  const renderMeasurementsCard = () => {
+    const measures = getLatestMeasurements();
+    if (Object.keys(measures).length === 0) return null;
+
+    const displayNames: Record<string, string> = {
+      weight: 'Peso', shoulders: 'Hombros', chest: 'Pecho', arm: 'Brazo', thigh: 'Muslo'
+    };
+
+    return (
+      <View style={[styles.measurementsContainer, { backgroundColor: colors.surface, borderColor: colors.border, marginTop: isDesktop ? 20 : 0, marginBottom: isDesktop ? 0 : 25 }]}>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, textAlign: isDesktop ? 'left' : 'center', marginBottom: 15 }]}>Últimas Mediciones</Text>
+        <View style={styles.measurementsGrid}>
+          {Object.entries(displayNames).map(([key, label]) => {
+            const m = measures[key];
+            if (!m) return null;
+            return (
+              <View key={key} style={[styles.measureBadge, { backgroundColor: colors.background, borderColor: colors.border }]}>
+                <Text style={{ fontSize: 10, color: colors.textSecondary, fontWeight: '800', textTransform: 'uppercase' }}>{label}</Text>
+                <Text style={{ fontSize: 18, color: colors.textPrimary, fontWeight: '900', marginTop: 2 }}>
+                  {m.value} <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>{m.unit}</Text>
+                </Text>
+                <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 4 }}>{m.date.split('-').reverse().join('/')}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
   const renderBodyMap = () => {
     const heat = getMuscleHeat();
     const totalSets = Object.values(heat).reduce((sum, val) => sum + val, 0);
@@ -379,6 +424,9 @@ export default function AnalyticsScreen() {
                   );
                 })}
               </View>
+
+              {/* TARJETAS DE MEDICIONES - ESCRITORIO */}
+              {renderMeasurementsCard()}
             </View>
           </View>
         </View>
@@ -406,7 +454,10 @@ export default function AnalyticsScreen() {
           </View>
         </View>
 
-        <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15, textAlign: 'center' }}>Distribución</Text>
+        {/* TARJETAS DE MEDICIONES - MÓVIL */}
+        {renderMeasurementsCard()}
+
+        <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15, textAlign: 'center' }}>Distribución de Carga</Text>
         
         <View style={styles.legendRowMobile}>
           <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#E2E8F0' }]} /><Text style={styles.legendTextMobile}>0%</Text></View>
@@ -561,6 +612,10 @@ const styles = StyleSheet.create({
   legendTextMobile: { fontSize: 10, fontWeight: '600', color: '#888' },
   topMusclesCardMobile: { padding: 15, borderRadius: 20, borderWidth: 1 },
   topMuscleItemMobile: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+
+  measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  measurementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
+  measureBadge: { flex: 1, minWidth: '45%', padding: 12, borderRadius: 14, borderWidth: 1 },
 
   testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
   testName: { fontSize: 18, fontWeight: '800' },
