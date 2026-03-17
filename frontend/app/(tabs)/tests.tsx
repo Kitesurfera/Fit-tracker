@@ -75,7 +75,11 @@ export default function TestsScreen() {
       const ts = await api.getTests(params);
       let ath = isTrainer ? await api.getAthletes() : [];
 
-      setTests(Array.isArray(ts) ? ts : (ts?.data || []));
+      // FILTRO APLICADO: Excluimos cualquier test que sea de tipo 'medicion'
+      const rawTests = Array.isArray(ts) ? ts : (ts?.data || []);
+      const filteredTests = rawTests.filter(t => t.test_type !== 'medicion');
+
+      setTests(filteredTests);
       setAthletes(Array.isArray(ath) ? ath : (ath?.data || []));
     } catch (e) {
       console.log("Error cargando tests:", e);
@@ -143,7 +147,10 @@ export default function TestsScreen() {
         payload.custom_name = formData.name.trim();
         payload.date = new Date().toISOString().split('T')[0];
         const created = await api.createTest(payload);
-        setTests([created, ...tests]);
+        // Filtramos por si acaso se ha creado uno de medición, aunque por UI no debería pasar
+        if (created.test_type !== 'medicion') {
+          setTests([created, ...tests]);
+        }
       }
       setShowCustomModal(false);
     } catch (e) {
