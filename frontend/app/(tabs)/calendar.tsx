@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
-  ActivityIndicator, ScrollView, Modal, Alert, Platform, useWindowDimensions
+  ActivityIndicator, ScrollView, Modal, Alert, Platform, useWindowDimensions, TextInput
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -40,10 +40,15 @@ export default function CalendarScreen() {
   
   const [viewMicroInfo, setViewMicroInfo] = useState<any>(null);
   const [workoutToCopy, setWorkoutToCopy] = useState<any>(null);
-  
   const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(null);
 
+  // --- ESTADOS PARA EL MODAL DEL CICLO MENSTRUAL ---
+  const [showCycleSettings, setShowCycleSettings] = useState(false);
+  const [cycleLengthInput, setCycleLengthInput] = useState('28');
+  const [periodLengthInput, setPeriodLengthInput] = useState('5');
+
   const isTrainer = user?.role === 'trainer';
+  const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
 
   useEffect(() => { 
     if (!authLoading && user) {
@@ -166,6 +171,39 @@ export default function CalendarScreen() {
     }
   };
 
+  // --- FUNCIONES PARA EL MODAL DEL CICLO MENSTRUAL ---
+  const openCycleSettings = () => {
+    setCycleLengthInput(String(selectedAthlete?.cycle_length || 28));
+    setPeriodLengthInput(String(selectedAthlete?.period_length || 5));
+    setShowCycleSettings(true);
+  };
+
+  const handleSaveCycleSettings = async () => {
+    setUpdating(true);
+    try {
+      const payload = {
+        cycle_length: parseInt(cycleLengthInput) || 28,
+        period_length: parseInt(periodLengthInput) || 5
+      };
+      
+      // Actualiza en el backend dependiendo del rol
+      if (isTrainer && api.updateAthlete) {
+        await api.updateAthlete(selectedAthlete.id, payload);
+      } else if (api.updateProfile) {
+        await api.updateProfile(payload); 
+      }
+
+      // Actualiza localmente para que el calendario reaccione en vivo
+      setSelectedAthlete({ ...selectedAthlete, ...payload });
+      setShowCycleSettings(false);
+    } catch (e) {
+      console.log("Error guardando ajustes de ciclo:", e);
+      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudieron guardar los ajustes.");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const daysInMonth = useMemo(() => {
     const firstDay = new Date(currentYear, currentMonth, 1);
     const lastDay = new Date(currentYear, currentMonth + 1, 0).getDate();
@@ -215,39 +253,50 @@ export default function CalendarScreen() {
   }, [macros, currentMonth, currentYear, colors.primary]);
 
   const periodDays = useMemo(() => {
-    const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
     if (!isFemale || !wellnessHistory || wellnessHistory.length === 0) return {};
 
-    const lastPeriodLog = [...wellnessHistory]
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .find(w => w.cycle_phase?.startsWith('menstruacion_'));
-    
-    if (!lastPeriodLog) return {};
+    const menstrualLogs = wellnessHistory
+      .filter(w => w.cycle_phase === 'menstrual' || w.cycle_phase?.startsWith('menstruacion'))
+      .sort((a, b) => b.date.localeCompare(a.date));
 
-    const [logY, logM, logD] = lastPeriodLog.date.split('-').map(Number);
-    const loggedDate = new Date(logY, logM - 1, logD);
-    const dayOfPeriod = parseInt(lastPeriodLog.cycle_phase.split('_')[1] || '1');
-    
-    // Calculamos el Día 1 real de este ciclo
-    const actualDayOne = new Date(loggedDate);
-    actualDayOne.setDate(loggedDate.getDate() - (dayOfPeriod - 1));
+    if (menstrualLogs.length === 0) return {};
+
+    let actualDayOneStr = menstrualLogs[0].date;
+    for (let i = 0; i < menstrualLogs.length - 1; i++) {
+      const [cY, cM, cD] = menstrualLogs[i].date.split('-').map(Number);
+      const [pY, pM, pD] = menstrualLogs[i+1].date.split('-').map(Number);
+      
+      const currDate = new Date(cY, cM - 1, cD).getTime();
+      const prevDate = new Date(pY, pM - 1, pD).getTime();
+      
+      const diffDays = (currDate - prevDate) / (1000 * 3600 * 24);
+      
+      if (diffDays <= 2) {
+        actualDayOneStr = menstrualLogs[i+1].date;
+      } else {
+        break; 
+      }
+    }
+
+    const [startY, startM, startD] = actualDayOneStr.split('-').map(Number);
+    const actualDayOne = new Date(startY, startM - 1, startD);
+
+    const cycleLength = selectedAthlete?.cycle_length || 28;
+    const periodLength = selectedAthlete?.period_length || 5;
 
     const daysDict: Record<string, { type: 'current' | 'predicted' }> = {};
 
-    // Marcamos los 5 días del ciclo ACTUAL
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < periodLength; i++) {
       const curr = new Date(actualDayOne);
       curr.setDate(actualDayOne.getDate() + i);
       const dateStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
       daysDict[dateStr] = { type: 'current' };
     }
 
-    // Calculamos el Día 1 del ciclo SIGUIENTE (28 días después)
     const nextDayOne = new Date(actualDayOne);
-    nextDayOne.setDate(actualDayOne.getDate() + 28);
+    nextDayOne.setDate(actualDayOne.getDate() + cycleLength);
 
-    // Marcamos los 5 días del ciclo PREVISTO
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < periodLength; i++) {
       const pred = new Date(nextDayOne);
       pred.setDate(nextDayOne.getDate() + i);
       const dateStr = `${pred.getFullYear()}-${String(pred.getMonth() + 1).padStart(2, '0')}-${String(pred.getDate()).padStart(2, '0')}`;
@@ -257,7 +306,7 @@ export default function CalendarScreen() {
     }
     
     return daysDict;
-  }, [wellnessHistory, selectedAthlete]);
+  }, [wellnessHistory, selectedAthlete, isFemale]);
 
   const getDayStatus = (day: number | null) => {
     if (!day) return null;
@@ -364,12 +413,12 @@ export default function CalendarScreen() {
   const handleWorkoutPress = (workout: any) => {
     if (isTrainer) {
       if (workout.completed) {
-        router.push(`/training-mode?workoutId=${workout.id}`); // <-- CORREGIDO
+        router.push(`/training-mode?workoutId=${workout.id}`);
       } else {
-        router.push(`/edit-workout?workoutId=${workout.id}`);  // <-- CORREGIDO
+        router.push(`/edit-workout?workoutId=${workout.id}`); 
       }
     } else {
-      router.push(`/training-mode?workoutId=${workout.id}`); // <-- CORREGIDO
+      router.push(`/training-mode?workoutId=${workout.id}`);
     }
   };
 
@@ -400,12 +449,20 @@ export default function CalendarScreen() {
           <Text style={styles.headerSubtitle}>{isTrainer ? 'AGENDA DEPORTISTA' : 'MI PLANIFICACIÓN'}</Text>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{selectedAthlete?.name || 'Calendario'}</Text>
         </View>
-        <View style={{flexDirection:'row', gap: 15}}>
+        <View style={{flexDirection:'row', gap: 10}}>
           {workoutToCopy && (
             <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: (colors.error || '#EF4444') + '20' }]}>
               <Ionicons name="close" size={22} color={colors.error || '#EF4444'} />
             </TouchableOpacity>
           )}
+          
+          {/* BOTÓN DE AJUSTES DEL CICLO MENSTRUAL */}
+          {isFemale && (
+            <TouchableOpacity onPress={openCycleSettings} style={[styles.iconBtn, { backgroundColor: '#FEE2E2' }]}>
+              <Ionicons name="water" size={22} color="#EF4444" />
+            </TouchableOpacity>
+          )}
+
           {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.iconBtn}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
           <TouchableOpacity onPress={() => { setUpdating(true); refreshAthleteData(selectedAthlete); }} disabled={updating} style={styles.iconBtn}>
             {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={22} color={colors.primary} />}
@@ -446,14 +503,12 @@ export default function CalendarScreen() {
                     style={[
                       styles.dayCell, 
                       status?.phaseColor && { backgroundColor: status.phaseColor + '15', borderRadius: 12 },
-                      // REGLA ACTUAL (Línea sólida)
                       status?.isPeriod && status?.periodType === 'current' && { 
                         backgroundColor: '#FEE2E2', 
                         borderWidth: 1, 
                         borderColor: '#EF4444', 
                         borderRadius: 12 
                       },
-                      // REGLA PREVISTA (Línea discontinua)
                       status?.isPeriod && status?.periodType === 'predicted' && { 
                         backgroundColor: '#FEE2E2', 
                         borderWidth: 1, 
@@ -496,7 +551,6 @@ export default function CalendarScreen() {
 
         <ScrollView style={[styles.footer, isDesktop && styles.rightColumnDesktop]} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
           
-          {/* AVISO REGLA EN EL DÍA SELECCIONADO */}
           {periodDays[selectedDate] && (
             <View style={[styles.periodWarning, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
               <Ionicons name="water" size={20} color="#EF4444" />
@@ -544,7 +598,7 @@ export default function CalendarScreen() {
               <View key={wk.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
                 <TouchableOpacity 
                   style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}
-                  onPress={() => handleWorkoutPress(wk)} // <-- AQUÍ
+                  onPress={() => handleWorkoutPress(wk)}
                 >
                   <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
                     <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
@@ -583,7 +637,6 @@ export default function CalendarScreen() {
         </ScrollView>
       </View>
 
-      {/* MODAL PARA CAMBIAR DE DEPORTISTA */}
       <Modal visible={showPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPicker(false)}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -597,7 +650,45 @@ export default function CalendarScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* MODAL DE INFORMACIÓN DE FASE */}
+      {/* NUEVO MODAL: AJUSTES DE CICLO MENSTRUAL */}
+      <Modal visible={showCycleSettings} transparent animationType="fade">
+        <TouchableOpacity style={styles.modalOverlayCenter} onPress={() => setShowCycleSettings(false)}>
+          <TouchableOpacity activeOpacity={1} style={[styles.modalContentInfo, { backgroundColor: colors.surface, width: '85%' }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, width: '100%', justifyContent: 'center' }}>
+              <View style={[styles.phaseIconBadge, { backgroundColor: '#FEE2E2', marginRight: 10 }]}>
+                <Ionicons name="water" size={24} color="#EF4444" />
+              </View>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Ajustes del Ciclo</Text>
+            </View>
+
+            <Text style={[styles.label, { color: colors.textSecondary, alignSelf: 'flex-start' }]}>Duración habitual del ciclo completo (días):</Text>
+            <TextInput 
+              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginBottom: 20, width: '100%' }]} 
+              keyboardType="numeric" 
+              value={cycleLengthInput} 
+              onChangeText={setCycleLengthInput} 
+            />
+
+            <Text style={[styles.label, { color: colors.textSecondary, alignSelf: 'flex-start' }]}>Días habituales de sangrado:</Text>
+            <TextInput 
+              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginBottom: 25, width: '100%' }]} 
+              keyboardType="numeric" 
+              value={periodLengthInput} 
+              onChangeText={setPeriodLengthInput} 
+            />
+
+            <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setShowCycleSettings(false)}>
+                <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleSaveCycleSettings} disabled={updating}>
+                {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '700' }}>Guardar</Text>}
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
       <Modal visible={!!viewMicroInfo} transparent animationType="fade">
         <TouchableOpacity style={styles.modalOverlayCenter} onPress={handleCloseMicroInfo}>
           <TouchableOpacity activeOpacity={1} style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
@@ -633,7 +724,6 @@ export default function CalendarScreen() {
                   </View>
                 </View>
 
-                {/* LISTA DE SESIONES DE LA FASE */}
                 <View style={{ width: '100%', marginTop: 25, flexShrink: 1 }}>
                   <Text style={[styles.infoLabel, { color: colors.textSecondary, marginBottom: 10, textAlign: 'left' }]}>
                     SESIONES PROGRAMADAS ({microWorkouts.length})
@@ -654,7 +744,6 @@ export default function CalendarScreen() {
                           <Ionicons name={expandedWorkoutId === wk.id ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
                         </TouchableOpacity>
 
-                        {/* DESPLEGABLE DE EJERCICIOS */}
                         {expandedWorkoutId === wk.id && (
                           <View style={[styles.microWorkoutExercises, { borderTopColor: colors.border }]}>
                             {wk.exercises && wk.exercises.length > 0 ? (
@@ -775,5 +864,9 @@ const styles = StyleSheet.create({
   microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 },
   microWorkoutExercises: { padding: 14, borderTopWidth: 1 },
   
-  editPhaseBtn: { flexDirection: 'row', width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, marginTop: 20 }
+  editPhaseBtn: { flexDirection: 'row', width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, marginTop: 20 },
+  
+  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 },
+  label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
+  modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }
 });
