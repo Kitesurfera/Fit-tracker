@@ -252,6 +252,7 @@ export default function CalendarScreen() {
     return microsResult.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
   }, [macros, currentMonth, currentYear, colors.primary]);
 
+  // --- NUEVA LÓGICA DEL CICLO MENSTRUAL PREDICTIVO (6 MESES) ---
   const periodDays = useMemo(() => {
     if (!isFemale || !wellnessHistory || wellnessHistory.length === 0) return {};
 
@@ -286,22 +287,21 @@ export default function CalendarScreen() {
 
     const daysDict: Record<string, { type: 'current' | 'predicted' }> = {};
 
-    for (let i = 0; i < periodLength; i++) {
-      const curr = new Date(actualDayOne);
-      curr.setDate(actualDayOne.getDate() + i);
-      const dateStr = `${curr.getFullYear()}-${String(curr.getMonth() + 1).padStart(2, '0')}-${String(curr.getDate()).padStart(2, '0')}`;
-      daysDict[dateStr] = { type: 'current' };
-    }
+    // Calculamos el ciclo actual (0) y los próximos 6 ciclos (1 al 6)
+    for (let cycleIndex = 0; cycleIndex <= 6; cycleIndex++) {
+      const cycleStart = new Date(actualDayOne);
+      cycleStart.setDate(actualDayOne.getDate() + (cycleLength * cycleIndex));
 
-    const nextDayOne = new Date(actualDayOne);
-    nextDayOne.setDate(actualDayOne.getDate() + cycleLength);
-
-    for (let i = 0; i < periodLength; i++) {
-      const pred = new Date(nextDayOne);
-      pred.setDate(nextDayOne.getDate() + i);
-      const dateStr = `${pred.getFullYear()}-${String(pred.getMonth() + 1).padStart(2, '0')}-${String(pred.getDate()).padStart(2, '0')}`;
-      if (!daysDict[dateStr]) {
-        daysDict[dateStr] = { type: 'predicted' };
+      for (let i = 0; i < periodLength; i++) {
+        const dayDate = new Date(cycleStart);
+        dayDate.setDate(cycleStart.getDate() + i);
+        
+        const dateStr = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`;
+        
+        // Si no está ya marcado (por solapamientos raros), lo marcamos
+        if (!daysDict[dateStr]) {
+          daysDict[dateStr] = { type: cycleIndex === 0 ? 'current' : 'predicted' };
+        }
       }
     }
     
