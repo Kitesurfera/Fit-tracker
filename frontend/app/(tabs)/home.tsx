@@ -240,6 +240,12 @@ export default function HomeScreen() {
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
 
+  // ✅ AQUÍ ESTÁ LA SOLUCIÓN AL CRASH
+  const handleCloseMicroInfo = () => {
+    setViewMicroInfo(null);
+    setExpandedWorkoutId(null);
+  };
+
   const simplifiedHeatmapData = useMemo(() => {
     const daysToPreview = 14; 
     const timelineData: any[] = [];
@@ -289,7 +295,7 @@ export default function HomeScreen() {
       <TouchableOpacity key={item.id} style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.8 : 1 }]} onPress={() => router.push(`/training-mode?workoutId=${item.id}`)}>
         <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}><Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} /></View>
         <View style={{ flex: 1 }}>
-          <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
+          <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{String(item.title || 'Sesión')}</Text>
           <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date || 'Sin fecha'}</Text>
           {hasSessionFeedback && <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}><Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text></View>}
         </View>
@@ -318,7 +324,7 @@ export default function HomeScreen() {
         <View style={[styles.athleteCard, { backgroundColor: colors.surface }]}>
           <Link href={`/athlete-detail?id=${item.id}&name=${encodeURIComponent(item.name)}`} asChild>
             <TouchableOpacity style={styles.athleteInfoArea}>
-              <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}><Text style={{color: colors.primary, fontWeight: '800'}}>{item.name.charAt(0).toUpperCase()}</Text></View>
+              <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}><Text style={{color: colors.primary, fontWeight: '800'}}>{String(item.name || 'A').charAt(0).toUpperCase()}</Text></View>
               <View style={{flex: 1}}><Text style={[styles.cardTitle, { color: colors.textPrimary }]}>{item.name}</Text><Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{item.sport || 'Deportista multidisciplinar'}</Text></View>
             </TouchableOpacity>
           </Link>
