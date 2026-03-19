@@ -12,12 +12,17 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import WellnessModal from '../../src/components/WellnessModal';
 
-const ELITE_TIPS = [
-  "La disciplina es hacer lo que debes, incluso cuando no quieres.",
-  "Tu mayor competición eres tú mismo/a ayer.",
-  "El descanso es parte del entrenamiento, no una recompensa.",
-  "La constancia vence al talento cuando el talento no se esfuerza.",
-  "Pequeñas mejoras diarias crean resultados excepcionales."
+const DAILY_TIPS = [
+  "El descanso es tan importante como tu serie más pesada.",
+  "La constancia siempre le gana a la intensidad de un solo día.",
+  "No busques la perfección hoy, busca moverte un poco más que ayer.",
+  "El mejor entrenamiento no es el más duro, es el que realmente llegas a terminar.",
+  "Escucha a tu cuerpo: si hoy toca aflojar, se afloja sin culpa.",
+  "Tu salud es una carrera de fondo, no un sprint.",
+  "Cada día que decides entrenar, ya estás ganando en calidad de vida.",
+  "El progreso real se esconde en dominar lo básico y repetirlo.",
+  "Construye un cuerpo para vivir mejor, moverte libre y sin dolores.",
+  "Tu mayor logro es convertir el ejercicio en un hábito, no en una obligación."
 ];
 
 const CYCLE_PHASES = [
@@ -51,7 +56,7 @@ export default function HomeScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [updating, setUpdating] = useState(false);
   const [showWellness, setShowWellness] = useState(false);
-  const [tip] = useState(ELITE_TIPS[Math.floor(Math.random() * ELITE_TIPS.length)]);
+  const [tip] = useState(DAILY_TIPS[Math.floor(Math.random() * DAILY_TIPS.length)]);
 
   const [showAthleteModal, setShowAthleteModal] = useState(false);
   const [editingAthleteId, setEditingAthleteId] = useState<string | null>(null);
@@ -208,8 +213,6 @@ export default function HomeScreen() {
     router.push(`/analytics?tab=feedback`);
   };
 
-  const handleCloseMicroInfo = () => { setViewMicroInfo(null); setExpandedWorkoutId(null); };
-
   const handleShareStatus = () => {
     const currentPhase = summary?.latest_wellness?.cycle_phase;
     const phaseText = currentPhase ? (CYCLE_LABELS[currentPhase] || currentPhase) : 'Sin registro';
@@ -217,14 +220,23 @@ export default function HomeScreen() {
     const todayWorkout = workouts.find(w => w.date === todayStr);
     const trained = todayWorkout ? (todayWorkout.completed ? '✅ Completado' : '❌ Pendiente') : 'Libre / Descanso';
     
-    const message = `🏄‍♀️ *Status Diario*\n\nNivel de Fatiga: ${fatigue}/5\nEntrenamiento hoy: ${trained}` + (isFemale ? `\nFase del ciclo: ${phaseText}` : '');
+    // Extraer datos del mapa de molestias
+    const discomfortsObj = summary?.latest_wellness?.discomforts || {};
+    const discomfortsEntries = Object.entries(discomfortsObj);
+    let discomfortsText = '';
+    if (discomfortsEntries.length > 0) {
+      discomfortsText = '\n🤕 Mapa Molestias:\n' + discomfortsEntries.map(([k, v]) => `   - ${k}: ${v.toUpperCase()}`).join('\n');
+    }
+
+    const message = `🏄‍♀️ *Status Diario*\n\nNivel de Fatiga: ${fatigue}/5\nEntrenamiento hoy: ${trained}` + 
+                    (isFemale ? `\nFase del ciclo: ${phaseText}` : '') + 
+                    discomfortsText;
     
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
 
-  // --- NUEVA LÓGICA DEL MAPA DE FATIGA (CALENDARIO LINEAL) ---
   const simplifiedHeatmapData = useMemo(() => {
-    const daysToPreview = 14; // Dos semanas
+    const daysToPreview = 14; 
     const timelineData: any[] = [];
     
     for (let i = daysToPreview - 1; i >= 0; i--) {
@@ -233,7 +245,7 @@ export default function HomeScreen() {
       const dateStr = d.toISOString().split('T')[0];
       const record = wellnessHistory.find(w => w.date === dateStr);
       
-      let color = colors.border + '40'; // Gris (sin datos)
+      let color = colors.border + '40'; 
       if (record) {
         if (record.fatigue <= 2) color = colors.success || '#10B981';
         else if (record.fatigue === 3) color = '#F59E0B';
@@ -380,7 +392,6 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* NUEVO MAPA DE FATIGA (CALENDARIO LINEAL) */}
             <View style={{ marginBottom: 30 }}>
               <Text style={styles.sectionTitle}>HISTORIAL DE FATIGA (ÚLTIMOS 14 DÍAS)</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
@@ -476,8 +487,6 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 20 }, headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }, dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }, welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 }, refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' }, actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }, athleteCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' }, athleteInfoArea: { flexDirection: 'row', alignItems: 'center', flex: 1, padding: 18 }, athleteActionsArea: { flexDirection: 'row', alignItems: 'center', paddingRight: 15, gap: 10 }, iconHitbox: { padding: 8 }, avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 16, fontWeight: '700' }, tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 }, tipText: { fontSize: 13, fontWeight: '600', flex: 1, fontStyle: 'italic' }, phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 25, alignItems: 'center' }, phaseInfo: { flex: 1 }, phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 }, phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 }, macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 }, phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }, phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' }, metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 }, metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' }, metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 }, metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 }, fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 30, gap: 10 }, actionText: { fontWeight: '800', fontSize: 15 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5, textTransform: 'uppercase' }, sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 22, marginHorizontal: 20, marginBottom: 12 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 }, modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 25, textAlign: 'center' }, input: { borderWidth: 1, padding: 16, borderRadius: 15, marginBottom: 15, fontSize: 16 }, genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 }, genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }, submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 }, cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, feedbackAlertCard: { padding: 18, borderRadius: 20, marginBottom: 25, elevation: 3 }, modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }, modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 }, phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' }, infoTitleMacro: { fontSize: 18, fontWeight: '900', marginTop: 4, textAlign: 'center' }, divider: { height: 1, width: '80%', marginVertical: 15, opacity: 0.5 }, infoTitleMicro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' }, microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 }, datesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }, microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' }, microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 }, microWorkoutExercises: { padding: 14, borderTopWidth: 1 }, historyToggleBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 5 }, historyToggleText: { flex: 1, fontSize: 12, fontWeight: '800', marginLeft: 10, letterSpacing: 1 },
-  
-  // NUEVOS ESTILOS DEL MAPA LINEAL
   timelineDayCard: { width: 60, height: 90, borderRadius: 14, alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
   timelineWeekday: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
   timelineDayNumber: { fontSize: 20, fontWeight: '800' },
