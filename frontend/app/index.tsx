@@ -9,6 +9,7 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
@@ -22,7 +23,7 @@ export default function LoginScreen() {
   const { colors } = useTheme();
 
   const [isLogin, useState_isLogin] = useState(true);
-  const isLoginValue = isLogin; // To avoid shadowing issues
+  const isLoginValue = isLogin;
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -57,7 +58,6 @@ export default function LoginScreen() {
       if (isLoginValue) {
         await login(email, password);
       } else {
-        // Por defecto, el registro desde aquí es para 'trainer'
         await register(name, email, password);
       }
     } catch (e: any) {
@@ -79,9 +79,10 @@ export default function LoginScreen() {
         >
           {/* SECCIÓN DEL LOGO Y NOMBRE APP */}
           <View style={styles.header}>
-            <View style={[styles.logoBadge, { backgroundColor: colors.primary }]}>
-              <Ionicons name="fitness" size={40} color="#FFFFFF" />
-            </View>
+            <Image
+              source={require('../assets/logo.png')}
+              style={styles.logo}
+            />
             <Text style={[styles.brandTitle, { color: colors.textPrimary }]}>AM COACHING</Text>
             <Text style={[styles.tagline, { color: colors.textSecondary }]}>
               {isLoginValue ? 'GESTIÓN DE ALTO RENDIMIENTO' : 'REGISTRO DE ENTRENADOR'}
@@ -185,18 +186,11 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   scrollContent: { flexGrow: 1, justifyContent: 'center', padding: 25 },
   header: { alignItems: 'center', marginBottom: 40 },
-  logoBadge: {
-    width: 80,
-    height: 80,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
+  logo: {
+    width: 140, 
+    height: 140, 
     marginBottom: 15,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
+    resizeMode: 'contain',
   },
   brandTitle: { fontSize: 32, fontWeight: '900', letterSpacing: 2 },
   tagline: { fontSize: 10, fontWeight: '800', letterSpacing: 1.5, marginTop: 5 },
