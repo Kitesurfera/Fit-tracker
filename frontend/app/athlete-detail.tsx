@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ActivityIndicator, ScrollView, Dimensions, Alert, Platform, Modal, TextInput, Linking
@@ -53,7 +53,7 @@ export default function AthleteDetailScreen() {
   const [loading, setLoading] = useState(true);
 
   const [expandedWorkouts, setExpandedWorkouts] = useState<Record<string, boolean>>({});
-  const [showHistory, setShowHistory] = useState(false); // NUEVO ESTADO PARA EL DESPLEGABLE DE HISTORIAL
+  const [showHistory, setShowHistory] = useState(false);
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [workoutToDuplicate, setWorkoutToDuplicate] = useState<any>(null);
   const [duplicateDate, setDuplicateDate] = useState(new Date().toISOString().split('T')[0]);
@@ -142,6 +142,35 @@ export default function AthleteDetailScreen() {
   const currentPhase = summary?.latest_wellness?.cycle_phase;
   const isTrainer = user?.role === 'trainer';
 
+  // --- LÓGICA DEL HEATMAP TIPO GITHUB ---
+  const heatmapData = useMemo(() => {
+    const days = 70; // 10 semanas
+    const columns: any[][] = [];
+    let currentColumn: any[] = [];
+    
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0];
+      const record = history.find(w => w.date === dateStr);
+      
+      let color = colors.border + '40';
+      if (record) {
+        if (record.fatigue <= 2) color = colors.success || '#10B981';
+        else if (record.fatigue === 3) color = '#F59E0B';
+        else color = colors.error || '#EF4444';
+      }
+      
+      currentColumn.push({ date: dateStr, color, fatigue: record?.fatigue });
+      
+      if (currentColumn.length === 7 || i === 0) {
+        columns.push(currentColumn);
+        currentColumn = [];
+      }
+    }
+    return columns;
+  }, [history, colors]);
+
   const renderDashboard = () => (
     <View style={styles.tabContainer}>
       {summary?.is_injured && (
@@ -174,16 +203,25 @@ export default function AthleteDetailScreen() {
         <Text style={styles.actionBtnText}>PLANIFICACIÓN (MACRO/MICRO)</Text>
       </TouchableOpacity>
 
-      <Text style={[styles.sectionTitle]}>EVOLUCIÓN SEMANAL (FATIGA)</Text>
-      <View style={[styles.chartCard, { backgroundColor: colors.surface, marginBottom: 25 }]}>
-        <View style={styles.barsContainer}>
-          {history.length > 0 ? history.map((day, idx) => (
-            <View key={idx} style={[styles.barWrapper, { justifyContent: 'flex-end', height: '100%' }]}>
-              <View style={[styles.bar, { height: `${(day.fatigue / 5) * 100}%`, backgroundColor: getLevelColor(day.fatigue) }]} />
-              <Text style={styles.barDate}>{day.date.split('-')[2]}</Text>
-            </View>
-          )) : <Text style={{color: colors.textSecondary, fontSize: 12}}>Esperando datos...</Text>}
-        </View>
+      <Text style={[styles.sectionTitle]}>HISTORIAL DE FATIGA (HEATMAP)</Text>
+      <View style={[styles.heatmapCard, { backgroundColor: colors.surface, marginBottom: 25 }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: 15 }}>
+          <View style={{ flexDirection: 'row', gap: 4 }}>
+            {heatmapData.map((col, cIdx) => (
+              <View key={cIdx} style={{ gap: 4 }}>
+                {col.map((cell, rIdx) => (
+                  <TouchableOpacity 
+                    key={rIdx} 
+                    style={[styles.heatmapCell, { backgroundColor: cell.color }]} 
+                    onPress={() => {
+                      if (Platform.OS !== 'web') Alert.alert(cell.date, cell.fatigue ? `Nivel de fatiga: ${cell.fatigue}/5` : 'Día de descanso / Sin registrar');
+                    }}
+                  />
+                ))}
+              </View>
+            ))}
+          </View>
+        </ScrollView>
       </View>
 
       <Text style={[styles.sectionTitle]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
@@ -236,7 +274,6 @@ export default function AthleteDetailScreen() {
             </View>
           )}
 
-          {/* Renderizado de ejercicios: Si está completa pilla los resultados, si no, lo programado */}
           {(wk.completed && wk.completion_data ? wk.completion_data.exercise_results : wk.exercises)?.map((ex: any, idx: number) => {
             const noteKey = `${wk.id}-force-${idx}`;
             const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
@@ -246,8 +283,6 @@ export default function AthleteDetailScreen() {
               <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
                 <View style={styles.exerciseHeader}>
                   <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
-                  
-                  {/* Si es una sesión pendiente, enseñamos lo que toca hacer */}
                   {!wk.completed && (
                     <View style={{alignItems: 'flex-end'}}>
                       {ex.sets && ex.reps && <Text style={{color: colors.primary, fontWeight: '700', fontSize: 12}}>{ex.sets}x{ex.reps}</Text>}
@@ -258,7 +293,6 @@ export default function AthleteDetailScreen() {
                 
                 {wk.completed && ex.recorded_video_url && <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />}
                 
-                {/* Referencia de Youtube si está pendiente */}
                 {!wk.completed && ex.video_url && (
                   <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
                     <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
@@ -283,7 +317,6 @@ export default function AthleteDetailScreen() {
   );
 
   const renderWorkouts = () => {
-    // Filtramos y ordenamos de más reciente a más antiguo
     const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => b.date.localeCompare(a.date));
     const completedWorkouts = workouts.filter(w => w.completed).sort((a,b) => b.date.localeCompare(a.date));
 
@@ -297,29 +330,14 @@ export default function AthleteDetailScreen() {
           </TouchableOpacity>
         </View>
         
-        {pendingWorkouts.length > 0 ? (
-          pendingWorkouts.map(renderWorkoutItem)
-        ) : (
-          <Text style={{ color: colors.textSecondary, marginBottom: 20 }}>No hay sesiones pendientes.</Text>
-        )}
+        {pendingWorkouts.length > 0 ? pendingWorkouts.map(renderWorkoutItem) : <Text style={{ color: colors.textSecondary, marginBottom: 20 }}>No hay sesiones pendientes.</Text>}
 
-        {/* BOTÓN DESPLEGABLE HISTORIAL */}
-        <TouchableOpacity 
-          style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: colors.surfaceHighlight, borderRadius: 12, marginTop: 10, marginBottom: 15 }} 
-          onPress={() => setShowHistory(!showHistory)}
-          activeOpacity={0.7}
-        >
+        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, backgroundColor: colors.surfaceHighlight, borderRadius: 12, marginTop: 10, marginBottom: 15 }} onPress={() => setShowHistory(!showHistory)} activeOpacity={0.7}>
           <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14 }}>HISTORIAL (Ya hechas)</Text>
           <Ionicons name={showHistory ? "chevron-up" : "chevron-down"} size={20} color={colors.textPrimary} />
         </TouchableOpacity>
 
-        {showHistory && (
-          completedWorkouts.length > 0 ? (
-            completedWorkouts.map(renderWorkoutItem)
-          ) : (
-            <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>No hay sesiones completadas.</Text>
-          )
-        )}
+        {showHistory && (completedWorkouts.length > 0 ? completedWorkouts.map(renderWorkoutItem) : <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>No hay sesiones completadas.</Text>)}
       </View>
     );
   };
@@ -351,7 +369,16 @@ export default function AthleteDetailScreen() {
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{params.name}</Text>
-        <TouchableOpacity onPress={loadData}><Ionicons name="sync" size={24} color={colors.primary} /></TouchableOpacity>
+        
+        {/* BOTÓN RÁPIDO DE COACH PARA HABLAR POR WHATSAPP */}
+        <View style={{ flexDirection: 'row', gap: 15 }}>
+          {athlete?.phone && (
+            <TouchableOpacity onPress={() => Linking.openURL(`https://wa.me/${athlete.phone.replace(/\D/g, '')}?text=¡Hola ${params.name}! He estado revisando tu progreso...`)}>
+              <Ionicons name="chatbubble-ellipses" size={24} color="#25D366" />
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity onPress={loadData}><Ionicons name="sync" size={24} color={colors.primary} /></TouchableOpacity>
+        </View>
       </View>
       <View style={styles.tabsRow}>
         {[{ id: 'dashboard', label: 'RESUMEN' }, { id: 'workouts', label: 'SESIONES' }, { id: 'progression', label: 'EVOLUCIÓN' }].map(tab => (
@@ -384,6 +411,6 @@ export default function AthleteDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 100 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2 }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }, sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 }, progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 }, miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }, fullVideo: { width: '100%', height: '80%' }, whatsappFab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center', elevation: 5 },
-  exerciseCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 }, exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, exerciseName: { fontSize: 14, fontWeight: '800' }, planBadge: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 }, planText: { fontSize: 11, fontWeight: '900' }, feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, feedbackInput: { flex: 1, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 10, borderWidth: 1, fontSize: 13 }, sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }
+  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 100 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }, sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, progressionCard: { padding: 20, borderRadius: 25, height: 180, justifyContent: 'flex-end', elevation: 2 }, progressionBar: { width: 20, borderBottomLeftRadius: 0, borderBottomRightRadius: 0 }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }, fullVideo: { width: '100%', height: '80%' }, exerciseCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 }, exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, exerciseName: { fontSize: 14, fontWeight: '800' }, feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, feedbackInput: { flex: 1, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 10, borderWidth: 1, fontSize: 13 }, sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  heatmapCard: { borderRadius: 20, overflow: 'hidden' }, heatmapCell: { width: 14, height: 14, borderRadius: 4 }
 });
