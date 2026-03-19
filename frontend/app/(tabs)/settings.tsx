@@ -100,14 +100,24 @@ export default function SettingsScreen() {
     });
   };
 
-  const handleLogout = () => {
+const handleLogout = async () => {
     if (Platform.OS === 'web') {
       const confirmLogout = window.confirm('¿Seguro que quieres cerrar sesión?');
-      if (confirmLogout) logout();
+      if (confirmLogout) {
+        await logout();
+        router.replace('/'); // Forzamos la redirección a la pantalla de login
+      }
     } else {
       Alert.alert('Cerrar sesión', '¿Seguro que quieres salir?', [
         { text: 'Cancelar', style: 'cancel' },
-        { text: 'Salir', style: 'destructive', onPress: logout }
+        { 
+          text: 'Salir', 
+          style: 'destructive', 
+          onPress: async () => {
+            await logout();
+            router.replace('/'); // Forzamos la redirección a la pantalla de login
+          } 
+        }
       ]);
     }
   };
