@@ -73,9 +73,9 @@ export default function AthleteDetailScreen() {
         api.getWellnessHistory(params.id!)
       ]);
       setAthlete(ath);
-      setWorkouts(wk || []);
+      setWorkouts(Array.isArray(wk) ? wk : []);
       setSummary(sum);
-      setHistory(hist || []);
+      setHistory(Array.isArray(hist) ? hist : []);
     } catch (e) { 
       console.log("Error cargando detalle:", e); 
     } finally { 
@@ -141,7 +141,7 @@ export default function AthleteDetailScreen() {
   };
 
   const isFemale = ['female', 'mujer', 'femenino'].includes(athlete?.gender?.toLowerCase() || '');
-  const currentPhase = summary?.latest_wellness?.cycle_phase;
+  const currentPhase = String(summary?.latest_wellness?.cycle_phase || '');
   const isTrainer = user?.role === 'trainer';
 
   const fatigueChartData = useMemo(() => {
@@ -168,7 +168,7 @@ export default function AthleteDetailScreen() {
 
     return (
       <View style={styles.tabContainer}>
-        {summary?.is_injured && (
+        {!!summary?.is_injured && (
           <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '10', borderColor: colors.error || '#EF4444' }]}>
             <Ionicons name="warning" size={22} color={colors.error || '#EF4444'} />
             <View style={{flex:1, marginLeft: 12}}>
@@ -178,7 +178,7 @@ export default function AthleteDetailScreen() {
           </View>
         )}
 
-        {isFemale && currentPhase && (
+        {(isFemale && !!currentPhase) && (
           <View style={[styles.cycleCard, { backgroundColor: CYCLE_COLORS[currentPhase] + '15', borderColor: CYCLE_COLORS[currentPhase] }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Ionicons name="water" size={24} color={CYCLE_COLORS[currentPhase]} />
@@ -191,7 +191,7 @@ export default function AthleteDetailScreen() {
         )}
 
         <TouchableOpacity 
-          style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: 25, marginTop: (isFemale && currentPhase) ? 0 : 5 }]} 
+          style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: 25, marginTop: (isFemale && !!currentPhase) ? 0 : 5 }]} 
           onPress={() => router.push(`/periodization?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
         >
           <Ionicons name="calendar" size={20} color="#FFF" />
@@ -228,11 +228,10 @@ export default function AthleteDetailScreen() {
             <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.sleep_quality, true) }]}>{summary?.latest_wellness?.sleep_quality || '-'}</Text><Text style={styles.wellLabel}>SUEÑO</Text></View>
           </View>
           
-          {summary?.latest_wellness?.notes && (
+          {!!summary?.latest_wellness?.notes && (
             <View style={[styles.noteBox, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} /><Text style={[styles.noteText, { color: colors.textPrimary }]}>"{summary.latest_wellness.notes}"</Text></View>
           )}
 
-          {/* SECCIÓN MOSTRANDO EL MAPA DE MOLESTIAS AL COACH */}
           {discomfortsEntries.length > 0 && (
             <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
               <Text style={{ fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 10 }}>ZONAS CON MOLESTIAS HOY:</Text>
@@ -285,9 +284,9 @@ export default function AthleteDetailScreen() {
         </View>
       </View>
 
-      {expandedWorkouts[wk.id] && (
+      {!!expandedWorkouts[wk.id] && (
         <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
-          {wk.completed && wk.completion_data && (
+          {(wk.completed && !!wk.completion_data) && (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
               <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
                 ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
@@ -306,22 +305,22 @@ export default function AthleteDetailScreen() {
                   <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
                   {!wk.completed && (
                     <View style={{alignItems: 'flex-end'}}>
-                      {ex.sets && ex.reps && <Text style={{color: colors.primary, fontWeight: '700', fontSize: 12}}>{ex.sets}x{ex.reps}</Text>}
+                      {(ex.sets && ex.reps) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: 12}}>{ex.sets}x{ex.reps}</Text> : null}
                       {ex.weight ? <Text style={{color: colors.textSecondary, fontSize: 11}}>{ex.weight} kg</Text> : null}
                     </View>
                   )}
                 </View>
                 
-                {wk.completed && ex.recorded_video_url && <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />}
+                {(wk.completed && !!ex.recorded_video_url) && <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />}
                 
-                {!wk.completed && ex.video_url && (
+                {(!wk.completed && !!ex.video_url) && (
                   <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
                     <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
                     <Text style={{color: colors.error || '#EF4444', fontSize: 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
                   </TouchableOpacity>
                 )}
                 
-                {isTrainer && wk.completed && (
+                {(isTrainer && wk.completed) && (
                   <View style={styles.feedbackRow}>
                     <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
                     <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? colors.success : colors.primary }]} onPress={() => saveCoachNote(wk, idx, currentNote)}>
@@ -338,8 +337,8 @@ export default function AthleteDetailScreen() {
   );
 
   const renderWorkouts = () => {
-    const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => b.date.localeCompare(a.date));
-    const completedWorkouts = workouts.filter(w => w.completed).sort((a,b) => b.date.localeCompare(a.date));
+    const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const completedWorkouts = workouts.filter(w => w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
 
     return (
       <View style={styles.tabContainer}>
@@ -372,7 +371,7 @@ export default function AthleteDetailScreen() {
             {workouts.filter(w => w.completed).slice(-7).map((wk, idx) => (
               <View key={idx} style={[styles.barWrapper, { justifyContent: 'flex-end', height: '100%' }]}>
                 <View style={[styles.bar, styles.progressionBar, { height: '50%', backgroundColor: colors.primary }]} />
-                <Text style={styles.barDate}>{wk.date.split('-')[2]}</Text>
+                <Text style={styles.barDate}>{(wk.date || '').split('-')[2] || '?'}</Text>
               </View>
             ))}
           </View>
@@ -402,7 +401,7 @@ export default function AthleteDetailScreen() {
       
       <ScrollView showsVerticalScrollIndicator={false}>{activeContent()}</ScrollView>
 
-      {athlete?.phone && (
+      {!!athlete?.phone && (
         <TouchableOpacity 
           style={styles.whatsappFab} 
           onPress={() => Linking.openURL(`https://wa.me/${athlete.phone.replace(/\D/g, '')}?text=¡Hola ${params.name}! He estado revisando tu progreso...`)}
@@ -426,7 +425,7 @@ export default function AthleteDetailScreen() {
       <Modal visible={!!expandedVideo} transparent animationType="fade">
         <View style={styles.fullscreenVideoOverlay}>
           <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
-          {expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
+          {!!expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
         </View>
       </Modal>
     </SafeAreaView>
