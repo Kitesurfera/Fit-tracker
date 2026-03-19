@@ -135,7 +135,7 @@ export default function AthleteDetailScreen() {
   };
 
   const getLevelColor = (val: number, inverse = false) => {
-    if (!val) return colors.border + '50'; // Color sutil si no hay dato
+    if (!val) return colors.border + '50'; 
     if (!inverse) { if (val <= 2) return colors.success || '#10B981'; if (val === 3) return '#F59E0B'; return colors.error || '#EF4444'; } 
     else { if (val >= 4) return colors.success || '#10B981'; if (val === 3) return '#F59E0B'; return colors.error || '#EF4444'; }
   };
@@ -144,7 +144,6 @@ export default function AthleteDetailScreen() {
   const currentPhase = summary?.latest_wellness?.cycle_phase;
   const isTrainer = user?.role === 'trainer';
 
-  // --- NUEVA LÓGICA DEL GRÁFICO DE BARRAS DE FATIGA (7 DÍAS) ---
   const fatigueChartData = useMemo(() => {
     const days = 7;
     const data = [];
@@ -163,73 +162,102 @@ export default function AthleteDetailScreen() {
     return data;
   }, [history]);
 
-  const renderDashboard = () => (
-    <View style={styles.tabContainer}>
-      {summary?.is_injured && (
-        <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '10', borderColor: colors.error || '#EF4444' }]}>
-          <Ionicons name="warning" size={22} color={colors.error || '#EF4444'} />
-          <View style={{flex:1, marginLeft: 12}}>
-            <Text style={{color: colors.error || '#EF4444', fontWeight: '900', fontSize: 12}}>ESTADO: LESIONADA / BAJA</Text>
-            <Text style={{color: colors.textPrimary, fontSize: 13, marginTop: 2}}>{summary.injury_notes}</Text>
-          </View>
-        </View>
-      )}
+  const renderDashboard = () => {
+    const discomfortsObj = summary?.latest_wellness?.discomforts || {};
+    const discomfortsEntries = Object.entries(discomfortsObj);
 
-      {isFemale && currentPhase && (
-        <View style={[styles.cycleCard, { backgroundColor: CYCLE_COLORS[currentPhase] + '15', borderColor: CYCLE_COLORS[currentPhase] }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-            <Ionicons name="water" size={24} color={CYCLE_COLORS[currentPhase]} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: CYCLE_COLORS[currentPhase], fontSize: 11, fontWeight: '900', letterSpacing: 1 }}>ESTADO FISIOLÓGICO</Text>
-              <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', marginTop: 2 }}>{CYCLE_LABELS[currentPhase] || 'Fase Registrada'}</Text>
+    return (
+      <View style={styles.tabContainer}>
+        {summary?.is_injured && (
+          <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '10', borderColor: colors.error || '#EF4444' }]}>
+            <Ionicons name="warning" size={22} color={colors.error || '#EF4444'} />
+            <View style={{flex:1, marginLeft: 12}}>
+              <Text style={{color: colors.error || '#EF4444', fontWeight: '900', fontSize: 12}}>ESTADO: LESIONADA / BAJA</Text>
+              <Text style={{color: colors.textPrimary, fontSize: 13, marginTop: 2}}>{summary.injury_notes}</Text>
             </View>
           </View>
-        </View>
-      )}
-
-      <TouchableOpacity 
-        style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: 25, marginTop: (isFemale && currentPhase) ? 0 : 5 }]} 
-        onPress={() => router.push(`/periodization?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
-      >
-        <Ionicons name="calendar" size={20} color="#FFF" />
-        <Text style={styles.actionBtnText}>PLANIFICACIÓN (MACRO/MICRO)</Text>
-      </TouchableOpacity>
-
-      <Text style={[styles.sectionTitle]}>EVOLUCIÓN DE FATIGA (ÚLTIMOS 7 DÍAS)</Text>
-      <View style={[styles.chartCard, { backgroundColor: colors.surface, marginBottom: 25 }]}>
-        <View style={styles.barsContainer}>
-          {fatigueChartData.map((day, idx) => (
-            <View key={idx} style={[styles.barWrapper, { justifyContent: 'flex-end', height: '100%' }]}>
-              <Text style={[styles.barValue, { color: getLevelColor(day.fatigue) }]}>
-                {day.fatigue > 0 ? day.fatigue : '-'}
-              </Text>
-              <View style={[
-                styles.bar, 
-                { 
-                  height: day.fatigue > 0 ? `${(day.fatigue / 5) * 100}%` : '5%', 
-                  backgroundColor: getLevelColor(day.fatigue) 
-                }
-              ]} />
-              <Text style={styles.barDate}>{day.weekday}</Text>
-              <Text style={[styles.barDate, {marginTop: 2, fontSize: 11, color: colors.textPrimary, fontWeight: '800'}]}>{day.dayNum}</Text>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      <Text style={[styles.sectionTitle]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
-      <View style={[styles.mainCard, { backgroundColor: colors.surface }]}>
-        <View style={styles.wellnessRow}>
-          <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.fatigue) }]}>{summary?.latest_wellness?.fatigue || '-'}</Text><Text style={styles.wellLabel}>FATIGA</Text></View>
-          <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.soreness) }]}>{summary?.latest_wellness?.soreness || '-'}</Text><Text style={styles.wellLabel}>DOLOR</Text></View>
-          <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.sleep_quality, true) }]}>{summary?.latest_wellness?.sleep_quality || '-'}</Text><Text style={styles.wellLabel}>SUEÑO</Text></View>
-        </View>
-        {summary?.latest_wellness?.notes && (
-          <View style={[styles.noteBox, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} /><Text style={[styles.noteText, { color: colors.textPrimary }]}>"{summary.latest_wellness.notes}"</Text></View>
         )}
+
+        {isFemale && currentPhase && (
+          <View style={[styles.cycleCard, { backgroundColor: CYCLE_COLORS[currentPhase] + '15', borderColor: CYCLE_COLORS[currentPhase] }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+              <Ionicons name="water" size={24} color={CYCLE_COLORS[currentPhase]} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: CYCLE_COLORS[currentPhase], fontSize: 11, fontWeight: '900', letterSpacing: 1 }}>ESTADO FISIOLÓGICO</Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', marginTop: 2 }}>{CYCLE_LABELS[currentPhase] || 'Fase Registrada'}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        <TouchableOpacity 
+          style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: 25, marginTop: (isFemale && currentPhase) ? 0 : 5 }]} 
+          onPress={() => router.push(`/periodization?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
+        >
+          <Ionicons name="calendar" size={20} color="#FFF" />
+          <Text style={styles.actionBtnText}>PLANIFICACIÓN (MACRO/MICRO)</Text>
+        </TouchableOpacity>
+
+        <Text style={[styles.sectionTitle]}>EVOLUCIÓN DE FATIGA (ÚLTIMOS 7 DÍAS)</Text>
+        <View style={[styles.chartCard, { backgroundColor: colors.surface, marginBottom: 25 }]}>
+          <View style={styles.barsContainer}>
+            {fatigueChartData.map((day, idx) => (
+              <View key={idx} style={[styles.barWrapper, { justifyContent: 'flex-end', height: '100%' }]}>
+                <Text style={[styles.barValue, { color: getLevelColor(day.fatigue) }]}>
+                  {day.fatigue > 0 ? day.fatigue : '-'}
+                </Text>
+                <View style={[
+                  styles.bar, 
+                  { 
+                    height: day.fatigue > 0 ? `${(day.fatigue / 5) * 100}%` : '5%', 
+                    backgroundColor: getLevelColor(day.fatigue) 
+                  }
+                ]} />
+                <Text style={styles.barDate}>{day.weekday}</Text>
+                <Text style={[styles.barDate, {marginTop: 2, fontSize: 11, color: colors.textPrimary, fontWeight: '800'}]}>{day.dayNum}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <Text style={[styles.sectionTitle]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
+        <View style={[styles.mainCard, { backgroundColor: colors.surface }]}>
+          <View style={styles.wellnessRow}>
+            <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.fatigue) }]}>{summary?.latest_wellness?.fatigue || '-'}</Text><Text style={styles.wellLabel}>FATIGA</Text></View>
+            <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.soreness) }]}>{summary?.latest_wellness?.soreness || '-'}</Text><Text style={styles.wellLabel}>DOLOR</Text></View>
+            <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.sleep_quality, true) }]}>{summary?.latest_wellness?.sleep_quality || '-'}</Text><Text style={styles.wellLabel}>SUEÑO</Text></View>
+          </View>
+          
+          {summary?.latest_wellness?.notes && (
+            <View style={[styles.noteBox, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} /><Text style={[styles.noteText, { color: colors.textPrimary }]}>"{summary.latest_wellness.notes}"</Text></View>
+          )}
+
+          {/* SECCIÓN MOSTRANDO EL MAPA DE MOLESTIAS AL COACH */}
+          {discomfortsEntries.length > 0 && (
+            <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 10 }}>ZONAS CON MOLESTIAS HOY:</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                {discomfortsEntries.map(([part, level]) => (
+                  <View 
+                    key={part} 
+                    style={{ 
+                      backgroundColor: level === 'leve' ? '#F59E0B20' : '#EF444420', 
+                      paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, 
+                      borderWidth: 1, borderColor: level === 'leve' ? '#F59E0B' : '#EF4444' 
+                    }}
+                  >
+                     <Text style={{ color: level === 'leve' ? '#F59E0B' : '#EF4444', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>
+                       {part} {level === 'fuerte' ? '⚠️' : ''}
+                     </Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
       </View>
-    </View>
-  );
+    );
+  };
 
   const renderWorkoutItem = (wk: any) => (
     <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface }]}>
@@ -374,7 +402,6 @@ export default function AthleteDetailScreen() {
       
       <ScrollView showsVerticalScrollIndicator={false}>{activeContent()}</ScrollView>
 
-      {/* BOTÓN FLOTANTE (FAB) DE WHATSAPP */}
       {athlete?.phone && (
         <TouchableOpacity 
           style={styles.whatsappFab} 
