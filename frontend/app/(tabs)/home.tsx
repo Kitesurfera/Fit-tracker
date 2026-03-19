@@ -334,12 +334,18 @@ export default function HomeScreen() {
             {isFemale && (
               <View style={{ marginBottom: 25 }}>
                 <Text style={styles.sectionTitle}>TU CICLO ACTUAL</Text>
-                <View style={styles.cycleChipsContainer}>
+                                <View style={styles.cycleChipsContainer}>
                   {CYCLE_PHASES.map(phase => {
                     const isActive = currentPhase.startsWith(phase.id);
                     return (
-                      <TouchableOpacity key={phase.id} style={[styles.dashboardPhaseChip, { borderColor: colors.border, backgroundColor: colors.surface }, isActive && { backgroundColor: phase.color, borderColor: phase.color }]} onPress={() => handleQuickPhaseUpdate(phase.id)}>
-                        <Text style={{ color: isActive ? '#FFF' : colors.textSecondary, fontWeight: isActive ? '800', fontSize: 12 }}>{phase.label}</Text>
+                      <TouchableOpacity 
+                        key={phase.id} 
+                        style={[styles.dashboardPhaseChip, { borderColor: colors.border, backgroundColor: colors.surface }, isActive && { backgroundColor: phase.color, borderColor: phase.color }]} 
+                        onPress={() => handleQuickPhaseUpdate(phase.id)}
+                      >
+                        <Text style={{ color: isActive ? '#FFF' : colors.textSecondary, fontWeight: isActive ? '800' : '600', fontSize: 12 }}>
+                          {phase.label}
+                        </Text>
                       </TouchableOpacity>
                     );
                   })}
