@@ -21,7 +21,8 @@ export default function LoginScreen() {
   const router = useRouter();
   const { colors } = useTheme();
 
-  const [isLogin, setIsLogin] = useState(true);
+  const [isLogin, useState_isLogin] = useState(true);
+  const isLoginValue = isLogin; // To avoid shadowing issues
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -47,13 +48,13 @@ export default function LoginScreen() {
 
   const handleSubmit = async () => {
     setError('');
-    if (!email || !password || (!isLogin && !name)) {
+    if (!email || !password || (!isLoginValue && !name)) {
       setError('Completa todos los campos');
       return;
     }
     setSubmitting(true);
     try {
-      if (isLogin) {
+      if (isLoginValue) {
         await login(email, password);
       } else {
         // Por defecto, el registro desde aquí es para 'trainer'
@@ -81,14 +82,14 @@ export default function LoginScreen() {
             <View style={[styles.logoBadge, { backgroundColor: colors.primary }]}>
               <Ionicons name="fitness" size={40} color="#FFFFFF" />
             </View>
-            <Text style={[styles.brandTitle, { color: colors.textPrimary }]}>FIT TRACKER</Text>
+            <Text style={[styles.brandTitle, { color: colors.textPrimary }]}>AM COACHING</Text>
             <Text style={[styles.tagline, { color: colors.textSecondary }]}>
-              {isLogin ? 'GESTIÓN DE ALTO RENDIMIENTO' : 'REGISTRO DE ENTRENADOR'}
+              {isLoginValue ? 'GESTIÓN DE ALTO RENDIMIENTO' : 'REGISTRO DE ENTRENADOR'}
             </Text>
           </View>
 
           <View style={styles.form}>
-            {!isLogin && (
+            {!isLoginValue && (
               <View style={styles.inputGroup}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>NOMBRE</Text>
                 <TextInput
@@ -108,7 +109,7 @@ export default function LoginScreen() {
                 style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
                 value={email}
                 onChangeText={setEmail}
-                placeholder="atleta@fittracker.com"
+                placeholder="atleta@amcoaching.com"
                 placeholderTextColor="#888"
                 keyboardType="email-address"
                 autoCapitalize="none"
@@ -155,19 +156,19 @@ export default function LoginScreen() {
                 <ActivityIndicator color="#FFFFFF" />
               ) : (
                 <Text style={styles.mainBtnText}>
-                  {isLogin ? 'INICIAR SESIÓN' : 'CREAR CUENTA'}
+                  {isLoginValue ? 'INICIAR SESIÓN' : 'CREAR CUENTA'}
                 </Text>
               )}
             </TouchableOpacity>
 
             <TouchableOpacity
-              onPress={() => { setIsLogin(!isLogin); setError(''); }}
+              onPress={() => { useState_isLogin(!isLoginValue); setError(''); }}
               style={styles.toggleBtn}
             >
               <Text style={[styles.toggleText, { color: colors.textSecondary }]}>
-                {isLogin ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
+                {isLoginValue ? '¿No tienes cuenta? ' : '¿Ya tienes cuenta? '}
                 <Text style={{ color: colors.primary, fontWeight: '800' }}>
-                  {isLogin ? 'Regístrate' : 'Inicia sesión'}
+                  {isLoginValue ? 'Regístrate' : 'Inicia sesión'}
                 </Text>
               </Text>
             </TouchableOpacity>
