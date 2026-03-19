@@ -34,6 +34,8 @@ const CYCLE_LABELS: any = {
   lutea: 'Fase Lútea'
 };
 
+const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+
 export default function HomeScreen() {
   const { user, loading: authLoading } = useAuth();
   const { colors } = useTheme();
@@ -208,7 +210,6 @@ export default function HomeScreen() {
 
   const handleCloseMicroInfo = () => { setViewMicroInfo(null); setExpandedWorkoutId(null); };
 
-  // --- LÓGICA DEL BOTÓN DE COMPARTIR STATUS ---
   const handleShareStatus = () => {
     const currentPhase = summary?.latest_wellness?.cycle_phase;
     const phaseText = currentPhase ? (CYCLE_LABELS[currentPhase] || currentPhase) : 'Sin registro';
@@ -221,34 +222,35 @@ export default function HomeScreen() {
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
 
-  // --- LÓGICA DEL HEATMAP TIPO GITHUB ---
-  const heatmapData = useMemo(() => {
-    const days = 70; // 10 semanas
-    const columns: any[][] = [];
-    let currentColumn: any[] = [];
+  // --- NUEVA LÓGICA DEL MAPA DE FATIGA (CALENDARIO LINEAL) ---
+  const simplifiedHeatmapData = useMemo(() => {
+    const daysToPreview = 14; // Dos semanas
+    const timelineData: any[] = [];
     
-    for (let i = days - 1; i >= 0; i--) {
+    for (let i = daysToPreview - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
       const dateStr = d.toISOString().split('T')[0];
       const record = wellnessHistory.find(w => w.date === dateStr);
       
-      let color = colors.border + '40'; // Gris por defecto (sin registro)
+      let color = colors.border + '40'; // Gris (sin datos)
       if (record) {
         if (record.fatigue <= 2) color = colors.success || '#10B981';
         else if (record.fatigue === 3) color = '#F59E0B';
         else color = colors.error || '#EF4444';
       }
       
-      currentColumn.push({ date: dateStr, color, fatigue: record?.fatigue });
-      
-      if (currentColumn.length === 7 || i === 0) {
-        columns.push(currentColumn);
-        currentColumn = [];
-      }
+      timelineData.push({
+        dayNumber: d.getDate(),
+        weekday: WEEKDAYS[d.getDay()],
+        date: dateStr,
+        color,
+        fatigue: record?.fatigue,
+        isToday: dateStr === todayStr
+      });
     }
-    return columns;
-  }, [wellnessHistory, colors]);
+    return timelineData;
+  }, [wellnessHistory, colors, todayStr]);
 
   const microWorkouts = useMemo(() => {
     if (!viewMicroInfo) return [];
@@ -334,18 +336,12 @@ export default function HomeScreen() {
             {isFemale && (
               <View style={{ marginBottom: 25 }}>
                 <Text style={styles.sectionTitle}>TU CICLO ACTUAL</Text>
-                                <View style={styles.cycleChipsContainer}>
+                <View style={styles.cycleChipsContainer}>
                   {CYCLE_PHASES.map(phase => {
                     const isActive = currentPhase.startsWith(phase.id);
                     return (
-                      <TouchableOpacity 
-                        key={phase.id} 
-                        style={[styles.dashboardPhaseChip, { borderColor: colors.border, backgroundColor: colors.surface }, isActive && { backgroundColor: phase.color, borderColor: phase.color }]} 
-                        onPress={() => handleQuickPhaseUpdate(phase.id)}
-                      >
-                        <Text style={{ color: isActive ? '#FFF' : colors.textSecondary, fontWeight: isActive ? '800' : '600', fontSize: 12 }}>
-                          {phase.label}
-                        </Text>
+                      <TouchableOpacity key={phase.id} style={[styles.dashboardPhaseChip, { borderColor: colors.border, backgroundColor: colors.surface }, isActive && { backgroundColor: phase.color, borderColor: phase.color }]} onPress={() => handleQuickPhaseUpdate(phase.id)}>
+                        <Text style={{ color: isActive ? '#FFF' : colors.textSecondary, fontWeight: isActive ? '800' : '600', fontSize: 12 }}>{phase.label}</Text>
                       </TouchableOpacity>
                     );
                   })}
@@ -372,7 +368,6 @@ export default function HomeScreen() {
               </View>
             </View>
 
-            {/* BOTONES DE ACCIÓN (WELLNESS Y COMPARTIR) */}
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25 }}>
               <TouchableOpacity style={[styles.fullBtn, { backgroundColor: colors.surface, flex: 1, marginBottom: 0 }]} onPress={() => setShowWellness(true)}>
                 <Ionicons name="fitness-outline" size={20} color={colors.success || '#10B981'} />
@@ -385,28 +380,37 @@ export default function HomeScreen() {
               </TouchableOpacity>
             </View>
 
-            {/* HEATMAP TIPO GITHUB */}
+            {/* NUEVO MAPA DE FATIGA (CALENDARIO LINEAL) */}
             <View style={{ marginBottom: 30 }}>
-              <Text style={styles.sectionTitle}>HISTORIAL DE FATIGA (ÚLTIMAS 10 SEMANAS)</Text>
-              <View style={[styles.heatmapCard, { backgroundColor: colors.surface }]}>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ padding: 15 }}>
-                  <View style={{ flexDirection: 'row', gap: 4 }}>
-                    {heatmapData.map((col, cIdx) => (
-                      <View key={cIdx} style={{ gap: 4 }}>
-                        {col.map((cell, rIdx) => (
-                          <TouchableOpacity 
-                            key={rIdx} 
-                            style={[styles.heatmapCell, { backgroundColor: cell.color }]} 
-                            onPress={() => {
-                              if (Platform.OS !== 'web') Alert.alert(cell.date, cell.fatigue ? `Nivel de fatiga: ${cell.fatigue}/5` : 'Día de descanso / Sin registrar');
-                            }}
-                          />
-                        ))}
-                      </View>
-                    ))}
+              <Text style={styles.sectionTitle}>HISTORIAL DE FATIGA (ÚLTIMOS 14 DÍAS)</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                {simplifiedHeatmapData.map((item, idx) => (
+                  <View 
+                    key={idx} 
+                    style={[
+                      styles.timelineDayCard, 
+                      { 
+                        backgroundColor: colors.surface, 
+                        borderColor: item.color,
+                        borderWidth: item.fatigue ? 2 : 1 
+                      },
+                      item.isToday && { borderColor: colors.primary, backgroundColor: colors.surfaceHighlight }
+                    ]}
+                  >
+                    <Text style={[styles.timelineWeekday, { color: colors.textSecondary }, item.isToday && { color: colors.primary }]}>
+                      {item.weekday}
+                    </Text>
+                    <Text style={[styles.timelineDayNumber, { color: colors.textPrimary }, item.isToday && { fontWeight: '900' }]}>
+                      {item.dayNumber}
+                    </Text>
+                    <View style={[styles.fatigueBadge, { backgroundColor: item.fatigue ? item.color + '15' : 'transparent' }]}>
+                      <Text style={{ fontSize: 13, fontWeight: '900', color: item.fatigue ? item.color : colors.textSecondary }}>
+                        {item.fatigue ? `${item.fatigue}` : '-'}
+                      </Text>
+                    </View>
                   </View>
-                </ScrollView>
-              </View>
+                ))}
+              </ScrollView>
             </View>
 
             {hasUnreadFeedback && (
@@ -472,5 +476,10 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   container: { padding: 20 }, headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }, dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }, welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 }, refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' }, actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }, athleteCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' }, athleteInfoArea: { flexDirection: 'row', alignItems: 'center', flex: 1, padding: 18 }, athleteActionsArea: { flexDirection: 'row', alignItems: 'center', paddingRight: 15, gap: 10 }, iconHitbox: { padding: 8 }, avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 16, fontWeight: '700' }, tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 }, tipText: { fontSize: 13, fontWeight: '600', flex: 1, fontStyle: 'italic' }, phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 25, alignItems: 'center' }, phaseInfo: { flex: 1 }, phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 }, phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 }, macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 }, phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }, phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' }, metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 }, metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' }, metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 }, metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 }, fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 30, gap: 10 }, actionText: { fontWeight: '800', fontSize: 15 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5, textTransform: 'uppercase' }, sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 22, marginHorizontal: 20, marginBottom: 12 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 }, modalTitle: { fontSize: 22, fontWeight: '900', marginBottom: 25, textAlign: 'center' }, input: { borderWidth: 1, padding: 16, borderRadius: 15, marginBottom: 15, fontSize: 16 }, genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 }, genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }, submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 }, cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, feedbackAlertCard: { padding: 18, borderRadius: 20, marginBottom: 25, elevation: 3 }, modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }, modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 }, phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' }, infoTitleMacro: { fontSize: 18, fontWeight: '900', marginTop: 4, textAlign: 'center' }, divider: { height: 1, width: '80%', marginVertical: 15, opacity: 0.5 }, infoTitleMicro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' }, microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 }, datesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }, microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' }, microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 }, microWorkoutExercises: { padding: 14, borderTopWidth: 1 }, historyToggleBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 5 }, historyToggleText: { flex: 1, fontSize: 12, fontWeight: '800', marginLeft: 10, letterSpacing: 1 },
-  heatmapCard: { borderRadius: 20, overflow: 'hidden' }, heatmapCell: { width: 14, height: 14, borderRadius: 4 }
+  
+  // NUEVOS ESTILOS DEL MAPA LINEAL
+  timelineDayCard: { width: 60, height: 90, borderRadius: 14, alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
+  timelineWeekday: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  timelineDayNumber: { fontSize: 20, fontWeight: '800' },
+  fatigueBadge: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' }
 });
