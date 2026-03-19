@@ -91,7 +91,7 @@ export default function HomeScreen() {
           api.getWellnessHistory(user.id).catch(() => [])
         ]);
         
-        const sortedWorkouts = wData?.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()) || [];
+        const sortedWorkouts = wData?.sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()) || [];
         setWorkouts(sortedWorkouts);
         setSummary(sData);
         setWellnessHistory(wellnessData || []);
@@ -220,12 +220,11 @@ export default function HomeScreen() {
     const todayWorkout = workouts.find(w => w.date === todayStr);
     const trained = todayWorkout ? (todayWorkout.completed ? '✅ Completado' : '❌ Pendiente') : 'Libre / Descanso';
     
-    // Extraer datos del mapa de molestias
     const discomfortsObj = summary?.latest_wellness?.discomforts || {};
     const discomfortsEntries = Object.entries(discomfortsObj);
     let discomfortsText = '';
     if (discomfortsEntries.length > 0) {
-      discomfortsText = '\n🤕 Mapa Molestias:\n' + discomfortsEntries.map(([k, v]) => `   - ${k}: ${v.toUpperCase()}`).join('\n');
+      discomfortsText = '\n🤕 Mapa Molestias:\n' + discomfortsEntries.map(([k, v]) => `   - ${k}: ${String(v).toUpperCase()}`).join('\n');
     }
 
     const message = `🏄‍♀️ *Status Diario*\n\nNivel de Fatiga: ${fatigue}/5\nEntrenamiento hoy: ${trained}` + 
@@ -266,7 +265,7 @@ export default function HomeScreen() {
 
   const microWorkouts = useMemo(() => {
     if (!viewMicroInfo) return [];
-    return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => a.date.localeCompare(b.date));
+    return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')));
   }, [workouts, viewMicroInfo]);
 
   if (authLoading || (!user && !isTrainer)) {
@@ -285,7 +284,7 @@ export default function HomeScreen() {
         <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}><Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} /></View>
         <View style={{ flex: 1 }}>
           <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{item.title}</Text>
-          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date}</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date || 'Sin fecha'}</Text>
           {hasSessionFeedback && <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}><Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text></View>}
         </View>
         <Ionicons name="play" size={18} color={item.completed ? colors.border : colors.primary} />
@@ -295,6 +294,8 @@ export default function HomeScreen() {
 
   const renderTrainerView = () => (
     <FlatList
+      style={{ flex: 1 }}
+      contentContainerStyle={{ flexGrow: 1 }}
       data={athletes}
       keyExtractor={(item) => item.id}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.primary} />}
@@ -326,12 +327,14 @@ export default function HomeScreen() {
   );
 
   const renderAthleteView = () => {
-    const currentPhase = summary?.latest_wellness?.cycle_phase || '';
-    const pendingWorkouts = workouts.filter(w => !w.completed);
-    const completedWorkouts = workouts.filter(w => w.completed);
+    const currentPhase = String(summary?.latest_wellness?.cycle_phase || '');
+    const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
+    const completedWorkouts = workouts.filter(w => w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
     
     return (
       <FlatList
+        style={{ flex: 1 }}
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 20 }}
         data={pendingWorkouts}
         keyExtractor={(item) => item.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.primary} />}
@@ -465,11 +468,11 @@ export default function HomeScreen() {
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}><View style={[styles.phaseIconBadge, { backgroundColor: (viewMicroInfo.color || colors.primary) + '15' }]}><Ionicons name="flag" size={24} color={viewMicroInfo.color || colors.primary} /></View><TouchableOpacity onPress={handleCloseMicroInfo}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity></View>
                 <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>PERTENECE AL MACROCICLO:</Text><Text style={[styles.infoTitleMacro, { color: colors.textPrimary }]}>{viewMicroInfo.macroNombre}</Text>
                 <View style={[styles.divider, { backgroundColor: colors.border }]} /><Text style={[styles.infoLabel, { color: colors.textSecondary }]}>FASE ACTUAL (MICROCICLO):</Text><Text style={[styles.infoTitleMicro, { color: colors.textPrimary }]}>{viewMicroInfo.nombre}</Text>
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}><View style={[styles.microTypeBadgeBig, { backgroundColor: (viewMicroInfo.color || colors.primary) }]}><Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }}>{viewMicroInfo.tipo}</Text></View><View style={[styles.datesRow, { marginTop: 0 }]}><Ionicons name="calendar-outline" size={16} color={colors.textSecondary} /><Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{viewMicroInfo.fecha_inicio.split('-').reverse().join('/')} - {viewMicroInfo.fecha_fin.split('-').reverse().join('/')}</Text></View></View>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}><View style={[styles.microTypeBadgeBig, { backgroundColor: (viewMicroInfo.color || colors.primary) }]}><Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }}>{viewMicroInfo.tipo}</Text></View><View style={[styles.datesRow, { marginTop: 0 }]}><Ionicons name="calendar-outline" size={16} color={colors.textSecondary} /><Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{viewMicroInfo.fecha_inicio?.split('-').reverse().join('/') || 'N/A'} - {viewMicroInfo.fecha_fin?.split('-').reverse().join('/') || 'N/A'}</Text></View></View>
                 <View style={{ width: '100%', marginTop: 25, flexShrink: 1 }}><Text style={[styles.infoLabel, { color: colors.textSecondary, marginBottom: 10, textAlign: 'left' }]}>SESIONES PROGRAMADAS ({microWorkouts.length})</Text>
                   <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={true}>
                     {microWorkouts.map(wk => (
-                      <View key={wk.id} style={[styles.microWorkoutCard, { borderColor: colors.border }]}><TouchableOpacity style={[styles.microWorkoutHeader, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setExpandedWorkoutId(expandedWorkoutId === wk.id ? null : wk.id)}><Ionicons name="barbell-outline" size={18} color={viewMicroInfo.color || colors.primary} /><View style={{ flex: 1, marginLeft: 10 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{wk.title}</Text><Text style={{ color: colors.textSecondary, fontSize: 11 }}>{wk.date.split('-').reverse().join('/')}</Text></View><Ionicons name={expandedWorkoutId === wk.id ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} /></TouchableOpacity>
+                      <View key={wk.id} style={[styles.microWorkoutCard, { borderColor: colors.border }]}><TouchableOpacity style={[styles.microWorkoutHeader, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setExpandedWorkoutId(expandedWorkoutId === wk.id ? null : wk.id)}><Ionicons name="barbell-outline" size={18} color={viewMicroInfo.color || colors.primary} /><View style={{ flex: 1, marginLeft: 10 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{wk.title}</Text><Text style={{ color: colors.textSecondary, fontSize: 11 }}>{wk.date?.split('-').reverse().join('/') || 'Sin fecha'}</Text></View><Ionicons name={expandedWorkoutId === wk.id ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} /></TouchableOpacity>
                         {expandedWorkoutId === wk.id && (<View style={[styles.microWorkoutExercises, { borderTopColor: colors.border }]}>{wk.exercises && wk.exercises.length > 0 ? (wk.exercises.map((ex: any, i: number) => { if (ex.is_hiit_block) { return (<View key={i} style={{ marginBottom: 8 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 12 }}>⚡ {ex.name}</Text>{ex.hiit_exercises?.map((he: any, j: number) => (<Text key={j} style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 15, marginTop: 2 }}>• {he.name} <Text style={{fontWeight: '600', color: colors.textPrimary}}>({he.duration_reps})</Text></Text>))}</View>); } else { return (<Text key={i} style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>• {ex.name} <Text style={{fontWeight: '600', color: viewMicroInfo.color || colors.primary}}>{ex.sets}x{ex.reps}</Text></Text>); } })) : (<Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic' }}>Sin ejercicios registrados.</Text>)}</View>)}
                       </View>
                     ))}
