@@ -80,7 +80,7 @@ export default function LoginScreen() {
           {/* SECCIÓN DEL LOGO Y NOMBRE APP */}
           <View style={styles.header}>
             <Image
-              source={require('../assets/logo.png')}
+              source={require('../assets/images/icon.png')}
               style={styles.logo}
             />
             <Text style={[styles.brandTitle, { color: colors.textPrimary }]}>AM COACHING</Text>
