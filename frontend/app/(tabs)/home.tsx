@@ -82,7 +82,7 @@ export default function HomeScreen() {
     try {
       if (isTrainer) {
         const data = await api.getAthletes();
-        setAthletes(data || []);
+        setAthletes(Array.isArray(data) ? data : []);
       } else {
         const [wData, sData, treeData, wellnessData] = await Promise.all([
           api.getWorkouts(),
@@ -91,10 +91,16 @@ export default function HomeScreen() {
           api.getWellnessHistory(user.id).catch(() => [])
         ]);
         
-        const sortedWorkouts = wData?.sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime()) || [];
+        const safeWorkouts = Array.isArray(wData) ? [...wData] : [];
+        const sortedWorkouts = safeWorkouts.sort((a: any, b: any) => {
+          const timeA = a.date ? new Date(a.date).getTime() : 0;
+          const timeB = b.date ? new Date(b.date).getTime() : 0;
+          return timeB - timeA;
+        });
+
         setWorkouts(sortedWorkouts);
         setSummary(sData);
-        setWellnessHistory(wellnessData || []);
+        setWellnessHistory(Array.isArray(wellnessData) ? wellnessData : []);
 
         let foundMicro = null;
         const todayWorkout = sortedWorkouts.find((w: any) => w.date === todayStr);
@@ -140,7 +146,7 @@ export default function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (authLoading || !user) return;
+      if (authLoading || (!user && !isTrainer)) return;
       const init = async () => {
         if (isTrainer) { await loadData(true); return; }
         const sData = await loadData(true);
@@ -317,7 +323,11 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </Link>
           <View style={styles.athleteActionsArea}>
-            {item.phone && <TouchableOpacity onPress={() => Linking.openURL(`https://wa.me/${item.phone.replace(/\D/g, '')}`)} style={styles.iconHitbox}><Ionicons name="logo-whatsapp" size={20} color="#25D366" /></TouchableOpacity>}
+            {!!item.phone && (
+              <TouchableOpacity onPress={() => Linking.openURL(`https://wa.me/${item.phone.replace(/\D/g, '')}`)} style={styles.iconHitbox}>
+                <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
+              </TouchableOpacity>
+            )}
             <TouchableOpacity onPress={() => openEditAthlete(item)} style={styles.iconHitbox}><Ionicons name="pencil-outline" size={20} color={colors.textSecondary} /></TouchableOpacity>
             <TouchableOpacity onPress={() => handleDeleteAthlete(item.id, item.name)} style={styles.iconHitbox}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
           </View>
@@ -367,7 +377,7 @@ export default function HomeScreen() {
             <TouchableOpacity disabled={!activeMicro} onPress={() => setViewMicroInfo(activeMicro)} style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
               <View style={styles.phaseInfo}><Text style={styles.phaseLabel}>PLANIFICACIÓN ACTUAL</Text><Text style={styles.phaseName}>{activeMicro ? activeMicro.nombre : 'Periodización libre'}</Text><Text style={styles.macroRef}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Entrena con cabeza'}</Text></View>
               <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'BASE'}</Text></View>
-              {activeMicro && <Ionicons name="chevron-forward" size={20} color="#FFF" style={{ marginLeft: 10, opacity: 0.8 }} />}
+              {!!activeMicro && <Ionicons name="chevron-forward" size={20} color="#FFF" style={{ marginLeft: 10, opacity: 0.8 }} />}
             </TouchableOpacity>
 
             <View style={styles.metricsGrid}>
@@ -463,16 +473,16 @@ export default function HomeScreen() {
       <Modal visible={!!viewMicroInfo} transparent animationType="fade">
         <TouchableOpacity style={styles.modalOverlayCenter} onPress={handleCloseMicroInfo}>
           <TouchableOpacity activeOpacity={1} style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
-            {viewMicroInfo && (
+            {!!viewMicroInfo && (
               <View style={{ alignItems: 'center', width: '100%', flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}><View style={[styles.phaseIconBadge, { backgroundColor: (viewMicroInfo.color || colors.primary) + '15' }]}><Ionicons name="flag" size={24} color={viewMicroInfo.color || colors.primary} /></View><TouchableOpacity onPress={handleCloseMicroInfo}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity></View>
                 <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>PERTENECE AL MACROCICLO:</Text><Text style={[styles.infoTitleMacro, { color: colors.textPrimary }]}>{viewMicroInfo.macroNombre}</Text>
                 <View style={[styles.divider, { backgroundColor: colors.border }]} /><Text style={[styles.infoLabel, { color: colors.textSecondary }]}>FASE ACTUAL (MICROCICLO):</Text><Text style={[styles.infoTitleMicro, { color: colors.textPrimary }]}>{viewMicroInfo.nombre}</Text>
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}><View style={[styles.microTypeBadgeBig, { backgroundColor: (viewMicroInfo.color || colors.primary) }]}><Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }}>{viewMicroInfo.tipo}</Text></View><View style={[styles.datesRow, { marginTop: 0 }]}><Ionicons name="calendar-outline" size={16} color={colors.textSecondary} /><Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{viewMicroInfo.fecha_inicio?.split('-').reverse().join('/') || 'N/A'} - {viewMicroInfo.fecha_fin?.split('-').reverse().join('/') || 'N/A'}</Text></View></View>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}><View style={[styles.microTypeBadgeBig, { backgroundColor: (viewMicroInfo.color || colors.primary) }]}><Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }}>{viewMicroInfo.tipo}</Text></View><View style={[styles.datesRow, { marginTop: 0 }]}><Ionicons name="calendar-outline" size={16} color={colors.textSecondary} /><Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{(viewMicroInfo.fecha_inicio || '').split('-').reverse().join('/') || 'N/A'} - {(viewMicroInfo.fecha_fin || '').split('-').reverse().join('/') || 'N/A'}</Text></View></View>
                 <View style={{ width: '100%', marginTop: 25, flexShrink: 1 }}><Text style={[styles.infoLabel, { color: colors.textSecondary, marginBottom: 10, textAlign: 'left' }]}>SESIONES PROGRAMADAS ({microWorkouts.length})</Text>
                   <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={true}>
                     {microWorkouts.map(wk => (
-                      <View key={wk.id} style={[styles.microWorkoutCard, { borderColor: colors.border }]}><TouchableOpacity style={[styles.microWorkoutHeader, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setExpandedWorkoutId(expandedWorkoutId === wk.id ? null : wk.id)}><Ionicons name="barbell-outline" size={18} color={viewMicroInfo.color || colors.primary} /><View style={{ flex: 1, marginLeft: 10 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{wk.title}</Text><Text style={{ color: colors.textSecondary, fontSize: 11 }}>{wk.date?.split('-').reverse().join('/') || 'Sin fecha'}</Text></View><Ionicons name={expandedWorkoutId === wk.id ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} /></TouchableOpacity>
+                      <View key={wk.id} style={[styles.microWorkoutCard, { borderColor: colors.border }]}><TouchableOpacity style={[styles.microWorkoutHeader, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setExpandedWorkoutId(expandedWorkoutId === wk.id ? null : wk.id)}><Ionicons name="barbell-outline" size={18} color={viewMicroInfo.color || colors.primary} /><View style={{ flex: 1, marginLeft: 10 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{wk.title}</Text><Text style={{ color: colors.textSecondary, fontSize: 11 }}>{(wk.date || '').split('-').reverse().join('/') || 'Sin fecha'}</Text></View><Ionicons name={expandedWorkoutId === wk.id ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} /></TouchableOpacity>
                         {expandedWorkoutId === wk.id && (<View style={[styles.microWorkoutExercises, { borderTopColor: colors.border }]}>{wk.exercises && wk.exercises.length > 0 ? (wk.exercises.map((ex: any, i: number) => { if (ex.is_hiit_block) { return (<View key={i} style={{ marginBottom: 8 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 12 }}>⚡ {ex.name}</Text>{ex.hiit_exercises?.map((he: any, j: number) => (<Text key={j} style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 15, marginTop: 2 }}>• {he.name} <Text style={{fontWeight: '600', color: colors.textPrimary}}>({he.duration_reps})</Text></Text>))}</View>); } else { return (<Text key={i} style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>• {ex.name} <Text style={{fontWeight: '600', color: viewMicroInfo.color || colors.primary}}>{ex.sets}x{ex.reps}</Text></Text>); } })) : (<Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic' }}>Sin ejercicios registrados.</Text>)}</View>)}
                       </View>
                     ))}
