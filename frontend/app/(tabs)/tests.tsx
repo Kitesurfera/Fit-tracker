@@ -58,7 +58,7 @@ export default function TestsScreen() {
     name: '',
     category: 'strength',
     isBilateral: false,
-    unit: '',
+    unit: 'kg',
     value: '',
     valueLeft: '',
     valueRight: '',
@@ -75,7 +75,6 @@ export default function TestsScreen() {
       const ts = await api.getTests(params);
       let ath = isTrainer ? await api.getAthletes() : [];
 
-      // FILTRO APLICADO: Excluimos cualquier test que sea de tipo 'medicion'
       const rawTests = Array.isArray(ts) ? ts : (ts?.data || []);
       const filteredTests = rawTests.filter(t => t.test_type !== 'medicion');
 
@@ -116,7 +115,7 @@ export default function TestsScreen() {
       name: test.custom_name || test.test_name,
       category: test.test_type || 'strength',
       isBilateral: test.value_left != null || test.value_right != null,
-      unit: test.unit || '',
+      unit: test.unit || 'kg',
       value: String(test.value ?? ''),
       valueLeft: String(test.value_left ?? ''),
       valueRight: String(test.value_right ?? ''),
@@ -125,15 +124,31 @@ export default function TestsScreen() {
     setShowCustomModal(true);
   };
 
+  const handleSaveCategory = () => {
+    if (!newCategoryName.trim()) return;
+    const newKey = newCategoryName.trim().toLowerCase().replace(/\s+/g, '_');
+    
+    if (!dynamicCategories.find(c => c.key === newKey)) {
+      setDynamicCategories([...dynamicCategories, { key: newKey, label: newCategoryName.trim() }]);
+    }
+    
+    setNewCategoryName('');
+    setShowCategoryModal(false);
+    setSelectedCategory(newKey);
+  };
+
   const handleSave = async () => {
     if (!formData.name.trim()) return Alert.alert("Error", "El nombre es obligatorio.");
+    if (!formData.isBilateral && !formData.value) return Alert.alert("Error", "Añade un valor al test.");
+    if (formData.isBilateral && (!formData.valueLeft || !formData.valueRight)) return Alert.alert("Error", "Añade valores para ambos lados.");
+
     setSaving(true);
     try {
       const payload: any = {
         unit: formData.unit.trim(),
         notes: formData.notes.trim(),
         test_type: formData.category,
-        value: formData.isBilateral ? 0 : parseFloat(formData.value.replace(',', '.') || '0'),
+        value: formData.isBilateral ? null : parseFloat(formData.value.replace(',', '.') || '0'),
         value_left: formData.isBilateral ? parseFloat(formData.valueLeft.replace(',', '.') || '0') : null,
         value_right: formData.isBilateral ? parseFloat(formData.valueRight.replace(',', '.') || '0') : null,
       };
@@ -147,7 +162,7 @@ export default function TestsScreen() {
         payload.custom_name = formData.name.trim();
         payload.date = new Date().toISOString().split('T')[0];
         const created = await api.createTest(payload);
-        // Filtramos por si acaso se ha creado uno de medición, aunque por UI no debería pasar
+        
         if (created.test_type !== 'medicion') {
           setTests([created, ...tests]);
         }
@@ -183,7 +198,7 @@ export default function TestsScreen() {
                     style={[styles.actionBtn, { backgroundColor: colors.primary }]} 
                     onPress={() => {
                       setEditTest(null);
-                      setFormData({ name: '', category: 'strength', isBilateral: false, unit: '', value: '', valueLeft: '', valueRight: '', notes: '' });
+                      setFormData({ name: '', category: selectedCategory !== 'all' ? selectedCategory : 'strength', isBilateral: false, unit: 'kg', value: '', valueLeft: '', valueRight: '', notes: '' });
                       setShowCustomModal(true);
                     }}
                   >
@@ -202,6 +217,14 @@ export default function TestsScreen() {
                     <Text style={[styles.filterText, { color: colors.textSecondary }, selectedCategory === cat.key && { color: '#FFF' }]}>{cat.label}</Text>
                   </TouchableOpacity>
                 ))}
+                
+                {/* BOTÓN NUEVA CATEGORÍA */}
+                <TouchableOpacity 
+                  style={[styles.filterChip, { borderColor: colors.primary, backgroundColor: colors.primary + '10', borderStyle: 'dashed' }]} 
+                  onPress={() => setShowCategoryModal(true)}
+                >
+                  <Ionicons name="add" size={16} color={colors.primary} />
+                </TouchableOpacity>
               </ScrollView>
             </View>
           }
@@ -236,26 +259,147 @@ export default function TestsScreen() {
         />
       </View>
 
-      {/* MODAL NUEVO/EDITAR */}
-      <Modal visible={showCustomModal} transparent animationType="fade">
+      {/* MODAL NUEVA CATEGORÍA */}
+      <Modal visible={showCategoryModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboard}>
             <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editTest ? 'Editar Test' : 'Nuevo Test'}</Text>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nueva Categoría</Text>
               <TextInput 
                 style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                placeholder="Nombre del test" 
+                placeholder="Ej. Resistencia, Flexibilidad..." 
                 placeholderTextColor={colors.textSecondary}
-                value={formData.name} 
-                onChangeText={(t) => setFormData({...formData, name: t})} 
+                value={newCategoryName} 
+                onChangeText={setNewCategoryName} 
+                autoFocus
               />
               <View style={styles.modalActions}>
-                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setShowCustomModal(false)}><Text style={{color: colors.textPrimary}}>Cancelar</Text></TouchableOpacity>
-                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleSave} disabled={saving}>
-                  {saving ? <ActivityIndicator color="#FFF" /> : <Text style={{color: '#FFF', fontWeight: '700'}}>Guardar</Text>}
+                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => { setShowCategoryModal(false); setNewCategoryName(''); }}>
+                  <Text style={{color: colors.textPrimary, fontWeight: '700'}}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleSaveCategory}>
+                  <Text style={{color: '#FFF', fontWeight: '700'}}>Crear</Text>
                 </TouchableOpacity>
               </View>
             </View>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* MODAL NUEVO/EDITAR TEST */}
+      <Modal visible={showCustomModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboard}>
+            <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+              <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editTest ? 'Editar Test' : 'Nuevo Test'}</Text>
+                
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>NOMBRE DEL TEST</Text>
+                <TextInput 
+                  style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
+                  placeholder="Ej. Salto Vertical" 
+                  placeholderTextColor={colors.textSecondary}
+                  value={formData.name} 
+                  onChangeText={(t) => setFormData({...formData, name: t})} 
+                />
+
+                <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>TIPO DE MEDICIÓN</Text>
+                <View style={styles.toggleRow}>
+                  <TouchableOpacity 
+                    style={[styles.toggleBtn, !formData.isBilateral && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    onPress={() => setFormData({...formData, isBilateral: false})}
+                  >
+                    <Text style={{ color: !formData.isBilateral ? '#FFF' : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Dato Único</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.toggleBtn, formData.isBilateral && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    onPress={() => setFormData({...formData, isBilateral: true})}
+                  >
+                    <Text style={{ color: formData.isBilateral ? '#FFF' : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Izq + Der</Text>
+                  </TouchableOpacity>
+                </View>
+
+                {formData.isBilateral ? (
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR IZQUIERDA</Text>
+                      <TextInput 
+                        style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
+                        keyboardType="numeric"
+                        placeholder="0.0" 
+                        placeholderTextColor={colors.textSecondary}
+                        value={formData.valueLeft} 
+                        onChangeText={(t) => setFormData({...formData, valueLeft: t})} 
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR DERECHA</Text>
+                      <TextInput 
+                        style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
+                        keyboardType="numeric"
+                        placeholder="0.0" 
+                        placeholderTextColor={colors.textSecondary}
+                        value={formData.valueRight} 
+                        onChangeText={(t) => setFormData({...formData, valueRight: t})} 
+                      />
+                    </View>
+                  </View>
+                ) : (
+                  <View>
+                    <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR DEL TEST</Text>
+                    <TextInput 
+                      style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
+                      keyboardType="numeric"
+                      placeholder="Ej. 120" 
+                      placeholderTextColor={colors.textSecondary}
+                      value={formData.value} 
+                      onChangeText={(t) => setFormData({...formData, value: t})} 
+                    />
+                  </View>
+                )}
+
+                <View style={{ flexDirection: 'row', gap: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>CATEGORÍA</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+                      {dynamicCategories.filter(c => c.key !== 'all').map(cat => (
+                        <TouchableOpacity 
+                          key={cat.key} 
+                          style={[styles.chipSelect, { borderColor: colors.border }, formData.category === cat.key && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
+                          onPress={() => setFormData({...formData, category: cat.key})}
+                        >
+                          <Text style={{ fontSize: 12, fontWeight: '700', color: formData.category === cat.key ? '#FFF' : colors.textSecondary }}>{cat.label}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  </View>
+                  
+                  <View style={{ width: 80 }}>
+                    <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>UNIDAD</Text>
+                    <View style={{ gap: 5, marginBottom: 20 }}>
+                      {['kg', 'cm', 'seg', 'reps'].map(u => (
+                        <TouchableOpacity 
+                          key={u} 
+                          style={[styles.chipSelect, { borderColor: colors.border, paddingVertical: 6 }, formData.unit === u && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
+                          onPress={() => setFormData({...formData, unit: u})}
+                        >
+                          <Text style={{ fontSize: 11, fontWeight: '700', color: formData.unit === u ? '#FFF' : colors.textSecondary, textAlign: 'center' }}>{u}</Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </View>
+                </View>
+
+                <View style={styles.modalActions}>
+                  <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setShowCustomModal(false)}>
+                    <Text style={{color: colors.textPrimary, fontWeight: '700'}}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleSave} disabled={saving}>
+                    {saving ? <ActivityIndicator color="#FFF" /> : <Text style={{color: '#FFF', fontWeight: '700'}}>Guardar</Text>}
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </ScrollView>
           </KeyboardAvoidingView>
         </View>
       </Modal>
@@ -271,7 +415,7 @@ const styles = StyleSheet.create({
   headerActions: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   refreshIcon: { padding: 5 },
   actionBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  filterRow: { paddingHorizontal: 20, paddingTop: 15, gap: 10 },
+  filterRow: { paddingHorizontal: 20, paddingTop: 15, gap: 10, alignItems: 'center' },
   filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
   filterText: { fontSize: 13, fontWeight: '700' },
   listContent: { paddingBottom: 40, paddingHorizontal: 20 },
@@ -293,7 +437,11 @@ const styles = StyleSheet.create({
   modalKeyboard: { width: '100%', maxWidth: 450, padding: 20 },
   modalCard: { padding: 25, borderRadius: 25, borderWidth: 1 },
   modalTitle: { fontSize: 20, fontWeight: '900', marginBottom: 20 },
+  fieldLabel: { fontSize: 10, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
   modalInput: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 20, fontSize: 16 },
-  modalActions: { flexDirection: 'row', gap: 12 },
+  toggleRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
+  toggleBtn: { flex: 1, paddingVertical: 12, borderWidth: 1, borderRadius: 12, alignItems: 'center' },
+  chipSelect: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, marginRight: 8 },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 10 },
   modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' }
 });
