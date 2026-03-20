@@ -112,7 +112,7 @@ export default function TestsScreen() {
   const openEditModal = (test: any) => {
     setEditTest(test);
     setFormData({
-      name: test.custom_name || test.test_name,
+      name: test.custom_name || TEST_LABELS[test.test_name] || test.test_name,
       category: test.test_type || 'strength',
       isBilateral: test.value_left != null || test.value_right != null,
       unit: test.unit || 'kg',
@@ -151,16 +151,31 @@ export default function TestsScreen() {
         value: formData.isBilateral ? null : parseFloat(formData.value.replace(',', '.') || '0'),
         value_left: formData.isBilateral ? parseFloat(formData.valueLeft.replace(',', '.') || '0') : null,
         value_right: formData.isBilateral ? parseFloat(formData.valueRight.replace(',', '.') || '0') : null,
+        date: new Date().toISOString().split('T')[0] // Se actualiza a la fecha de hoy
       };
 
-      if (editTest) {
-        const updated = await api.updateTest(editTest.id, payload);
-        setTests(prev => prev.map(t => t.id === editTest.id ? { ...t, ...updated } : t));
+      // Búsqueda inteligente: ¿Existe ya un test con este nombre exacto?
+      const searchName = formData.name.trim().toLowerCase();
+      let targetTest = editTest;
+      
+      if (!targetTest) {
+        targetTest = tests.find(t => 
+          (t.custom_name && t.custom_name.toLowerCase() === searchName) ||
+          (TEST_LABELS[t.test_name] && TEST_LABELS[t.test_name].toLowerCase() === searchName) ||
+          (t.test_name && t.test_name.toLowerCase() === searchName)
+        );
+      }
+
+      if (targetTest) {
+        // ACTIALIZAR TEST EXISTENTE
+        const updated = await api.updateTest(targetTest.id, payload);
+        setTests(prev => prev.map(t => t.id === targetTest.id ? { ...t, ...updated } : t));
+        if (Platform.OS !== 'web' && !editTest) Alert.alert("Test Actualizado", "Has actualizado tu marca para este test.");
       } else {
+        // CREAR NUEVO TEST
         payload.athlete_id = isTrainer ? selectedAthlete : user?.id;
         payload.test_name = 'custom';
         payload.custom_name = formData.name.trim();
-        payload.date = new Date().toISOString().split('T')[0];
         const created = await api.createTest(payload);
         
         if (created.test_type !== 'medicion') {
@@ -325,7 +340,7 @@ export default function TestsScreen() {
                       <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR IZQUIERDA</Text>
                       <TextInput 
                         style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         placeholder="0.0" 
                         placeholderTextColor={colors.textSecondary}
                         value={formData.valueLeft} 
@@ -336,7 +351,7 @@ export default function TestsScreen() {
                       <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR DERECHA</Text>
                       <TextInput 
                         style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                        keyboardType="numeric"
+                        keyboardType="decimal-pad"
                         placeholder="0.0" 
                         placeholderTextColor={colors.textSecondary}
                         value={formData.valueRight} 
@@ -349,7 +364,7 @@ export default function TestsScreen() {
                     <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR DEL TEST</Text>
                     <TextInput 
                       style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                      keyboardType="numeric"
+                      keyboardType="decimal-pad"
                       placeholder="Ej. 120" 
                       placeholderTextColor={colors.textSecondary}
                       value={formData.value} 
