@@ -46,6 +46,11 @@ export default function CalendarScreen() {
   const [cycleLengthInput, setCycleLengthInput] = useState('28');
   const [periodLengthInput, setPeriodLengthInput] = useState('5');
 
+  // Estados para saltar sesión
+  const [showSkipModal, setShowSkipModal] = useState(false);
+  const [skipWorkoutId, setSkipWorkoutId] = useState<string | null>(null);
+  const [skipReason, setSkipReason] = useState('');
+
   const isTrainer = user?.role === 'trainer';
   const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
 
@@ -156,6 +161,27 @@ export default function CalendarScreen() {
     }
   };
 
+  const handleSkipSubmit = async () => {
+    if (!skipReason.trim()) return Alert.alert("Aviso", "Indica el motivo para que lo revise el coach.");
+    setUpdating(true);
+    try {
+      const workout = workouts.find(w => w.id === skipWorkoutId);
+      if(workout) {
+        await api.updateWorkout(skipWorkoutId!, {
+          ...workout,
+          completed: true,
+          observations: `[NO COMPLETADA] Motivo: ${skipReason}`
+        });
+      }
+      setShowSkipModal(false);
+      setSkipReason('');
+      refreshAthleteData(selectedAthlete);
+    } catch(e) {
+      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo actualizar.");
+      setUpdating(false);
+    }
+  };
+
   const openCycleSettings = () => {
     setCycleLengthInput(String(selectedAthlete?.cycle_length || 28));
     setPeriodLengthInput(String(selectedAthlete?.period_length || 5));
@@ -217,7 +243,6 @@ export default function CalendarScreen() {
     return microsResult.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
   }, [macros, currentMonth, currentYear, colors.primary]);
 
-  // Motor central del ciclo biológico
   const cycleData = useMemo(() => {
     if (!isFemale || !wellnessHistory || wellnessHistory.length === 0) return null;
     const menstrualLogs = wellnessHistory.filter(w => w.cycle_phase === 'menstrual' || w.cycle_phase?.startsWith('menstruacion')).sort((a, b) => b.date.localeCompare(a.date));
@@ -263,7 +288,7 @@ export default function CalendarScreen() {
     const startTime = cycleData.actualDayOne.getTime();
     const diffDays = Math.floor((targetTime - startTime) / (1000 * 3600 * 24));
 
-    if (diffDays < 0) return null; // Días antes del último registro
+    if (diffDays < 0) return null;
 
     const currentCycleDay = (diffDays % cycleData.cycleLength) + 1;
 
@@ -417,9 +442,18 @@ export default function CalendarScreen() {
               <View key={wk.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
                 <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => handleWorkoutPress(wk)}>
                   <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}><Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} /></View>
-                  <View style={{ flex: 1 }}><Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{wk.title}</Text><Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.completed ? 'Completado' : isTrainer ? 'Sesión asignada' : 'Sesión pendiente'}</Text></View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.workoutTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>{wk.title}</Text>
+                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.completed ? 'Completado' : isTrainer ? 'Sesión asignada' : 'Sesión pendiente'}</Text>
+                    {wk.observations?.includes('[NO COMPLETADA]') && <Text style={{color: colors.error || '#EF4444', fontSize: 10, fontWeight: '800', marginTop: 4}}>SESIÓN SALTADA</Text>}
+                  </View>
                 </TouchableOpacity>
                 <View style={styles.workoutActions}>
+                  {!isTrainer && !wk.completed && (
+                    <TouchableOpacity onPress={() => { setSkipWorkoutId(wk.id); setShowSkipModal(true); }} style={styles.actionIconBtn}>
+                      <Ionicons name="close-circle-outline" size={24} color={colors.error || '#EF4444'} />
+                    </TouchableOpacity>
+                  )}
                   {isTrainer && <><TouchableOpacity onPress={() => handleDeleteWorkout(wk)} style={styles.actionIconBtn}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity><TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}><Ionicons name="copy-outline" size={20} color={colors.primary} /></TouchableOpacity></>}
                   <TouchableOpacity onPress={() => handleWorkoutPress(wk)} style={styles.actionIconBtn}><Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} /></TouchableOpacity>
                 </View>
@@ -428,6 +462,28 @@ export default function CalendarScreen() {
           ) : <View style={styles.emptyCard}><Ionicons name="calendar-clear-outline" size={32} color={colors.border} /><Text style={{ color: colors.textSecondary, marginTop: 10 }}>Día sin sesiones programadas.</Text></View>}
         </ScrollView>
       </View>
+
+      {/* MODAL SALTAR SESIÓN */}
+      <Modal visible={showSkipModal} transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 10 }]}>Saltar Sesión</Text>
+            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center' }}>¿Por qué no has podido completar el entrenamiento hoy? El coach lo verá para poder ajustar cargas.</Text>
+            <TextInput
+              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, width: '100%', minHeight: 80, textAlignVertical: 'top' }]}
+              placeholder="Ej. Falta de tiempo, enfermedad, lesión..."
+              placeholderTextColor={colors.textSecondary}
+              value={skipReason}
+              onChangeText={setSkipReason}
+              multiline
+            />
+            <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 20 }}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => { setShowSkipModal(false); setSkipReason(''); }}><Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Cancelar</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.error || '#EF4444' }]} onPress={handleSkipSubmit}><Text style={{ color: '#FFF', fontWeight: '700' }}>Confirmar</Text></TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={showPicker} transparent animationType="slide"><TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPicker(false)}><View style={[styles.modalContent, { backgroundColor: colors.surface }]}><Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text>{athletes.map(a => (<TouchableOpacity key={a.id} style={[styles.athleteItem, { borderBottomColor: colors.border }]} onPress={() => handleSelectAthlete(a)}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text></TouchableOpacity>))}</View></TouchableOpacity></Modal>
 
@@ -475,14 +531,6 @@ const styles = StyleSheet.create({
   mainLayout: { flex: 1, flexDirection: 'column' }, mainLayoutDesktop: { flexDirection: 'row', paddingHorizontal: 20, gap: 30 }, leftColumnDesktop: { flex: 1, maxWidth: 380, minWidth: 300 }, rightColumnDesktop: { flex: 1, paddingTop: 0, paddingHorizontal: 0 },
   topHeader: { flexDirection: 'row', alignItems: 'center', padding: 20 }, headerSubtitle: { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 1.5 }, headerTitle: { fontSize: 24, fontWeight: '900' }, iconBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.03)', justifyContent: 'center', alignItems: 'center' }, copyBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 20, justifyContent: 'center' }, copyBannerText: { color: '#FFF', fontSize: 12, fontWeight: '700' }, monthSelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginVertical: 15 }, monthLabel: { fontSize: 18, fontWeight: '900', textTransform: 'capitalize' }, calendarGrid: { paddingHorizontal: 15 }, weekDays: { flexDirection: 'row', marginBottom: 10 }, weekDayText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '800' }, daysGrid: { flexDirection: 'row', flexWrap: 'wrap' }, dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' }, dayText: { fontSize: 15, fontWeight: '600' },
   footer: { flex: 1, paddingHorizontal: 20, paddingTop: 20 }, footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1, textTransform: 'uppercase' },
-  
-  // Estilos de la Tarjeta Biológica
-  insightCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
-  insightHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
-  insightTitle: { fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
-  insightContent: { padding: 15, gap: 8 },
-  insightText: { fontSize: 13, lineHeight: 18 },
-
-  microCard: { padding: 14, borderRadius: 16, borderTopWidth: 4, borderWidth: 1, width: 160, marginRight: 12 }, microMacroName: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 }, microName: { fontSize: 14, fontWeight: '800', marginBottom: 8 }, microTypeBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8 }, microDates: { fontSize: 11, fontWeight: '600' }, workoutCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 18, marginBottom: 12 }, workoutIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, workoutTitle: { fontSize: 16, fontWeight: '800' }, workoutActions: { flexDirection: 'row', gap: 5 }, actionIconBtn: { padding: 8 }, emptyCard: { alignItems: 'center', paddingVertical: 30 },
+  insightCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' }, insightHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 }, insightTitle: { fontSize: 14, fontWeight: '900', letterSpacing: 0.5 }, insightContent: { padding: 15, gap: 8 }, insightText: { fontSize: 13, lineHeight: 18 }, microCard: { padding: 14, borderRadius: 16, borderTopWidth: 4, borderWidth: 1, width: 160, marginRight: 12 }, microMacroName: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 }, microName: { fontSize: 14, fontWeight: '800', marginBottom: 8 }, microTypeBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8 }, microDates: { fontSize: 11, fontWeight: '600' }, workoutCard: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingLeft: 16, borderRadius: 18, marginBottom: 12 }, workoutIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, workoutTitle: { fontSize: 16, fontWeight: '800' }, workoutActions: { flexDirection: 'row', gap: 5 }, actionIconBtn: { padding: 8 }, emptyCard: { alignItems: 'center', paddingVertical: 30 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30, width: '100%', position: 'absolute', bottom: 0 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20 }, athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }, modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }, modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 }, phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' }, infoTitleMacro: { fontSize: 18, fontWeight: '900', marginTop: 4, textAlign: 'center' }, divider: { height: 1, width: '80%', marginVertical: 15, opacity: 0.5 }, infoTitleMicro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' }, microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 }, datesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }, microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' }, microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 }, microWorkoutExercises: { padding: 14, borderTopWidth: 1 }, editPhaseBtn: { flexDirection: 'row', width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, marginTop: 20 }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }
 });
