@@ -258,34 +258,17 @@ export default function AthleteDetailScreen() {
     );
   };
 
-  const renderWorkoutItem = (wk: any) => (
-    <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-        <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }} onPress={() => toggleWorkout(wk.id)} activeOpacity={0.6}>
-          <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
-            <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>{wk.title}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{wk.date} • {wk.completed ? 'Completado' : 'Pendiente'}</Text>
-          </View>
-          <Ionicons name={expandedWorkouts[wk.id] ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} style={{ marginRight: 10 }} />
-        </TouchableOpacity>
-        <View style={{ flexDirection: 'row', gap: 5 }}>
-          <TouchableOpacity style={styles.iconHitbox} onPress={() => { setWorkoutToDuplicate(wk); setDuplicateDate(new Date().toISOString().split('T')[0]); setShowDuplicateModal(true); }}>
-            <Ionicons name="copy-outline" size={20} color={colors.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconHitbox} onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}>
-            <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconHitbox} onPress={() => handleDeleteWorkout(wk.id, wk.title)}>
-            <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      {!!expandedWorkouts[wk.id] && (
+{!!expandedWorkouts[wk.id] && (
         <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
+          
+          {/* AVISO DE SESIÓN SALTADA */}
+          {wk.observations?.includes('[NO COMPLETADA]') && (
+            <View style={{ backgroundColor: '#EF444420', padding: 12, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#EF4444' }}>
+               <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
+               <Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{wk.observations.replace('[NO COMPLETADA] Motivo: ', '')}"</Text>
+            </View>
+          )}
+
           {(wk.completed && !!wk.completion_data) && (
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
               <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
@@ -320,7 +303,7 @@ export default function AthleteDetailScreen() {
                   </TouchableOpacity>
                 )}
                 
-                {(isTrainer && wk.completed) && (
+                {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
                   <View style={styles.feedbackRow}>
                     <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
                     <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? colors.success : colors.primary }]} onPress={() => saveCoachNote(wk, idx, currentNote)}>
@@ -333,8 +316,6 @@ export default function AthleteDetailScreen() {
           })}
         </View>
       )}
-    </View>
-  );
 
   const renderWorkouts = () => {
     const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
