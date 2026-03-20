@@ -144,6 +144,7 @@ export default function TestsScreen() {
 
     setSaving(true);
     try {
+      const todayStr = new Date().toISOString().split('T')[0];
       const payload: any = {
         unit: formData.unit.trim(),
         notes: formData.notes.trim(),
@@ -151,28 +152,29 @@ export default function TestsScreen() {
         value: formData.isBilateral ? null : parseFloat(formData.value.replace(',', '.') || '0'),
         value_left: formData.isBilateral ? parseFloat(formData.valueLeft.replace(',', '.') || '0') : null,
         value_right: formData.isBilateral ? parseFloat(formData.valueRight.replace(',', '.') || '0') : null,
-        date: new Date().toISOString().split('T')[0] // Se actualiza a la fecha de hoy
+        date: todayStr 
       };
 
-      // Búsqueda inteligente: ¿Existe ya un test con este nombre exacto?
+      // Buscamos si existe ya un test con este nombre exacto, pero SOLO SI ES DE HOY
       const searchName = formData.name.trim().toLowerCase();
       let targetTest = editTest;
       
       if (!targetTest) {
         targetTest = tests.find(t => 
-          (t.custom_name && t.custom_name.toLowerCase() === searchName) ||
+          ((t.custom_name && t.custom_name.toLowerCase() === searchName) ||
           (TEST_LABELS[t.test_name] && TEST_LABELS[t.test_name].toLowerCase() === searchName) ||
-          (t.test_name && t.test_name.toLowerCase() === searchName)
+          (t.test_name && t.test_name.toLowerCase() === searchName)) &&
+          t.date === todayStr // <- AQUÍ ESTÁ LA MAGIA QUE CONSERVA EL HISTORIAL
         );
       }
 
       if (targetTest) {
-        // ACTIALIZAR TEST EXISTENTE
+        // ACTUALIZAR TEST DE HOY (Corrección de errores)
         const updated = await api.updateTest(targetTest.id, payload);
         setTests(prev => prev.map(t => t.id === targetTest.id ? { ...t, ...updated } : t));
-        if (Platform.OS !== 'web' && !editTest) Alert.alert("Test Actualizado", "Has actualizado tu marca para este test.");
+        if (Platform.OS !== 'web' && !editTest) Alert.alert("Test Actualizado", "Has corregido tu marca de hoy para este test.");
       } else {
-        // CREAR NUEVO TEST
+        // CREAR NUEVO REGISTRO (Añade historial para el gráfico)
         payload.athlete_id = isTrainer ? selectedAthlete : user?.id;
         payload.test_name = 'custom';
         payload.custom_name = formData.name.trim();
