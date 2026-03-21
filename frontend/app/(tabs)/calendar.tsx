@@ -13,8 +13,12 @@ import { api } from '../../src/api';
 const DAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
+const getLocalDateStr = (date: Date) => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
 const now = new Date();
-const localTodayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+const localTodayStr = getLocalDateStr(now);
 
 export default function CalendarScreen() {
   const { user, loading: authLoading } = useAuth();
@@ -42,11 +46,12 @@ export default function CalendarScreen() {
   const [workoutToCopy, setWorkoutToCopy] = useState<any>(null);
   const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(null);
 
+  // ESTADOS DEL MODAL DEL CICLO MENSTRUAL
   const [showCycleSettings, setShowCycleSettings] = useState(false);
   const [cycleLengthInput, setCycleLengthInput] = useState('28');
   const [periodLengthInput, setPeriodLengthInput] = useState('5');
+  const [lastPeriodDateInput, setLastPeriodDateInput] = useState(''); // Nuevo estado para la fecha
 
-  // Estados para saltar sesión
   const [showSkipModal, setShowSkipModal] = useState(false);
   const [skipWorkoutId, setSkipWorkoutId] = useState<string | null>(null);
   const [skipReason, setSkipReason] = useState('');
@@ -182,25 +187,72 @@ export default function CalendarScreen() {
     }
   };
 
+  // CÁLCULO DE LA FECHA DEL ÚLTIMO PERIODO
+  const getActualDayOneStr = () => {
+    if (!wellnessHistory || wellnessHistory.length === 0) return '';
+    const menstrualLogs = wellnessHistory.filter(w => w.cycle_phase === 'menstrual' || w.cycle_phase?.startsWith('menstruacion')).sort((a, b) => b.date.localeCompare(a.date));
+    if (menstrualLogs.length === 0) return '';
+
+    let actualDayOneStr = menstrualLogs[0].date;
+    for (let i = 0; i < menstrualLogs.length - 1; i++) {
+      const [cY, cM, cD] = menstrualLogs[i].date.split('-').map(Number);
+      const [pY, pM, pD] = menstrualLogs[i+1].date.split('-').map(Number);
+      const diffDays = (new Date(cY, cM - 1, cD).getTime() - new Date(pY, pM - 1, pD).getTime()) / (1000 * 3600 * 24);
+      if (diffDays <= 2) actualDayOneStr = menstrualLogs[i+1].date;
+      else break; 
+    }
+    return actualDayOneStr;
+  };
+
   const openCycleSettings = () => {
     setCycleLengthInput(String(selectedAthlete?.cycle_length || 28));
     setPeriodLengthInput(String(selectedAthlete?.period_length || 5));
+    setLastPeriodDateInput(getActualDayOneStr()); // Rellenar con el dato real calculado
     setShowCycleSettings(true);
   };
 
   const handleSaveCycleSettings = async () => {
+    // Validación básica de la fecha (YYYY-MM-DD)
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (lastPeriodDateInput && !dateRegex.test(lastPeriodDateInput)) {
+        Alert.alert("Error", "El formato de la fecha debe ser AAAA-MM-DD");
+        return;
+    }
+
     setUpdating(true);
     try {
       const payload = { cycle_length: parseInt(cycleLengthInput) || 28, period_length: parseInt(periodLengthInput) || 5 };
-      if (isTrainer && api.updateAthlete) await api.updateAthlete(selectedAthlete.id, payload);
-      else if (api.updateProfile) await api.updateProfile(payload); 
-
+      
+      // 1. Guardar ajustes en el perfil del atleta
+      if (isTrainer && api.updateAthlete) {
+        await api.updateAthlete(selectedAthlete.id, payload);
+      } else if (api.updateProfile) {
+        await api.updateProfile(payload); 
+      }
       setSelectedAthlete({ ...selectedAthlete, ...payload });
+
+      // 2. Si la fecha cambió, crear un registro de Wellness para forzar el inicio del ciclo
+      const currentActualDayOne = getActualDayOneStr();
+      if (lastPeriodDateInput && lastPeriodDateInput !== currentActualDayOne) {
+          const wellnessData = {
+              athlete_id: selectedAthlete.id,
+              date: lastPeriodDateInput,
+              cycle_phase: 'menstrual',
+              sleep_quality: 3, 
+              stress_level: 3,
+              muscle_soreness: 3,
+              energy_level: 3
+          };
+          await api.submitWellness(wellnessData);
+      }
+
       setShowCycleSettings(false);
+      // Recargar datos para que los useMemo recalculen los colores del calendario
+      refreshAthleteData(selectedAthlete);
+      
     } catch (e) {
       console.log("Error guardando ajustes de ciclo:", e);
       if (Platform.OS !== 'web') Alert.alert("Error", "No se pudieron guardar los ajustes.");
-    } finally {
       setUpdating(false);
     }
   };
@@ -245,17 +297,8 @@ export default function CalendarScreen() {
 
   const cycleData = useMemo(() => {
     if (!isFemale || !wellnessHistory || wellnessHistory.length === 0) return null;
-    const menstrualLogs = wellnessHistory.filter(w => w.cycle_phase === 'menstrual' || w.cycle_phase?.startsWith('menstruacion')).sort((a, b) => b.date.localeCompare(a.date));
-    if (menstrualLogs.length === 0) return null;
-
-    let actualDayOneStr = menstrualLogs[0].date;
-    for (let i = 0; i < menstrualLogs.length - 1; i++) {
-      const [cY, cM, cD] = menstrualLogs[i].date.split('-').map(Number);
-      const [pY, pM, pD] = menstrualLogs[i+1].date.split('-').map(Number);
-      const diffDays = (new Date(cY, cM - 1, cD).getTime() - new Date(pY, pM - 1, pD).getTime()) / (1000 * 3600 * 24);
-      if (diffDays <= 2) actualDayOneStr = menstrualLogs[i+1].date;
-      else break; 
-    }
+    const actualDayOneStr = getActualDayOneStr();
+    if (!actualDayOneStr) return null;
 
     const [startY, startM, startD] = actualDayOneStr.split('-').map(Number);
     const actualDayOne = new Date(startY, startM - 1, startD);
@@ -274,7 +317,7 @@ export default function CalendarScreen() {
       for (let i = 0; i < cycleData.periodLength; i++) {
         const dayDate = new Date(cycleStart);
         dayDate.setDate(cycleStart.getDate() + i);
-        const dateStr = `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(dayDate.getDate()).padStart(2, '0')}`;
+        const dateStr = getLocalDateStr(dayDate);
         if (!daysDict[dateStr]) daysDict[dateStr] = { type: cycleIndex === 0 ? 'current' : 'predicted' };
       }
     }
@@ -491,8 +534,20 @@ export default function CalendarScreen() {
         <TouchableOpacity style={styles.modalOverlayCenter} onPress={() => setShowCycleSettings(false)}>
           <TouchableOpacity activeOpacity={1} style={[styles.modalContentInfo, { backgroundColor: colors.surface, width: '85%' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, width: '100%', justifyContent: 'center' }}><View style={[styles.phaseIconBadge, { backgroundColor: '#FEE2E2', marginRight: 10 }]}><Ionicons name="water" size={24} color="#EF4444" /></View><Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Ajustes del Ciclo</Text></View>
+            
+            {/* NUEVO CAMPO: Fecha del último periodo */}
+            <Text style={[styles.label, { color: colors.textSecondary, alignSelf: 'flex-start' }]}>Fecha de inicio del último periodo:</Text>
+            <TextInput 
+              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginBottom: 20, width: '100%' }]} 
+              placeholder="AAAA-MM-DD"
+              placeholderTextColor={colors.textSecondary}
+              value={lastPeriodDateInput} 
+              onChangeText={setLastPeriodDateInput} 
+            />
+
             <Text style={[styles.label, { color: colors.textSecondary, alignSelf: 'flex-start' }]}>Duración habitual del ciclo completo (días):</Text><TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginBottom: 20, width: '100%' }]} keyboardType="numeric" value={cycleLengthInput} onChangeText={setCycleLengthInput} />
             <Text style={[styles.label, { color: colors.textSecondary, alignSelf: 'flex-start' }]}>Días habituales de sangrado:</Text><TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginBottom: 25, width: '100%' }]} keyboardType="numeric" value={periodLengthInput} onChangeText={setPeriodLengthInput} />
+            
             <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}><TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setShowCycleSettings(false)}><Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Cancelar</Text></TouchableOpacity><TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleSaveCycleSettings} disabled={updating}>{updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '700' }}>Guardar</Text>}</TouchableOpacity></View>
           </TouchableOpacity>
         </TouchableOpacity>
