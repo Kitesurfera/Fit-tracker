@@ -145,55 +145,50 @@ export default function TestsScreen() {
     setSaving(true);
     try {
       const todayStr = new Date().toISOString().split('T')[0];
+      const inputName = formData.name.trim();
+
+      // Buscar si el nombre escrito coincide con un test del sistema para pasarlo codificado al backend
+      const knownKey = Object.keys(TEST_LABELS).find(
+        k => TEST_LABELS[k].toLowerCase() === inputName.toLowerCase()
+      );
+
       const payload: any = {
         unit: formData.unit.trim(),
         notes: formData.notes.trim(),
         test_type: formData.category,
-        value: formData.isBilateral ? null : parseFloat(formData.value.replace(',', '.') || '0'),
-        value_left: formData.isBilateral ? parseFloat(formData.valueLeft.replace(',', '.') || '0') : null,
-        value_right: formData.isBilateral ? parseFloat(formData.valueRight.replace(',', '.') || '0') : null,
-        date: todayStr 
+        value: formData.isBilateral ? null : parseFloat(String(formData.value).replace(',', '.') || '0'),
+        value_left: formData.isBilateral ? parseFloat(String(formData.valueLeft).replace(',', '.') || '0') : null,
+        value_right: formData.isBilateral ? parseFloat(String(formData.valueRight).replace(',', '.') || '0') : null,
+        date: todayStr,
+        test_name: knownKey || 'custom',
+        custom_name: knownKey ? null : inputName,
+        athlete_id: isTrainer ? selectedAthlete : user?.id
       };
 
-      const searchName = formData.name.trim().toLowerCase();
       let targetTest = editTest;
-      
       if (!targetTest) {
         targetTest = tests.find(t => 
-          ((t.custom_name && t.custom_name.toLowerCase() === searchName) ||
-          (TEST_LABELS[t.test_name] && TEST_LABELS[t.test_name].toLowerCase() === searchName) ||
-          (t.test_name && t.test_name.toLowerCase() === searchName)) &&
+          ((t.custom_name && t.custom_name.toLowerCase() === inputName.toLowerCase()) ||
+          (TEST_LABELS[t.test_name] && TEST_LABELS[t.test_name].toLowerCase() === inputName.toLowerCase()) ||
+          (t.test_name && t.test_name.toLowerCase() === inputName.toLowerCase())) &&
           t.date === todayStr 
         );
       }
 
       if (targetTest) {
-        // ACTUALIZAR TEST DE HOY
-        const res = await api.updateTest(targetTest.id, payload);
-        const updated = res?.data || res || payload; // Prevención de errores si el backend devuelve envuelto
-        setTests(prev => prev.map(t => t.id === targetTest.id ? { ...t, ...updated } : t));
+        await api.updateTest(targetTest.id, payload);
         if (Platform.OS !== 'web' && !editTest) Alert.alert("Test Actualizado", "Has corregido tu marca de hoy para este test.");
       } else {
-        // CREAR NUEVO REGISTRO
-        payload.athlete_id = isTrainer ? selectedAthlete : user?.id;
-        payload.test_name = 'custom';
-        payload.custom_name = formData.name.trim();
-        
-        const res = await api.createTest(payload);
-        const newTest = res?.data || res; // Extraemos el objeto real creado
-        
-        if (newTest && newTest.id) {
-          if (newTest.test_type !== 'medicion') {
-            setTests(prev => [newTest, ...prev]);
-          }
-        } else {
-          // Si el backend no nos devuelve el test completo, forzamos recarga
-          loadData();
-        }
+        await api.createTest(payload);
       }
+
+      // FORZAMOS RECARGA DESDE LA BASE DE DATOS PARA GARANTIZAR SINCRONIZACIÓN
+      await loadData();
       setShowCustomModal(false);
-    } catch (e) {
-      Alert.alert("Error", "No se pudo guardar el test.");
+
+    } catch (e: any) {
+      console.log("Error guardando test:", e);
+      Alert.alert("Error", e?.message || "Falló la comunicación con el servidor al guardar.");
     } finally {
       setSaving(false);
     }
@@ -404,7 +399,7 @@ export default function TestsScreen() {
                       {['kg', 'cm', 'seg', 'reps'].map(u => (
                         <TouchableOpacity 
                           key={u} 
-                          style={[styles.chipSelect, { borderColor: colors.border }, formData.unit === u && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
+                          style={[styles.chipSelect, { borderColor: colors.border, paddingVertical: 6 }, formData.unit === u && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
                           onPress={() => setFormData({...formData, unit: u})}
                         >
                           <Text style={{ fontSize: 11, fontWeight: '700', color: formData.unit === u ? '#FFF' : colors.textSecondary, textAlign: 'center' }}>{u}</Text>
@@ -441,7 +436,7 @@ const styles = StyleSheet.create({
   actionBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   filterRow: { paddingHorizontal: 20, paddingTop: 15, gap: 10, alignItems: 'center' },
   
-  // CORRECCIÓN UI: Altura del botón ajustada para el scroll de categorías
+  // AQUI HE REDUCIDO EL TAMAÑO DE LOS BOTONES PARA QUE ABRACEN EL TEXTO
   filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, borderWidth: 1 }, 
   filterText: { fontSize: 13, fontWeight: '700' },
   
@@ -469,7 +464,7 @@ const styles = StyleSheet.create({
   toggleRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   toggleBtn: { flex: 1, paddingVertical: 12, borderWidth: 1, borderRadius: 12, alignItems: 'center' },
   
-  // CORRECCIÓN UI: Chips del interior del modal reducidos para quedar pegados al texto
+  // TAMBIÉN HE REDUCIDO LOS DEL INTERIOR DEL MODAL
   chipSelect: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, marginRight: 8, alignSelf: 'center' },
   
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 10 },
