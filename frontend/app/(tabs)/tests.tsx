@@ -144,8 +144,6 @@ export default function TestsScreen() {
     if (isTrainer && !selectedAthlete) return Alert.alert("Atención", "Selecciona primero un deportista en la lista para asignarle el test.");
 
     setSaving(true);
-
-    setSaving(true);
     try {
       const todayStr = new Date().toISOString().split('T')[0];
       const inputName = formData.name.trim();
