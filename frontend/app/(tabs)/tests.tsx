@@ -155,7 +155,6 @@ export default function TestsScreen() {
         date: todayStr 
       };
 
-      // Buscamos si existe ya un test con este nombre exacto, pero SOLO SI ES DE HOY
       const searchName = formData.name.trim().toLowerCase();
       let targetTest = editTest;
       
@@ -164,24 +163,32 @@ export default function TestsScreen() {
           ((t.custom_name && t.custom_name.toLowerCase() === searchName) ||
           (TEST_LABELS[t.test_name] && TEST_LABELS[t.test_name].toLowerCase() === searchName) ||
           (t.test_name && t.test_name.toLowerCase() === searchName)) &&
-          t.date === todayStr // <- AQUÍ ESTÁ LA MAGIA QUE CONSERVA EL HISTORIAL
+          t.date === todayStr 
         );
       }
 
       if (targetTest) {
-        // ACTUALIZAR TEST DE HOY (Corrección de errores)
-        const updated = await api.updateTest(targetTest.id, payload);
+        // ACTUALIZAR TEST DE HOY
+        const res = await api.updateTest(targetTest.id, payload);
+        const updated = res?.data || res || payload; // Prevención de errores si el backend devuelve envuelto
         setTests(prev => prev.map(t => t.id === targetTest.id ? { ...t, ...updated } : t));
         if (Platform.OS !== 'web' && !editTest) Alert.alert("Test Actualizado", "Has corregido tu marca de hoy para este test.");
       } else {
-        // CREAR NUEVO REGISTRO (Añade historial para el gráfico)
+        // CREAR NUEVO REGISTRO
         payload.athlete_id = isTrainer ? selectedAthlete : user?.id;
         payload.test_name = 'custom';
         payload.custom_name = formData.name.trim();
-        const created = await api.createTest(payload);
         
-        if (created.test_type !== 'medicion') {
-          setTests([created, ...tests]);
+        const res = await api.createTest(payload);
+        const newTest = res?.data || res; // Extraemos el objeto real creado
+        
+        if (newTest && newTest.id) {
+          if (newTest.test_type !== 'medicion') {
+            setTests(prev => [newTest, ...prev]);
+          }
+        } else {
+          // Si el backend no nos devuelve el test completo, forzamos recarga
+          loadData();
         }
       }
       setShowCustomModal(false);
@@ -397,7 +404,7 @@ export default function TestsScreen() {
                       {['kg', 'cm', 'seg', 'reps'].map(u => (
                         <TouchableOpacity 
                           key={u} 
-                          style={[styles.chipSelect, { borderColor: colors.border, paddingVertical: 6 }, formData.unit === u && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
+                          style={[styles.chipSelect, { borderColor: colors.border }, formData.unit === u && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
                           onPress={() => setFormData({...formData, unit: u})}
                         >
                           <Text style={{ fontSize: 11, fontWeight: '700', color: formData.unit === u ? '#FFF' : colors.textSecondary, textAlign: 'center' }}>{u}</Text>
@@ -433,8 +440,11 @@ const styles = StyleSheet.create({
   refreshIcon: { padding: 5 },
   actionBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   filterRow: { paddingHorizontal: 20, paddingTop: 15, gap: 10, alignItems: 'center' },
-  filterChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 12, borderWidth: 1 },
+  
+  // CORRECCIÓN UI: Altura del botón ajustada para el scroll de categorías
+  filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, borderWidth: 1 }, 
   filterText: { fontSize: 13, fontWeight: '700' },
+  
   listContent: { paddingBottom: 40, paddingHorizontal: 20 },
   testCard: { borderRadius: 24, padding: 20, marginBottom: 20, borderWidth: 1 },
   testHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
@@ -458,7 +468,10 @@ const styles = StyleSheet.create({
   modalInput: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 20, fontSize: 16 },
   toggleRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   toggleBtn: { flex: 1, paddingVertical: 12, borderWidth: 1, borderRadius: 12, alignItems: 'center' },
-  chipSelect: { paddingHorizontal: 12, paddingVertical: 10, borderRadius: 10, borderWidth: 1, marginRight: 8 },
+  
+  // CORRECCIÓN UI: Chips del interior del modal reducidos para quedar pegados al texto
+  chipSelect: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, marginRight: 8, alignSelf: 'center' },
+  
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 10 },
   modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' }
 });
