@@ -14,7 +14,10 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isDesktop = SCREEN_WIDTH > 768;
 const MAX_WIDTH = 1000;
 
-const TEST_LABELS: Record<string, string> = {
+// Eliminamos el TEST_LABELS estricto para el frontend,
+// dejamos que el usuario vea exactamente lo que escribe, 
+// pero mantenemos algunas traducciones por retrocompatibilidad.
+const TEST_TRANSLATIONS: Record<string, string> = {
   squat_rm: 'Sentadilla RM',
   bench_rm: 'Press Banca RM',
   deadlift_rm: 'Peso Muerto RM',
@@ -51,6 +54,8 @@ export default function TestsScreen() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showCustomModal, setShowCustomModal] = useState(false);
+  
+  // Mantenemos editTest solo por si pulsas el icono de lápiz en un test concreto
   const [editTest, setEditTest] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
@@ -112,7 +117,7 @@ export default function TestsScreen() {
   const openEditModal = (test: any) => {
     setEditTest(test);
     setFormData({
-      name: test.custom_name || TEST_LABELS[test.test_name] || test.test_name,
+      name: test.custom_name || TEST_TRANSLATIONS[test.test_name] || test.test_name,
       category: test.test_type || 'strength',
       isBilateral: test.value_left != null || test.value_right != null,
       unit: test.unit || 'kg',
@@ -148,11 +153,6 @@ export default function TestsScreen() {
       const todayStr = new Date().toISOString().split('T')[0];
       const inputName = formData.name.trim();
 
-      // Buscar si el nombre escrito coincide con un test del sistema para pasarlo codificado al backend
-      const knownKey = Object.keys(TEST_LABELS).find(
-        k => TEST_LABELS[k].toLowerCase() === inputName.toLowerCase()
-      );
-
       const payload: any = {
         unit: formData.unit.trim(),
         notes: formData.notes.trim(),
@@ -161,29 +161,20 @@ export default function TestsScreen() {
         value_left: formData.isBilateral ? parseFloat(String(formData.valueLeft).replace(',', '.') || '0') : null,
         value_right: formData.isBilateral ? parseFloat(String(formData.valueRight).replace(',', '.') || '0') : null,
         date: todayStr,
-        test_name: knownKey || 'custom',
-        custom_name: knownKey ? null : inputName,
+        test_name: 'custom', 
+        custom_name: inputName,
         athlete_id: isTrainer ? selectedAthlete : user?.id
       };
 
-      let targetTest = editTest;
-      if (!targetTest) {
-        targetTest = tests.find(t => 
-          ((t.custom_name && t.custom_name.toLowerCase() === inputName.toLowerCase()) ||
-          (TEST_LABELS[t.test_name] && TEST_LABELS[t.test_name].toLowerCase() === inputName.toLowerCase()) ||
-          (t.test_name && t.test_name.toLowerCase() === inputName.toLowerCase())) &&
-          t.date === todayStr 
-        );
-      }
-
-      if (targetTest) {
-        await api.updateTest(targetTest.id, payload);
-        if (Platform.OS !== 'web' && !editTest) Alert.alert("Test Actualizado", "Has corregido tu marca de hoy para este test.");
+      // Si editTest tiene un ID, significa que el usuario ha hecho clic en el icono del lápiz
+      // para corregir un error en un registro existente. En ese caso SÍ actualizamos.
+      // Si editTest es null, SIEMPRE creamos uno nuevo, sin buscar coincidencias de nombre.
+      if (editTest && editTest.id) {
+        await api.updateTest(editTest.id, payload);
       } else {
         await api.createTest(payload);
       }
 
-      // FORZAMOS RECARGA DESDE LA BASE DE DATOS PARA GARANTIZAR SINCRONIZACIÓN
       await loadData();
       setShowCustomModal(false);
 
@@ -259,7 +250,7 @@ export default function TestsScreen() {
                   <TouchableOpacity onPress={() => deleteTest(item.id, item.custom_name || item.test_name)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
                 </View>
               </View>
-              <Text style={[styles.testName, { color: colors.textPrimary }]}>{item.custom_name || TEST_LABELS[item.test_name] || item.test_name}</Text>
+              <Text style={[styles.testName, { color: colors.textPrimary }]}>{item.custom_name || TEST_TRANSLATIONS[item.test_name] || item.test_name}</Text>
               
               {item.value_left != null || item.value_right != null ? (
                 <View style={styles.bilateralRow}>
@@ -436,11 +427,8 @@ const styles = StyleSheet.create({
   refreshIcon: { padding: 5 },
   actionBtn: { width: 44, height: 44, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   filterRow: { paddingHorizontal: 20, paddingTop: 15, gap: 10, alignItems: 'center' },
-  
-  // AQUI HE REDUCIDO EL TAMAÑO DE LOS BOTONES PARA QUE ABRACEN EL TEXTO
   filterChip: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 16, borderWidth: 1 }, 
   filterText: { fontSize: 13, fontWeight: '700' },
-  
   listContent: { paddingBottom: 40, paddingHorizontal: 20 },
   testCard: { borderRadius: 24, padding: 20, marginBottom: 20, borderWidth: 1 },
   testHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
@@ -464,10 +452,7 @@ const styles = StyleSheet.create({
   modalInput: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 20, fontSize: 16 },
   toggleRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   toggleBtn: { flex: 1, paddingVertical: 12, borderWidth: 1, borderRadius: 12, alignItems: 'center' },
-  
-  // TAMBIÉN HE REDUCIDO LOS DEL INTERIOR DEL MODAL
   chipSelect: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, marginRight: 8, alignSelf: 'center' },
-  
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 10 },
   modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' }
 });
