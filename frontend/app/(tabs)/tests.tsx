@@ -141,6 +141,9 @@ export default function TestsScreen() {
     if (!formData.name.trim()) return Alert.alert("Error", "El nombre es obligatorio.");
     if (!formData.isBilateral && !formData.value) return Alert.alert("Error", "Añade un valor al test.");
     if (formData.isBilateral && (!formData.valueLeft || !formData.valueRight)) return Alert.alert("Error", "Añade valores para ambos lados.");
+    if (isTrainer && !selectedAthlete) return Alert.alert("Atención", "Selecciona primero un deportista en la lista para asignarle el test.");
+
+    setSaving(true);
 
     setSaving(true);
     try {
