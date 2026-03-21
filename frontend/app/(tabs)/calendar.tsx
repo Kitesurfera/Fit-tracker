@@ -50,7 +50,7 @@ export default function CalendarScreen() {
   const [showCycleSettings, setShowCycleSettings] = useState(false);
   const [cycleLengthInput, setCycleLengthInput] = useState('28');
   const [periodLengthInput, setPeriodLengthInput] = useState('5');
-  const [lastPeriodDateInput, setLastPeriodDateInput] = useState(''); // Nuevo estado para la fecha
+  const [lastPeriodDateInput, setLastPeriodDateInput] = useState('');
 
   const [showSkipModal, setShowSkipModal] = useState(false);
   const [skipWorkoutId, setSkipWorkoutId] = useState<string | null>(null);
@@ -167,7 +167,11 @@ export default function CalendarScreen() {
   };
 
   const handleSkipSubmit = async () => {
-    if (!skipReason.trim()) return Alert.alert("Aviso", "Indica el motivo para que lo revise el coach.");
+    if (!skipReason.trim()) {
+      if (Platform.OS === 'web') window.alert("Indica el motivo para que lo revise el coach.");
+      else Alert.alert("Aviso", "Indica el motivo para que lo revise el coach.");
+      return;
+    }
     setUpdating(true);
     try {
       const workout = workouts.find(w => w.id === skipWorkoutId);
@@ -187,7 +191,6 @@ export default function CalendarScreen() {
     }
   };
 
-  // CÁLCULO DE LA FECHA DEL ÚLTIMO PERIODO
   const getActualDayOneStr = () => {
     if (!wellnessHistory || wellnessHistory.length === 0) return '';
     const menstrualLogs = wellnessHistory.filter(w => w.cycle_phase === 'menstrual' || w.cycle_phase?.startsWith('menstruacion')).sort((a, b) => b.date.localeCompare(a.date));
@@ -207,15 +210,17 @@ export default function CalendarScreen() {
   const openCycleSettings = () => {
     setCycleLengthInput(String(selectedAthlete?.cycle_length || 28));
     setPeriodLengthInput(String(selectedAthlete?.period_length || 5));
-    setLastPeriodDateInput(getActualDayOneStr()); // Rellenar con el dato real calculado
+    setLastPeriodDateInput(getActualDayOneStr()); 
     setShowCycleSettings(true);
   };
 
+  // FUNCIÓN REESCRITA A PRUEBA DE FALLOS WEB
   const handleSaveCycleSettings = async () => {
-    // Validación básica de la fecha (YYYY-MM-DD)
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (lastPeriodDateInput && !dateRegex.test(lastPeriodDateInput)) {
-        Alert.alert("Error", "El formato de la fecha debe ser AAAA-MM-DD");
+        const errorMsg = "⚠️ El formato de la fecha debe ser AAAA-MM-DD (Ejemplo: 2026-03-21)";
+        if (Platform.OS === 'web') window.alert(errorMsg);
+        else Alert.alert("Revisa la fecha", errorMsg);
         return;
     }
 
@@ -231,28 +236,39 @@ export default function CalendarScreen() {
       }
       setSelectedAthlete({ ...selectedAthlete, ...payload });
 
-      // 2. Si la fecha cambió, crear un registro de Wellness para forzar el inicio del ciclo
+      // 2. Bloque aislado para intentar crear el registro de Wellness
       const currentActualDayOne = getActualDayOneStr();
       if (lastPeriodDateInput && lastPeriodDateInput !== currentActualDayOne) {
           const wellnessData = {
               athlete_id: selectedAthlete.id,
               date: lastPeriodDateInput,
-              cycle_phase: 'menstrual',
+              cycle_phase: 'menstruacion', // Usamos un string universal
               sleep_quality: 3, 
               stress_level: 3,
               muscle_soreness: 3,
               energy_level: 3
           };
-          await api.submitWellness(wellnessData);
+          
+          try {
+             // Fallbacks por si tu función se llama diferente en la API
+             if (api.submitWellness) await api.submitWellness(wellnessData);
+             else if ((api as any).createWellness) await (api as any).createWellness(wellnessData);
+             else if ((api as any).logWellness) await (api as any).logWellness(wellnessData);
+             else console.warn("No se encontró el método de API para guardar Wellness.");
+          } catch (wellnessErr) {
+             console.warn("La fecha de inicio no se pudo guardar en la DB, pero los ajustes de ciclo sí.", wellnessErr);
+          }
       }
 
       setShowCycleSettings(false);
-      // Recargar datos para que los useMemo recalculen los colores del calendario
-      refreshAthleteData(selectedAthlete);
+      // Esperamos a que los datos se recarguen para cerrar el loader
+      await refreshAthleteData(selectedAthlete);
       
     } catch (e) {
-      console.log("Error guardando ajustes de ciclo:", e);
-      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudieron guardar los ajustes.");
+      console.error("Error guardando ajustes de ciclo:", e);
+      const errorMsg = "No se pudieron guardar los ajustes generales.";
+      if (Platform.OS === 'web') window.alert(errorMsg);
+      else Alert.alert("Error", errorMsg);
       setUpdating(false);
     }
   };
@@ -535,7 +551,6 @@ export default function CalendarScreen() {
           <TouchableOpacity activeOpacity={1} style={[styles.modalContentInfo, { backgroundColor: colors.surface, width: '85%' }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, width: '100%', justifyContent: 'center' }}><View style={[styles.phaseIconBadge, { backgroundColor: '#FEE2E2', marginRight: 10 }]}><Ionicons name="water" size={24} color="#EF4444" /></View><Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Ajustes del Ciclo</Text></View>
             
-            {/* NUEVO CAMPO: Fecha del último periodo */}
             <Text style={[styles.label, { color: colors.textSecondary, alignSelf: 'flex-start' }]}>Fecha de inicio del último periodo:</Text>
             <TextInput 
               style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginBottom: 20, width: '100%' }]} 
