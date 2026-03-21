@@ -84,7 +84,7 @@ export default function AnalyticsScreen() {
   const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
   const [dictSelectedMuscles, setDictSelectedMuscles] = useState<string[]>([]);
 
-  // ESTADOS DEL MODAL DE FUSIÓN DE 2 PASOS
+  // ESTADOS DEL MODAL DE FUSIÓN
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeTargetItem, setMergeTargetItem] = useState<any>(null);
 
@@ -168,16 +168,17 @@ export default function AnalyticsScreen() {
 
   const toggleMerge = async (sourceId: string) => {
     if (!mergeTargetItem) return;
-    const newMap = { ...mergeMap };
     
-    if (newMap[sourceId] === mergeTargetItem.id) {
-        delete newMap[sourceId];
-    } else {
-        newMap[sourceId] = mergeTargetItem.id;
-    }
-    
-    setMergeMap(newMap);
-    await AsyncStorage.setItem('custom_merge_map', JSON.stringify(newMap));
+    setMergeMap(prevMap => {
+      const newMap = { ...prevMap };
+      if (newMap[sourceId] === mergeTargetItem.id) {
+          delete newMap[sourceId];
+      } else {
+          newMap[sourceId] = mergeTargetItem.id;
+      }
+      AsyncStorage.setItem('custom_merge_map', JSON.stringify(newMap)).catch(console.error);
+      return newMap;
+    });
   };
 
   const getMuscleHeat = () => {
@@ -211,17 +212,7 @@ export default function AnalyticsScreen() {
     return measures;
   };
 
-  const getPRUniqueTests = () => {
-    const prTests: Record<string, { testDoc: any; maxVal: number }> = {};
-    testHistory.forEach(test => {
-      if (test.test_type === 'medicion') return; 
-      const key = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
-      const currentVal = Math.max(parseFloat(test.value_left) || 0, parseFloat(test.value_right) || 0, parseFloat(test.value) || 0);
-      if (!prTests[key] || currentVal > prTests[key].maxVal) { prTests[key] = { testDoc: test, maxVal: currentVal }; }
-    });
-    return Object.values(prTests).map(item => item.testDoc);
-  };
-
+  // 1. OBTENCIÓN DE DATOS PUROS
   const getRawItems = () => {
     const items: Record<string, any> = {};
 
@@ -246,7 +237,18 @@ export default function AnalyticsScreen() {
       const val = parseFloat(t.value) || 0;
       const maxVal = Math.max(valL, valR, val);
 
-      if (!items[normKey]) items[normKey] = { id: normKey, name: rawName, history: [], maxW: 0, type: 'test', unit: t.unit || 'kg' };
+      if (!items[normKey]) {
+        items[normKey] = { 
+            id: normKey, 
+            name: rawName, 
+            history: [], 
+            maxW: 0, 
+            type: 'test', 
+            unit: t.unit || 'kg',
+            testDoc: t // Guardamos el documento original para el L/R de la UI
+        };
+      }
+      
       if (maxVal > items[normKey].maxW) items[normKey].maxW = maxVal;
       items[normKey].history.push({ date: t.date, val: maxVal });
     });
@@ -254,16 +256,27 @@ export default function AnalyticsScreen() {
     return items;
   };
 
+  // 2. APLICAR FUSIONES (Este es ahora el motor de todas las pestañas)
   const getCleanProgression = () => {
     const itemsRecord = getRawItems();
+    
     Object.entries(mergeMap).forEach(([sourceId, targetId]) => {
-      if (itemsRecord[sourceId] && itemsRecord[targetId]) {
-        itemsRecord[targetId].history = [...itemsRecord[targetId].history, ...itemsRecord[sourceId].history];
-        itemsRecord[targetId].maxW = Math.max(itemsRecord[targetId].maxW, itemsRecord[sourceId].maxW);
-        itemsRecord[targetId].mergedSources = [...(itemsRecord[targetId].mergedSources || []), itemsRecord[sourceId].name];
+      // Resolvemos cadenas de fusiones (si A -> B y B -> C, entonces A -> C)
+      let finalTarget = targetId;
+      let iterations = 0;
+      while (mergeMap[finalTarget] && iterations < 10) {
+          finalTarget = mergeMap[finalTarget];
+          iterations++;
+      }
+
+      if (itemsRecord[sourceId] && itemsRecord[finalTarget] && sourceId !== finalTarget) {
+        itemsRecord[finalTarget].history = [...itemsRecord[finalTarget].history, ...itemsRecord[sourceId].history];
+        itemsRecord[finalTarget].maxW = Math.max(itemsRecord[finalTarget].maxW, itemsRecord[sourceId].maxW);
+        itemsRecord[finalTarget].mergedSources = [...(itemsRecord[finalTarget].mergedSources || []), itemsRecord[sourceId].name];
         delete itemsRecord[sourceId];
       }
     });
+    
     return Object.values(itemsRecord).sort((a: any, b: any) => a.name.localeCompare(b.name));
   };
 
@@ -278,7 +291,6 @@ export default function AnalyticsScreen() {
     return (
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 15, alignItems: 'flex-end', height: 120, paddingHorizontal: 10 }}>
         {data.map((h, i) => {
-          // CORRECCIÓN: Cálculo en píxeles absolutos para evitar el bug de % de React Native
           const barHeight = Math.max(((h.val - minV) / range) * 60 + 15, 10);
           return (
             <View key={i} style={{ alignItems: 'center', width: 45, height: '100%', justifyContent: 'flex-end' }}>
@@ -292,27 +304,32 @@ export default function AnalyticsScreen() {
     );
   };
 
-  // CORRECCIÓN: Las gráficas de los tests ahora también leen de la progresión fusionada
-  const renderTestChart = (testKey: string) => { 
-    const normKeyId = `test_${normalizeName(testKey)}`;
-    const mergedItem = getCleanProgression().find(item => item.id === normKeyId || item.id === testKey);
-    if (!mergedItem) return null;
-    return renderChart(mergedItem.history, mergedItem.unit);
-  };
-
-  const renderTestCard = (test: any, index: number) => { 
-    const valL = parseFloat(test.value_left); const valR = parseFloat(test.value_right);
+  // 3. TARJETA DE TEST AHORA USA EL ITEM FUSIONADO DIRECTAMENTE
+  const renderTestCard = (mergedItem: any, index: number) => { 
+    const test = mergedItem.testDoc;
+    const valL = test ? parseFloat(test.value_left) : NaN; 
+    const valR = test ? parseFloat(test.value_right) : NaN;
     const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
-    const testKey = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
-    const isSelected = selectedTestKey === testKey;
+    const isSelected = selectedTestKey === mergedItem.id;
 
     return (
       <View key={index} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, width: isDesktop ? '48%' : '100%' }]}>
-        <TouchableOpacity onPress={() => setSelectedTestKey(isSelected ? null : testKey)} activeOpacity={0.7}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={[styles.testName, { color: colors.textPrimary, flex: 1 }]}>{test.custom_name || TEST_TRANSLATIONS[test.test_name] || test.test_name}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><Ionicons name="trophy" size={16} color={colors.primary} /><Text style={{ fontSize: 11, color: colors.primary, fontWeight: '700' }}>PR</Text></View>
+        <TouchableOpacity onPress={() => setSelectedTestKey(isSelected ? null : mergedItem.id)} activeOpacity={0.7}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <View style={{ flex: 1, paddingRight: 10 }}>
+                <Text style={[styles.testName, { color: colors.textPrimary }]}>{mergedItem.name}</Text>
+                {mergedItem.mergedSources && mergedItem.mergedSources.length > 0 && (
+                    <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 }}>
+                        <Text style={{ fontSize: 9, fontWeight: '800', color: colors.warning }}>FUSIONADO</Text>
+                    </View>
+                )}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
+                <Ionicons name="trophy" size={16} color={colors.primary} />
+                <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '900' }}>PR {mergedItem.maxW}</Text>
+            </View>
           </View>
+          
           <View style={{ flexDirection: 'row', marginTop: 15, alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', flex: 1 }}>
               {hasSides ? (
@@ -321,14 +338,15 @@ export default function AnalyticsScreen() {
                   <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#EF4444' }]}>{valR}</Text><Text style={styles.sideLabel}>DER</Text></View>
                 </>
               ) : (
-                <Text style={[styles.testValue, { color: colors.textPrimary }]}>{test.value} <Text style={{fontSize: 14, color: colors.textSecondary}}>{test.unit}</Text></Text>
+                <Text style={[styles.testValue, { color: colors.textPrimary }]}>{mergedItem.maxW} <Text style={{fontSize: 14, color: colors.textSecondary}}>{mergedItem.unit}</Text></Text>
               )}
             </View>
             <Ionicons name={isSelected ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
           </View>
-          <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 10 }}>Logrado el {test.date}</Text>
+          {test && <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 10 }}>Último registro: {test.date}</Text>}
         </TouchableOpacity>
-        {isSelected && <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>{renderTestChart(testKey)}</View>}
+        
+        {isSelected && <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>{renderChart(mergedItem.history, mergedItem.unit)}</View>}
       </View>
     );
   };
@@ -487,7 +505,6 @@ export default function AnalyticsScreen() {
           {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
            activeTab === 'summary' ? (
              <View>
-               {/* NUEVO BOTÓN GLOBAL EN LA PESTAÑA TESTS */}
                <TouchableOpacity 
                  style={[styles.mergeGlobalBtn, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]} 
                  onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}
@@ -497,7 +514,7 @@ export default function AnalyticsScreen() {
                </TouchableOpacity>
 
                <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>
-                 {getPRUniqueTests().map(renderTestCard)}
+                 {getCleanProgression().filter(item => item.type === 'test').map((item, i) => renderTestCard(item, i))}
                </View>
              </View>
            ) : 
@@ -680,7 +697,6 @@ const styles = StyleSheet.create({
   tabButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)', justifyContent: 'center' },
   tabButtonText: { fontSize: 11, fontWeight: '800' },
   
-  // NUEVO BOTÓN
   mergeGlobalBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 15, borderRadius: 16, borderWidth: 1, marginBottom: 20, borderStyle: 'dashed' },
   
   bodyTabWrapper: { flex: 1 },
