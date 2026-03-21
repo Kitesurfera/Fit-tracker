@@ -14,7 +14,16 @@ const DAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 const getLocalDateStr = (date: Date) => {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return '';
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+// UTILIDAD PARA BLINDAR CUALQUIER FECHA QUE VENGA DE LA API
+const extractDateString = (dateVal: any) => {
+  if (!dateVal) return null;
+  if (typeof dateVal === 'string') return dateVal.split('T')[0]; 
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return getLocalDateStr(dateVal);
+  return null;
 };
 
 const now = new Date();
@@ -191,26 +200,40 @@ export default function CalendarScreen() {
   };
 
   const getActualDayOneStr = () => {
-    if (!wellnessHistory || wellnessHistory.length === 0) return '';
-    const menstrualLogs = wellnessHistory.filter(w => w.cycle_phase === 'menstrual' || w.cycle_phase?.startsWith('menstruacion')).sort((a, b) => b.date.localeCompare(a.date));
-    if (menstrualLogs.length === 0) return '';
+    try {
+      if (!wellnessHistory || !Array.isArray(wellnessHistory) || wellnessHistory.length === 0) return '';
+      const menstrualLogs = wellnessHistory
+        .filter(w => w && w.date && (w.cycle_phase === 'menstrual' || w.cycle_phase?.startsWith('menstruacion')))
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      
+      if (menstrualLogs.length === 0) return '';
 
-    let actualDayOneStr = menstrualLogs[0].date;
-    for (let i = 0; i < menstrualLogs.length - 1; i++) {
-      const [cY, cM, cD] = menstrualLogs[i].date.split('-').map(Number);
-      const [pY, pM, pD] = menstrualLogs[i+1].date.split('-').map(Number);
-      const diffDays = (new Date(cY, cM - 1, cD).getTime() - new Date(pY, pM - 1, pD).getTime()) / (1000 * 3600 * 24);
-      if (diffDays <= 2) actualDayOneStr = menstrualLogs[i+1].date;
-      else break; 
+      let actualDayOneStr = extractDateString(menstrualLogs[0].date) || '';
+      for (let i = 0; i < menstrualLogs.length - 1; i++) {
+        const d1 = extractDateString(menstrualLogs[i].date);
+        const d2 = extractDateString(menstrualLogs[i+1].date);
+        if (!d1 || !d2) continue;
+
+        const p1 = d1.split('-');
+        const p2 = d2.split('-');
+        const date1 = new Date(Number(p1[0]), Number(p1[1]) - 1, Number(p1[2]));
+        const date2 = new Date(Number(p2[0]), Number(p2[1]) - 1, Number(p2[2]));
+        
+        const diffDays = (date1.getTime() - date2.getTime()) / (1000 * 3600 * 24);
+        if (diffDays <= 2) actualDayOneStr = d2;
+        else break; 
+      }
+      return actualDayOneStr;
+    } catch (e) {
+      console.error("Error en getActualDayOneStr:", e);
+      return '';
     }
-    return actualDayOneStr;
   };
 
   const openCycleSettings = () => {
     setCycleLengthInput(String(selectedAthlete?.cycle_length || 28));
     setPeriodLengthInput(String(selectedAthlete?.period_length || 5));
-    // Damos prioridad absoluta a la fecha guardada en el perfil si existe
-    setLastPeriodDateInput(selectedAthlete?.last_period_date || getActualDayOneStr()); 
+    setLastPeriodDateInput(extractDateString(selectedAthlete?.last_period_date) || getActualDayOneStr()); 
     setShowCycleSettings(true);
   };
 
@@ -225,7 +248,6 @@ export default function CalendarScreen() {
 
     setUpdating(true);
     try {
-      // Metemos last_period_date directamente en el payload del perfil
       const payload = { 
           cycle_length: parseInt(cycleLengthInput) || 28, 
           period_length: parseInt(periodLengthInput) || 5,
@@ -238,8 +260,6 @@ export default function CalendarScreen() {
         await api.updateProfile(payload); 
       }
 
-      // 🔥 ACTUALIZACIÓN AGRESIVA EN MEMORIA LOCAL 🔥
-      // Engañamos a la app inyectando los datos al instante sin esperar al backend
       setSelectedAthlete({ ...selectedAthlete, ...payload });
 
       const currentActualDayOne = getActualDayOneStr();
@@ -261,18 +281,15 @@ export default function CalendarScreen() {
              
              setWellnessHistory(prev => [...prev, wellnessData]);
           } catch (wellnessErr) {
-             console.warn("Error guardando Wellness silencioso:", wellnessErr);
+             console.warn("Wellness silencioso falló:", wellnessErr);
           }
       }
 
       setShowCycleSettings(false);
       setUpdating(false);
       
-      // Al no recargar la página entera y modificar selectedAthlete directamente,
-      // React forzará un re-pintado instantáneo de la cuadrícula.
-      
     } catch (e) {
-      console.error("Error guardando ajustes de ciclo:", e);
+      console.error("Error guardando ajustes:", e);
       const errorMsg = "No se pudieron guardar los ajustes generales.";
       if (Platform.OS === 'web') window.alert(errorMsg);
       else Alert.alert("Error", errorMsg);
@@ -291,94 +308,160 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
-  // EL MOTOR AHORA RESPETA EL "MODO JEFE" DEL USUARIO
-  const cycleData = useMemo(() => {
-    if (!isFemale) return null;
-    
-    // Prioridad 1: Fecha anclada manualmente por la deportista
-    let actualDayOneStr = selectedAthlete?.last_period_date;
-    
-    // Prioridad 2: Cálculo automático del historial
-    if (!actualDayOneStr) {
-        if (!wellnessHistory || wellnessHistory.length === 0) return null;
-        actualDayOneStr = getActualDayOneStr();
+  const microciclosDelMes = useMemo(() => {
+    try {
+      if (!Array.isArray(macros)) return [];
+      const microsResult: any[] = [];
+      const firstDayTime = new Date(currentYear, currentMonth, 1).getTime();
+      const lastDayTime = new Date(currentYear, currentMonth + 1, 0).getTime();
+
+      macros.forEach(macro => {
+        const listaMicros = macro.microciclos || macro.microcycles || [];
+        if (Array.isArray(listaMicros)) {
+          listaMicros.forEach((m: any) => {
+            const start = extractDateString(m.fecha_inicio || m.start_date);
+            const end = extractDateString(m.fecha_fin || m.end_date);
+            if (start && end) {
+              const [sY, sM, sD] = start.split('-').map(Number);
+              const [eY, eM, eD] = end.split('-').map(Number);
+              if (!isNaN(sY) && !isNaN(eY)) {
+                const sTime = new Date(sY, sM - 1, sD).getTime();
+                const eTime = new Date(eY, eM - 1, eD).getTime();
+                if (sTime <= lastDayTime && eTime >= firstDayTime) {
+                  microsResult.push({ ...m, macroNombre: macro.nombre || macro.name || 'Macro', nombre: m.nombre || m.name || 'Micro', fecha_inicio: start, fecha_fin: end, tipo: m.tipo || m.type || 'BASE', color: m.color || colors.primary });
+                }
+              }
+            }
+          });
+        }
+      });
+      return microsResult.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+    } catch (e) {
+      return [];
     }
-    
-    if (!actualDayOneStr) return null;
+  }, [macros, currentMonth, currentYear, colors.primary]);
 
-    const [startY, startM, startD] = actualDayOneStr.split('-').map(Number);
-    const actualDayOne = new Date(startY, startM - 1, startD);
-    const cycleLength = selectedAthlete?.cycle_length || 28;
-    const periodLength = selectedAthlete?.period_length || 5;
+  const cycleData = useMemo(() => {
+    try {
+      if (!isFemale) return null;
+      
+      let actualDayOneStr = extractDateString(selectedAthlete?.last_period_date);
+      
+      if (!actualDayOneStr) {
+          if (!wellnessHistory || wellnessHistory.length === 0) return null;
+          actualDayOneStr = getActualDayOneStr();
+      }
+      
+      if (!actualDayOneStr) return null;
 
-    return { actualDayOne, cycleLength, periodLength };
+      const parts = actualDayOneStr.split('-');
+      const startY = Number(parts[0]);
+      const startM = Number(parts[1]);
+      const startD = Number(parts[2]);
+
+      if (isNaN(startY) || isNaN(startM) || isNaN(startD)) return null;
+
+      const actualDayOne = new Date(startY, startM - 1, startD);
+      const cycleLength = Number(selectedAthlete?.cycle_length) || 28;
+      const periodLength = Number(selectedAthlete?.period_length) || 5;
+
+      return { actualDayOne, cycleLength, periodLength };
+    } catch (e) {
+      console.error("Error en cycleData:", e);
+      return null;
+    }
   }, [wellnessHistory, selectedAthlete, isFemale]);
 
   const periodDays = useMemo(() => {
-    if (!cycleData) return {};
-    const daysDict: Record<string, { type: 'current' | 'predicted' }> = {};
-    for (let cycleIndex = 0; cycleIndex <= 6; cycleIndex++) {
-      const cycleStart = new Date(cycleData.actualDayOne);
-      cycleStart.setDate(cycleData.actualDayOne.getDate() + (cycleData.cycleLength * cycleIndex));
-      for (let i = 0; i < cycleData.periodLength; i++) {
-        const dayDate = new Date(cycleStart);
-        dayDate.setDate(cycleStart.getDate() + i);
-        const dateStr = getLocalDateStr(dayDate);
-        if (!daysDict[dateStr]) daysDict[dateStr] = { type: cycleIndex === 0 ? 'current' : 'predicted' };
+    try {
+      if (!cycleData || !cycleData.actualDayOne || isNaN(cycleData.actualDayOne.getTime())) return {};
+      const daysDict: Record<string, { type: 'current' | 'predicted' }> = {};
+      
+      for (let cycleIndex = 0; cycleIndex <= 6; cycleIndex++) {
+        const cycleStart = new Date(cycleData.actualDayOne.getTime());
+        cycleStart.setDate(cycleData.actualDayOne.getDate() + (cycleData.cycleLength * cycleIndex));
+        
+        for (let i = 0; i < cycleData.periodLength; i++) {
+          const dayDate = new Date(cycleStart.getTime());
+          dayDate.setDate(cycleStart.getDate() + i);
+          const dateStr = getLocalDateStr(dayDate);
+          if (dateStr) {
+             if (!daysDict[dateStr]) daysDict[dateStr] = { type: cycleIndex === 0 ? 'current' : 'predicted' };
+          }
+        }
       }
+      return daysDict;
+    } catch (e) {
+      console.error("Error en periodDays:", e);
+      return {};
     }
-    return daysDict;
   }, [cycleData]);
 
   const getPhaseForDate = (targetDateStr: string) => {
-    if (!cycleData) return null;
-    const [tY, tM, tD] = targetDateStr.split('-').map(Number);
-    const targetTime = new Date(tY, tM - 1, tD).getTime();
-    const startTime = cycleData.actualDayOne.getTime();
-    const diffDays = Math.floor((targetTime - startTime) / (1000 * 3600 * 24));
+    try {
+      if (!cycleData || !cycleData.actualDayOne || isNaN(cycleData.actualDayOne.getTime())) return null;
+      if (!targetDateStr) return null;
+      
+      const parts = targetDateStr.split('-');
+      const tY = Number(parts[0]);
+      const tM = Number(parts[1]);
+      const tD = Number(parts[2]);
+      if (isNaN(tY) || isNaN(tM) || isNaN(tD)) return null;
 
-    if (diffDays < 0) return null;
+      const targetTime = new Date(tY, tM - 1, tD).getTime();
+      const startTime = cycleData.actualDayOne.getTime();
+      const diffDays = Math.floor((targetTime - startTime) / (1000 * 3600 * 24));
 
-    const currentCycleDay = (diffDays % cycleData.cycleLength) + 1;
+      if (diffDays < 0) return null;
 
-    if (currentCycleDay <= cycleData.periodLength) {
-      return { day: currentCycleDay, name: 'Fase Menstrual', color: '#EF4444', icon: 'water', training: 'Baja carga. Prioriza técnica y recuperación.', risk: 'Fatiga general alta. Escucha a tu cuerpo.', nutrition: 'Aumenta el hierro y alimentos antiinflamatorios.' };
-    } else if (currentCycleDay <= Math.floor(cycleData.cycleLength / 2) - 2) {
-      return { day: currentCycleDay, name: 'Fase Folicular', color: '#10B981', icon: 'leaf', training: 'Alta energía. Ideal para entrenos de fuerza.', risk: 'Bajo riesgo. ¡Aprovecha el pico de energía!', nutrition: 'Mayor sensibilidad a la insulina. Cargas de carbohidratos eficientes.' };
-    } else if (currentCycleDay <= Math.floor(cycleData.cycleLength / 2) + 2) {
-      return { day: currentCycleDay, name: 'Fase Ovulatoria', color: '#F59E0B', icon: 'sunny', training: 'Pico de fuerza máxima. Cuidado con el exceso de confianza.', risk: 'ALTO RIESGO: Mayor laxitud de ligamentos (rodillas/hombros). Controla los aterrizajes.', nutrition: 'Mantén hidratación alta y proteína para recuperación.' };
-    } else {
-      return { day: currentCycleDay, name: 'Fase Lútea', color: '#8B5CF6', icon: 'moon', training: 'Posible bajón de energía. Reduce intensidad si notas pesadez.', risk: 'Aumenta la temperatura basal y fatiga central.', nutrition: 'El cuerpo quema más grasas. Antojos normales; prioriza grasas saludables.' };
+      const currentCycleDay = (diffDays % cycleData.cycleLength) + 1;
+
+      if (currentCycleDay <= cycleData.periodLength) {
+        return { day: currentCycleDay, name: 'Fase Menstrual', color: '#EF4444', icon: 'water', training: 'Baja carga. Prioriza técnica y recuperación.', risk: 'Fatiga general alta. Escucha a tu cuerpo.', nutrition: 'Aumenta el hierro y alimentos antiinflamatorios.' };
+      } else if (currentCycleDay <= Math.floor(cycleData.cycleLength / 2) - 2) {
+        return { day: currentCycleDay, name: 'Fase Folicular', color: '#10B981', icon: 'leaf', training: 'Alta energía. Ideal para entrenos de fuerza.', risk: 'Bajo riesgo. ¡Aprovecha el pico de energía!', nutrition: 'Mayor sensibilidad a la insulina. Cargas de carbohidratos eficientes.' };
+      } else if (currentCycleDay <= Math.floor(cycleData.cycleLength / 2) + 2) {
+        return { day: currentCycleDay, name: 'Fase Ovulatoria', color: '#F59E0B', icon: 'sunny', training: 'Pico de fuerza máxima. Cuidado con el exceso de confianza.', risk: 'ALTO RIESGO: Mayor laxitud de ligamentos (rodillas/hombros). Controla los aterrizajes.', nutrition: 'Mantén hidratación alta y proteína para recuperación.' };
+      } else {
+        return { day: currentCycleDay, name: 'Fase Lútea', color: '#8B5CF6', icon: 'moon', training: 'Posible bajón de energía. Reduce intensidad si notas pesadez.', risk: 'Aumenta la temperatura basal y fatiga central.', nutrition: 'El cuerpo quema más grasas. Antojos normales; prioriza grasas saludables.' };
+      }
+    } catch (e) {
+      return null;
     }
   };
 
   const getDayStatus = (day: number | null) => {
     if (!day) return null;
-    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-    let status: any = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriod: false, periodType: null };
-    const workoutsForDay = workouts?.filter(w => w.date === dateStr) || [];
-    if (workoutsForDay.length > 0) { status.hasWorkout = true; status.isCompleted = workoutsForDay.every(w => w.completed); }
-    if (periodDays[dateStr]) { status.isPeriod = true; status.periodType = periodDays[dateStr].type; }
+    try {
+      const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+      let status: any = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriod: false, periodType: null };
+      
+      const workoutsForDay = workouts?.filter(w => extractDateString(w.date) === dateStr) || [];
+      if (workoutsForDay.length > 0) { status.hasWorkout = true; status.isCompleted = workoutsForDay.every(w => w.completed); }
+      if (periodDays[dateStr]) { status.isPeriod = true; status.periodType = periodDays[dateStr].type; }
 
-    const currentDayTime = new Date(currentYear, currentMonth, day).getTime();
-    if (Array.isArray(macros)) {
-      for (const macro of macros) {
-        const listaMicros = macro.microciclos || macro.microcycles || [];
-        const micro = listaMicros.find((m: any) => {
-          const start = m.fecha_inicio || m.start_date;
-          const end = m.fecha_fin || m.end_date;
-          if(!start || !end) return false;
-          const [sY, sM, sD] = start.split('-').map(Number);
-          const [eY, eM, eD] = end.split('-').map(Number);
-          return currentDayTime >= new Date(sY, sM - 1, sD).getTime() && currentDayTime <= new Date(eY, eM - 1, eD).getTime();
-        });
-        if (micro) { status.phaseColor = micro.color || colors.primary; break; }
+      const currentDayTime = new Date(currentYear, currentMonth, day).getTime();
+      if (Array.isArray(macros)) {
+        for (const macro of macros) {
+          const listaMicros = macro.microciclos || macro.microcycles || [];
+          const micro = listaMicros.find((m: any) => {
+            const start = extractDateString(m.fecha_inicio || m.start_date);
+            const end = extractDateString(m.fecha_fin || m.end_date);
+            if(!start || !end) return false;
+            const [sY, sM, sD] = start.split('-').map(Number);
+            const [eY, eM, eD] = end.split('-').map(Number);
+            return currentDayTime >= new Date(sY, sM - 1, sD).getTime() && currentDayTime <= new Date(eY, eM - 1, eD).getTime();
+          });
+          if (micro) { status.phaseColor = micro.color || colors.primary; break; }
+        }
       }
+      return status;
+    } catch (e) {
+      return null;
     }
-    return status;
   };
 
-  const activeDetail = { workouts: workouts?.filter(w => w.date === selectedDate) || [] };
+  const activeDetail = { workouts: workouts?.filter(w => extractDateString(w.date) === selectedDate) || [] };
   const phaseInfo = getPhaseForDate(selectedDate);
 
   const changeMonth = (dir: number) => {
@@ -392,7 +475,7 @@ export default function CalendarScreen() {
 
   const microWorkouts = useMemo(() => {
     if (!viewMicroInfo) return [];
-    return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => a.date.localeCompare(b.date));
+    return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   }, [workouts, viewMicroInfo]);
 
   if (authLoading || (loading && athletes.length === 0)) return <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}><ActivityIndicator size="large" color={colors.primary}/></View>;
