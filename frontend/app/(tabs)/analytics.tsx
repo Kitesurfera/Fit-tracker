@@ -56,6 +56,11 @@ const normalizeName = (name: string) => {
   return n;
 };
 
+// HELPER: Fuerza a leer la fecha en tu franja horaria local sin bugs UTC
+const getLocalDateStr = (date: Date) => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
 export default function AnalyticsScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -78,7 +83,7 @@ export default function AnalyticsScreen() {
   const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null); 
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(1); // Puesto a 1 por defecto para ver "Hoy" rápido
+  const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(1);
   
   const [showDictModal, setShowDictModal] = useState(false);
   const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
@@ -120,8 +125,6 @@ export default function AnalyticsScreen() {
         api.getWorkouts({ athlete_id: athleteId }).catch(() => [])
       ]);
       setTestHistory(Array.isArray(ts) ? ts.sort((a,b) => b.date.localeCompare(a.date)) : []);
-      
-      // CAMBIO CLAVE: Guardamos TODOS los entrenamientos, no solo los completados
       setWorkoutHistory(Array.isArray(wk) ? wk : []);
     } finally {
       setLoading(false);
@@ -169,7 +172,6 @@ export default function AnalyticsScreen() {
 
   const toggleMerge = async (sourceId: string) => {
     if (!mergeTargetItem) return;
-    
     setMergeMap(prevMap => {
       const newMap = { ...prevMap };
       if (newMap[sourceId] === mergeTargetItem.id) {
@@ -182,38 +184,61 @@ export default function AnalyticsScreen() {
     });
   };
 
-  // MOTOR DEL MAPA DE CALOR MEJORADO
+  // MOTOR DEL MAPA DE CALOR CRUZADO CON CALENDARIO ESTRICTO
   const getMuscleHeat = () => {
     const heat: Record<string, number> = {};
-    ALL_MUSCLES.forEach(m => heat[m] = 0); // Inicialización segura
+    ALL_MUSCLES.forEach(m => heat[m] = 0);
 
-    const limitDate = new Date();
-    if (bodyTimeFilter === 1) limitDate.setHours(0, 0, 0, 0);
-    else limitDate.setDate(limitDate.getDate() - bodyTimeFilter);
-    const limitDateStr = limitDate.toISOString().split('T')[0];
+    const now = new Date();
+    const localTodayStr = getLocalDateStr(now);
+    
+    let limitDateStr = localTodayStr;
+    if (bodyTimeFilter !== 1) {
+      const limitDate = new Date();
+      limitDate.setDate(now.getDate() - bodyTimeFilter + 1);
+      limitDateStr = getLocalDateStr(limitDate);
+    }
 
     workoutHistory.forEach(w => {
-      if (w.date >= limitDateStr) {
-        // Leemos resultados reales o la planificación teórica si no se ha hecho
+      // Bloqueamos cualquier entrenamiento futuro para que no ensucie la gráfica
+      const isDateValid = bodyTimeFilter === 1 
+        ? w.date === localTodayStr 
+        : (w.date >= limitDateStr && w.date <= localTodayStr);
+
+      if (isDateValid) {
         const exercisesList = w.completed 
             ? (w.completion_data?.exercise_results || []) 
             : (w.exercises || w.routine || w.completion_data?.exercise_results || []);
 
         exercisesList.forEach((r: any) => {
-          const exName = r.name || r.exercise_name || r.exercise; // Cubrimos distintas variaciones de la DB
-          
-          if (exName) {
-            let sets = 0;
-            if (w.completed) {
-                sets = parseInt(r.completed_sets) || 1;
-            } else {
-                sets = parseInt(r.target_sets) || parseInt(r.sets) || parseInt(r.series) || 1;
-            }
+          // Lectura profunda: ¿Es un bloque de HIIT con ejercicios dentro?
+          if (r.is_hiit_block && r.hiit_exercises) {
+            r.hiit_exercises.forEach((he: any) => {
+              const exName = he.name || he.exercise_name || he.exercise;
+              if (exName) {
+                // Si el HIIT no está hecho, lee los sets programados a nivel de bloque o ejercicio
+                const sets = parseInt(r.sets) || parseInt(he.sets) || 1; 
+                getMusclesForExercise(exName).forEach(m => {
+                  if (heat[m] !== undefined) heat[m] += sets;
+                });
+              }
+            });
+          } else {
+            // Lectura normal
+            const exName = r.name || r.exercise_name || r.exercise;
+            if (exName) {
+              let sets = 0;
+              if (w.completed) {
+                  sets = parseInt(r.completed_sets) || 1;
+              } else {
+                  sets = parseInt(r.target_sets) || parseInt(r.sets) || parseInt(r.series) || 1;
+              }
 
-            if (sets > 0) {
-              getMusclesForExercise(exName).forEach(m => { 
-                if (heat[m] !== undefined) heat[m] += sets; 
-              });
+              if (sets > 0) {
+                getMusclesForExercise(exName).forEach(m => { 
+                  if (heat[m] !== undefined) heat[m] += sets; 
+                });
+              }
             }
           }
         });
@@ -238,7 +263,7 @@ export default function AnalyticsScreen() {
     const items: Record<string, any> = {};
 
     workoutHistory.forEach(w => {
-      if (!w.completed) return; // ESCUDO: Evita que los PRs se vean afectados por entrenos sin hacer
+      if (!w.completed) return; 
       
       w.completion_data?.exercise_results?.forEach((r: any) => {
         if (r.completed_sets > 0 && r.name) {
@@ -419,7 +444,7 @@ export default function AnalyticsScreen() {
   const renderFeedbackTab = () => { 
     const feedbacks: any[] = [];
     workoutHistory.forEach(w => {
-      if (!w.completed) return; // ESCUDO
+      if (!w.completed) return; 
       w.completion_data?.exercise_results?.forEach((ex: any) => { 
         if (ex.coach_note) feedbacks.push({ date: w.date, exercise: ex.name, note: ex.coach_note }); 
       });
