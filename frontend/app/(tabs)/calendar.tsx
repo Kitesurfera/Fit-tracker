@@ -46,7 +46,6 @@ export default function CalendarScreen() {
   const [workoutToCopy, setWorkoutToCopy] = useState<any>(null);
   const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(null);
 
-  // ESTADOS DEL MODAL DEL CICLO MENSTRUAL
   const [showCycleSettings, setShowCycleSettings] = useState(false);
   const [cycleLengthInput, setCycleLengthInput] = useState('28');
   const [periodLengthInput, setPeriodLengthInput] = useState('5');
@@ -214,7 +213,6 @@ export default function CalendarScreen() {
     setShowCycleSettings(true);
   };
 
-  // FUNCIÓN REESCRITA A PRUEBA DE FALLOS WEB
   const handleSaveCycleSettings = async () => {
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (lastPeriodDateInput && !dateRegex.test(lastPeriodDateInput)) {
@@ -236,13 +234,13 @@ export default function CalendarScreen() {
       }
       setSelectedAthlete({ ...selectedAthlete, ...payload });
 
-      // 2. Bloque aislado para intentar crear el registro de Wellness
+      // 2. Crear registro de Wellness e inyección local
       const currentActualDayOne = getActualDayOneStr();
       if (lastPeriodDateInput && lastPeriodDateInput !== currentActualDayOne) {
           const wellnessData = {
               athlete_id: selectedAthlete.id,
               date: lastPeriodDateInput,
-              cycle_phase: 'menstruacion', // Usamos un string universal
+              cycle_phase: 'menstruacion',
               sleep_quality: 3, 
               stress_level: 3,
               muscle_soreness: 3,
@@ -250,19 +248,24 @@ export default function CalendarScreen() {
           };
           
           try {
-             // Fallbacks por si tu función se llama diferente en la API
              if (api.submitWellness) await api.submitWellness(wellnessData);
              else if ((api as any).createWellness) await (api as any).createWellness(wellnessData);
              else if ((api as any).logWellness) await (api as any).logWellness(wellnessData);
-             else console.warn("No se encontró el método de API para guardar Wellness.");
+             
+             // 🔥 ACTUALIZACIÓN OPTIMISTA EN MEMORIA 🔥
+             // Engañamos a la app inyectando el dato al instante sin esperar a recargar.
+             setWellnessHistory(prev => [...prev, wellnessData]);
+
           } catch (wellnessErr) {
              console.warn("La fecha de inicio no se pudo guardar en la DB, pero los ajustes de ciclo sí.", wellnessErr);
           }
       }
 
       setShowCycleSettings(false);
-      // Esperamos a que los datos se recarguen para cerrar el loader
-      await refreshAthleteData(selectedAthlete);
+      setUpdating(false);
+      
+      // 🚫 Eliminamos await refreshAthleteData(selectedAthlete);
+      // Evitamos recargar desde cero. Los `useMemo` del calendario detectarán los cambios en memoria y repintarán solitos.
       
     } catch (e) {
       console.error("Error guardando ajustes de ciclo:", e);
