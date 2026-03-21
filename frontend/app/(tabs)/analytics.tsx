@@ -65,7 +65,6 @@ export default function AnalyticsScreen() {
   const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
   const [customExerciseMuscles, setCustomExerciseMuscles] = useState<Record<string, string[]>>({});
   
-  // NUEVO ESTADO: Mapa de fusiones de ejercicios/tests
   const [mergeMap, setMergeMap] = useState<Record<string, string>>({});
   
   const [loading, setLoading] = useState(true);
@@ -85,7 +84,7 @@ export default function AnalyticsScreen() {
   const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
   const [dictSelectedMuscles, setDictSelectedMuscles] = useState<string[]>([]);
 
-  // ESTADOS DEL MODAL DE FUSIÓN
+  // ESTADOS DEL MODAL DE FUSIÓN DE 2 PASOS
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeTargetItem, setMergeTargetItem] = useState<any>(null);
 
@@ -172,16 +171,16 @@ export default function AnalyticsScreen() {
     const newMap = { ...mergeMap };
     
     if (newMap[sourceId] === mergeTargetItem.id) {
-        delete newMap[sourceId]; // Desvincular
+        delete newMap[sourceId];
     } else {
-        newMap[sourceId] = mergeTargetItem.id; // Vincular
+        newMap[sourceId] = mergeTargetItem.id;
     }
     
     setMergeMap(newMap);
     await AsyncStorage.setItem('custom_merge_map', JSON.stringify(newMap));
   };
 
-  const getMuscleHeat = () => { /* ... misma lógica intacta ... */
+  const getMuscleHeat = () => {
     const heat: Record<string, number> = { 'Pecho': 0, 'Espalda': 0, 'Cuádriceps': 0, 'Isquiotibiales': 0, 'Glúteo': 0, 'Hombro': 0, 'Bíceps': 0, 'Tríceps': 0, 'Core': 0, 'Gemelos': 0, 'Antebrazos': 0, 'Aductores': 0, 'Abductores': 0, 'Tibial': 0 };
     const limitDate = new Date();
     if (bodyTimeFilter === 1) limitDate.setHours(0, 0, 0, 0);
@@ -200,7 +199,7 @@ export default function AnalyticsScreen() {
     return heat;
   };
 
-  const getLatestMeasurements = () => { /* ... misma lógica intacta ... */
+  const getLatestMeasurements = () => {
     const measures: Record<string, any> = {};
     testHistory.forEach(test => {
       if (test.test_type === 'medicion') {
@@ -212,7 +211,7 @@ export default function AnalyticsScreen() {
     return measures;
   };
 
-  const getPRUniqueTests = () => { /* ... misma lógica intacta ... */
+  const getPRUniqueTests = () => {
     const prTests: Record<string, { testDoc: any; maxVal: number }> = {};
     testHistory.forEach(test => {
       if (test.test_type === 'medicion') return; 
@@ -223,7 +222,6 @@ export default function AnalyticsScreen() {
     return Object.values(prTests).map(item => item.testDoc);
   };
 
-  // --- OBTENCIÓN DE DATOS PUROS (SIN FUSIONAR) ---
   const getRawItems = () => {
     const items: Record<string, any> = {};
 
@@ -256,24 +254,16 @@ export default function AnalyticsScreen() {
     return items;
   };
 
-  // --- OBTENCIÓN DE DATOS FUSIONADOS PARA LA VISTA ---
   const getCleanProgression = () => {
     const itemsRecord = getRawItems();
-
-    // Aplicar las fusiones
     Object.entries(mergeMap).forEach(([sourceId, targetId]) => {
       if (itemsRecord[sourceId] && itemsRecord[targetId]) {
-        // Mover historial al destino
         itemsRecord[targetId].history = [...itemsRecord[targetId].history, ...itemsRecord[sourceId].history];
-        // Recalcular el PR (max weight/value)
         itemsRecord[targetId].maxW = Math.max(itemsRecord[targetId].maxW, itemsRecord[sourceId].maxW);
-        // Etiquetar para la UI
         itemsRecord[targetId].mergedSources = [...(itemsRecord[targetId].mergedSources || []), itemsRecord[sourceId].name];
-        // Eliminar el origen para que no salga duplicado
         delete itemsRecord[sourceId];
       }
     });
-
     return Object.values(itemsRecord).sort((a: any, b: any) => a.name.localeCompare(b.name));
   };
 
@@ -286,12 +276,13 @@ export default function AnalyticsScreen() {
     const range = maxV - minV === 0 ? 10 : maxV - minV;
 
     return (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 15, alignItems: 'flex-end', height: 150, paddingHorizontal: 10 }}>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 15, alignItems: 'flex-end', height: 120, paddingHorizontal: 10 }}>
         {data.map((h, i) => {
-          const heightPct = Math.max(((h.val - minV) / range) * 80 + 20, 10);
+          // CORRECCIÓN: Cálculo en píxeles absolutos para evitar el bug de % de React Native
+          const barHeight = Math.max(((h.val - minV) / range) * 60 + 15, 10);
           return (
-            <View key={i} style={{ alignItems: 'center', width: 45 }}>
-              <View style={{ height: `${heightPct}%`, width: 14, backgroundColor: colors.primary, borderRadius: 6 }} />
+            <View key={i} style={{ alignItems: 'center', width: 45, height: '100%', justifyContent: 'flex-end' }}>
+              <View style={{ height: barHeight, width: 14, backgroundColor: colors.primary, borderRadius: 6 }} />
               <Text style={{ fontSize: 10, color: colors.textPrimary, marginTop: 6, fontWeight: '800' }}>{h.val}</Text>
               <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 2 }}>{h.date.split('-').slice(1).join('/')}</Text>
             </View>
@@ -301,13 +292,15 @@ export default function AnalyticsScreen() {
     );
   };
 
-  const renderTestChart = (testKey: string) => { /* ... intacta ... */
-    const history = testHistory.filter(t => (t.test_name === 'custom' ? `custom_${t.custom_name}` : t.test_name) === testKey);
-    const data = history.map(t => ({ date: t.date, val: Math.max(parseFloat(t.value_left) || 0, parseFloat(t.value_right) || 0, parseFloat(t.value) || 0) }));
-    return renderChart(data, history[0]?.unit || 'kg');
+  // CORRECCIÓN: Las gráficas de los tests ahora también leen de la progresión fusionada
+  const renderTestChart = (testKey: string) => { 
+    const normKeyId = `test_${normalizeName(testKey)}`;
+    const mergedItem = getCleanProgression().find(item => item.id === normKeyId || item.id === testKey);
+    if (!mergedItem) return null;
+    return renderChart(mergedItem.history, mergedItem.unit);
   };
 
-  const renderTestCard = (test: any, index: number) => { /* ... intacta ... */
+  const renderTestCard = (test: any, index: number) => { 
     const valL = parseFloat(test.value_left); const valR = parseFloat(test.value_right);
     const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
     const testKey = test.test_name === 'custom' ? `custom_${test.custom_name}` : test.test_name;
@@ -340,7 +333,7 @@ export default function AnalyticsScreen() {
     );
   };
 
-  const renderFeedbackTab = () => { /* ... intacta ... */
+  const renderFeedbackTab = () => { 
     const feedbacks: any[] = [];
     workoutHistory.forEach(w => w.completion_data?.exercise_results?.forEach((ex: any) => { if (ex.coach_note) feedbacks.push({ date: w.date, exercise: ex.name, note: ex.coach_note }); }));
     return (
@@ -354,7 +347,7 @@ export default function AnalyticsScreen() {
     );
   };
 
-  const renderMeasurementsCard = () => { /* ... intacta ... */
+  const renderMeasurementsCard = () => { 
     const measures = getLatestMeasurements();
     if (Object.keys(measures).length === 0) return null;
     const displayNames: Record<string, string> = { weight: 'Peso', shoulders: 'Hombros', chest: 'Pecho', arm: 'Brazo', thigh: 'Muslo' };
@@ -377,7 +370,7 @@ export default function AnalyticsScreen() {
     );
   };
 
-  const renderBodyMap = () => { /* ... intacta ... */
+  const renderBodyMap = () => { 
     const heat = getMuscleHeat();
     const totalSets = Object.values(heat).reduce((sum, val) => sum + val, 0);
     const sortedMuscles = Object.entries(heat).sort((a, b) => b[1] - a[1]);
@@ -493,8 +486,19 @@ export default function AnalyticsScreen() {
         <ScrollView contentContainerStyle={{ padding: isDesktop ? 25 : 20 }}>
           {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
            activeTab === 'summary' ? (
-             <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>
-               {getPRUniqueTests().map(renderTestCard)}
+             <View>
+               {/* NUEVO BOTÓN GLOBAL EN LA PESTAÑA TESTS */}
+               <TouchableOpacity 
+                 style={[styles.mergeGlobalBtn, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]} 
+                 onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}
+               >
+                 <Ionicons name="git-merge" size={20} color={colors.primary} />
+                 <Text style={{ color: colors.textPrimary, fontWeight: '700', marginLeft: 8 }}>Vincular Datos y Tests</Text>
+               </TouchableOpacity>
+
+               <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>
+                 {getPRUniqueTests().map(renderTestCard)}
+               </View>
              </View>
            ) : 
            activeTab === 'progress' ? (
@@ -528,14 +532,6 @@ export default function AnalyticsScreen() {
                         </View>
                         
                         <View style={{ flexDirection: 'row', gap: 10 }}>
-                          {/* BOTÓN UNIFICAR */}
-                          <TouchableOpacity 
-                            style={{ padding: 5 }} 
-                            onPress={(e) => { e.stopPropagation(); setMergeTargetItem(item); setShowMergeModal(true); }}
-                          >
-                            <Ionicons name="git-merge-outline" size={20} color={colors.primary}/>
-                          </TouchableOpacity>
-
                           {item.type === 'ejercicio' && (
                             <TouchableOpacity style={{ padding: 5 }} onPress={(e) => { e.stopPropagation(); openDictModal(item.name); }}>
                               <Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/>
@@ -562,53 +558,91 @@ export default function AnalyticsScreen() {
         </ScrollView>
       </View>
 
-      {/* MODAL FUSIÓN DE DATOS */}
+      {/* MODAL FUSIÓN DE DATOS EN DOS PASOS */}
       <Modal visible={showMergeModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '80%' }]}>
-            <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>Unificar Datos</Text>
-            <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 20 }}>
-              Selecciona qué históricos quieres absorber y sumar a la gráfica de <Text style={{fontWeight: 'bold', color: colors.primary}}>{mergeTargetItem?.name}</Text>.
-            </Text>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
             
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {Object.values(getRawItems())
-                .filter(rawItem => rawItem.id !== mergeTargetItem?.id)
-                .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                .map((rawItem: any) => {
-                  const isMergedIntoCurrent = mergeMap[rawItem.id] === mergeTargetItem?.id;
-                  
-                  return (
-                    <TouchableOpacity 
-                      key={rawItem.id} 
-                      style={[
-                        styles.dictSelectBtn, 
-                        { borderColor: colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, 
-                        isMergedIntoCurrent && { backgroundColor: colors.primary + '15', borderColor: colors.primary }
-                      ]} 
-                      onPress={() => toggleMerge(rawItem.id)}
-                    >
-                      <View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>{rawItem.name}</Text>
-                          <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '700' }}>({rawItem.type.toUpperCase()})</Text>
+            {!mergeTargetItem ? (
+              <>
+                <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>1. Test Principal</Text>
+                <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 20 }}>Selecciona el test o ejercicio de <Text style={{fontWeight: 'bold', color: colors.primary}}>destino</Text>:</Text>
+                
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {Object.values(getRawItems())
+                    .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                    .map((item: any) => (
+                      <TouchableOpacity 
+                        key={item.id} 
+                        style={[styles.dictSelectBtn, { borderColor: colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]} 
+                        onPress={() => setMergeTargetItem(item)}
+                      >
+                        <View>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                            <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.name}</Text>
+                            <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '700' }}>({item.type.toUpperCase()})</Text>
+                          </View>
                         </View>
-                        <Text style={{ fontSize: 12, color: colors.textSecondary }}>PR Actual: {rawItem.maxW} {rawItem.unit}</Text>
-                      </View>
+                        <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity style={{ marginTop: 20, alignItems: 'center', padding: 15 }} onPress={() => setShowMergeModal(false)}>
+                  <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 16 }}>Cancelar</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>2. Unificar con...</Text>
+                <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 20 }}>
+                  Selecciona qué históricos sumar a <Text style={{fontWeight: 'bold', color: colors.primary}}>{mergeTargetItem.name}</Text>:
+                </Text>
+                
+                <ScrollView showsVerticalScrollIndicator={false}>
+                  {Object.values(getRawItems())
+                    .filter(rawItem => rawItem.id !== mergeTargetItem.id)
+                    .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                    .map((rawItem: any) => {
+                      const isMergedIntoCurrent = mergeMap[rawItem.id] === mergeTargetItem.id;
                       
-                      {isMergedIntoCurrent ? (
-                        <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
-                      ) : (
-                        <Ionicons name="add-circle-outline" size={24} color={colors.textSecondary} />
-                      )}
-                    </TouchableOpacity>
-                  );
-              })}
-            </ScrollView>
-            
-            <TouchableOpacity style={{ marginTop: 20, alignItems: 'center', padding: 15 }} onPress={() => setShowMergeModal(false)}>
-              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 16 }}>LISTO</Text>
-            </TouchableOpacity>
+                      return (
+                        <TouchableOpacity 
+                          key={rawItem.id} 
+                          style={[
+                            styles.dictSelectBtn, 
+                            { borderColor: colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, 
+                            isMergedIntoCurrent && { backgroundColor: colors.primary + '15', borderColor: colors.primary }
+                          ]} 
+                          onPress={() => toggleMerge(rawItem.id)}
+                        >
+                          <View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>{rawItem.name}</Text>
+                              <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '700' }}>({rawItem.type.toUpperCase()})</Text>
+                            </View>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary }}>PR Actual: {rawItem.maxW} {rawItem.unit}</Text>
+                          </View>
+                          
+                          {isMergedIntoCurrent ? (
+                            <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
+                          ) : (
+                            <Ionicons name="add-circle-outline" size={24} color={colors.textSecondary} />
+                          )}
+                        </TouchableOpacity>
+                      );
+                  })}
+                </ScrollView>
+                
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                  <TouchableOpacity style={{ flex: 1, padding: 15, alignItems: 'center' }} onPress={() => setMergeTargetItem(null)}>
+                    <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 16 }}>Volver</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={{ flex: 1, padding: 15, alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12 }} onPress={() => setShowMergeModal(false)}>
+                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Terminar</Text>
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
         </View>
       </Modal>
@@ -645,6 +679,10 @@ const styles = StyleSheet.create({
   tabsContainerMobile: { gap: 8, paddingRight: 20 },
   tabButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)', justifyContent: 'center' },
   tabButtonText: { fontSize: 11, fontWeight: '800' },
+  
+  // NUEVO BOTÓN
+  mergeGlobalBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 15, borderRadius: 16, borderWidth: 1, marginBottom: 20, borderStyle: 'dashed' },
+  
   bodyTabWrapper: { flex: 1 },
   timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 30 },
   timeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
