@@ -19,8 +19,9 @@ export default function PeriodizationScreen() {
   const [unassigned, setUnassigned] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   
-  // Estado para controlar qué microciclos están desplegados
+  // Estados para controlar qué elementos están desplegados
   const [expandedMicros, setExpandedMicros] = useState<Record<string, boolean>>({});
+  const [expandedMacros, setExpandedMacros] = useState<Record<string, boolean>>({}); // NUEVO ESTADO PARA MACROS
 
   const [macroModal, setMacroModal] = useState(false);
   const [microModal, setMicroModal] = useState(false);
@@ -33,7 +34,6 @@ export default function PeriodizationScreen() {
   const [macroForm, setMacroForm] = useState({ nombre: '', fecha_inicio: '', fecha_fin: '', color: MACRO_COLORS[0] });
   const [microForm, setMicroForm] = useState({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] });
 
-  // Función para ordenar por fecha (de más reciente a más antiguo)
   const sortByDateDesc = (a: any, b: any, key: string = 'fecha_inicio') => {
     return new Date(b[key]).getTime() - new Date(a[key]).getTime();
   };
@@ -44,10 +44,8 @@ export default function PeriodizationScreen() {
       if (!params.athlete_id) return;
       const res = await api.getPeriodizationTree(params.athlete_id);
       
-      // Ordenamos Macros
       const sortedMacros = (res?.macros || []).sort(sortByDateDesc);
       
-      // Ordenamos Micros dentro de cada Macro y Sesiones dentro de cada Micro
       sortedMacros.forEach((macro: any) => {
         if (macro.microciclos) {
           macro.microciclos.sort(sortByDateDesc);
@@ -59,6 +57,11 @@ export default function PeriodizationScreen() {
         }
       });
 
+      // Expandimos el primer macro por defecto al cargar para que no se vea todo vacío de golpe
+      if (sortedMacros.length > 0 && Object.keys(expandedMacros).length === 0) {
+        setExpandedMacros({ [sortedMacros[0].id]: true });
+      }
+
       setMacros(sortedMacros);
       setUnassigned(res?.unassigned_workouts || []);
     } catch (e) { console.log(e); } 
@@ -69,6 +72,11 @@ export default function PeriodizationScreen() {
 
   const toggleMicro = (id: string) => {
     setExpandedMicros(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // NUEVA FUNCIÓN PARA ALTERNAR MACROS
+  const toggleMacro = (id: string) => {
+    setExpandedMacros(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const formatDateForDB = (dateStr: string) => {
@@ -121,6 +129,11 @@ export default function PeriodizationScreen() {
       if (editingId) await api.updateMicrociclo(editingId, payload);
       else await api.createMicrociclo(payload);
       setMicroModal(false); loadTree();
+      
+      // Expandimos el macro automáticamente si creamos un micro nuevo
+      if (!editingId) {
+        setExpandedMacros(prev => ({ ...prev, [selectedMacroId]: true }));
+      }
     } catch (e) { Alert.alert("Error", "No se pudo guardar"); }
   };
 
@@ -140,7 +153,6 @@ export default function PeriodizationScreen() {
       await api.updateWorkout(workoutId, { microciclo_id: targetMicroId });
       setAssignModal(false);
       loadTree();
-      // Desplegamos automáticamente el micro al asignar una sesión
       setExpandedMicros(prev => ({ ...prev, [targetMicroId]: true }));
     } catch (e) {
       setLoading(false);
@@ -169,82 +181,99 @@ export default function PeriodizationScreen() {
 
         {macros.length === 0 && <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 30 }}>Aún no has creado ningún macrociclo.</Text>}
 
-        {macros.map((macro) => (
-          <View key={macro.id} style={[styles.macroCard, { borderColor: macro.color || colors.border }]}>
-            <View style={[styles.macroHeader, { backgroundColor: (macro.color || colors.primary) + '15' }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.macroTitle, { color: colors.textPrimary }]}>{macro.nombre}</Text>
-                <Text style={{ fontSize: 10, color: colors.textSecondary }}>{macro.fecha_inicio} - {macro.fecha_fin}</Text>
-              </View>
-              <View style={styles.actionsRow}>
-                <TouchableOpacity style={styles.iconHitbox} onPress={() => { setEditingId(macro.id); setMacroForm({ ...macro }); setMacroModal(true); }}>
-                  <Ionicons name="pencil" size={18} color={colors.textSecondary} />
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.iconHitbox} onPress={() => deleteMacro(macro.id)}>
-                  <Ionicons name="trash" size={18} color={colors.error || '#EF4444'} />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.addMicroSmall, { backgroundColor: colors.primary }]} onPress={() => { setEditingId(null); setSelectedMacroId(macro.id); setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] }); setMicroModal(true); }}>
-                  <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>+ MICRO</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+        {macros.map((macro) => {
+          const isMacroExpanded = expandedMacros[macro.id];
 
-            <View style={{ padding: 12 }}>
-              {macro.microciclos?.map((micro: any) => {
-                const isExpanded = expandedMicros[micro.id];
-                return (
-                  <View key={micro.id} style={[styles.microItem, { borderLeftColor: micro.color || colors.primary }]}>
-                    <TouchableOpacity 
-                      style={styles.microHeaderToggle} 
-                      onPress={() => toggleMicro(micro.id)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>
-                          {micro.nombre} <Text style={{fontSize:10, color: micro.color || colors.primary, fontWeight: '900'}}>[{micro.tipo}]</Text>
-                        </Text>
-                        <Text style={{ fontSize: 9, color: colors.textSecondary }}>{micro.fecha_inicio} al {micro.fecha_fin}</Text>
-                      </View>
-                      
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        <TouchableOpacity style={styles.iconHitboxSmall} onPress={() => { setEditingId(micro.id); setMicroForm({ ...micro }); setSelectedMacroId(macro.id); setMicroModal(true); }}>
-                          <Ionicons name="pencil" size={16} color={colors.textSecondary} />
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.iconHitboxSmall} onPress={() => deleteMicro(micro.id)}>
-                          <Ionicons name="trash" size={16} color={colors.error || '#EF4444'} />
-                        </TouchableOpacity>
-                        <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.primary} />
-                      </View>
-                    </TouchableOpacity>
-                    
-                    {isExpanded && (
-                      <View style={styles.expandedContent}>
-                        <TouchableOpacity 
-                          style={styles.addSessionBtn} 
-                          onPress={() => { setTargetMicroId(micro.id); setAssignModal(true); }}
-                        >
-                          <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
-                          <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>Añadir sesión</Text>
-                        </TouchableOpacity>
+          return (
+            <View key={macro.id} style={[styles.macroCard, { borderColor: macro.color || colors.border }]}>
+              {/* CABECERA DEL MACROCICLO - AHORA ES TOCABLE */}
+              <TouchableOpacity 
+                style={[styles.macroHeader, { backgroundColor: (macro.color || colors.primary) + '15' }]}
+                onPress={() => toggleMacro(macro.id)}
+                activeOpacity={0.7}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.macroTitle, { color: colors.textPrimary }]}>{macro.nombre}</Text>
+                  <Text style={{ fontSize: 10, color: colors.textSecondary }}>{macro.fecha_inicio} - {macro.fecha_fin}</Text>
+                </View>
+                <View style={styles.actionsRow}>
+                  <TouchableOpacity style={styles.iconHitbox} onPress={(e) => { e.stopPropagation(); setEditingId(macro.id); setMacroForm({ ...macro }); setMacroModal(true); }}>
+                    <Ionicons name="pencil" size={18} color={colors.textSecondary} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.iconHitbox} onPress={(e) => { e.stopPropagation(); deleteMacro(macro.id); }}>
+                    <Ionicons name="trash" size={18} color={colors.error || '#EF4444'} />
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.addMicroSmall, { backgroundColor: colors.primary }]} onPress={(e) => { e.stopPropagation(); setEditingId(null); setSelectedMacroId(macro.id); setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] }); setMicroModal(true); }}>
+                    <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>+ MICRO</Text>
+                  </TouchableOpacity>
+                  <Ionicons name={isMacroExpanded ? "chevron-up" : "chevron-down"} size={22} color={colors.textSecondary} style={{ marginLeft: 10 }} />
+                </View>
+              </TouchableOpacity>
 
-                        {micro.workouts?.length > 0 ? micro.workouts.map((wk: any) => (
-                          <TouchableOpacity key={wk.id} style={styles.workoutRow} onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}>
-                            <Ionicons name="barbell-outline" size={16} color={colors.textSecondary} />
-                            <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{wk.title}</Text>
-                            <Text style={{ fontSize: 10, color: colors.textSecondary, marginRight: 5 }}>{wk.date.split('-').slice(1).reverse().join('/')}</Text>
-                            {wk.completed && <Ionicons name="checkmark-circle" size={14} color={colors.success || '#10B981'} />}
+              {/* CONTENIDO DEL MACROCICLO (MICROCICLOS) - SOLO SE MUESTRA SI ESTÁ EXPANDIDO */}
+              {isMacroExpanded && (
+                <View style={{ padding: 12 }}>
+                  {macro.microciclos?.length > 0 ? (
+                    macro.microciclos.map((micro: any) => {
+                      const isExpanded = expandedMicros[micro.id];
+                      return (
+                        <View key={micro.id} style={[styles.microItem, { borderLeftColor: micro.color || colors.primary }]}>
+                          <TouchableOpacity 
+                            style={styles.microHeaderToggle} 
+                            onPress={() => toggleMicro(micro.id)}
+                            activeOpacity={0.7}
+                          >
+                            <View style={{ flex: 1 }}>
+                              <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>
+                                {micro.nombre} <Text style={{fontSize:10, color: micro.color || colors.primary, fontWeight: '900'}}>[{micro.tipo}]</Text>
+                              </Text>
+                              <Text style={{ fontSize: 9, color: colors.textSecondary }}>{micro.fecha_inicio} al {micro.fecha_fin}</Text>
+                            </View>
+                            
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                              <TouchableOpacity style={styles.iconHitboxSmall} onPress={(e) => { e.stopPropagation(); setEditingId(micro.id); setMicroForm({ ...micro }); setSelectedMacroId(macro.id); setMicroModal(true); }}>
+                                <Ionicons name="pencil" size={16} color={colors.textSecondary} />
+                              </TouchableOpacity>
+                              <TouchableOpacity style={styles.iconHitboxSmall} onPress={(e) => { e.stopPropagation(); deleteMicro(micro.id); }}>
+                                <Ionicons name="trash" size={16} color={colors.error || '#EF4444'} />
+                              </TouchableOpacity>
+                              <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.primary} />
+                            </View>
                           </TouchableOpacity>
-                        )) : (
-                          <Text style={styles.emptyWorkoutsText}>No hay sesiones en este microciclo.</Text>
-                        )}
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
+                          
+                          {isExpanded && (
+                            <View style={styles.expandedContent}>
+                              <TouchableOpacity 
+                                style={styles.addSessionBtn} 
+                                onPress={() => { setTargetMicroId(micro.id); setAssignModal(true); }}
+                              >
+                                <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
+                                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>Añadir sesión</Text>
+                              </TouchableOpacity>
+
+                              {micro.workouts?.length > 0 ? micro.workouts.map((wk: any) => (
+                                <TouchableOpacity key={wk.id} style={styles.workoutRow} onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}>
+                                  <Ionicons name="barbell-outline" size={16} color={colors.textSecondary} />
+                                  <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{wk.title}</Text>
+                                  <Text style={{ fontSize: 10, color: colors.textSecondary, marginRight: 5 }}>{wk.date.split('-').slice(1).reverse().join('/')}</Text>
+                                  {wk.completed && <Ionicons name="checkmark-circle" size={14} color={colors.success || '#10B981'} />}
+                                </TouchableOpacity>
+                              )) : (
+                                <Text style={styles.emptyWorkoutsText}>No hay sesiones en este microciclo.</Text>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })
+                  ) : (
+                    <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', textAlign: 'center', marginVertical: 10 }}>Este macrociclo aún no tiene microciclos.</Text>
+                  )}
+                </View>
+              )}
             </View>
-          </View>
-        ))}
+          );
+        })}
       </ScrollView>
 
       {/* --- MODAL PARA ASIGNAR SESIONES --- */}
@@ -283,7 +312,7 @@ export default function PeriodizationScreen() {
         </View>
       </Modal>
 
-      {/* --- MODAL MACROCICLO --- */}
+      {/* --- MODALES RESTANTES --- */}
       <Modal visible={macroModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -306,7 +335,6 @@ export default function PeriodizationScreen() {
         </View>
       </Modal>
 
-      {/* --- MODAL MICROCICLO --- */}
       <Modal visible={microModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
