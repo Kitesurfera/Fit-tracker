@@ -209,7 +209,8 @@ export default function CalendarScreen() {
   const openCycleSettings = () => {
     setCycleLengthInput(String(selectedAthlete?.cycle_length || 28));
     setPeriodLengthInput(String(selectedAthlete?.period_length || 5));
-    setLastPeriodDateInput(getActualDayOneStr()); 
+    // Damos prioridad absoluta a la fecha guardada en el perfil si existe
+    setLastPeriodDateInput(selectedAthlete?.last_period_date || getActualDayOneStr()); 
     setShowCycleSettings(true);
   };
 
@@ -224,17 +225,23 @@ export default function CalendarScreen() {
 
     setUpdating(true);
     try {
-      const payload = { cycle_length: parseInt(cycleLengthInput) || 28, period_length: parseInt(periodLengthInput) || 5 };
+      // Metemos last_period_date directamente en el payload del perfil
+      const payload = { 
+          cycle_length: parseInt(cycleLengthInput) || 28, 
+          period_length: parseInt(periodLengthInput) || 5,
+          last_period_date: lastPeriodDateInput
+      };
       
-      // 1. Guardar ajustes en el perfil del atleta
       if (isTrainer && api.updateAthlete) {
         await api.updateAthlete(selectedAthlete.id, payload);
       } else if (api.updateProfile) {
         await api.updateProfile(payload); 
       }
+
+      // 🔥 ACTUALIZACIÓN AGRESIVA EN MEMORIA LOCAL 🔥
+      // Engañamos a la app inyectando los datos al instante sin esperar al backend
       setSelectedAthlete({ ...selectedAthlete, ...payload });
 
-      // 2. Crear registro de Wellness e inyección local
       const currentActualDayOne = getActualDayOneStr();
       if (lastPeriodDateInput && lastPeriodDateInput !== currentActualDayOne) {
           const wellnessData = {
@@ -252,20 +259,17 @@ export default function CalendarScreen() {
              else if ((api as any).createWellness) await (api as any).createWellness(wellnessData);
              else if ((api as any).logWellness) await (api as any).logWellness(wellnessData);
              
-             // 🔥 ACTUALIZACIÓN OPTIMISTA EN MEMORIA 🔥
-             // Engañamos a la app inyectando el dato al instante sin esperar a recargar.
              setWellnessHistory(prev => [...prev, wellnessData]);
-
           } catch (wellnessErr) {
-             console.warn("La fecha de inicio no se pudo guardar en la DB, pero los ajustes de ciclo sí.", wellnessErr);
+             console.warn("Error guardando Wellness silencioso:", wellnessErr);
           }
       }
 
       setShowCycleSettings(false);
       setUpdating(false);
       
-      // 🚫 Eliminamos await refreshAthleteData(selectedAthlete);
-      // Evitamos recargar desde cero. Los `useMemo` del calendario detectarán los cambios en memoria y repintarán solitos.
+      // Al no recargar la página entera y modificar selectedAthlete directamente,
+      // React forzará un re-pintado instantáneo de la cuadrícula.
       
     } catch (e) {
       console.error("Error guardando ajustes de ciclo:", e);
@@ -287,36 +291,19 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
-  const microciclosDelMes = useMemo(() => {
-    if (!Array.isArray(macros)) return [];
-    const microsResult: any[] = [];
-    const firstDayTime = new Date(currentYear, currentMonth, 1).getTime();
-    const lastDayTime = new Date(currentYear, currentMonth + 1, 0).getTime();
-
-    macros.forEach(macro => {
-      const listaMicros = macro.microciclos || macro.microcycles || [];
-      if (Array.isArray(listaMicros)) {
-        listaMicros.forEach((m: any) => {
-          const start = m.fecha_inicio || m.start_date;
-          const end = m.fecha_fin || m.end_date;
-          if (start && end) {
-            const [sY, sM, sD] = start.split('-').map(Number);
-            const [eY, eM, eD] = end.split('-').map(Number);
-            const sTime = new Date(sY, sM - 1, sD).getTime();
-            const eTime = new Date(eY, eM - 1, eD).getTime();
-            if (sTime <= lastDayTime && eTime >= firstDayTime) {
-              microsResult.push({ ...m, macroNombre: macro.nombre || macro.name || 'Macro', nombre: m.nombre || m.name || 'Micro', fecha_inicio: start, fecha_fin: end, tipo: m.tipo || m.type || 'BASE', color: m.color || colors.primary });
-            }
-          }
-        });
-      }
-    });
-    return microsResult.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
-  }, [macros, currentMonth, currentYear, colors.primary]);
-
+  // EL MOTOR AHORA RESPETA EL "MODO JEFE" DEL USUARIO
   const cycleData = useMemo(() => {
-    if (!isFemale || !wellnessHistory || wellnessHistory.length === 0) return null;
-    const actualDayOneStr = getActualDayOneStr();
+    if (!isFemale) return null;
+    
+    // Prioridad 1: Fecha anclada manualmente por la deportista
+    let actualDayOneStr = selectedAthlete?.last_period_date;
+    
+    // Prioridad 2: Cálculo automático del historial
+    if (!actualDayOneStr) {
+        if (!wellnessHistory || wellnessHistory.length === 0) return null;
+        actualDayOneStr = getActualDayOneStr();
+    }
+    
     if (!actualDayOneStr) return null;
 
     const [startY, startM, startD] = actualDayOneStr.split('-').map(Number);
