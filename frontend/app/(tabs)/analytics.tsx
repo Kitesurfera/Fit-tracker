@@ -212,7 +212,6 @@ export default function AnalyticsScreen() {
     return measures;
   };
 
-  // 1. OBTENCIÓN DE DATOS PUROS
   const getRawItems = () => {
     const items: Record<string, any> = {};
 
@@ -232,10 +231,12 @@ export default function AnalyticsScreen() {
       if (!rawName) return;
       
       const normKey = `test_${normalizeName(rawName)}`;
-      const valL = parseFloat(t.value_left) || 0;
-      const valR = parseFloat(t.value_right) || 0;
-      const val = parseFloat(t.value) || 0;
-      const maxVal = Math.max(valL, valR, val);
+      const valL = parseFloat(t.value_left);
+      const valR = parseFloat(t.value_right);
+      const val = parseFloat(t.value);
+      
+      const hasSides = !isNaN(valL) && !isNaN(valR);
+      const maxVal = hasSides ? Math.max(valL || 0, valR || 0) : (val || 0);
 
       if (!items[normKey]) {
         items[normKey] = { 
@@ -245,23 +246,29 @@ export default function AnalyticsScreen() {
             maxW: 0, 
             type: 'test', 
             unit: t.unit || 'kg',
-            testDoc: t // Guardamos el documento original para el L/R de la UI
+            testDoc: t
         };
       }
       
       if (maxVal > items[normKey].maxW) items[normKey].maxW = maxVal;
-      items[normKey].history.push({ date: t.date, val: maxVal });
+      
+      // Guardamos la estructura compleja para poder pintarla en el gráfico
+      items[normKey].history.push({ 
+        date: t.date, 
+        val: maxVal,
+        valL: hasSides ? (valL || 0) : null,
+        valR: hasSides ? (valR || 0) : null,
+        isBilateral: hasSides
+      });
     });
 
     return items;
   };
 
-  // 2. APLICAR FUSIONES (Este es ahora el motor de todas las pestañas)
   const getCleanProgression = () => {
     const itemsRecord = getRawItems();
     
     Object.entries(mergeMap).forEach(([sourceId, targetId]) => {
-      // Resolvemos cadenas de fusiones (si A -> B y B -> C, entonces A -> C)
       let finalTarget = targetId;
       let iterations = 0;
       while (mergeMap[finalTarget] && iterations < 10) {
@@ -280,31 +287,68 @@ export default function AnalyticsScreen() {
     return Object.values(itemsRecord).sort((a: any, b: any) => a.name.localeCompare(b.name));
   };
 
+  // GRÁFICO ACTUALIZADO: Soporta barras dobles para datos bilaterales
   const renderChart = (history: any[], unit: string) => {
     const data = [...history].sort((a, b) => a.date.localeCompare(b.date));
     if (data.length === 0) return null;
     
-    const maxV = Math.max(...data.map(d => d.val));
-    const minV = Math.min(...data.map(d => d.val));
+    // Calculamos los máximos globales de todo el set de datos para escalar
+    let maxV = 0;
+    let minV = Infinity;
+
+    data.forEach(d => {
+      if (d.isBilateral) {
+         if (d.valL > maxV) maxV = d.valL;
+         if (d.valR > maxV) maxV = d.valR;
+         if (d.valL < minV) minV = d.valL;
+         if (d.valR < minV) minV = d.valR;
+      } else {
+         if (d.val > maxV) maxV = d.val;
+         if (d.val < minV) minV = d.val;
+      }
+    });
+
+    // Si min es Infinity, es que todos los datos eran 0 o vacíos
+    if (minV === Infinity) minV = 0;
+
     const range = maxV - minV === 0 ? 10 : maxV - minV;
 
     return (
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 15, alignItems: 'flex-end', height: 120, paddingHorizontal: 10 }}>
         {data.map((h, i) => {
-          const barHeight = Math.max(((h.val - minV) / range) * 60 + 15, 10);
-          return (
-            <View key={i} style={{ alignItems: 'center', width: 45, height: '100%', justifyContent: 'flex-end' }}>
-              <View style={{ height: barHeight, width: 14, backgroundColor: colors.primary, borderRadius: 6 }} />
-              <Text style={{ fontSize: 10, color: colors.textPrimary, marginTop: 6, fontWeight: '800' }}>{h.val}</Text>
-              <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 2 }}>{h.date.split('-').slice(1).join('/')}</Text>
-            </View>
-          );
+          if (h.isBilateral) {
+             const heightPctL = Math.max(((h.valL - minV) / range) * 60 + 15, 10);
+             const heightPctR = Math.max(((h.valR - minV) / range) * 60 + 15, 10);
+             return (
+              <View key={i} style={{ alignItems: 'center', height: '100%', justifyContent: 'flex-end', marginHorizontal: 5 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
+                  <View style={{ alignItems: 'center' }}>
+                     <View style={{ height: heightPctL, width: 12, backgroundColor: '#3B82F6', borderTopLeftRadius: 4, borderTopRightRadius: 4 }} />
+                     <Text style={{ fontSize: 9, color: colors.textPrimary, marginTop: 4, fontWeight: '800' }}>{h.valL}</Text>
+                  </View>
+                  <View style={{ alignItems: 'center' }}>
+                     <View style={{ height: heightPctR, width: 12, backgroundColor: '#EF4444', borderTopLeftRadius: 4, borderTopRightRadius: 4 }} />
+                     <Text style={{ fontSize: 9, color: colors.textPrimary, marginTop: 4, fontWeight: '800' }}>{h.valR}</Text>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 4 }}>{h.date.split('-').slice(1).join('/')}</Text>
+              </View>
+             );
+          } else {
+             const barHeight = Math.max(((h.val - minV) / range) * 60 + 15, 10);
+             return (
+              <View key={i} style={{ alignItems: 'center', width: 45, height: '100%', justifyContent: 'flex-end' }}>
+                <View style={{ height: barHeight, width: 14, backgroundColor: colors.primary, borderRadius: 6 }} />
+                <Text style={{ fontSize: 10, color: colors.textPrimary, marginTop: 6, fontWeight: '800' }}>{h.val}</Text>
+                <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 2 }}>{h.date.split('-').slice(1).join('/')}</Text>
+              </View>
+             );
+          }
         })}
       </ScrollView>
     );
   };
 
-  // 3. TARJETA DE TEST AHORA USA EL ITEM FUSIONADO DIRECTAMENTE
   const renderTestCard = (mergedItem: any, index: number) => { 
     const test = mergedItem.testDoc;
     const valL = test ? parseFloat(test.value_left) : NaN; 
