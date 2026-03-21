@@ -258,64 +258,109 @@ export default function AthleteDetailScreen() {
     );
   };
 
-{!!expandedWorkouts[wk.id] && (
-        <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
+  // --------------------------------------------------------------------------
+  // FUNCIÓN RESTAURADA: renderWorkoutItem
+  // --------------------------------------------------------------------------
+  const renderWorkoutItem = (wk: any) => {
+    const isExpanded = !!expandedWorkouts[wk.id];
+    return (
+      <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface }]}>
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', alignItems: 'center' }} 
+          onPress={() => toggleWorkout(wk.id)}
+          activeOpacity={0.7}
+        >
+          <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '20' : colors.primary + '20' }]}>
+            <Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={24} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
+          </View>
           
-          {/* AVISO DE SESIÓN SALTADA */}
-          {wk.observations?.includes('[NO COMPLETADA]') && (
-            <View style={{ backgroundColor: '#EF444420', padding: 12, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#EF4444' }}>
-               <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
-               <Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{wk.observations.replace('[NO COMPLETADA] Motivo: ', '')}"</Text>
-            </View>
-          )}
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>{wk.title}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.date.split('-').reverse().join('/')}</Text>
+          </View>
 
-          {(wk.completed && !!wk.completion_data) && (
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-              <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
-                ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
-              </Text>
-            </View>
-          )}
+          {/* Acciones Rápidas */}
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginRight: 10 }}>
+            {isTrainer && (
+              <>
+                <TouchableOpacity onPress={() => { setWorkoutToDuplicate(wk); setShowDuplicateModal(true); }} style={styles.iconHitbox}>
+                  <Ionicons name="copy-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => handleDeleteWorkout(wk.id, wk.title)} style={styles.iconHitbox}>
+                  <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
+                </TouchableOpacity>
+              </>
+            )}
+            <TouchableOpacity onPress={() => router.push(isTrainer && !wk.completed ? `/edit-workout?workoutId=${wk.id}` : `/training-mode?workoutId=${wk.id}`)} style={styles.iconHitbox}>
+              <Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} />
+            </TouchableOpacity>
+          </View>
 
-          {(wk.completed && wk.completion_data ? wk.completion_data.exercise_results : wk.exercises)?.map((ex: any, idx: number) => {
-            const noteKey = `${wk.id}-force-${idx}`;
-            const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
-            const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
+          <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
             
-            return (
-              <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
-                <View style={styles.exerciseHeader}>
-                  <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
-                  {!wk.completed && (
-                    <View style={{alignItems: 'flex-end'}}>
-                      {(ex.sets && ex.reps) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: 12}}>{ex.sets}x{ex.reps}</Text> : null}
-                      {ex.weight ? <Text style={{color: colors.textSecondary, fontSize: 11}}>{ex.weight} kg</Text> : null}
+            {/* AVISO DE SESIÓN SALTADA */}
+            {wk.observations?.includes('[NO COMPLETADA]') && (
+              <View style={{ backgroundColor: '#EF444420', padding: 12, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#EF4444' }}>
+                 <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
+                 <Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{wk.observations.replace('[NO COMPLETADA] Motivo: ', '')}"</Text>
+              </View>
+            )}
+
+            {(wk.completed && !!wk.completion_data) && (
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
+                <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
+                  ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
+                </Text>
+              </View>
+            )}
+
+            {(wk.completed && wk.completion_data ? wk.completion_data.exercise_results : wk.exercises)?.map((ex: any, idx: number) => {
+              const noteKey = `${wk.id}-force-${idx}`;
+              const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
+              const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
+              
+              return (
+                <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+                  <View style={styles.exerciseHeader}>
+                    <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
+                    {!wk.completed && (
+                      <View style={{alignItems: 'flex-end'}}>
+                        {(ex.sets && ex.reps) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: 12}}>{ex.sets}x{ex.reps}</Text> : null}
+                        {ex.weight ? <Text style={{color: colors.textSecondary, fontSize: 11}}>{ex.weight} kg</Text> : null}
+                      </View>
+                    )}
+                  </View>
+                  
+                  {(wk.completed && !!ex.recorded_video_url) && <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />}
+                  
+                  {(!wk.completed && !!ex.video_url) && (
+                    <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
+                      <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
+                      <Text style={{color: colors.error || '#EF4444', fontSize: 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
+                    </TouchableOpacity>
+                  )}
+                  
+                  {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
+                    <View style={styles.feedbackRow}>
+                      <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
+                      <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} onPress={() => saveCoachNote(wk, idx, currentNote)}>
+                        <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
-                
-                {(wk.completed && !!ex.recorded_video_url) && <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />}
-                
-                {(!wk.completed && !!ex.video_url) && (
-                  <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
-                    <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
-                    <Text style={{color: colors.error || '#EF4444', fontSize: 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
-                  </TouchableOpacity>
-                )}
-                
-                {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
-                  <View style={styles.feedbackRow}>
-                    <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
-                    <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? colors.success : colors.primary }]} onPress={() => saveCoachNote(wk, idx, currentNote)}>
-                      <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            );
-          })}
-        </View>
-      )}
+              );
+            })}
+          </View>
+        )}
+      </View>
+    );
+  };
+  // --------------------------------------------------------------------------
 
   const renderWorkouts = () => {
     const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
