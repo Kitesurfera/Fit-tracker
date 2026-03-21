@@ -78,13 +78,12 @@ export default function AnalyticsScreen() {
   const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null); 
   
   const [searchQuery, setSearchQuery] = useState('');
-  const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(14);
+  const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(1); // Puesto a 1 por defecto para ver "Hoy" rápido
   
   const [showDictModal, setShowDictModal] = useState(false);
   const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
   const [dictSelectedMuscles, setDictSelectedMuscles] = useState<string[]>([]);
 
-  // ESTADOS DEL MODAL DE FUSIÓN
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeTargetItem, setMergeTargetItem] = useState<any>(null);
 
@@ -121,7 +120,9 @@ export default function AnalyticsScreen() {
         api.getWorkouts({ athlete_id: athleteId }).catch(() => [])
       ]);
       setTestHistory(Array.isArray(ts) ? ts.sort((a,b) => b.date.localeCompare(a.date)) : []);
-      setWorkoutHistory(Array.isArray(wk) ? wk.filter((w: any) => w.completed) : []);
+      
+      // CAMBIO CLAVE: Guardamos TODOS los entrenamientos, no solo los completados
+      setWorkoutHistory(Array.isArray(wk) ? wk : []);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -181,18 +182,39 @@ export default function AnalyticsScreen() {
     });
   };
 
+  // MOTOR DEL MAPA DE CALOR MEJORADO
   const getMuscleHeat = () => {
-    const heat: Record<string, number> = { 'Pecho': 0, 'Espalda': 0, 'Cuádriceps': 0, 'Isquiotibiales': 0, 'Glúteo': 0, 'Hombro': 0, 'Bíceps': 0, 'Tríceps': 0, 'Core': 0, 'Gemelos': 0, 'Antebrazos': 0, 'Aductores': 0, 'Abductores': 0, 'Tibial': 0 };
+    const heat: Record<string, number> = {};
+    ALL_MUSCLES.forEach(m => heat[m] = 0); // Inicialización segura
+
     const limitDate = new Date();
     if (bodyTimeFilter === 1) limitDate.setHours(0, 0, 0, 0);
     else limitDate.setDate(limitDate.getDate() - bodyTimeFilter);
     const limitDateStr = limitDate.toISOString().split('T')[0];
+
     workoutHistory.forEach(w => {
       if (w.date >= limitDateStr) {
-        w.completion_data?.exercise_results?.forEach((r: any) => {
-          if (r.completed_sets > 0 && r.name) {
-            const sets = parseInt(r.completed_sets) || 1;
-            getMusclesForExercise(r.name).forEach(m => { if (heat[m] !== undefined) heat[m] += sets; });
+        // Leemos resultados reales o la planificación teórica si no se ha hecho
+        const exercisesList = w.completed 
+            ? (w.completion_data?.exercise_results || []) 
+            : (w.exercises || w.routine || w.completion_data?.exercise_results || []);
+
+        exercisesList.forEach((r: any) => {
+          const exName = r.name || r.exercise_name || r.exercise; // Cubrimos distintas variaciones de la DB
+          
+          if (exName) {
+            let sets = 0;
+            if (w.completed) {
+                sets = parseInt(r.completed_sets) || 1;
+            } else {
+                sets = parseInt(r.target_sets) || parseInt(r.sets) || parseInt(r.series) || 1;
+            }
+
+            if (sets > 0) {
+              getMusclesForExercise(exName).forEach(m => { 
+                if (heat[m] !== undefined) heat[m] += sets; 
+              });
+            }
           }
         });
       }
@@ -215,15 +237,19 @@ export default function AnalyticsScreen() {
   const getRawItems = () => {
     const items: Record<string, any> = {};
 
-    workoutHistory.forEach(w => w.completion_data?.exercise_results?.forEach((r: any) => {
-      if (r.completed_sets > 0 && r.name) {
-        const normKey = `ex_${normalizeName(r.name)}`;
-        const val = parseFloat(String(r.logged_weight || '0').replace(',', '.')) || 0;
-        if (!items[normKey]) items[normKey] = { id: normKey, name: r.name, history: [], maxW: 0, type: 'ejercicio', unit: 'kg' };
-        if (val > items[normKey].maxW) items[normKey].maxW = val;
-        items[normKey].history.push({ date: w.date, val });
-      }
-    }));
+    workoutHistory.forEach(w => {
+      if (!w.completed) return; // ESCUDO: Evita que los PRs se vean afectados por entrenos sin hacer
+      
+      w.completion_data?.exercise_results?.forEach((r: any) => {
+        if (r.completed_sets > 0 && r.name) {
+          const normKey = `ex_${normalizeName(r.name)}`;
+          const val = parseFloat(String(r.logged_weight || '0').replace(',', '.')) || 0;
+          if (!items[normKey]) items[normKey] = { id: normKey, name: r.name, history: [], maxW: 0, type: 'ejercicio', unit: 'kg' };
+          if (val > items[normKey].maxW) items[normKey].maxW = val;
+          items[normKey].history.push({ date: w.date, val });
+        }
+      });
+    });
 
     testHistory.forEach(t => {
       if (t.test_type === 'medicion') return;
@@ -252,7 +278,6 @@ export default function AnalyticsScreen() {
       
       if (maxVal > items[normKey].maxW) items[normKey].maxW = maxVal;
       
-      // Guardamos la estructura compleja para poder pintarla en el gráfico
       items[normKey].history.push({ 
         date: t.date, 
         val: maxVal,
@@ -287,12 +312,10 @@ export default function AnalyticsScreen() {
     return Object.values(itemsRecord).sort((a: any, b: any) => a.name.localeCompare(b.name));
   };
 
-  // GRÁFICO ACTUALIZADO: Soporta barras dobles para datos bilaterales
   const renderChart = (history: any[], unit: string) => {
     const data = [...history].sort((a, b) => a.date.localeCompare(b.date));
     if (data.length === 0) return null;
     
-    // Calculamos los máximos globales de todo el set de datos para escalar
     let maxV = 0;
     let minV = Infinity;
 
@@ -308,9 +331,7 @@ export default function AnalyticsScreen() {
       }
     });
 
-    // Si min es Infinity, es que todos los datos eran 0 o vacíos
     if (minV === Infinity) minV = 0;
-
     const range = maxV - minV === 0 ? 10 : maxV - minV;
 
     return (
@@ -397,7 +418,12 @@ export default function AnalyticsScreen() {
 
   const renderFeedbackTab = () => { 
     const feedbacks: any[] = [];
-    workoutHistory.forEach(w => w.completion_data?.exercise_results?.forEach((ex: any) => { if (ex.coach_note) feedbacks.push({ date: w.date, exercise: ex.name, note: ex.coach_note }); }));
+    workoutHistory.forEach(w => {
+      if (!w.completed) return; // ESCUDO
+      w.completion_data?.exercise_results?.forEach((ex: any) => { 
+        if (ex.coach_note) feedbacks.push({ date: w.date, exercise: ex.name, note: ex.coach_note }); 
+      });
+    });
     return (
       <View>
         {feedbacks.length > 0 ? feedbacks.reverse().map((fb, i) => (
