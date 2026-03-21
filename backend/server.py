@@ -159,7 +159,7 @@ class TestCreate(BaseModel):
     test_type: str
     test_name: str
     custom_name: Optional[str] = ""
-    value: float
+    value: Optional[float] = None
     unit: str
     date: str
     notes: Optional[str] = ""
