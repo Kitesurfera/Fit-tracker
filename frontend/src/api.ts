@@ -233,7 +233,10 @@ export const api = {
     const res = await fetch(`${BACKEND_URL}/api/tests`, {
       method: 'POST', headers, body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Error al registrar el test');
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail ? JSON.stringify(errorData.detail) : 'Error al registrar el test');
+    }
     return res.json();
   },
 
@@ -242,7 +245,10 @@ export const api = {
     const res = await fetch(`${BACKEND_URL}/api/tests/${id}`, {
       method: 'PUT', headers, body: JSON.stringify(data),
     });
-    if (!res.ok) throw new Error('Error al actualizar el test');
+    if (!res.ok) {
+      const errorData = await res.json().catch(() => ({}));
+      throw new Error(errorData.detail ? JSON.stringify(errorData.detail) : 'Error al actualizar el test');
+    }
     return res.json();
   },
 
