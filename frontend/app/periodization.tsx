@@ -21,7 +21,7 @@ export default function PeriodizationScreen() {
   
   // Estados para controlar qué elementos están desplegados
   const [expandedMicros, setExpandedMicros] = useState<Record<string, boolean>>({});
-  const [expandedMacros, setExpandedMacros] = useState<Record<string, boolean>>({}); // NUEVO ESTADO PARA MACROS
+  const [expandedMacros, setExpandedMacros] = useState<Record<string, boolean>>({});
 
   const [macroModal, setMacroModal] = useState(false);
   const [microModal, setMicroModal] = useState(false);
@@ -57,7 +57,7 @@ export default function PeriodizationScreen() {
         }
       });
 
-      // Expandimos el primer macro por defecto al cargar para que no se vea todo vacío de golpe
+      // Expandimos el primer macro por defecto al cargar
       if (sortedMacros.length > 0 && Object.keys(expandedMacros).length === 0) {
         setExpandedMacros({ [sortedMacros[0].id]: true });
       }
@@ -74,7 +74,6 @@ export default function PeriodizationScreen() {
     setExpandedMicros(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  // NUEVA FUNCIÓN PARA ALTERNAR MACROS
   const toggleMacro = (id: string) => {
     setExpandedMacros(prev => ({ ...prev, [id]: !prev[id] }));
   };
@@ -130,7 +129,6 @@ export default function PeriodizationScreen() {
       else await api.createMicrociclo(payload);
       setMicroModal(false); loadTree();
       
-      // Expandimos el macro automáticamente si creamos un micro nuevo
       if (!editingId) {
         setExpandedMacros(prev => ({ ...prev, [selectedMacroId]: true }));
       }
@@ -186,7 +184,6 @@ export default function PeriodizationScreen() {
 
           return (
             <View key={macro.id} style={[styles.macroCard, { borderColor: macro.color || colors.border }]}>
-              {/* CABECERA DEL MACROCICLO - AHORA ES TOCABLE */}
               <TouchableOpacity 
                 style={[styles.macroHeader, { backgroundColor: (macro.color || colors.primary) + '15' }]}
                 onPress={() => toggleMacro(macro.id)}
@@ -203,14 +200,13 @@ export default function PeriodizationScreen() {
                   <TouchableOpacity style={styles.iconHitbox} onPress={(e) => { e.stopPropagation(); deleteMacro(macro.id); }}>
                     <Ionicons name="trash" size={18} color={colors.error || '#EF4444'} />
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.addMicroSmall, { backgroundColor: colors.primary }]} onPress={(e) => { e.stopPropagation(); setEditingId(null); setSelectedMacroId(macro.id); setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] }); setMicroModal(true); }}>
+                  <TouchableOpacity style={[styles.addMicroSmall, { backgroundColor: colors.primary }]} onPress={(e) => { e.stopPropagation(); setEditingId(null); setSelectedMacroId(macro.id); setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: macro.color || MICRO_COLORS[0] }); setMicroModal(true); }}>
                     <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>+ MICRO</Text>
                   </TouchableOpacity>
                   <Ionicons name={isMacroExpanded ? "chevron-up" : "chevron-down"} size={22} color={colors.textSecondary} style={{ marginLeft: 10 }} />
                 </View>
               </TouchableOpacity>
 
-              {/* CONTENIDO DEL MACROCICLO (MICROCICLOS) - SOLO SE MUESTRA SI ESTÁ EXPANDIDO */}
               {isMacroExpanded && (
                 <View style={{ padding: 12 }}>
                   {macro.microciclos?.length > 0 ? (
@@ -319,6 +315,19 @@ export default function PeriodizationScreen() {
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editingId ? 'Editar Macrociclo' : 'Nuevo Macrociclo'}</Text>
             <Text style={styles.label}>NOMBRE DEL MACROCICLO</Text>
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Ej: Fase de Volumen" placeholderTextColor={colors.textSecondary} value={macroForm.nombre} onChangeText={(t) => setMacroForm({...macroForm, nombre: t})} />
+            
+            {/* SELECTOR DE COLOR MACRO */}
+            <Text style={[styles.label, { marginTop: 15 }]}>COLOR IDENTIFICATIVO</Text>
+            <View style={styles.colorRow}>
+              {MACRO_COLORS.map(c => (
+                <TouchableOpacity 
+                  key={c} 
+                  style={[styles.colorSwatch, { backgroundColor: c }, macroForm.color === c && styles.colorSwatchSelected]} 
+                  onPress={() => setMacroForm({...macroForm, color: c})} 
+                />
+              ))}
+            </View>
+
             <View style={{flexDirection:'row', gap:10, marginTop: 10}}>
               <View style={{flex: 1}}>
                 <Text style={styles.label}>INICIO</Text>
@@ -349,6 +358,19 @@ export default function PeriodizationScreen() {
                 </TouchableOpacity>
               ))}
             </View>
+
+            {/* SELECTOR DE COLOR MICRO */}
+            <Text style={[styles.label, { marginTop: 15 }]}>COLOR EN CALENDARIO</Text>
+            <View style={styles.colorRow}>
+              {MICRO_COLORS.map(c => (
+                <TouchableOpacity 
+                  key={c} 
+                  style={[styles.colorSwatch, { backgroundColor: c }, microForm.color === c && styles.colorSwatchSelected]} 
+                  onPress={() => setMicroForm({...microForm, color: c})} 
+                />
+              ))}
+            </View>
+
             <View style={{flexDirection:'row', gap:10, marginTop: 15}}>
               <View style={{flex: 1}}><Text style={styles.label}>INICIO</Text><TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" value={microForm.fecha_inicio} onChangeText={(t) => setMicroForm({...microForm, fecha_inicio: t})} /></View>
               <View style={{flex: 1}}><Text style={styles.label}>FIN</Text><TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="YYYY-MM-DD" value={microForm.fecha_fin} onChangeText={(t) => setMicroForm({...microForm, fecha_fin: t})} /></View>
@@ -392,4 +414,9 @@ const styles = StyleSheet.create({
   cancelBtn: { padding: 15, alignItems: 'center', marginTop: 5 },
   createNewSessionBtn: { flexDirection: 'row', justifyContent: 'center', padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 25 },
   unassignedWkBtn: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  
+  // NUEVOS ESTILOS PARA LOS COLORES
+  colorRow: { flexDirection: 'row', gap: 12, marginTop: 5, marginBottom: 5, flexWrap: 'wrap' },
+  colorSwatch: { width: 34, height: 34, borderRadius: 17, opacity: 0.4, borderWidth: 2, borderColor: 'transparent' },
+  colorSwatchSelected: { opacity: 1, borderColor: '#FFF', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3 }
 });
