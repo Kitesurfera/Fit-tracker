@@ -103,9 +103,32 @@ export default function AthleteDetailScreen() {
     if (!workoutToDuplicate || !duplicateDate) return;
     setShowDuplicateModal(false); setLoading(true);
     try {
-      const cleanExercises = (workoutToDuplicate.exercises || []).map((ex: any) => ({
-        name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight, rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes, image_path: ex.image_path
-      }));
+      // Diferenciamos si el entreno a duplicar es HIIT o Fuerza tradicional
+      const isHiit = workoutToDuplicate.exercises && workoutToDuplicate.exercises.length > 0 && workoutToDuplicate.exercises[0].is_hiit_block === true;
+      
+      let cleanExercises = [];
+
+      if (isHiit) {
+          cleanExercises = workoutToDuplicate.exercises.map((block: any) => ({
+              is_hiit_block: true,
+              name: block.name,
+              sets: block.sets,
+              rest_exercise: block.rest_exercise,
+              rest_block: block.rest_block,
+              rest_between_blocks: block.rest_between_blocks,
+              hiit_exercises: (block.hiit_exercises || []).map((ex: any) => ({
+                  name: ex.name,
+                  duration_reps: ex.duration_reps,
+                  video_url: ex.video_url,
+                  exercise_notes: ex.exercise_notes
+              }))
+          }));
+      } else {
+          cleanExercises = (workoutToDuplicate.exercises || []).map((ex: any) => ({
+            name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight, rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes, image_path: ex.image_path
+          }));
+      }
+
       const payload = { title: workoutToDuplicate.title, date: duplicateDate, notes: workoutToDuplicate.notes || '', athlete_id: params.id!, microciclo_id: workoutToDuplicate.microciclo_id || null, exercises: cleanExercises };
       await api.createWorkout(payload);
       if (Platform.OS !== 'web') Alert.alert("Éxito", `Sesión duplicada para el ${duplicateDate}`);
@@ -116,6 +139,7 @@ export default function AthleteDetailScreen() {
     }
   };
 
+  // Guardar feedback Fuerza tradicional
   const saveCoachNote = async (workout: any, exerciseIndex: number, noteText: string) => {
     try {
       const payload = {
@@ -130,6 +154,29 @@ export default function AthleteDetailScreen() {
       setWorkouts(prev => prev.map(w => w.id === workout.id ? payload : w));
       if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
     } catch (e) { console.log("Error guardando la nota del coach:", e); }
+  };
+
+  // Guardar feedback HIIT
+  const saveHiitCoachNote = async (workout: any, blockIndex: number, exIndex: number, noteText: string) => {
+    try {
+      const updatedHiitResults = (workout.completion_data?.hiit_results || []).map((block: any, bIdx: number) => {
+        if (bIdx !== blockIndex) return block;
+        return {
+          ...block,
+          hiit_exercises: (block.hiit_exercises || []).map((ex: any, eIdx: number) => {
+            if (eIdx !== exIndex) return ex;
+            return { ...ex, coach_note: noteText };
+          })
+        };
+      });
+      const payload = { 
+          ...workout, 
+          completion_data: { ...workout.completion_data, hiit_results: updatedHiitResults } 
+      };
+      await api.updateWorkout(workout.id, payload);
+      setWorkouts(prev => prev.map(w => w.id === workout.id ? payload : w));
+      if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
+    } catch (e) { console.log("Error guardando nota HIIT:", e); }
   };
 
   const getLevelColor = (val: number, inverse = false) => {
@@ -354,6 +401,8 @@ export default function AthleteDetailScreen() {
 
   const renderWorkoutItem = (wk: any) => {
     const isExpanded = !!expandedWorkouts[wk.id];
+    const isWorkoutHiit = wk.exercises && wk.exercises.length > 0 && wk.exercises[0].is_hiit_block === true;
+
     return (
       <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface }]}>
         <TouchableOpacity 
@@ -407,43 +456,89 @@ export default function AthleteDetailScreen() {
               </View>
             )}
 
-            {(wk.completed && wk.completion_data ? wk.completion_data.exercise_results : wk.exercises)?.map((ex: any, idx: number) => {
-              const noteKey = `${wk.id}-force-${idx}`;
-              const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
-              const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
-              
-              return (
-                <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
-                  <View style={styles.exerciseHeader}>
-                    <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
-                    {!wk.completed && (
-                      <View style={{alignItems: 'flex-end'}}>
-                        {(ex.sets && ex.reps) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: 12}}>{ex.sets}x{ex.reps}</Text> : null}
-                        {ex.weight ? <Text style={{color: colors.textSecondary, fontSize: 11}}>{ex.weight} kg</Text> : null}
-                      </View>
-                    )}
-                  </View>
-                  
-                  {(wk.completed && !!ex.recorded_video_url) && <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />}
-                  
-                  {(!wk.completed && !!ex.video_url) && (
-                    <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
-                      <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
-                      <Text style={{color: colors.error || '#EF4444', fontSize: 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
-                    </TouchableOpacity>
-                  )}
-                  
-                  {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
-                    <View style={styles.feedbackRow}>
-                      <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
-                      <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} onPress={() => saveCoachNote(wk, idx, currentNote)}>
-                        <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
-                      </TouchableOpacity>
+            {/* SI ES ENTRENAMIENTO HIIT */}
+            {isWorkoutHiit ? (
+                (wk.completed && wk.completion_data ? wk.completion_data.hiit_results : wk.exercises)?.map((block: any, bIdx: number) => (
+                    <View key={bIdx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 8 }}>
+                            <Ionicons name="flame" size={18} color={colors.error || '#EF4444'} />
+                            <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800' }}>{block.name}</Text>
+                        </View>
+                        
+                        {block.hiit_exercises?.map((ex: any, eIdx: number) => {
+                            const noteKey = `${wk.id}-hiit-${bIdx}-${eIdx}`;
+                            const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
+                            const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
+
+                            return (
+                                <View key={eIdx} style={{ marginBottom: 15 }}>
+                                    <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700' }}>• {ex.name} <Text style={{ color: colors.primary, fontWeight: '800' }}>({ex.duration_reps})</Text></Text>
+                                    
+                                    {(wk.completed && !!ex.recorded_video_url) && <View style={{ marginTop: 8 }}><MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} /></View>}
+                                    
+                                    {(!wk.completed && !!ex.video_url) && (
+                                        <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
+                                            <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
+                                            <Text style={{color: colors.error || '#EF4444', fontSize: 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
+                                        </TouchableOpacity>
+                                    )}
+
+                                    {/* Feedback Coach en HIIT */}
+                                    {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
+                                        <View style={styles.feedbackRow}>
+                                            <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
+                                            <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} onPress={() => saveHiitCoachNote(wk, bIdx, eIdx, currentNote)}>
+                                                <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
+                                            </TouchableOpacity>
+                                        </View>
+                                    )}
+                                </View>
+                            );
+                        })}
                     </View>
-                  )}
-                </View>
-              );
-            })}
+                ))
+            ) : (
+                /* SI ES ENTRENAMIENTO DE FUERZA NORMAL */
+                (wk.completed && wk.completion_data ? wk.completion_data.exercise_results : wk.exercises)?.map((ex: any, idx: number) => {
+                  const noteKey = `${wk.id}-force-${idx}`;
+                  const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
+                  const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
+                  
+                  return (
+                    <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+                      <View style={styles.exerciseHeader}>
+                        <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}>{ex.name}</Text>
+                        {!wk.completed && (
+                          <View style={{alignItems: 'flex-end'}}>
+                            {(ex.sets && ex.reps) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: 12}}>{ex.sets}x{ex.reps}</Text> : null}
+                            {ex.weight ? <Text style={{color: colors.textSecondary, fontSize: 11}}>{ex.weight} kg</Text> : null}
+                          </View>
+                        )}
+                      </View>
+                      
+                      {(wk.completed && !!ex.recorded_video_url) && <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />}
+                      
+                      {(!wk.completed && !!ex.video_url) && (
+                        <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
+                          <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
+                          <Text style={{color: colors.error || '#EF4444', fontSize: 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
+                        </TouchableOpacity>
+                      )}
+                      
+                      {/* Feedback Coach en Fuerza */}
+                      {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
+                        <View style={styles.feedbackRow}>
+                          <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
+                          <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} onPress={() => saveCoachNote(wk, idx, currentNote)}>
+                            <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
+                          </TouchableOpacity>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })
+            )}
+
           </View>
         )}
       </View>
