@@ -30,7 +30,7 @@ const now = new Date();
 const localTodayStr = getLocalDateStr(now);
 
 export default function CalendarScreen() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, updateUser } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
   
@@ -258,6 +258,8 @@ export default function CalendarScreen() {
         await api.updateAthlete(selectedAthlete.id, payload);
       } else if (api.updateProfile) {
         await api.updateProfile(payload); 
+        // Actualizamos el contexto local
+        updateUser(payload);
       }
 
       setSelectedAthlete({ ...selectedAthlete, ...payload });
