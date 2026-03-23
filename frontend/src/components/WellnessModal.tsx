@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, Modal, TouchableOpacity, 
   TextInput, ScrollView, ActivityIndicator, Alert, Platform 
@@ -8,13 +8,6 @@ import { useTheme } from '../hooks/useTheme';
 import { api } from '../api';
 import { useAuth } from '../context/AuthContext';
 
-const CYCLE_PHASES = [
-  { id: 'menstruacion', label: 'Menstruación', color: '#EF4444' },
-  { id: 'folicular', label: 'Folicular', color: '#10B981' },
-  { id: 'ovulacion', label: 'Ovulación', color: '#F59E0B' },
-  { id: 'lutea', label: 'Fase Lútea', color: '#8B5CF6' }
-];
-
 const BODY_PARTS = [
   'Cuello', 'Hombros', 'Espalda Alta', 'Lumbar', 
   'Codos', 'Muñecas', 'Cadera', 'Rodillas', 'Tobillos'
@@ -22,9 +15,8 @@ const BODY_PARTS = [
 
 export default function WellnessModal({ isVisible, onClose }: { isVisible: boolean, onClose: () => void }) {
   const { colors } = useTheme();
-  const { user } = useAuth(); 
+  const { user, updateUser } = useAuth(); 
   const [loading, setLoading] = useState(false);
-  const [menstruationDay, setMenstruationDay] = useState(1);
   
   const [form, setForm] = useState({
     fatigue: 3,
@@ -32,36 +24,35 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
     sleep_quality: 3,
     soreness: 3,
     notes: '',
-    cycle_phase: '',
     discomforts: {} as Record<string, 'leve' | 'fuerte'>
   });
 
   const isFemale = ['female', 'mujer', 'femenino'].includes(user?.gender?.toLowerCase() || '');
 
+  // Resetear el formulario cada vez que se abre el modal
+  useEffect(() => {
+    if (isVisible) {
+      setForm({
+        fatigue: 3,
+        stress: 3,
+        sleep_quality: 3,
+        soreness: 3,
+        notes: '',
+        discomforts: {}
+      });
+    }
+  }, [isVisible]);
+
   const handleSave = async () => {
     setLoading(true);
     try {
-      const finalForm = { ...form };
-      if (form.cycle_phase.startsWith('menstruacion')) {
-        finalForm.cycle_phase = `menstruacion_${menstruationDay}`;
-      }
-
-      await api.postWellness(finalForm);
+      await api.postWellness({ ...form, cycle_phase: '' }); // El backend calculará la fase, o se ignora.
       onClose();
     } catch (e: any) {
       if (Platform.OS !== 'web') Alert.alert("Error de envío", e.message || "No se pudo conectar con el servidor.");
       else console.error("Error guardando wellness:", e);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handlePhaseSelect = (phaseId: string) => {
-    if (form.cycle_phase.startsWith(phaseId)) {
-      setForm(prev => ({ ...prev, cycle_phase: '' })); 
-    } else {
-      setForm(prev => ({ ...prev, cycle_phase: phaseId }));
-      if (phaseId === 'menstruacion') setMenstruationDay(1); 
     }
   };
 
@@ -81,6 +72,79 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
       }
       return { ...prev, discomforts: newDiscomforts };
     });
+  };
+
+  // --- LÓGICA DE DETECCIÓN INTELIGENTE DEL CICLO ---
+  const getLocalDateStr = useCallback((date: Date) => {
+    if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  const todayStr = useMemo(() => getLocalDateStr(new Date()), [getLocalDateStr]);
+
+  const cycleStatus = useMemo(() => {
+    if (!isFemale || !user) return { showPrompt: false, type: 'none' };
+
+    const lastPeriodStr = (user as any).last_period_date;
+    const cycleLength = Number((user as any).cycle_length) || 28;
+    const periodLength = Number((user as any).period_length) || 5;
+    const isBleeding = (user as any).is_bleeding; // Suponemos que añadimos este boolean al perfil
+    
+    // Si no hay fecha registrada, mostramos prompt de inicio para que marque la primera
+    if (!lastPeriodStr) return { showPrompt: true, type: 'start' };
+
+    const parts = lastPeriodStr.split('-');
+    const startY = Number(parts[0]);
+    const startM = Number(parts[1]);
+    const startD = Number(parts[2]);
+
+    if (isNaN(startY) || isNaN(startM) || isNaN(startD)) return { showPrompt: true, type: 'start' };
+
+    const lastPeriodDate = new Date(startY, startM - 1, startD);
+    const todayDate = new Date();
+    
+    // Resetear horas para cálculo justo de días
+    lastPeriodDate.setHours(0, 0, 0, 0);
+    todayDate.setHours(0, 0, 0, 0);
+
+    const diffTime = todayDate.getTime() - lastPeriodDate.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 3600 * 24));
+
+    // Si está marcada como sangrando actualmente
+    if (isBleeding) {
+        // Mostramos botón de finalizar, pero si lleva más de X días (ej. 10), asumimos que se olvidó y forzamos final
+        if (diffDays > 10) return { showPrompt: false, type: 'none' }; 
+        return { showPrompt: true, type: 'end' };
+    }
+
+    // Calcular días faltantes para la próxima regla (ventana de -3 a +periodLength días)
+    const daysUntilNextPeriod = cycleLength - (diffDays % cycleLength);
+    const isInStartWindow = daysUntilNextPeriod <= 3 || daysUntilNextPeriod === cycleLength || (diffDays % cycleLength) < periodLength;
+
+    if (isInStartWindow) {
+      return { showPrompt: true, type: 'start' };
+    }
+
+    return { showPrompt: false, type: 'none' };
+  }, [user, isFemale]);
+
+  const handleCycleAction = async (action: 'start' | 'end') => {
+    setLoading(true);
+    try {
+        const payload = action === 'start' 
+            ? { last_period_date: todayStr, is_bleeding: true }
+            : { is_bleeding: false };
+
+        if (api.updateProfile) {
+            await api.updateProfile(payload);
+            updateUser(payload); // Actualizamos contexto para que desaparezca el botón
+        }
+    } catch (e) {
+        console.error("Error actualizando ciclo:", e);
+        Alert.alert("Error", "No se pudo actualizar el registro del ciclo.");
+    } finally {
+        setLoading(false);
+    }
   };
 
   const RatingScale = ({ label, field }: { label: string, field: keyof typeof form }) => (
@@ -118,14 +182,60 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
-            <Text style={[styles.sectionTitle, { color: colors.primary }]}>SENSACIONES SUBJETIVAS</Text>
+            
+            {/* --- TRACKER INTELIGENTE DE CICLO --- */}
+            {isFemale && cycleStatus.showPrompt && (
+              <View style={[styles.cycleTrackerCard, { backgroundColor: '#FEE2E2', borderColor: '#EF4444' }]}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 }}>
+                    <Ionicons name="water" size={20} color="#EF4444" />
+                    <Text style={{ color: '#EF4444', fontWeight: '900', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Tracker Menstrual
+                    </Text>
+                </View>
+
+                {cycleStatus.type === 'start' ? (
+                    <>
+                        <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16, marginBottom: 5 }}>
+                            ¿Ha comenzado tu periodo?
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 15, lineHeight: 18 }}>
+                            Según tus cálculos, deberías estar cerca. Confirma para ajustar tu planificación biológica.
+                        </Text>
+                        <TouchableOpacity 
+                            style={[styles.cycleBtn, { backgroundColor: '#EF4444' }]}
+                            onPress={() => handleCycleAction('start')}
+                            disabled={loading}
+                        >
+                            {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.cycleBtnText}>SÍ, COMENZÓ HOY</Text>}
+                        </TouchableOpacity>
+                    </>
+                ) : (
+                    <>
+                        <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16, marginBottom: 5 }}>
+                            ¿Sigues con sangrado?
+                        </Text>
+                        <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 15, lineHeight: 18 }}>
+                            Toca el botón cuando haya finalizado tu periodo para cerrar el registro de esta fase menstrual.
+                        </Text>
+                        <TouchableOpacity 
+                            style={[styles.cycleBtn, { backgroundColor: '#EF4444', opacity: 0.9 }]}
+                            onPress={() => handleCycleAction('end')}
+                            disabled={loading}
+                        >
+                            {loading ? <ActivityIndicator color="#FFF" /> : <Text style={styles.cycleBtnText}>YA HA TERMINADO</Text>}
+                        </TouchableOpacity>
+                    </>
+                )}
+              </View>
+            )}
+
+            <Text style={[styles.sectionTitle, { color: colors.primary, marginTop: isFemale && cycleStatus.showPrompt ? 10 : 0 }]}>SENSACIONES SUBJETIVAS</Text>
             
             <RatingScale label="Nivel de Fatiga" field="fatigue" />
             <RatingScale label="Nivel de Estrés" field="stress" />
             <RatingScale label="Calidad de Sueño" field="sleep_quality" />
             <RatingScale label="Dolor Muscular" field="soreness" />
 
-            {/* SECCIÓN MAPA DE MOLESTIAS */}
             <View style={styles.divider} />
             <Text style={[styles.sectionTitle, { color: colors.primary, marginBottom: 5 }]}>MAPA TÉRMICO DE MOLESTIAS</Text>
             <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 15 }}>
@@ -156,67 +266,6 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
             </View>
 
             <View style={styles.divider} />
-
-            {isFemale && (
-              <View style={{ marginBottom: 20 }}>
-                <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>
-                  <Ionicons name="water" size={12} color="#EF4444" /> FASE DEL CICLO MENSTRUAL
-                </Text>
-                
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 8 }}>
-                  {CYCLE_PHASES.map((phase) => {
-                    const isSelected = form.cycle_phase.startsWith(phase.id);
-                    return (
-                      <TouchableOpacity
-                        key={phase.id}
-                        style={[
-                          styles.phaseChip,
-                          { borderColor: colors.border },
-                          isSelected && { backgroundColor: phase.color + '20', borderColor: phase.color }
-                        ]}
-                        onPress={() => handlePhaseSelect(phase.id)}
-                      >
-                        <Text style={{ 
-                          fontSize: 12, 
-                          fontWeight: isSelected ? '800' : '600',
-                          color: isSelected ? phase.color : colors.textSecondary 
-                        }}>
-                          {phase.label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-
-                {form.cycle_phase.startsWith('menstruacion') && (
-                  <View style={styles.periodDayContainer}>
-                    <Text style={[styles.periodDayTitle, { color: colors.textPrimary }]}>
-                      ¿Qué día de sangrado es hoy?
-                    </Text>
-                    <View style={styles.periodDaysRow}>
-                      {[1, 2, 3, 4, 5, 6].map((day) => (
-                        <TouchableOpacity 
-                          key={day}
-                          style={[
-                            styles.periodDayCircle, 
-                            { borderColor: '#EF4444' },
-                            menstruationDay === day && { backgroundColor: '#EF4444' }
-                          ]}
-                          onPress={() => setMenstruationDay(day)}
-                        >
-                          <Text style={{ 
-                            color: menstruationDay === day ? '#FFF' : colors.textPrimary, 
-                            fontWeight: '900', fontSize: 16
-                          }}>
-                            {day}{day === 6 ? '+' : ''}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </View>
-                )}
-              </View>
-            )}
 
             <Text style={[styles.inputLabel, { color: colors.textPrimary }]}>OBSERVACIONES PARA ANDREINA / COACH</Text>
             <TextInput 
@@ -259,11 +308,10 @@ const styles = StyleSheet.create({
   textArea: { height: 80, textAlignVertical: 'top' },
   saveBtn: { padding: 20, borderRadius: 18, alignItems: 'center', marginTop: 15 },
   saveBtnText: { color: '#FFF', fontWeight: '900', letterSpacing: 1, fontSize: 16 },
-  phaseChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, marginRight: 8 },
-  periodDayContainer: { marginTop: 25, backgroundColor: 'rgba(239, 68, 68, 0.05)', padding: 15, borderRadius: 20 },
-  periodDayTitle: { fontWeight: '800', marginBottom: 15, textAlign: 'center', fontSize: 13 },
-  periodDaysRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 5 },
-  periodDayCircle: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   discomfortGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  discomfortChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1 }
+  discomfortChip: { paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, borderWidth: 1 },
+  
+  cycleTrackerCard: { borderWidth: 1, borderRadius: 20, padding: 20, marginBottom: 25 },
+  cycleBtn: { padding: 16, borderRadius: 14, alignItems: 'center', marginTop: 5 },
+  cycleBtnText: { color: '#FFF', fontWeight: '900', fontSize: 14, letterSpacing: 1 }
 });
