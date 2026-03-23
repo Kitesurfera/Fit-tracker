@@ -109,6 +109,24 @@ export default function CalendarScreen() {
       ]);
       
       const macroList = Array.isArray(resTree) ? resTree : (resTree?.macros || []);
+      
+      // --- ORDENAR MACROS Y MICROS PARA QUE LOS MÁS RECIENTES TENGAN PRIORIDAD VISUAL ---
+      macroList.sort((a: any, b: any) => {
+        const dA = extractDateString(a.fecha_inicio || a.start_date) || '';
+        const dB = extractDateString(b.fecha_inicio || b.start_date) || '';
+        return dB.localeCompare(dA); // Orden descendente
+      });
+
+      macroList.forEach((macro: any) => {
+        const micros = macro.microciclos || macro.microcycles || [];
+        micros.sort((a: any, b: any) => {
+          const dA = extractDateString(a.fecha_inicio || a.start_date) || '';
+          const dB = extractDateString(b.fecha_inicio || b.start_date) || '';
+          return dB.localeCompare(dA); // Orden descendente
+        });
+      });
+      // -----------------------------------------------------------------------------------
+
       const extractedWorkouts = Array.isArray(resWorkouts) ? resWorkouts : (resWorkouts?.data || []);
       const extractedWellness = Array.isArray(resWellness) ? resWellness : (resWellness?.data || []);
       
@@ -313,8 +331,9 @@ export default function CalendarScreen() {
     try {
       if (!Array.isArray(macros)) return [];
       const microsResult: any[] = [];
-      const firstDayTime = new Date(currentYear, currentMonth, 1).getTime();
-      const lastDayTime = new Date(currentYear, currentMonth + 1, 0).getTime();
+      const firstDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
+      const lastDayNum = new Date(currentYear, currentMonth + 1, 0).getDate();
+      const lastDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(lastDayNum).padStart(2, '0')}`;
 
       macros.forEach(macro => {
         const listaMicros = macro.microciclos || macro.microcycles || [];
@@ -323,20 +342,23 @@ export default function CalendarScreen() {
             const start = extractDateString(m.fecha_inicio || m.start_date);
             const end = extractDateString(m.fecha_fin || m.end_date);
             if (start && end) {
-              const [sY, sM, sD] = start.split('-').map(Number);
-              const [eY, eM, eD] = end.split('-').map(Number);
-              if (!isNaN(sY) && !isNaN(eY)) {
-                const sTime = new Date(sY, sM - 1, sD).getTime();
-                const eTime = new Date(eY, eM - 1, eD).getTime();
-                if (sTime <= lastDayTime && eTime >= firstDayTime) {
-                  microsResult.push({ ...m, macroNombre: macro.nombre || macro.name || 'Macro', nombre: m.nombre || m.name || 'Micro', fecha_inicio: start, fecha_fin: end, tipo: m.tipo || m.type || 'BASE', color: m.color || colors.primary });
-                }
+              // --- CAMBIO: Uso de comparación lexicográfica de Strings para evitar errores de fecha ---
+              if (start <= lastDayStr && end >= firstDayStr) {
+                microsResult.push({ 
+                  ...m, 
+                  macroNombre: macro.nombre || macro.name || 'Macro', 
+                  nombre: m.nombre || m.name || 'Micro', 
+                  fecha_inicio: start, 
+                  fecha_fin: end, 
+                  tipo: m.tipo || m.type || 'BASE', 
+                  color: m.color || macro.color || colors.primary 
+                });
               }
             }
           });
         }
       });
-      return microsResult.sort((a, b) => new Date(a.fecha_inicio).getTime() - new Date(b.fecha_inicio).getTime());
+      return microsResult.sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio));
     } catch (e) {
       return [];
     }
@@ -441,7 +463,6 @@ export default function CalendarScreen() {
       if (workoutsForDay.length > 0) { status.hasWorkout = true; status.isCompleted = workoutsForDay.every(w => w.completed); }
       if (periodDays[dateStr]) { status.isPeriod = true; status.periodType = periodDays[dateStr].type; }
 
-      const currentDayTime = new Date(currentYear, currentMonth, day).getTime();
       if (Array.isArray(macros)) {
         for (const macro of macros) {
           const listaMicros = macro.microciclos || macro.microcycles || [];
@@ -449,11 +470,13 @@ export default function CalendarScreen() {
             const start = extractDateString(m.fecha_inicio || m.start_date);
             const end = extractDateString(m.fecha_fin || m.end_date);
             if(!start || !end) return false;
-            const [sY, sM, sD] = start.split('-').map(Number);
-            const [eY, eM, eD] = end.split('-').map(Number);
-            return currentDayTime >= new Date(sY, sM - 1, sD).getTime() && currentDayTime <= new Date(eY, eM - 1, eD).getTime();
+            // --- CAMBIO: Uso de comparación lexicográfica de Strings para blindar contra Tiempos locales ---
+            return dateStr >= start && dateStr <= end;
           });
-          if (micro) { status.phaseColor = micro.color || colors.primary; break; }
+          if (micro) { 
+            status.phaseColor = micro.color || macro.color || colors.primary; 
+            break; 
+          }
         }
       }
       return status;
@@ -560,12 +583,7 @@ export default function CalendarScreen() {
                   <TouchableOpacity key={idx} style={[styles.microCard, { backgroundColor: colors.surface, borderTopColor: micro.color || colors.primary, borderColor: colors.border }]} onPress={() => setViewMicroInfo(micro)}>
                     <Text style={[styles.microMacroName, { color: colors.textSecondary }]} numberOfLines={1}>{micro.macroNombre}</Text>
                     <Text style={[styles.microName, { color: colors.textPrimary }]} numberOfLines={1}>{micro.nombre}</Text>
-                    
-                    {/* AQUÍ ESTÁ EL CAMBIO PRINCIPAL PARA EVITAR QUE SE ROMPA CON TIPOS LARGOS */}
-                    <View style={[styles.microTypeBadge, { backgroundColor: (micro.color || colors.primary) + '15' }]}>
-                      <Text style={{ color: micro.color || colors.primary, fontSize: 10, fontWeight: '800' }} numberOfLines={1} ellipsizeMode="tail">{micro.tipo}</Text>
-                    </View>
-                    
+                    <View style={[styles.microTypeBadge, { backgroundColor: (micro.color || colors.primary) + '15' }]}><Text style={{ color: micro.color || colors.primary, fontSize: 10, fontWeight: '800' }} numberOfLines={1} ellipsizeMode="tail">{micro.tipo}</Text></View>
                     <Text style={[styles.microDates, { color: colors.textSecondary }]}>{micro.fecha_inicio.split('-').slice(1).reverse().join('/')} al {micro.fecha_fin.split('-').slice(1).reverse().join('/')}</Text>
                   </TouchableOpacity>
                 ))}
@@ -656,12 +674,9 @@ export default function CalendarScreen() {
                 <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>PERTENECE AL MACROCICLO:</Text><Text style={[styles.infoTitleMacro, { color: colors.textPrimary }]}>{viewMicroInfo.macroNombre}</Text>
                 <View style={[styles.divider, { backgroundColor: colors.border }]} /><Text style={[styles.infoLabel, { color: colors.textSecondary }]}>FASE ACTUAL (MICROCICLO):</Text><Text style={[styles.infoTitleMicro, { color: colors.textPrimary }]}>{viewMicroInfo.nombre}</Text>
                 <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
-                  
-                  {/* OTRO CAMBIO IMPORTANTE: numberOfLines en el modal de Info */}
                   <View style={[styles.microTypeBadgeBig, { backgroundColor: (viewMicroInfo.color || colors.primary) }]}>
                     <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }} numberOfLines={1}>{viewMicroInfo.tipo}</Text>
                   </View>
-                  
                   <View style={[styles.datesRow, { marginTop: 0 }]}><Ionicons name="calendar-outline" size={16} color={colors.textSecondary} /><Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{viewMicroInfo.fecha_inicio.split('-').reverse().join('/')} - {viewMicroInfo.fecha_fin.split('-').reverse().join('/')}</Text></View></View>
                 <View style={{ width: '100%', marginTop: 25, flexShrink: 1 }}><Text style={[styles.infoLabel, { color: colors.textSecondary, marginBottom: 10, textAlign: 'left' }]}>SESIONES PROGRAMADAS ({microWorkouts.length})</Text>
                   <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={true}>
