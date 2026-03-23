@@ -117,6 +117,9 @@ class ProfileUpdate(BaseModel):
     injury_notes: Optional[str] = None
     equipment: Optional[str] = None
     push_token: Optional[str] = None
+    last_period_date: Optional[str] = None  # <-- ¡Aquí está la clave!
+    cycle_length: Optional[int] = None      # <-- Por si también ajustas los días del ciclo
+
 
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
