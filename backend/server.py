@@ -108,6 +108,10 @@ class AthleteUpdate(BaseModel):
     password: Optional[str] = None
     sport: Optional[str] = None
     phone: Optional[str] = None 
+    last_period_date: Optional[str] = None  
+    cycle_length: Optional[int] = None      
+    period_length: Optional[int] = None     
+    is_bleeding: Optional[bool] = None      
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
@@ -117,9 +121,10 @@ class ProfileUpdate(BaseModel):
     injury_notes: Optional[str] = None
     equipment: Optional[str] = None
     push_token: Optional[str] = None
-    last_period_date: Optional[str] = None  # <-- ¡Aquí está la clave!
-    cycle_length: Optional[int] = None      # <-- Por si también ajustas los días del ciclo
-
+    last_period_date: Optional[str] = None  
+    cycle_length: Optional[int] = None      
+    period_length: Optional[int] = None     
+    is_bleeding: Optional[bool] = None      
 
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
@@ -389,6 +394,16 @@ async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_
         
     if data.password and len(data.password) > 0:
         update_data["password"] = hash_password(data.password)
+
+    # --- NUEVOS CAMPOS DEL CICLO MENSTRUAL ---
+    if hasattr(data, 'last_period_date') and data.last_period_date is not None:
+        update_data["last_period_date"] = data.last_period_date
+    if hasattr(data, 'cycle_length') and data.cycle_length is not None:
+        update_data["cycle_length"] = data.cycle_length
+    if hasattr(data, 'period_length') and data.period_length is not None:
+        update_data["period_length"] = data.period_length
+    if hasattr(data, 'is_bleeding') and data.is_bleeding is not None:
+        update_data["is_bleeding"] = data.is_bleeding
         
     await db.users.update_one({"id": athlete_id}, {"$set": update_data})
     return {"status": "success"}
