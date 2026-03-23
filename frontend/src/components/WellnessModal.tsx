@@ -13,6 +13,8 @@ const BODY_PARTS = [
   'Codos', 'Muñecas', 'Cadera', 'Rodillas', 'Tobillos'
 ];
 
+const SLEEP_HOURS_OPTIONS = ['<6', '6', '7', '8', '9+'];
+
 export default function WellnessModal({ isVisible, onClose }: { isVisible: boolean, onClose: () => void }) {
   const { colors } = useTheme();
   const { user, updateUser } = useAuth(); 
@@ -22,6 +24,7 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
     fatigue: 3,
     stress: 3,
     sleep_quality: 3,
+    sleep_hours: '',
     soreness: 3,
     notes: '',
     discomforts: {} as Record<string, 'leve' | 'fuerte'>
@@ -36,6 +39,7 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
         fatigue: 3,
         stress: 3,
         sleep_quality: 3,
+        sleep_hours: '',
         soreness: 3,
         notes: '',
         discomforts: {}
@@ -88,7 +92,7 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
     const lastPeriodStr = (user as any).last_period_date;
     const cycleLength = Number((user as any).cycle_length) || 28;
     const periodLength = Number((user as any).period_length) || 5;
-    const isBleeding = (user as any).is_bleeding; // Suponemos que añadimos este boolean al perfil
+    const isBleeding = (user as any).is_bleeding; 
     
     // Si no hay fecha registrada, mostramos prompt de inicio para que marque la primera
     if (!lastPeriodStr) return { showPrompt: true, type: 'start' };
@@ -233,7 +237,30 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
             
             <RatingScale label="Nivel de Fatiga" field="fatigue" />
             <RatingScale label="Nivel de Estrés" field="stress" />
+            
+            {/* --- SECCIÓN DESCANSO Y SUEÑO --- */}
             <RatingScale label="Calidad de Sueño" field="sleep_quality" />
+            <View style={styles.scaleContainer}>
+              <Text style={[styles.scaleLabel, { color: colors.textPrimary }]}>Horas de Sueño</Text>
+              <View style={styles.optionsRow}>
+                {SLEEP_HOURS_OPTIONS.map((opt) => (
+                  <TouchableOpacity 
+                    key={opt} 
+                    onPress={() => setForm(prev => ({ ...prev, sleep_hours: opt }))}
+                    style={[
+                      styles.optionCircle, 
+                      { borderColor: colors.border },
+                      form.sleep_hours === opt && { backgroundColor: colors.primary, borderColor: colors.primary }
+                    ]}
+                  >
+                    <Text style={{ color: form.sleep_hours === opt ? '#FFF' : colors.textPrimary, fontWeight: '700' }}>
+                      {opt}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
             <RatingScale label="Dolor Muscular" field="soreness" />
 
             <View style={styles.divider} />
