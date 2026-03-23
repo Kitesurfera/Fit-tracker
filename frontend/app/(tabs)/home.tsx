@@ -25,21 +25,19 @@ const DAILY_TIPS = [
   "Tu mayor logro es convertir el ejercicio en un hábito, no en una obligación."
 ];
 
-const CYCLE_PHASES = [
-  { id: 'menstruacion', label: 'Menstruación', color: '#EF4444' },
-  { id: 'folicular', label: 'Folicular', color: '#10B981' },
-  { id: 'ovulacion', label: 'Ovulación', color: '#F59E0B' },
-  { id: 'lutea', label: 'Lútea', color: '#8B5CF6' }
-];
+const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
-const CYCLE_LABELS: any = {
-  menstruacion: 'Fase Menstrual',
-  folicular: 'Fase Folicular',
-  ovulacion: 'Fase Ovulatoria',
-  lutea: 'Fase Lútea'
+const getLocalDateStr = (date: Date) => {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+const extractDateString = (dateVal: any) => {
+  if (!dateVal) return null;
+  if (typeof dateVal === 'string') return dateVal.split('T')[0]; 
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return getLocalDateStr(dateVal);
+  return null;
+};
 
 export default function HomeScreen() {
   const { user, loading: authLoading } = useAuth();
@@ -70,7 +68,6 @@ export default function HomeScreen() {
   
   const [showHistory, setShowHistory] = useState(false);
 
-  // Estados para saltar entrenamiento
   const [showSkipModal, setShowSkipModal] = useState(false);
   const [skipWorkoutId, setSkipWorkoutId] = useState<string | null>(null);
   const [skipReason, setSkipReason] = useState('');
@@ -81,6 +78,99 @@ export default function HomeScreen() {
   const todayLabel = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const isFemale = ['female', 'mujer', 'femenino'].includes(user?.gender?.toLowerCase() || '');
+
+  // --- LÓGICA DE FASE DEL CICLO AUTOMÁTICA ---
+  const getActualDayOneStr = useCallback(() => {
+    try {
+      if (!wellnessHistory || !Array.isArray(wellnessHistory) || wellnessHistory.length === 0) return '';
+      const menstrualLogs = wellnessHistory
+        .filter(w => w && w.date && (w.cycle_phase === 'menstrual' || w.cycle_phase?.startsWith('menstruacion')))
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      
+      if (menstrualLogs.length === 0) return '';
+
+      let actualDayOneStr = extractDateString(menstrualLogs[0].date) || '';
+      for (let i = 0; i < menstrualLogs.length - 1; i++) {
+        const d1 = extractDateString(menstrualLogs[i].date);
+        const d2 = extractDateString(menstrualLogs[i+1].date);
+        if (!d1 || !d2) continue;
+
+        const p1 = d1.split('-');
+        const p2 = d2.split('-');
+        const date1 = new Date(Number(p1[0]), Number(p1[1]) - 1, Number(p1[2]));
+        const date2 = new Date(Number(p2[0]), Number(p2[1]) - 1, Number(p2[2]));
+        
+        const diffDays = (date1.getTime() - date2.getTime()) / (1000 * 3600 * 24);
+        if (diffDays <= 2) actualDayOneStr = d2;
+        else break; 
+      }
+      return actualDayOneStr;
+    } catch (e) {
+      return '';
+    }
+  }, [wellnessHistory]);
+
+  const cycleData = useMemo(() => {
+    try {
+      if (!isFemale) return null;
+      let actualDayOneStr = extractDateString((user as any)?.last_period_date);
+      if (!actualDayOneStr) {
+          if (!wellnessHistory || wellnessHistory.length === 0) return null;
+          actualDayOneStr = getActualDayOneStr();
+      }
+      if (!actualDayOneStr) return null;
+
+      const parts = actualDayOneStr.split('-');
+      const startY = Number(parts[0]);
+      const startM = Number(parts[1]);
+      const startD = Number(parts[2]);
+
+      if (isNaN(startY) || isNaN(startM) || isNaN(startD)) return null;
+
+      const actualDayOne = new Date(startY, startM - 1, startD);
+      const cycleLength = Number((user as any)?.cycle_length) || 28;
+      const periodLength = Number((user as any)?.period_length) || 5;
+
+      return { actualDayOne, cycleLength, periodLength };
+    } catch (e) {
+      return null;
+    }
+  }, [wellnessHistory, user, isFemale, getActualDayOneStr]);
+
+  const getPhaseForDate = useCallback((targetDateStr: string) => {
+    try {
+      if (!cycleData || !cycleData.actualDayOne || isNaN(cycleData.actualDayOne.getTime())) return null;
+      if (!targetDateStr) return null;
+      
+      const parts = targetDateStr.split('-');
+      const tY = Number(parts[0]);
+      const tM = Number(parts[1]);
+      const tD = Number(parts[2]);
+      if (isNaN(tY) || isNaN(tM) || isNaN(tD)) return null;
+
+      const targetTime = new Date(tY, tM - 1, tD).getTime();
+      const startTime = cycleData.actualDayOne.getTime();
+      const diffDays = Math.floor((targetTime - startTime) / (1000 * 3600 * 24));
+
+      if (diffDays < 0) return null;
+
+      const currentCycleDay = (diffDays % cycleData.cycleLength) + 1;
+
+      if (currentCycleDay <= cycleData.periodLength) {
+        return { day: currentCycleDay, name: 'Fase Menstrual', color: '#EF4444', icon: 'water', training: 'Baja carga. Prioriza técnica y recuperación.', risk: 'Fatiga general alta. Escucha a tu cuerpo.', nutrition: 'Aumenta el hierro y alimentos antiinflamatorios.' };
+      } else if (currentCycleDay <= Math.floor(cycleData.cycleLength / 2) - 2) {
+        return { day: currentCycleDay, name: 'Fase Folicular', color: '#10B981', icon: 'leaf', training: 'Alta energía. Ideal para entrenos de fuerza.', risk: 'Bajo riesgo. ¡Aprovecha el pico de energía!', nutrition: 'Mayor sensibilidad a la insulina. Cargas de carbohidratos eficientes.' };
+      } else if (currentCycleDay <= Math.floor(cycleData.cycleLength / 2) + 2) {
+        return { day: currentCycleDay, name: 'Fase Ovulatoria', color: '#F59E0B', icon: 'sunny', training: 'Pico de fuerza máxima. Cuidado con el exceso de confianza.', risk: 'ALTO RIESGO: Mayor laxitud de ligamentos (rodillas/hombros). Controla los aterrizajes.', nutrition: 'Mantén hidratación alta y proteína para recuperación.' };
+      } else {
+        return { day: currentCycleDay, name: 'Fase Lútea', color: '#8B5CF6', icon: 'moon', training: 'Posible bajón de energía. Reduce intensidad si notas pesadez.', risk: 'Aumenta la temperatura basal y fatiga central.', nutrition: 'El cuerpo quema más grasas. Antojos normales; prioriza grasas saludables.' };
+      }
+    } catch (e) {
+      return null;
+    }
+  }, [cycleData]);
+
+  const phaseInfo = useMemo(() => getPhaseForDate(todayStr), [getPhaseForDate, todayStr]);
 
   const loadData = async (isSilent = false) => {
     if (!isSilent) setRefreshing(true);
@@ -208,16 +298,6 @@ export default function HomeScreen() {
     }
   };
 
-  const handleQuickPhaseUpdate = async (phaseId: string) => {
-    if (phaseId === 'menstruacion') { setShowWellness(true); return; }
-    setSummary((prev: any) => ({ ...prev, latest_wellness: { ...(prev?.latest_wellness || { fatigue: 3, stress: 3, sleep_quality: 3, soreness: 3, notes: '' }), cycle_phase: phaseId } }));
-    try {
-      const baseData = summary?.latest_wellness || {};
-      const payload = { fatigue: baseData.fatigue || 3, stress: baseData.stress || 3, sleep_quality: baseData.sleep_quality || 3, soreness: baseData.soreness || 3, notes: baseData.notes || '', cycle_phase: phaseId };
-      await api.postWellness(payload);
-    } catch (e) { console.error("Error guardando fase", e); }
-  };
-
   const handleFeedbackClick = async () => {
     if (user) await AsyncStorage.setItem(`feedback_read_${user.id}`, feedbackSignature);
     setHasUnreadFeedback(false);
@@ -247,22 +327,37 @@ export default function HomeScreen() {
   };
 
   const handleShareStatus = () => {
-    const currentPhase = summary?.latest_wellness?.cycle_phase;
-    const phaseText = currentPhase ? (CYCLE_LABELS[currentPhase] || currentPhase) : 'Sin registro';
-    const fatigue = summary?.latest_wellness?.fatigue || '?';
-    const todayWorkout = workouts.find(w => w.date === todayStr);
-    const trained = todayWorkout ? (todayWorkout.completed ? '✅ Completado' : '❌ Pendiente') : 'Libre / Descanso';
+    const latestWellness = summary?.latest_wellness || {};
+    const fatigue = latestWellness.fatigue || '?';
+    const sleep = latestWellness.sleep_quality || '?';
+    const soreness = latestWellness.soreness || '?';
     
-    const discomfortsObj = summary?.latest_wellness?.discomforts || {};
+    const todayWorkout = workouts.find(w => w.date === todayStr);
+    const trained = todayWorkout ? (todayWorkout.completed ? '✅ Completada' : '❌ Pendiente') : 'Libre / Descanso';
+    const workoutName = todayWorkout ? ` (${todayWorkout.title})` : '';
+    
+    const activeMicroText = activeMicro ? `${activeMicro.nombre} [${activeMicro.tipo}]` : 'Planificación Libre';
+    
+    const phaseText = phaseInfo ? phaseInfo.name : 'Sin registro';
+
+    const discomfortsObj = latestWellness.discomforts || {};
     const discomfortsEntries = Object.entries(discomfortsObj);
     let discomfortsText = '';
     if (discomfortsEntries.length > 0) {
-      discomfortsText = '\n🤕 Mapa Molestias:\n' + discomfortsEntries.map(([k, v]) => `   - ${k}: ${String(v).toUpperCase()}`).join('\n');
+      discomfortsText = '\n🤕 *Molestias:*\n' + discomfortsEntries.map(([k, v]) => `   - ${k}: ${String(v).toUpperCase()}`).join('\n');
     }
 
-    const message = `🏄‍♀️ *Status Diario*\n\nNivel de Fatiga: ${fatigue}/5\nEntrenamiento hoy: ${trained}` + 
-                    (isFemale ? `\nFase del ciclo: ${phaseText}` : '') + 
-                    discomfortsText;
+    const message = `🏄‍♀️ *Status Diario de ${firstName}*\n` +
+                    `📅 ${todayLabel}\n\n` +
+                    `🔋 *Estado Físico:*\n` +
+                    `   - Fatiga general: ${fatigue}/5\n` +
+                    `   - Calidad del sueño: ${sleep}/5\n` +
+                    `   - Dolor muscular/agujetas: ${soreness}/5\n` +
+                    (isFemale ? `   - Fase del ciclo: ${phaseText}\n` : '') + 
+                    discomfortsText + `\n\n` +
+                    `🏋️‍♀️ *Entrenamiento:*\n` +
+                    `   - Fase actual: ${activeMicroText}\n` +
+                    `   - Sesión de hoy: ${trained}${workoutName}`;
     
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
@@ -384,7 +479,6 @@ export default function HomeScreen() {
   );
 
   const renderAthleteView = () => {
-    const currentPhase = String(summary?.latest_wellness?.cycle_phase || '');
     const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
     const completedWorkouts = workouts.filter(w => w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
     
@@ -405,18 +499,19 @@ export default function HomeScreen() {
 
             <View style={[styles.tipCard, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="bulb-outline" size={16} color={colors.primary} /><Text style={[styles.tipText, { color: colors.textPrimary }]}>{tip}</Text></View>
 
-            {isFemale && (
+            {isFemale && phaseInfo && (
               <View style={{ marginBottom: 25 }}>
-                <Text style={styles.sectionTitle}>TU CICLO ACTUAL</Text>
-                <View style={styles.cycleChipsContainer}>
-                  {CYCLE_PHASES.map(phase => {
-                    const isActive = currentPhase.startsWith(phase.id);
-                    return (
-                      <TouchableOpacity key={phase.id} style={[styles.dashboardPhaseChip, { borderColor: colors.border, backgroundColor: colors.surface }, isActive && { backgroundColor: phase.color, borderColor: phase.color }]} onPress={() => handleQuickPhaseUpdate(phase.id)}>
-                        <Text style={{ color: isActive ? '#FFF' : colors.textSecondary, fontWeight: isActive ? '800' : '600', fontSize: 12 }}>{phase.label}</Text>
-                      </TouchableOpacity>
-                    );
-                  })}
+                <Text style={styles.sectionTitle}>BIOLOGÍA Y RENDIMIENTO (DÍA {phaseInfo.day})</Text>
+                <View style={[styles.insightCard, { borderColor: phaseInfo.color, backgroundColor: colors.surface }]}>
+                  <View style={[styles.insightHeader, { backgroundColor: phaseInfo.color + '15' }]}>
+                    <Ionicons name={phaseInfo.icon as any} size={20} color={phaseInfo.color} />
+                    <Text style={[styles.insightTitle, { color: phaseInfo.color }]}>{phaseInfo.name}</Text>
+                  </View>
+                  <View style={styles.insightContent}>
+                    <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Entrenamiento:</Text> {phaseInfo.training}</Text>
+                    <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Prevención:</Text> {phaseInfo.risk}</Text>
+                    <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Nutrición:</Text> {phaseInfo.nutrition}</Text>
+                  </View>
                 </View>
               </View>
             )}
@@ -574,5 +669,12 @@ const styles = StyleSheet.create({
   timelineWeekday: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
   timelineDayNumber: { fontSize: 20, fontWeight: '800' },
   fatigueBadge: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
-  modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' }
+  modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' },
+  
+  // ESTILOS NUEVOS DE LA TARJETA BIOLÓGICA
+  insightCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
+  insightHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
+  insightTitle: { fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
+  insightContent: { padding: 15, gap: 8 },
+  insightText: { fontSize: 13, lineHeight: 18 },
 });
