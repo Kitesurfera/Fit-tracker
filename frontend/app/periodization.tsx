@@ -348,9 +348,18 @@ export default function PeriodizationScreen() {
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editingId ? 'Editar Microciclo' : 'Nuevo Microciclo'}</Text>
+            
             <Text style={styles.label}>NOMBRE DEL MICROCICLO</Text>
             <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} placeholder="Semana 1" placeholderTextColor={colors.textSecondary} value={microForm.nombre} onChangeText={(t) => setMicroForm({...microForm, nombre: t})} />
-            <Text style={[styles.label, { marginTop: 10 }]}>TIPO</Text>
+            
+            <Text style={[styles.label, { marginTop: 15 }]}>TIPO (EDITABLE O SELECCIONABLE)</Text>
+            <TextInput 
+              style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginBottom: 10 }]} 
+              placeholder="Ej: Transformación, Carga..." 
+              placeholderTextColor={colors.textSecondary} 
+              value={microForm.tipo} 
+              onChangeText={(t) => setMicroForm({...microForm, tipo: t.toUpperCase()})} 
+            />
             <View style={styles.typeChipsContainer}>
               {MICRO_TIPOS.map(tipo => (
                 <TouchableOpacity key={tipo} style={[styles.typeChip, { borderColor: colors.border, backgroundColor: microForm.tipo === tipo ? colors.primary : 'transparent' }]} onPress={() => setMicroForm({...microForm, tipo})}>
