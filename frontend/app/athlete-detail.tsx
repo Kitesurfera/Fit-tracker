@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
   ActivityIndicator, ScrollView, Dimensions, Alert, Platform, Modal, TextInput, Linking
@@ -13,21 +13,19 @@ import { useAuth } from '../src/context/AuthContext';
 
 const { width } = Dimensions.get('window');
 
-const CYCLE_COLORS: any = {
-  menstrual: '#EF4444',
-  folicular: '#10B981',
-  ovulatoria: '#F59E0B',
-  lutea: '#8B5CF6'
-};
-
-const CYCLE_LABELS: any = {
-  menstrual: 'Fase Menstrual (Baja Carga)',
-  folicular: 'Fase Folicular (Alta Energía)',
-  ovulatoria: 'Fase Ovulatoria (Pico de Fuerza)',
-  lutea: 'Fase Lútea (Posible Fatiga)'
-};
-
 const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
+
+const getLocalDateStr = (date: Date) => {
+  if (!(date instanceof Date) || isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const extractDateString = (dateVal: any) => {
+  if (!dateVal) return null;
+  if (typeof dateVal === 'string') return dateVal.split('T')[0]; 
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return getLocalDateStr(dateVal);
+  return null;
+};
 
 const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
@@ -140,9 +138,101 @@ export default function AthleteDetailScreen() {
     else { if (val >= 4) return colors.success || '#10B981'; if (val === 3) return '#F59E0B'; return colors.error || '#EF4444'; }
   };
 
-  const isFemale = ['female', 'mujer', 'femenino'].includes(athlete?.gender?.toLowerCase() || '');
-  const currentPhase = String(summary?.latest_wellness?.cycle_phase || '');
   const isTrainer = user?.role === 'trainer';
+  const isFemale = ['female', 'mujer', 'femenino'].includes(athlete?.gender?.toLowerCase() || '');
+  const todayStr = getLocalDateStr(new Date());
+
+  // --- LÓGICA DE DETECCIÓN INTELIGENTE DEL CICLO (COPIA DE HOME) ---
+  const getActualDayOneStr = useCallback(() => {
+    try {
+      if (!history || !Array.isArray(history) || history.length === 0) return '';
+      const menstrualLogs = history
+        .filter(w => w && w.date && (w.cycle_phase === 'menstrual' || w.cycle_phase?.startsWith('menstruacion')))
+        .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+      
+      if (menstrualLogs.length === 0) return '';
+
+      let actualDayOneStr = extractDateString(menstrualLogs[0].date) || '';
+      for (let i = 0; i < menstrualLogs.length - 1; i++) {
+        const d1 = extractDateString(menstrualLogs[i].date);
+        const d2 = extractDateString(menstrualLogs[i+1].date);
+        if (!d1 || !d2) continue;
+
+        const p1 = d1.split('-');
+        const p2 = d2.split('-');
+        const date1 = new Date(Number(p1[0]), Number(p1[1]) - 1, Number(p1[2]));
+        const date2 = new Date(Number(p2[0]), Number(p2[1]) - 1, Number(p2[2]));
+        
+        const diffDays = (date1.getTime() - date2.getTime()) / (1000 * 3600 * 24);
+        if (diffDays <= 2) actualDayOneStr = d2;
+        else break; 
+      }
+      return actualDayOneStr;
+    } catch (e) {
+      return '';
+    }
+  }, [history]);
+
+  const cycleData = useMemo(() => {
+    try {
+      if (!isFemale || !athlete) return null;
+      let actualDayOneStr = extractDateString(athlete?.last_period_date);
+      if (!actualDayOneStr) {
+          if (!history || history.length === 0) return null;
+          actualDayOneStr = getActualDayOneStr();
+      }
+      if (!actualDayOneStr) return null;
+
+      const parts = actualDayOneStr.split('-');
+      const startY = Number(parts[0]);
+      const startM = Number(parts[1]);
+      const startD = Number(parts[2]);
+
+      if (isNaN(startY) || isNaN(startM) || isNaN(startD)) return null;
+
+      const actualDayOne = new Date(startY, startM - 1, startD);
+      const cycleLength = Number(athlete?.cycle_length) || 28;
+      const periodLength = Number(athlete?.period_length) || 5;
+
+      return { actualDayOne, cycleLength, periodLength };
+    } catch (e) {
+      return null;
+    }
+  }, [history, athlete, isFemale, getActualDayOneStr]);
+
+  const phaseInfo = useMemo(() => {
+    try {
+      if (!cycleData || !cycleData.actualDayOne || isNaN(cycleData.actualDayOne.getTime())) return null;
+      
+      const parts = todayStr.split('-');
+      const tY = Number(parts[0]);
+      const tM = Number(parts[1]);
+      const tD = Number(parts[2]);
+      if (isNaN(tY) || isNaN(tM) || isNaN(tD)) return null;
+
+      const targetTime = new Date(tY, tM - 1, tD).getTime();
+      const startTime = cycleData.actualDayOne.getTime();
+      const diffDays = Math.floor((targetTime - startTime) / (1000 * 3600 * 24));
+
+      if (diffDays < 0) return null;
+
+      const currentCycleDay = (diffDays % cycleData.cycleLength) + 1;
+
+      if (currentCycleDay <= cycleData.periodLength) {
+        return { day: currentCycleDay, name: 'Fase Menstrual (Baja Carga)', color: '#EF4444', icon: 'water', simpleName: 'Menstrual' };
+      } else if (currentCycleDay <= Math.floor(cycleData.cycleLength / 2) - 2) {
+        return { day: currentCycleDay, name: 'Fase Folicular (Alta Energía)', color: '#10B981', icon: 'leaf', simpleName: 'Folicular' };
+      } else if (currentCycleDay <= Math.floor(cycleData.cycleLength / 2) + 2) {
+        return { day: currentCycleDay, name: 'Fase Ovulatoria (Pico de Fuerza)', color: '#F59E0B', icon: 'sunny', simpleName: 'Ovulatoria' };
+      } else {
+        return { day: currentCycleDay, name: 'Fase Lútea (Posible Fatiga)', color: '#8B5CF6', icon: 'moon', simpleName: 'Lútea' };
+      }
+    } catch (e) {
+      return null;
+    }
+  }, [cycleData, todayStr]);
+  // --- FIN LÓGICA DE DETECCIÓN INTELIGENTE ---
+
 
   const fatigueChartData = useMemo(() => {
     const days = 7;
@@ -178,20 +268,24 @@ export default function AthleteDetailScreen() {
           </View>
         )}
 
-        {(isFemale && !!currentPhase) && (
-          <View style={[styles.cycleCard, { backgroundColor: CYCLE_COLORS[currentPhase] + '15', borderColor: CYCLE_COLORS[currentPhase] }]}>
+        {/* Tarjeta de Biología Inteligente (Vista Entrenador) */}
+        {(isFemale && phaseInfo) && (
+          <View style={[styles.cycleCard, { backgroundColor: phaseInfo.color + '15', borderColor: phaseInfo.color }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Ionicons name="water" size={24} color={CYCLE_COLORS[currentPhase]} />
+              <Ionicons name={phaseInfo.icon as any} size={24} color={phaseInfo.color} />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: CYCLE_COLORS[currentPhase], fontSize: 11, fontWeight: '900', letterSpacing: 1 }}>ESTADO FISIOLÓGICO</Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', marginTop: 2 }}>{CYCLE_LABELS[currentPhase] || 'Fase Registrada'}</Text>
+                <Text style={{ color: phaseInfo.color, fontSize: 11, fontWeight: '900', letterSpacing: 1 }}>BIOLOGÍA (DÍA {phaseInfo.day})</Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', marginTop: 2 }}>{phaseInfo.name}</Text>
+                {phaseInfo.simpleName === 'Ovulatoria' && (
+                    <Text style={{ color: colors.error || '#EF4444', fontSize: 11, fontWeight: '800', marginTop: 4 }}>⚠️ PRECAUCIÓN: Laxitud de ligamentos</Text>
+                )}
               </View>
             </View>
           </View>
         )}
 
         <TouchableOpacity 
-          style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: 25, marginTop: (isFemale && !!currentPhase) ? 0 : 5 }]} 
+          style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: 25, marginTop: (isFemale && phaseInfo) ? 0 : 5 }]} 
           onPress={() => router.push(`/periodization?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
         >
           <Ionicons name="calendar" size={20} color="#FFF" />
@@ -258,9 +352,6 @@ export default function AthleteDetailScreen() {
     );
   };
 
-  // --------------------------------------------------------------------------
-  // FUNCIÓN RESTAURADA: renderWorkoutItem
-  // --------------------------------------------------------------------------
   const renderWorkoutItem = (wk: any) => {
     const isExpanded = !!expandedWorkouts[wk.id];
     return (
@@ -279,7 +370,6 @@ export default function AthleteDetailScreen() {
             <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.date.split('-').reverse().join('/')}</Text>
           </View>
 
-          {/* Acciones Rápidas */}
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginRight: 10 }}>
             {isTrainer && (
               <>
@@ -302,7 +392,6 @@ export default function AthleteDetailScreen() {
         {isExpanded && (
           <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
             
-            {/* AVISO DE SESIÓN SALTADA */}
             {wk.observations?.includes('[NO COMPLETADA]') && (
               <View style={{ backgroundColor: '#EF444420', padding: 12, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#EF4444' }}>
                  <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
@@ -360,7 +449,6 @@ export default function AthleteDetailScreen() {
       </View>
     );
   };
-  // --------------------------------------------------------------------------
 
   const renderWorkouts = () => {
     const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
