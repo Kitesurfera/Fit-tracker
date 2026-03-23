@@ -15,6 +15,8 @@ import { useKeepAwake } from 'expo-keep-awake';
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
+const SLEEP_HOURS_OPTIONS = ['<6', '6', '7', '8', '9+'];
+
 const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
   return (
@@ -61,7 +63,9 @@ export default function TrainingModeScreen() {
   const [hiitSkipped, setHiitSkipped] = useState<Record<string, number>>({}); 
 
   const [rpe, setRpe] = useState<number | null>(null);
-  const [sleep, setSleep] = useState<'bien' | 'regular' | 'mal' | null>(null);
+  // --- AHORA USA EL MISMO FORMATO QUE EL WELLNESS ---
+  const [sleepQuality, setSleepQuality] = useState<number | null>(null);
+  const [sleepHours, setSleepHours] = useState<string>('');
   const [observations, setObservations] = useState('');
   
   const [restSeconds, setRestSeconds] = useState(0);
@@ -74,8 +78,13 @@ export default function TrainingModeScreen() {
     const fetchWorkoutDetail = async () => {
       if (!currentWorkoutId) { if (isMounted) setLoading(false); return; }
       try {
-        const allWorkouts = await api.getWorkouts();
+        const [allWorkouts, wellnessData] = await Promise.all([
+           api.getWorkouts(),
+           api.getWellnessHistory(user?.id).catch(() => [])
+        ]);
+
         const currentWorkout = allWorkouts.find((w: any) => w.id === currentWorkoutId);
+        
         if (currentWorkout && isMounted) {
           setWorkout(currentWorkout);
           const isWorkoutHiit = currentWorkout.exercises && currentWorkout.exercises.length > 0 && currentWorkout.exercises[0].is_hiit_block === true;
@@ -86,7 +95,8 @@ export default function TrainingModeScreen() {
             setObservations(currentWorkout.observations || '');
             if (currentWorkout.completion_data) {
               setRpe(currentWorkout.completion_data.rpe || null);
-              setSleep(currentWorkout.completion_data.sleep || null);
+              setSleepQuality(currentWorkout.completion_data.sleep_quality || null);
+              setSleepHours(currentWorkout.completion_data.sleep_hours || '');
               
               const savedVideos: Record<string, string> = {}; 
               
@@ -116,6 +126,14 @@ export default function TrainingModeScreen() {
               setRecordedVideos(savedVideos);
             }
           } else {
+            // -- SI NO ESTÁ COMPLETADO, BUSCAMOS EL WELLNESS DE HOY --
+            const todayStr = new Date().toISOString().split('T')[0];
+            const todayWellness = Array.isArray(wellnessData) ? wellnessData.find((w: any) => w.date === todayStr) : null;
+            if (todayWellness) {
+                setSleepQuality(todayWellness.sleep_quality || null);
+                setSleepHours(todayWellness.sleep_hours || '');
+            }
+
             if (!isWorkoutHiit) {
               const initial: Record<number, SetStatus[]> = {};
               (currentWorkout.exercises || []).forEach((ex: any, i: number) => {
@@ -263,7 +281,7 @@ export default function TrainingModeScreen() {
   const buildCompletionData = () => {
     if (isHiit) {
       return { 
-        rpe, sleep, hiit_completed: true,
+        rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, hiit_completed: true,
         hiit_results: (workout.exercises || []).map((block: any, bIdx: number) => ({
           ...block,
           hiit_exercises: block.hiit_exercises.map((ex: any, eIdx: number) => ({
@@ -276,7 +294,7 @@ export default function TrainingModeScreen() {
       };
     }
     return {
-      rpe, sleep,
+      rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours,
       exercise_results: (workout.exercises || []).map((ex: any, i: number) => {
         if (workout.completed && workout.completion_data) return workout.completion_data?.exercise_results?.[i] || {};
         const sets = setsStatus[i] || [];
@@ -374,7 +392,10 @@ export default function TrainingModeScreen() {
                   </View>
                   <View style={{ marginLeft: 20 }}>
                     <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>DESCANSO PREVIO:</Text>
-                    <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '800', textTransform: 'uppercase', marginTop: 2 }}>{sleep || 'NO REGISTRADO'}</Text>
+                    <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800', textTransform: 'uppercase', marginTop: 2 }}>
+                      {sleepQuality ? `Calidad: ${sleepQuality}/5` : 'NO REGISTRADO'}
+                    </Text>
+                    {!!sleepHours && <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '600', marginTop: 2 }}>{sleepHours} horas</Text>}
                   </View>
                 </View>
               ) : (
@@ -391,15 +412,29 @@ export default function TrainingModeScreen() {
                       );
                     })}
                   </View>
-                  <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 24 }]}>¿Cómo has descansado hoy?</Text>
-                  <View style={styles.sleepGrid}>
-                    {['bien', 'regular', 'mal'].map(opt => {
-                      const isSelected = sleep === opt;
-                      let sleepColor = colors.border;
-                      if (isSelected) { if (opt === 'bien') sleepColor = colors.success || '#10B981'; else if (opt === 'mal') sleepColor = colors.error || '#EF4444'; else sleepColor = colors.warning || '#F59E0B'; }
+                  
+                  <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 24 }]}>Calidad de Sueño</Text>
+                  <View style={styles.rpeGrid}>
+                    {[1, 2, 3, 4, 5].map(num => {
+                      const isSelected = sleepQuality === num; 
+                      let sqColor = colors.success || '#10B981'; if (num === 3) sqColor = colors.warning || '#F59E0B'; if (num < 3) sqColor = colors.error || '#EF4444';
+                      const bgColor = isSelected ? sqColor : colors.surface; const textColor = isSelected ? '#FFF' : sqColor;
                       return (
-                        <TouchableOpacity key={opt} style={[styles.sleepBtn, { borderColor: isSelected ? sleepColor : colors.border }, isSelected && { backgroundColor: sleepColor }]} onPress={() => setSleep(opt as any)}>
-                          <Text style={[styles.sleepText, { color: colors.textPrimary }, isSelected && { color: opt === 'regular' ? '#000' : '#FFF' }]}>{opt.toUpperCase()}</Text>
+                        <TouchableOpacity key={num} style={[styles.rpeBtn, { borderColor: sqColor, borderWidth: 1.5, backgroundColor: bgColor }]} onPress={() => setSleepQuality(num)}>
+                          <Text style={[styles.rpeText, { color: textColor }]}>{num}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 24 }]}>Horas de Sueño</Text>
+                  <View style={styles.rpeGrid}>
+                    {SLEEP_HOURS_OPTIONS.map(opt => {
+                      const isSelected = sleepHours === opt;
+                      const sleepColor = colors.primary;
+                      return (
+                        <TouchableOpacity key={opt} style={[styles.rpeBtn, { width: 50, borderColor: isSelected ? sleepColor : colors.border, borderWidth: 1.5 }, isSelected && { backgroundColor: sleepColor }]} onPress={() => setSleepHours(opt)}>
+                          <Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textPrimary }]}>{opt}</Text>
                         </TouchableOpacity>
                       );
                     })}
