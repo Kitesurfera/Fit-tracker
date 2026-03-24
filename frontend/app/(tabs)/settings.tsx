@@ -11,7 +11,8 @@ import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
 
 export default function SettingsScreen() {
-  const { colors } = useTheme();
+  // Asegúrate de que tu useTheme ahora devuelva 'themeMode' y 'changeTheme'
+  const { colors, themeMode, changeTheme } = useTheme();
   const { user, logout } = useAuth();
   const router = useRouter();
 
@@ -100,12 +101,12 @@ export default function SettingsScreen() {
     });
   };
 
-const handleLogout = async () => {
+  const handleLogout = async () => {
     if (Platform.OS === 'web') {
       const confirmLogout = window.confirm('¿Seguro que quieres cerrar sesión?');
       if (confirmLogout) {
         await logout();
-        router.replace('/'); // Forzamos la redirección a la pantalla de login
+        router.replace('/');
       }
     } else {
       Alert.alert('Cerrar sesión', '¿Seguro que quieres salir?', [
@@ -115,7 +116,7 @@ const handleLogout = async () => {
           style: 'destructive', 
           onPress: async () => {
             await logout();
-            router.replace('/'); // Forzamos la redirección a la pantalla de login
+            router.replace('/');
           } 
         }
       ]);
@@ -187,6 +188,36 @@ const handleLogout = async () => {
             </TouchableOpacity>
           </View>
 
+          {/* SECCIÓN APARIENCIA (NUEVA) */}
+          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>APARIENCIA</Text>
+          <View style={[styles.listCard, { backgroundColor: colors.surface, padding: 10 }]}>
+            <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'space-between' }}>
+              <TouchableOpacity 
+                style={[styles.themeBtn, themeMode === 'light' && { borderColor: colors.primary, backgroundColor: colors.primary + '10' }]}
+                onPress={() => changeTheme?.('light')}
+              >
+                <Ionicons name="sunny-outline" size={24} color={themeMode === 'light' ? colors.primary : colors.textSecondary} />
+                <Text style={[styles.themeBtnText, { color: themeMode === 'light' ? colors.primary : colors.textSecondary }]}>Claro</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.themeBtn, themeMode === 'dark' && { borderColor: colors.primary, backgroundColor: colors.primary + '10' }]}
+                onPress={() => changeTheme?.('dark')}
+              >
+                <Ionicons name="moon-outline" size={24} color={themeMode === 'dark' ? colors.primary : colors.textSecondary} />
+                <Text style={[styles.themeBtnText, { color: themeMode === 'dark' ? colors.primary : colors.textSecondary }]}>Oscuro</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={[styles.themeBtn, themeMode === 'system' && { borderColor: colors.primary, backgroundColor: colors.primary + '10' }]}
+                onPress={() => changeTheme?.('system')}
+              >
+                <Ionicons name="phone-portrait-outline" size={24} color={themeMode === 'system' ? colors.primary : colors.textSecondary} />
+                <Text style={[styles.themeBtnText, { color: themeMode === 'system' ? colors.primary : colors.textSecondary }]}>Auto</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           {/* SECCIÓN MEDICIONES (SOLO ATLETAS) */}
           {isAthlete && (
             <>
@@ -205,7 +236,7 @@ const handleLogout = async () => {
 
                 <View style={styles.measureRow}>
                   {renderInputBox("Muslo (cm)", "walk-outline", measurements.thigh, (t) => setMeasurements({...measurements, thigh: t}), "Ej: 60")}
-                  <View style={styles.measureCol} /> {/* Espacio vacío para alinear */}
+                  <View style={styles.measureCol} />
                 </View>
 
                 <TouchableOpacity 
@@ -284,5 +315,9 @@ const styles = StyleSheet.create({
   settingRowAction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
   settingIconText: { flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 },
   iconBox: { width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  settingText: { fontSize: 16, fontWeight: '700' }
+  settingText: { fontSize: 16, fontWeight: '700' },
+
+  // --- Estilos para los botones de Tema ---
+  themeBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 14, borderWidth: 2, borderColor: 'transparent' },
+  themeBtnText: { fontSize: 12, fontWeight: '800', marginTop: 6, textTransform: 'uppercase' }
 });
