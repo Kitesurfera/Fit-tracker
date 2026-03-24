@@ -35,7 +35,8 @@ export default function TrainingModeScreen() {
   const isTrainer = user?.role === 'trainer';
   
   const params = useLocalSearchParams();
-  const currentWorkoutId = typeof params.workoutId === 'string' ? params.workoutId : params.workoutId?.[0];
+  // --- FIX 1: Bloqueamos el ID para que Expo Router no lo pierda al volver del background ---
+  const [stableWorkoutId] = useState(() => typeof params.workoutId === 'string' ? params.workoutId : params.workoutId?.[0]);
   
   const [workout, setWorkout] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -45,9 +46,7 @@ export default function TrainingModeScreen() {
   const [currentExIndex, setCurrentExIndex] = useState(0);
   const [setsStatus, setSetsStatus] = useState<Record<number, SetStatus[]>>({});
   
-  // Notas del deportista y marcas (Fuerza)
   const [logs, setLogs] = useState<Record<number, {weight: string, reps: string, note?: string, coach_note?: string}>>({});
-  // Notas del deportista (HIIT)
   const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string}>>({});
   
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
@@ -63,27 +62,41 @@ export default function TrainingModeScreen() {
   const [hiitSkipped, setHiitSkipped] = useState<Record<string, number>>({}); 
 
   const [rpe, setRpe] = useState<number | null>(null);
-  // --- AHORA USA EL MISMO FORMATO QUE EL WELLNESS ---
   const [sleepQuality, setSleepQuality] = useState<number | null>(null);
   const [sleepHours, setSleepHours] = useState<string>('');
   const [observations, setObservations] = useState('');
   
+  // --- FIX 2: Temporizador blindado con fechas absolutas ---
+  const [restTargetTime, setRestTargetTime] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [restType, setRestType] = useState<'set' | 'exercise' | null>(null);
   const restIntervalRef = useRef<any>(null);
 
+  const startRestTimer = (seconds: number) => {
+    setRestTargetTime(Date.now() + seconds * 1000);
+    setRestSeconds(seconds);
+    setIsResting(true);
+  };
+
+  const stopRestTimer = () => {
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    setRestTargetTime(null);
+    setRestSeconds(0);
+    setIsResting(false);
+  };
+
   useEffect(() => {
     let isMounted = true;
     const fetchWorkoutDetail = async () => {
-      if (!currentWorkoutId) { if (isMounted) setLoading(false); return; }
+      if (!stableWorkoutId) { if (isMounted) setLoading(false); return; }
       try {
         const [allWorkouts, wellnessData] = await Promise.all([
            api.getWorkouts(),
            api.getWellnessHistory(user?.id).catch(() => [])
         ]);
 
-        const currentWorkout = allWorkouts.find((w: any) => w.id === currentWorkoutId);
+        const currentWorkout = allWorkouts.find((w: any) => w.id === stableWorkoutId);
         
         if (currentWorkout && isMounted) {
           setWorkout(currentWorkout);
@@ -126,7 +139,6 @@ export default function TrainingModeScreen() {
               setRecordedVideos(savedVideos);
             }
           } else {
-            // -- SI NO ESTÁ COMPLETADO, BUSCAMOS EL WELLNESS DE HOY --
             const todayStr = new Date().toISOString().split('T')[0];
             const todayWellness = Array.isArray(wellnessData) ? wellnessData.find((w: any) => w.date === todayStr) : null;
             if (todayWellness) {
@@ -149,19 +161,21 @@ export default function TrainingModeScreen() {
     };
     fetchWorkoutDetail();
     return () => { isMounted = false; };
-  }, [currentWorkoutId]);
+  }, [stableWorkoutId]);
 
   useEffect(() => {
-    if (isResting && restSeconds > 0) {
+    if (isResting && restTargetTime) {
       restIntervalRef.current = setInterval(() => {
-        setRestSeconds(prev => {
-          if (prev <= 1) { clearInterval(restIntervalRef.current); setIsResting(false); return 0; }
-          return prev - 1;
-        });
+        const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
+        if (remaining <= 0) {
+          stopRestTimer();
+        } else {
+          setRestSeconds(remaining);
+        }
       }, 1000);
     }
     return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
-  }, [isResting]);
+  }, [isResting, restTargetTime]);
 
   useEffect(() => {
     if (!isResting && workout) {
@@ -182,15 +196,15 @@ export default function TrainingModeScreen() {
 
     if (hiitExIdx < totalExercises - 1) {
       const restTime = parseInt(currentBlock.rest_exercise) || 0;
-      if (restTime > 0) { setRestSeconds(restTime); setIsResting(true); setHiitPhase('rest_ex'); } else { setHiitExIdx(hiitExIdx + 1); }
+      if (restTime > 0) { startRestTimer(restTime); setHiitPhase('rest_ex'); } else { setHiitExIdx(hiitExIdx + 1); }
     } else {
       if (hiitRound < totalRounds) {
         const restTime = parseInt(currentBlock.rest_block) || 0;
-        if (restTime > 0) { setRestSeconds(restTime); setIsResting(true); setHiitPhase('rest_block'); } else { setHiitRound(hiitRound + 1); setHiitExIdx(0); }
+        if (restTime > 0) { startRestTimer(restTime); setHiitPhase('rest_block'); } else { setHiitRound(hiitRound + 1); setHiitExIdx(0); }
       } else {
         if (hiitBlockIdx < workout.exercises.length - 1) {
           const restNextBlockTime = parseInt(currentBlock.rest_between_blocks) || 0;
-          if (restNextBlockTime > 0) { setRestSeconds(restNextBlockTime); setIsResting(true); setHiitPhase('rest_next_block'); } else { setHiitBlockIdx(hiitBlockIdx + 1); setHiitRound(1); setHiitExIdx(0); setHiitPhase('work'); }
+          if (restNextBlockTime > 0) { startRestTimer(restNextBlockTime); setHiitPhase('rest_next_block'); } else { setHiitBlockIdx(hiitBlockIdx + 1); setHiitRound(1); setHiitExIdx(0); setHiitPhase('work'); }
         } else { setFinished(true); }
       }
     }
@@ -204,7 +218,7 @@ export default function TrainingModeScreen() {
     advanceHiitLogic();
   };
 
-  const skipHiitRest = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setIsResting(false); setRestSeconds(0); };
+  const skipHiitRest = () => { stopRestTimer(); };
 
   const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => {
     setSetsStatus(prev => { const updated = { ...prev }; updated[exIdx] = [...(prev[exIdx] || [])]; updated[exIdx][setIdx] = status; return updated; });
@@ -221,16 +235,16 @@ export default function TrainingModeScreen() {
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
     if (remaining === 0) {
       const restTimeExercise = parseInt(currentEx?.rest_exercise) || 0;
-      if (restTimeExercise > 0 && currentExIndex < exercises.length - 1) { setRestSeconds(restTimeExercise); setIsResting(true); setRestType('exercise'); } else { autoAdvance(currentExIndex); }
+      if (restTimeExercise > 0 && currentExIndex < exercises.length - 1) { startRestTimer(restTimeExercise); setRestType('exercise'); } else { autoAdvance(currentExIndex); }
     } else {
       const restTimeSet = parseInt(currentEx?.rest) || 0;
-      if (restTimeSet > 0) { setRestSeconds(restTimeSet); setIsResting(true); setRestType('set'); }
+      if (restTimeSet > 0) { startRestTimer(restTimeSet); setRestType('set'); }
     }
   };
 
   const skipSet = () => {
     const currentSets = setsStatus[currentExIndex] || []; const nextPendingSet = currentSets.findIndex(s => s === 'pending'); if (nextPendingSet === -1) return;
-    if (isResting) { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setIsResting(false); setRestSeconds(0); }
+    if (isResting) { stopRestTimer(); }
     updateSetStatus(currentExIndex, nextPendingSet, 'skipped');
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
     if (remaining === 0) autoAdvance(currentExIndex);
@@ -242,7 +256,7 @@ export default function TrainingModeScreen() {
       updated[currentExIndex] = (updated[currentExIndex] || []).map(s => s === 'pending' ? 'skipped' : s);
       return updated;
     });
-    if (isResting) { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setIsResting(false); setRestSeconds(0); }
+    if (isResting) { stopRestTimer(); }
     autoAdvance(currentExIndex);
   };
 
@@ -313,12 +327,12 @@ export default function TrainingModeScreen() {
 
   const handleFinish = async () => {
     if (workout.completed) { router.back(); return; }
-    if (!currentWorkoutId) return;
+    if (!stableWorkoutId) return;
     const completionData = buildCompletionData();
     try {
       const updateData: any = { completed: true, completion_data: completionData, title: workout.title, exercises: workout.exercises };
       if (observations.trim()) updateData.observations = observations.trim();
-      await api.updateWorkout(currentWorkoutId, updateData);
+      await api.updateWorkout(stableWorkoutId, updateData);
       router.back();
     } catch (e) { if (Platform.OS !== 'web') Alert.alert("Error", "Hubo un error al guardar."); }
   };
@@ -368,7 +382,6 @@ export default function TrainingModeScreen() {
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Entrenamiento no encontrado.</Text><TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.primary }]} onPress={() => router.back()}><Text style={styles.backBtnText}>Volver</Text></TouchableOpacity></SafeAreaView>;
 
-  // --- PANTALLA DE RESUMEN / COMPLETADO ---
   if (finished || workout.completed) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -641,7 +654,6 @@ export default function TrainingModeScreen() {
     );
   }
 
-  // --- MODO CIRCUITO HIIT (VISTA ACTIVA) ---
   if (isHiit) {
     const currentBlock = workout.exercises?.[hiitBlockIdx];
     if (!currentBlock) return null;
@@ -686,8 +698,6 @@ export default function TrainingModeScreen() {
                         {ex.exercise_notes && <View style={{ flexDirection: 'row', marginBottom: 10 }}><Ionicons name="information-circle" size={14} color={colors.textSecondary} /><Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginLeft: 4, flex: 1 }}>{ex.exercise_notes}</Text></View>}
 
                         <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 5 }}>
-                          
-                          {/* Notas en vivo del HIIT */}
                           <TextInput 
                             style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border, marginBottom: 12 }]}
                             placeholder="Comentarios rápidos (opcional)..."
@@ -745,7 +755,6 @@ export default function TrainingModeScreen() {
     );
   }
 
-  // --- MODO FUERZA TRADICIONAL (VISTA ACTIVA) ---
   const exercises = workout.exercises || [];
   const currentEx = exercises[currentExIndex];
   const currentSets = setsStatus[currentExIndex] || [];
@@ -858,7 +867,7 @@ export default function TrainingModeScreen() {
                 <Text style={[styles.restTimerLabel, { color: colors.textSecondary }]}>{restType === 'exercise' ? 'DESCANSO (SIGUIENTE EJ. )' : 'DESCANSO'}</Text>
                 <Text style={[styles.restTimerValue, { color: colors.primary }]}>{Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, '0')}</Text>
               </View>
-              <TouchableOpacity style={[styles.skipRestBtn, { borderColor: colors.primary }]} onPress={() => { if(restIntervalRef.current) clearInterval(restIntervalRef.current); setIsResting(false); setRestSeconds(0); }}><Text style={{ color: colors.primary, fontWeight: '600' }}>Saltar</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.skipRestBtn, { borderColor: colors.primary }]} onPress={stopRestTimer}><Text style={{ color: colors.primary, fontWeight: '600' }}>Saltar</Text></TouchableOpacity>
             </View>
           )}
 
