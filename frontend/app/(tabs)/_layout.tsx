@@ -1,10 +1,13 @@
+import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { useTheme } from '../../src/hooks/useTheme';
+// Añadimos la importación del ThemeProvider junto a tu hook
+import { ThemeProvider, useTheme } from '../../src/hooks/useTheme'; 
 import { useAuth } from '../../src/context/AuthContext';
 import { Platform } from 'react-native';
 
-export default function TabLayout() {
+// 1. Separamos la navegación para poder leer los colores por dentro
+function TabNavigation() {
   const { colors } = useTheme();
   const { user } = useAuth();
 
@@ -70,5 +73,14 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+  );
+}
+
+// 2. Exportamos el componente principal que envuelve todo en el "cerebro central"
+export default function TabLayout() {
+  return (
+    <ThemeProvider>
+      <TabNavigation />
+    </ThemeProvider>
   );
 }
