@@ -35,7 +35,6 @@ export default function TrainingModeScreen() {
   const isTrainer = user?.role === 'trainer';
   
   const params = useLocalSearchParams();
-  // --- FIX 1: Bloqueamos el ID para que Expo Router no lo pierda al volver del background ---
   const [stableWorkoutId] = useState(() => typeof params.workoutId === 'string' ? params.workoutId : params.workoutId?.[0]);
   
   const [workout, setWorkout] = useState<any>(null);
@@ -66,14 +65,22 @@ export default function TrainingModeScreen() {
   const [sleepHours, setSleepHours] = useState<string>('');
   const [observations, setObservations] = useState('');
   
-  // --- FIX 2: Temporizador blindado con fechas absolutas ---
+  // --- TEMPORIZADORES BLINDADOS ---
+  // Temporizador de Descanso
   const [restTargetTime, setRestTargetTime] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [isResting, setIsResting] = useState(false);
   const [restType, setRestType] = useState<'set' | 'exercise' | null>(null);
   const restIntervalRef = useRef<any>(null);
 
+  // Temporizador de Trabajo (Ejercicio)
+  const [workTargetTime, setWorkTargetTime] = useState<number | null>(null);
+  const [workSeconds, setWorkSeconds] = useState(0);
+  const [isWorking, setIsWorking] = useState(false);
+  const workIntervalRef = useRef<any>(null);
+
   const startRestTimer = (seconds: number) => {
+    stopWorkTimer(); // Asegurar que el de trabajo se apaga
     setRestTargetTime(Date.now() + seconds * 1000);
     setRestSeconds(seconds);
     setIsResting(true);
@@ -84,6 +91,33 @@ export default function TrainingModeScreen() {
     setRestTargetTime(null);
     setRestSeconds(0);
     setIsResting(false);
+  };
+
+  const toggleWorkTimer = () => {
+    if (isWorking) {
+      setIsWorking(false);
+      if (workIntervalRef.current) clearInterval(workIntervalRef.current);
+      setWorkTargetTime(null);
+    } else {
+      setIsWorking(true);
+      setWorkTargetTime(Date.now() + workSeconds * 1000);
+    }
+  };
+
+  const stopWorkTimer = () => {
+    setIsWorking(false);
+    setWorkSeconds(0);
+    if (workIntervalRef.current) clearInterval(workIntervalRef.current);
+    setWorkTargetTime(null);
+  };
+
+  const handleWorkComplete = () => {
+    stopWorkTimer();
+    if (isHiit) {
+      advanceHiitLogic();
+    } else {
+      completeSet();
+    }
   };
 
   useEffect(() => {
@@ -163,6 +197,7 @@ export default function TrainingModeScreen() {
     return () => { isMounted = false; };
   }, [stableWorkoutId]);
 
+  // Efecto Temporizador Descanso
   useEffect(() => {
     if (isResting && restTargetTime) {
       restIntervalRef.current = setInterval(() => {
@@ -177,6 +212,57 @@ export default function TrainingModeScreen() {
     return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
   }, [isResting, restTargetTime]);
 
+  // Efecto Temporizador Trabajo (Ejercicio)
+  useEffect(() => {
+    if (isWorking && workTargetTime) {
+      workIntervalRef.current = setInterval(() => {
+        const remaining = Math.ceil((workTargetTime - Date.now()) / 1000);
+        if (remaining <= 0) {
+          handleWorkComplete();
+        } else {
+          setWorkSeconds(remaining);
+        }
+      }, 1000);
+    }
+    return () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); };
+  }, [isWorking, workTargetTime]);
+
+  // Inicializador del Temporizador de Trabajo (Fuerza)
+  useEffect(() => {
+    if (!isHiit && workout && !isResting) {
+      const currentSets = setsStatus[currentExIndex] || [];
+      const nextPendingSet = currentSets.findIndex(s => s === 'pending');
+      if (nextPendingSet !== -1) {
+        const dur = parseInt(workout.exercises[currentExIndex]?.duration) || 0;
+        if (dur > 0 && !isWorking && workTargetTime === null) {
+          setWorkSeconds(dur);
+          // Auto-start timer para mantener el flujo
+          setWorkTargetTime(Date.now() + dur * 1000);
+          setIsWorking(true);
+        }
+      } else {
+        stopWorkTimer();
+      }
+    }
+  }, [currentExIndex, setsStatus, isResting]);
+
+  // Inicializador del Temporizador de Trabajo (HIIT)
+  useEffect(() => {
+    if (isHiit && workout && hiitPhase === 'work' && !isResting) {
+      const currentBlock = workout.exercises[hiitBlockIdx];
+      if (!currentBlock) return;
+      const currentEx = currentBlock.hiit_exercises[hiitExIdx];
+      const dur = parseInt(currentEx?.duration) || 0;
+      if (dur > 0 && !isWorking && workTargetTime === null) {
+        setWorkSeconds(dur);
+        setWorkTargetTime(Date.now() + dur * 1000);
+        setIsWorking(true);
+      } else if (dur === 0) {
+        stopWorkTimer();
+      }
+    }
+  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting]);
+
   useEffect(() => {
     if (!isResting && workout) {
       if (isHiit) {
@@ -190,6 +276,7 @@ export default function TrainingModeScreen() {
   }, [isResting]);
 
   const advanceHiitLogic = () => {
+    stopWorkTimer();
     const currentBlock = workout.exercises[hiitBlockIdx];
     const totalExercises = currentBlock.hiit_exercises.length;
     const totalRounds = parseInt(currentBlock.sets) || 1;
@@ -213,6 +300,7 @@ export default function TrainingModeScreen() {
   const advanceHiit = () => advanceHiitLogic();
 
   const skipHiitEx = () => {
+    stopWorkTimer();
     const key = `${hiitBlockIdx}-${hiitExIdx}`;
     setHiitSkipped(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
     advanceHiitLogic();
@@ -225,13 +313,16 @@ export default function TrainingModeScreen() {
   };
   
   const autoAdvance = (exIdx: number) => {
+    stopWorkTimer();
     if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else setTimeout(() => setFinished(true), 400);
   };
 
   const completeSet = () => {
+    stopWorkTimer();
     const exercises = workout.exercises || []; const currentEx = exercises[currentExIndex]; const currentSets = setsStatus[currentExIndex] || [];
     const nextPendingSet = currentSets.findIndex(s => s === 'pending'); if (nextPendingSet === -1) return;
     updateSetStatus(currentExIndex, nextPendingSet, 'completed');
+    
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
     if (remaining === 0) {
       const restTimeExercise = parseInt(currentEx?.rest_exercise) || 0;
@@ -243,6 +334,7 @@ export default function TrainingModeScreen() {
   };
 
   const skipSet = () => {
+    stopWorkTimer();
     const currentSets = setsStatus[currentExIndex] || []; const nextPendingSet = currentSets.findIndex(s => s === 'pending'); if (nextPendingSet === -1) return;
     if (isResting) { stopRestTimer(); }
     updateSetStatus(currentExIndex, nextPendingSet, 'skipped');
@@ -251,6 +343,7 @@ export default function TrainingModeScreen() {
   };
 
   const skipEntireExercise = () => {
+    stopWorkTimer();
     setSetsStatus(prev => {
       const updated = { ...prev };
       updated[currentExIndex] = (updated[currentExIndex] || []).map(s => s === 'pending' ? 'skipped' : s);
@@ -328,6 +421,8 @@ export default function TrainingModeScreen() {
   const handleFinish = async () => {
     if (workout.completed) { router.back(); return; }
     if (!stableWorkoutId) return;
+    stopWorkTimer();
+    stopRestTimer();
     const completionData = buildCompletionData();
     try {
       const updateData: any = { completed: true, completion_data: completionData, title: workout.title, exercises: workout.exercises };
@@ -378,6 +473,26 @@ export default function TrainingModeScreen() {
       </View>
     </Modal>
   );
+
+  const renderWorkTimerUI = (exName: string) => {
+    if (workSeconds <= 0 && !isWorking) return null;
+    return (
+      <View style={styles.workTimerContainer}>
+        <Text style={[styles.workTimerTitle, { color: colors.textPrimary }]}>{exName.toUpperCase()}</Text>
+        <TouchableOpacity activeOpacity={0.8} onPress={toggleWorkTimer}>
+          <View style={[styles.timerCircle, { borderColor: isWorking ? colors.primary : colors.textSecondary }]}>
+             <Text style={[styles.timerText, { color: isWorking ? colors.primary : colors.textSecondary }]}>
+               {Math.floor(workSeconds / 60)}:{String(workSeconds % 60).padStart(2, '0')}
+             </Text>
+             <Text style={{color: colors.textSecondary, fontSize: 16, fontWeight: '800', marginTop: -5}}>SEG</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.playPauseBtn, { backgroundColor: isWorking ? (colors.warning || '#F59E0B') : colors.primary }]} onPress={toggleWorkTimer}>
+           <Ionicons name={isWorking ? "pause" : "play"} size={32} color="#FFF" />
+        </TouchableOpacity>
+      </View>
+    );
+  };
 
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Entrenamiento no encontrado.</Text><TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.primary }]} onPress={() => router.back()}><Text style={styles.backBtnText}>Volver</Text></TouchableOpacity></SafeAreaView>;
@@ -658,6 +773,8 @@ export default function TrainingModeScreen() {
     const currentBlock = workout.exercises?.[hiitBlockIdx];
     if (!currentBlock) return null;
 
+    const currentExInHiit = currentBlock.hiit_exercises[hiitExIdx];
+
     const totalExs = currentBlock.hiit_exercises.length;
     const dynamicPadding = totalExs <= 3 ? 18 : totalExs <= 5 ? 12 : 8;
     const dynamicFontName = totalExs <= 3 ? 20 : totalExs <= 5 ? 18 : 15;
@@ -672,6 +789,9 @@ export default function TrainingModeScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
+          {/* SI ESTAMOS TRABAJANDO Y HAY TEMPORIZADOR, SE MUESTRA A FULL */}
+          {hiitPhase === 'work' && currentExInHiit?.duration ? renderWorkTimerUI(currentExInHiit.name) : null}
+
           <View style={[styles.hiitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.hiitHeader, { backgroundColor: (colors.error || '#EF4444') + '15' }]}>
               <Ionicons name="flame" size={24} color={colors.error || '#EF4444'} />
@@ -689,7 +809,7 @@ export default function TrainingModeScreen() {
                     <View style={[styles.hiitExRow, { paddingVertical: dynamicPadding }]}>
                       <View style={[styles.hiitCheck, { backgroundColor: isDone ? (colors.success || '#10B981') : isCurrent ? colors.primary : colors.border }]}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>{isDone ? <Ionicons name="checkmark" size={12} color="#FFF" /> : idx + 1}</Text></View>
                       <Text style={[styles.hiitExName, { fontSize: dynamicFontName, color: isCurrent ? colors.textPrimary : colors.textSecondary, fontWeight: isCurrent ? '800' : '600', flex: 1 }]}>{ex.name}</Text>
-                      <Text style={[styles.hiitExDur, { fontSize: dynamicFontDur, color: isCurrent ? colors.primary : colors.textSecondary, fontWeight: '800' }]}>{ex.duration_reps}</Text>
+                      <Text style={[styles.hiitExDur, { fontSize: dynamicFontDur, color: isCurrent ? colors.primary : colors.textSecondary, fontWeight: '800' }]}>{ex.duration_reps || ex.duration}</Text>
                     </View>
                     
                     {isCurrent && (
@@ -744,7 +864,7 @@ export default function TrainingModeScreen() {
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 2, paddingVertical: 14, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={advanceHiit}>
                   <Ionicons name="play" size={22} color="#FFF" />
-                  <Text style={[styles.completeSetText, { color: '#FFF' }]}>Completar</Text>
+                  <Text style={[styles.completeSetText, { color: '#FFF' }]}>{currentExInHiit?.duration ? 'Siguiente' : 'Completar'}</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -772,6 +892,10 @@ export default function TrainingModeScreen() {
       <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.min(progress, 100)}%` }]} /></View>
 
       <ScrollView contentContainerStyle={styles.content}>
+
+        {/* SI ESTAMOS TRABAJANDO Y HAY TEMPORIZADOR PARA LA SERIE PENDIENTE, SE MUESTRA */}
+        {!isResting && nextPendingSet !== -1 && currentEx?.duration ? renderWorkTimerUI(currentEx.name) : null}
+
         <View style={[styles.exerciseCard, { backgroundColor: colors.surface }]}>
           <View style={[styles.exNumber, { backgroundColor: colors.primary + '12' }]}><Text style={[styles.exNumberText, { color: colors.primary }]}>{currentExIndex + 1}</Text></View>
           <Text style={[styles.exerciseName, { color: colors.textPrimary }]}>{currentEx.name}</Text>
@@ -782,6 +906,7 @@ export default function TrainingModeScreen() {
           <View style={styles.detailsGrid}>
             {currentEx.sets && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.sets}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Series</Text></View>}
             {currentEx.reps && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.reps}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Reps</Text></View>}
+            {currentEx.duration && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.duration}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Seg</Text></View>}
             {currentEx.weight && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.weight}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Kg</Text></View>}
             {currentEx.rest && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.S.</Text></View>}
             {currentEx.rest_exercise && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest_exercise}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.Ej.</Text></View>}
@@ -874,7 +999,7 @@ export default function TrainingModeScreen() {
           {nextPendingSet !== -1 && !isResting ? (
             <View style={[styles.setActions, { marginTop: 20 }]}>
               <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444' }]} onPress={skipSet}><Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} /><Text style={[styles.skipSetText, { color: colors.error || '#EF4444' }]}>Saltar</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 1, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={completeSet}><Ionicons name="checkmark-circle-outline" size={22} color="#FFF" /><Text style={[styles.completeSetText, { color: '#FFF' }]}>Completar serie {nextPendingSet + 1}</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 1, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={completeSet}><Ionicons name="checkmark-circle-outline" size={22} color="#FFF" /><Text style={[styles.completeSetText, { color: '#FFF' }]}>{currentEx?.duration ? 'Hecho' : `Completar serie ${nextPendingSet + 1}`}</Text></TouchableOpacity>
             </View>
           ) : nextPendingSet === -1 ? (
             <View style={[styles.allDoneBadge, { backgroundColor: (colors.success || '#10B981') + '12', marginTop: 20 }]}><Ionicons name="checkmark-circle" size={18} color={colors.success || '#10B981'} /><Text style={{ color: colors.success || '#10B981', fontSize: 14, fontWeight: '600' }}>Todas completadas o saltadas</Text></View>
@@ -884,9 +1009,9 @@ export default function TrainingModeScreen() {
       </ScrollView>
 
       <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        <TouchableOpacity style={[styles.navBtn, { opacity: currentExIndex === 0 ? 0.3 : 1 }]} onPress={() => { if(currentExIndex>0) setCurrentExIndex(currentExIndex-1); }} disabled={currentExIndex === 0}><Ionicons name="arrow-back" size={22} color={colors.textPrimary} /><Text style={[styles.navBtnText, { color: colors.textPrimary }]}>Anterior</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.navBtn, { opacity: currentExIndex === 0 ? 0.3 : 1 }]} onPress={() => { if(currentExIndex>0) { stopWorkTimer(); stopRestTimer(); setCurrentExIndex(currentExIndex-1); } }} disabled={currentExIndex === 0}><Ionicons name="arrow-back" size={22} color={colors.textPrimary} /><Text style={[styles.navBtnText, { color: colors.textPrimary }]}>Anterior</Text></TouchableOpacity>
         {currentExIndex < exercises.length - 1 ? (
-          <TouchableOpacity style={styles.navBtn} onPress={() => setCurrentExIndex(currentExIndex+1)}><Text style={[styles.navBtnText, { color: colors.textPrimary }]}>Siguiente</Text><Ionicons name="arrow-forward" size={22} color={colors.textPrimary} /></TouchableOpacity>
+          <TouchableOpacity style={styles.navBtn} onPress={() => { stopWorkTimer(); stopRestTimer(); setCurrentExIndex(currentExIndex+1); }}><Text style={[styles.navBtnText, { color: colors.textPrimary }]}>Siguiente</Text><Ionicons name="arrow-forward" size={22} color={colors.textPrimary} /></TouchableOpacity>
         ) : (
           <TouchableOpacity style={styles.navBtn} onPress={() => setFinished(true)}><Text style={[styles.navBtnText, { color: colors.success || '#10B981', fontWeight: '700' }]}>Terminar</Text><Ionicons name="flag" size={20} color={colors.success || '#10B981'} /></TouchableOpacity>
         )}
@@ -925,5 +1050,12 @@ const styles = StyleSheet.create({
   fullVideo: { width: '100%', height: '80%' },
   miniVideoContainer: { width: 80, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' },
   miniVideo: { width: '100%', height: '100%' },
-  expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 4, padding: 2 }
+  expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 4, padding: 2 },
+  
+  // --- Nuevos estilos para el Work Timer ---
+  workTimerContainer: { backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
+  workTimerTitle: { fontSize: 24, fontWeight: '900', marginBottom: 15, letterSpacing: 1 },
+  timerCircle: { width: 180, height: 180, borderRadius: 90, borderWidth: 8, justifyContent: 'center', alignItems: 'center', marginBottom: -25, backgroundColor: 'rgba(0,0,0,0.02)' },
+  timerText: { fontSize: 50, fontWeight: '900' },
+  playPauseBtn: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 }
 });
