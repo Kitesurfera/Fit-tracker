@@ -18,6 +18,35 @@ type SetStatus = 'pending' | 'completed' | 'skipped';
 
 const SLEEP_HOURS_OPTIONS = ['<6', '6', '7', '8', '9+'];
 
+// --- FUNCIÓN TRADUCTORA DE TIEMPO ---
+// Convierte "1m 30s", "90", "1:30", "2m" a segundos enteros (ej. 90)
+const parseTimeToSeconds = (timeStr: string | number | undefined | null): number => {
+  if (!timeStr) return 0;
+  const str = String(timeStr).toLowerCase().trim();
+  
+  // Si es solo un número puro (ej. "90")
+  if (/^\d+$/.test(str)) return parseInt(str, 10);
+
+  let totalSeconds = 0;
+
+  // Busca minutos (ej. "1m", "1 min")
+  const minMatch = str.match(/(\d+)\s*(m|min)/);
+  if (minMatch) totalSeconds += parseInt(minMatch[1], 10) * 60;
+
+  // Busca segundos (ej. "30s", "30 seg")
+  const secMatch = str.match(/(\d+)\s*(s|seg)/);
+  if (secMatch) totalSeconds += parseInt(secMatch[1], 10);
+
+  // Soporte para formato "1:30"
+  const colonMatch = str.match(/^(\d+):(\d{2})$/);
+  if (colonMatch) {
+    totalSeconds += parseInt(colonMatch[1], 10) * 60;
+    totalSeconds += parseInt(colonMatch[2], 10);
+  }
+
+  return totalSeconds;
+};
+
 const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
   return (
@@ -235,7 +264,7 @@ export default function TrainingModeScreen() {
       const currentSets = setsStatus[currentExIndex] || [];
       const nextPendingSet = currentSets.findIndex(s => s === 'pending');
       if (nextPendingSet !== -1) {
-        const dur = parseInt(workout.exercises[currentExIndex]?.duration) || 0;
+        const dur = parseTimeToSeconds(workout.exercises[currentExIndex]?.duration);
         if (dur > 0 && !isWorking && workTargetTime === null) {
           setWorkSeconds(dur);
           setWorkTotalSeconds(dur); // NUEVO
@@ -255,7 +284,7 @@ export default function TrainingModeScreen() {
       const currentBlock = workout.exercises[hiitBlockIdx];
       if (!currentBlock) return;
       const currentEx = currentBlock.hiit_exercises[hiitExIdx];
-      const dur = parseInt(currentEx?.duration) || 0;
+      const dur = parseTimeToSeconds(currentEx?.duration);
       if (dur > 0 && !isWorking && workTargetTime === null) {
         setWorkSeconds(dur);
         setWorkTotalSeconds(dur); // NUEVO
@@ -286,15 +315,15 @@ export default function TrainingModeScreen() {
     const totalRounds = parseInt(currentBlock.sets) || 1;
 
     if (hiitExIdx < totalExercises - 1) {
-      const restTime = parseInt(currentBlock.rest_exercise) || 0;
+      const restTime = parseTimeToSeconds(currentBlock.rest_exercise);
       if (restTime > 0) { startRestTimer(restTime); setHiitPhase('rest_ex'); } else { setHiitExIdx(hiitExIdx + 1); }
     } else {
       if (hiitRound < totalRounds) {
-        const restTime = parseInt(currentBlock.rest_block) || 0;
+        const restTime = parseTimeToSeconds(currentBlock.rest_block);
         if (restTime > 0) { startRestTimer(restTime); setHiitPhase('rest_block'); } else { setHiitRound(hiitRound + 1); setHiitExIdx(0); }
       } else {
         if (hiitBlockIdx < workout.exercises.length - 1) {
-          const restNextBlockTime = parseInt(currentBlock.rest_between_blocks) || 0;
+          const restNextBlockTime = parseTimeToSeconds(currentBlock.rest_between_blocks);
           if (restNextBlockTime > 0) { startRestTimer(restNextBlockTime); setHiitPhase('rest_next_block'); } else { setHiitBlockIdx(hiitBlockIdx + 1); setHiitRound(1); setHiitExIdx(0); setHiitPhase('work'); }
         } else { setFinished(true); }
       }
@@ -329,10 +358,10 @@ export default function TrainingModeScreen() {
     
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
     if (remaining === 0) {
-      const restTimeExercise = parseInt(currentEx?.rest_exercise) || 0;
+      const restTimeExercise = parseTimeToSeconds(currentEx?.rest_exercise);
       if (restTimeExercise > 0 && currentExIndex < exercises.length - 1) { startRestTimer(restTimeExercise); setRestType('exercise'); } else { autoAdvance(currentExIndex); }
     } else {
-      const restTimeSet = parseInt(currentEx?.rest) || 0;
+      const restTimeSet = parseTimeToSeconds(currentEx?.rest);
       if (restTimeSet > 0) { startRestTimer(restTimeSet); setRestType('set'); }
     }
   };
@@ -553,9 +582,173 @@ export default function TrainingModeScreen() {
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Entrenamiento no encontrado.</Text><TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.primary }]} onPress={() => router.back()}><Text style={styles.backBtnText}>Volver</Text></TouchableOpacity></SafeAreaView>;
 
   if (finished || workout.completed) {
-    // ... (Mantengo tu código intacto para la vista de "Terminado")
-    // Omitido para que el bloque no sea absurdamente largo, ¡tu vista de Finalizado sigue exactamente igual!
-    // Si necesitas que lo pegue también, me lo dices, pero puedes dejarlo como lo tenías.
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
+          <Text style={[styles.topTitle, { color: colors.textPrimary }]}>Resumen</Text>
+          <View style={{ width: 26 }} />
+        </View>
+
+        <ScrollView contentContainerStyle={[styles.content, { alignItems: 'center', paddingVertical: 40 }]}>
+          <View style={styles.finishedIconContainer}>
+            <Ionicons name="trophy" size={80} color={colors.warning || '#F59E0B'} />
+          </View>
+          <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
+          <Text style={[styles.finishedSubtitle, { color: colors.textSecondary }]}>Gran trabajo. ¿Cómo te has sentido hoy?</Text>
+
+          {!workout.completed && (
+            <View style={{ width: '100%', gap: 24, marginTop: 20 }}>
+              <View>
+                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>NIVEL DE ESFUERZO (RPE)</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
+                    const isSelected = rpe === num;
+                    let numColor = colors.success || '#10B981';
+                    if (num >= 4 && num <= 7) numColor = colors.warning || '#F59E0B';
+                    if (num >= 8) numColor = colors.error || '#EF4444';
+
+                    return (
+                      <TouchableOpacity key={num} onPress={() => setRpe(num)} style={[styles.rpeCircle, { borderColor: colors.border }, isSelected && { backgroundColor: numColor, borderColor: numColor }]}>
+                        <Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textSecondary }]}>{num}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 8, paddingHorizontal: 5 }}>
+                  <Text style={{ fontSize: 10, color: colors.textSecondary, fontWeight: '600' }}>Muy Suave</Text>
+                  <Text style={{ fontSize: 10, color: colors.textSecondary, fontWeight: '600' }}>Máximo</Text>
+                </View>
+              </View>
+
+              <View>
+                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>CALIDAD DEL SUEÑO</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
+                  {[1, 2, 3, 4, 5].map(num => (
+                    <TouchableOpacity key={num} onPress={() => setSleepQuality(num)} style={{ padding: 5 }}>
+                      <Ionicons name={sleepQuality && sleepQuality >= num ? "star" : "star-outline"} size={36} color={colors.warning || '#F59E0B'} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View>
+                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>HORAS DE SUEÑO</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
+                  {SLEEP_HOURS_OPTIONS.map(opt => (
+                    <TouchableOpacity key={opt} onPress={() => setSleepHours(opt)} style={[styles.sleepPill, { borderColor: colors.border }, sleepHours === opt && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                      <Text style={[styles.sleepPillText, { color: sleepHours === opt ? '#FFF' : colors.textSecondary }]}>{opt}h</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <View>
+                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12 }]}>OBSERVACIONES GENERALES</Text>
+                <TextInput style={[styles.obsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} multiline placeholder="¿Alguna molestia? ¿Mucha energía?..." placeholderTextColor={colors.textSecondary} value={observations} onChangeText={setObservations} />
+              </View>
+            </View>
+          )}
+
+          {workout.completed && workout.completion_data && (
+            <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 15 }}>Datos guardados:</Text>
+              {workout.completion_data.rpe && <Text style={{ color: colors.textPrimary, marginBottom: 5 }}>RPE: <Text style={{ fontWeight: '700' }}>{workout.completion_data.rpe}/10</Text></Text>}
+              {workout.completion_data.sleep_quality && <Text style={{ color: colors.textPrimary, marginBottom: 5 }}>Calidad de sueño: <Text style={{ fontWeight: '700' }}>{workout.completion_data.sleep_quality}/5 estrellas</Text></Text>}
+              {workout.completion_data.sleep_hours && <Text style={{ color: colors.textPrimary, marginBottom: 5 }}>Horas de sueño: <Text style={{ fontWeight: '700' }}>{workout.completion_data.sleep_hours}h</Text></Text>}
+              {workout.observations && <Text style={{ color: colors.textPrimary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
+            </View>
+          )}
+
+          {!workout.completed && (
+            <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary }]} onPress={handleFinish}>
+              <Text style={styles.finishWorkoutBtnText}>Guardar y Finalizar</Text>
+              <Ionicons name="checkmark-done" size={24} color="#FFF" />
+            </TouchableOpacity>
+          )}
+
+          {workout.completed && isTrainer && !isHiit && (
+            <View style={{ width: '100%', marginTop: 30 }}>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginBottom: 20 }}>Feedback del Entrenador</Text>
+              {workout.completion_data?.exercise_results?.map((ex: any, i: number) => (
+                <View key={i} style={{ backgroundColor: colors.surface, padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: colors.border }}>
+                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 5 }}>{ex.name}</Text>
+                  
+                  {ex.recorded_video_url && (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceHighlight, padding: 8, borderRadius: 8, marginBottom: 10 }}>
+                      <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
+                      <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13, marginLeft: 10 }}>Vídeo del atleta adjunto</Text>
+                    </View>
+                  )}
+
+                  {ex.athlete_note ? <Text style={{ color: colors.textSecondary, fontStyle: 'italic', marginBottom: 10 }}>Nota atleta: "{ex.athlete_note}"</Text> : null}
+                  
+                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 5 }}>TU NOTA / CORRECCIÓN TÉCNICA:</Text>
+                  <TextInput
+                    style={{ backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderRadius: 8, padding: 10, minHeight: 60, textAlignVertical: 'top' }}
+                    multiline
+                    placeholder="Escribe un comentario..."
+                    placeholderTextColor={colors.textSecondary}
+                    value={draftNotes[i] !== undefined ? draftNotes[i] : (ex.coach_note || '')}
+                    onChangeText={(t) => setDraftNotes({...draftNotes, [i]: t})}
+                  />
+                  <TouchableOpacity 
+                    style={{ alignSelf: 'flex-end', marginTop: 10, backgroundColor: colors.primary, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8 }}
+                    onPress={() => saveTrainerFeedbackFuerza(i, draftNotes[i] || '')}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>Enviar Feedback</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {workout.completed && isTrainer && isHiit && (
+            <View style={{ width: '100%', marginTop: 30 }}>
+              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginBottom: 20 }}>Feedback del Entrenador (HIIT)</Text>
+              {workout.completion_data?.hiit_results?.map((block: any, bIdx: number) => (
+                <View key={bIdx} style={{ marginBottom: 20 }}>
+                  <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>{block.name}</Text>
+                  {block.hiit_exercises?.map((ex: any, eIdx: number) => {
+                    const k = `${bIdx}-${eIdx}`;
+                    return (
+                      <View key={eIdx} style={{ backgroundColor: colors.surface, padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: colors.border }}>
+                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textPrimary, marginBottom: 5 }}>{ex.name}</Text>
+                        
+                        {ex.recorded_video_url && (
+                          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceHighlight, padding: 8, borderRadius: 8, marginBottom: 10 }}>
+                            <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
+                            <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13, marginLeft: 10 }}>Vídeo del atleta adjunto</Text>
+                          </View>
+                        )}
+                        
+                        {ex.athlete_note ? <Text style={{ color: colors.textSecondary, fontStyle: 'italic', marginBottom: 10 }}>Nota atleta: "{ex.athlete_note}"</Text> : null}
+
+                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 5 }}>TU NOTA:</Text>
+                        <TextInput
+                          style={{ backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderRadius: 8, padding: 10, minHeight: 60, textAlignVertical: 'top' }}
+                          multiline placeholder="Escribe un comentario..." placeholderTextColor={colors.textSecondary}
+                          value={draftNotes[k] !== undefined ? draftNotes[k] : (ex.coach_note || '')}
+                          onChangeText={(t) => setDraftNotes({...draftNotes, [k]: t})}
+                        />
+                        <TouchableOpacity 
+                          style={{ alignSelf: 'flex-end', marginTop: 10, backgroundColor: colors.primary, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8 }}
+                          onPress={() => saveTrainerFeedbackHiit(bIdx, eIdx, draftNotes[k] || '')}
+                        >
+                          <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>Enviar Feedback</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </View>
+          )}
+
+        </ScrollView>
+        {renderVideoModal()}
+      </SafeAreaView>
+    );
   }
 
   if (isHiit) {
@@ -691,7 +884,7 @@ export default function TrainingModeScreen() {
           <View style={styles.detailsGrid}>
             {currentEx.sets && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.sets}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Series</Text></View>}
             {currentEx.reps && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.reps}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Reps</Text></View>}
-            {currentEx.duration && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.duration}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Seg</Text></View>}
+            {currentEx.duration && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.duration}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Dur.</Text></View>}
             {currentEx.weight && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.weight}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Kg</Text></View>}
             {currentEx.rest && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.S.</Text></View>}
             {currentEx.rest_exercise && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest_exercise}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.Ej.</Text></View>}
@@ -803,7 +996,10 @@ const styles = StyleSheet.create({
   referenceVideoBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, marginTop: -4 },
   coachNotesBox: { flexDirection: 'row', padding: 12, borderRadius: 10, borderWidth: 1, gap: 8, width: '100%' },
   detailsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }, detailBox: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', minWidth: 60 }, detailValue: { fontSize: 20, fontWeight: '700' }, detailLabel: { fontSize: 10, fontWeight: '600', marginTop: 2, textTransform: 'uppercase' }, setsCard: { borderRadius: 16, padding: 20 }, setsTitle: { fontSize: 16, fontWeight: '600', marginBottom: 16 }, setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' }, setNum: { fontSize: 15, fontWeight: '600' }, setActions: { flexDirection: 'row', gap: 10 }, completeSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16 }, completeSetText: { fontSize: 16, fontWeight: '600' }, skipSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, paddingVertical: 16, paddingHorizontal: 16, borderWidth: 1.5 }, skipSetText: { fontSize: 14, fontWeight: '600' }, allDoneBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingVertical: 14 }, bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 28, borderTopWidth: 0.5 }, navBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 }, navBtnText: { fontSize: 15, fontWeight: '500' },
-  // ... (Tus estilos de finishedContainer, hiitCard, etc., se mantienen intactos, omitidos aquí para brevedad)
+  activeLogContainer: { width: '100%', marginTop: 10, paddingTop: 15, borderTopWidth: 0.5 }, activeLogTitle: { fontSize: 14, fontWeight: '700', marginBottom: 12 }, logInputWrapper: { flex: 1 }, logInputLabel: { fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase' }, logInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15, fontWeight: '600' },
+  finishedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }, finishedIconContainer: { width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(245, 158, 11, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 24 }, finishedTitle: { fontSize: 28, fontWeight: '800', marginBottom: 8, textAlign: 'center' }, finishedSubtitle: { fontSize: 16, textAlign: 'center', marginBottom: 40 }, finishWorkoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 18, paddingHorizontal: 32, borderRadius: 16, width: '100%', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 18, fontWeight: '700' }, label: { fontSize: 12, fontWeight: '700', letterSpacing: 1 }, rpeCircle: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 14, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, textAlignVertical: 'top', fontSize: 15 },
+  hiitCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, hiitHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, hiitList: { padding: 16, gap: 12 }, hiitExRowWrapper: { overflow: 'hidden' }, hiitExRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12 }, hiitCheck: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }, hiitExName: { fontSize: 16, fontWeight: '600' }, hiitExDur: { fontSize: 16, fontWeight: '700' }, hiitRefBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: 8, alignSelf: 'flex-start' }, feedbackInput: { borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 60, textAlignVertical: 'top', fontSize: 14 },
+  miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 4 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, fullVideo: { width: '100%', height: '100%' }, closeModalBtn: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
   
   // --- NUEVOS ESTILOS PARA EL TIMER UNIFICADO (SVG) ---
   unifiedTimerContainer: { alignItems: 'center', justifyContent: 'center', marginVertical: 20 },
