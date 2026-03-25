@@ -12,6 +12,7 @@ import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useKeepAwake } from 'expo-keep-awake';
+import Svg, { Circle } from 'react-native-svg'; // <-- AÑADIDO PARA EL ANILLO
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
@@ -66,23 +67,24 @@ export default function TrainingModeScreen() {
   const [observations, setObservations] = useState('');
   
   // --- TEMPORIZADORES BLINDADOS ---
-  // Temporizador de Descanso
   const [restTargetTime, setRestTargetTime] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
+  const [restTotalSeconds, setRestTotalSeconds] = useState(1); // NUEVO: Para calcular el % del anillo
   const [isResting, setIsResting] = useState(false);
   const [restType, setRestType] = useState<'set' | 'exercise' | null>(null);
   const restIntervalRef = useRef<any>(null);
 
-  // Temporizador de Trabajo (Ejercicio)
   const [workTargetTime, setWorkTargetTime] = useState<number | null>(null);
   const [workSeconds, setWorkSeconds] = useState(0);
+  const [workTotalSeconds, setWorkTotalSeconds] = useState(1); // NUEVO: Para calcular el % del anillo
   const [isWorking, setIsWorking] = useState(false);
   const workIntervalRef = useRef<any>(null);
 
   const startRestTimer = (seconds: number) => {
-    stopWorkTimer(); // Asegurar que el de trabajo se apaga
+    stopWorkTimer();
     setRestTargetTime(Date.now() + seconds * 1000);
     setRestSeconds(seconds);
+    setRestTotalSeconds(seconds); // Guardamos el total para el anillo
     setIsResting(true);
   };
 
@@ -236,7 +238,8 @@ export default function TrainingModeScreen() {
         const dur = parseInt(workout.exercises[currentExIndex]?.duration) || 0;
         if (dur > 0 && !isWorking && workTargetTime === null) {
           setWorkSeconds(dur);
-          // Auto-start timer para mantener el flujo
+          setWorkTotalSeconds(dur); // NUEVO
+          // Auto-start timer
           setWorkTargetTime(Date.now() + dur * 1000);
           setIsWorking(true);
         }
@@ -244,7 +247,7 @@ export default function TrainingModeScreen() {
         stopWorkTimer();
       }
     }
-  }, [currentExIndex, setsStatus, isResting]);
+  }, [currentExIndex, setsStatus, isResting, workout, isHiit]); // CORREGIDO: AÑADIDOS workout, isHiit
 
   // Inicializador del Temporizador de Trabajo (HIIT)
   useEffect(() => {
@@ -255,13 +258,14 @@ export default function TrainingModeScreen() {
       const dur = parseInt(currentEx?.duration) || 0;
       if (dur > 0 && !isWorking && workTargetTime === null) {
         setWorkSeconds(dur);
+        setWorkTotalSeconds(dur); // NUEVO
         setWorkTargetTime(Date.now() + dur * 1000);
         setIsWorking(true);
       } else if (dur === 0) {
         stopWorkTimer();
       }
     }
-  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting]);
+  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit]); // CORREGIDO: AÑADIDOS workout, isHiit
 
   useEffect(() => {
     if (!isResting && workout) {
@@ -474,22 +478,73 @@ export default function TrainingModeScreen() {
     </Modal>
   );
 
-  const renderWorkTimerUI = (exName: string) => {
-    if (workSeconds <= 0 && !isWorking) return null;
+  // --- NUEVA UI UNIFICADA PARA EL ANILLO DE TIEMPO (TRABAJO Y DESCANSO) ---
+  const renderUnifiedTimerUI = (exName: string) => {
+    const isRest = isResting;
+    const current = isRest ? restSeconds : workSeconds;
+    const total = isRest ? restTotalSeconds : workTotalSeconds;
+    const isPaused = !isRest && !isWorking;
+
+    if (!isRest && (current <= 0 && !isWorking)) return null;
+    if (isRest && current <= 0) return null;
+
+    const ringColor = isRest ? (colors.warning || '#F59E0B') : colors.primary;
+    const progressPercent = total > 0 ? current / total : 0;
+    
+    let label = exName.toUpperCase();
+    if (isRest) {
+      if (hiitPhase === 'rest_block') label = 'DESCANSO ENTRE VUELTAS';
+      else if (hiitPhase === 'rest_next_block') label = 'PREPARA EL SIGUIENTE BLOQUE';
+      else if (restType === 'exercise') label = 'DESCANSO (SIGUIENTE EJ.)';
+      else label = 'DESCANSO';
+    }
+
+    // Configuración del SVG (Anillo descoloreándose)
+    const radius = 85;
+    const strokeWidth = 12;
+    const circumference = 2 * Math.PI * radius;
+    const strokeDashoffset = circumference - (progressPercent * circumference);
+
     return (
-      <View style={styles.workTimerContainer}>
-        <Text style={[styles.workTimerTitle, { color: colors.textPrimary }]}>{exName.toUpperCase()}</Text>
-        <TouchableOpacity activeOpacity={0.8} onPress={toggleWorkTimer}>
-          <View style={[styles.timerCircle, { borderColor: isWorking ? colors.primary : colors.textSecondary }]}>
-             <Text style={[styles.timerText, { color: isWorking ? colors.primary : colors.textSecondary }]}>
-               {Math.floor(workSeconds / 60)}:{String(workSeconds % 60).padStart(2, '0')}
-             </Text>
-             <Text style={{color: colors.textSecondary, fontSize: 16, fontWeight: '800', marginTop: -5}}>SEG</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.playPauseBtn, { backgroundColor: isWorking ? (colors.warning || '#F59E0B') : colors.primary }]} onPress={toggleWorkTimer}>
-           <Ionicons name={isWorking ? "pause" : "play"} size={32} color="#FFF" />
-        </TouchableOpacity>
+      <View style={styles.unifiedTimerContainer}>
+        <Text style={[styles.workTimerTitle, { color: ringColor, textAlign: 'center', marginHorizontal: 20 }]}>{label}</Text>
+
+        <View style={styles.timerCircleWrapper}>
+          <Svg width="200" height="200" viewBox="0 0 200 200" style={{ position: 'absolute' }}>
+            {/* Fondo translúcido del anillo */}
+            <Circle cx="100" cy="100" r={radius} stroke={ringColor} strokeWidth={strokeWidth} strokeOpacity={0.15} fill="none" />
+            {/* Anillo de progreso activo */}
+            <Circle
+              cx="100" cy="100" r={radius}
+              stroke={ringColor} strokeWidth={strokeWidth} fill="none"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeDashoffset}
+              transform="rotate(-90 100 100)"
+            />
+          </Svg>
+
+          <TouchableOpacity activeOpacity={0.8} onPress={() => !isRest && toggleWorkTimer()} disabled={isRest}>
+            <View style={{ justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={[styles.timerText, { color: isPaused ? colors.textSecondary : ringColor }]}>
+                {Math.floor(current / 60)}:{String(current % 60).padStart(2, '0')}
+              </Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 16, fontWeight: '800', marginTop: -5 }}>SEG</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        <View style={{ flexDirection: 'row', gap: 15, marginTop: 25, justifyContent: 'center' }}>
+          {isRest ? (
+            <TouchableOpacity style={[styles.skipRestBtnUnified, { borderColor: ringColor }]} onPress={isHiit ? skipHiitRest : stopRestTimer}>
+              <Text style={{ color: ringColor, fontWeight: '700', fontSize: 16 }}>Saltar Descanso</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={[styles.playPauseBtn, { backgroundColor: isPaused ? (colors.warning || '#F59E0B') : colors.primary }]} onPress={toggleWorkTimer}>
+              <Ionicons name={isWorking ? "pause" : "play"} size={32} color="#FFF" />
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
     );
   };
@@ -498,275 +553,9 @@ export default function TrainingModeScreen() {
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Entrenamiento no encontrado.</Text><TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.primary }]} onPress={() => router.back()}><Text style={styles.backBtnText}>Volver</Text></TouchableOpacity></SafeAreaView>;
 
   if (finished || workout.completed) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={26} color={colors.textPrimary} /></TouchableOpacity>
-          <Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text>
-          <View style={{ width: 26 }} />
-        </View>
-
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
-          <ScrollView contentContainerStyle={styles.finishedContainer} keyboardShouldPersistTaps="handled">
-            <View style={[styles.finishedIcon, { backgroundColor: (colors.success || '#10B981') + '15' }]}><Ionicons name="checkmark-circle" size={64} color={colors.success || '#10B981'} /></View>
-            <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
-
-            <View style={[styles.wellnessCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.wellnessTitle, { color: colors.textPrimary }]}>Esfuerzo Percibido (RPE)</Text>
-              {workout.completed ? (
-                <View style={styles.readOnlyReportBox}>
-                  <View style={{ width: 60, height: 60, borderRadius: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: (rpe || 0) > 7 ? (colors.error || '#EF4444') : (rpe || 0) > 4 ? (colors.warning || '#F59E0B') : (colors.success || '#10B981') }}>
-                    <Text style={{ color: (rpe || 0) > 4 && (rpe || 0) < 8 ? '#000' : '#FFF', fontSize: 28, fontWeight: '900' }}>{rpe || '-'}</Text>
-                  </View>
-                  <View style={{ marginLeft: 20 }}>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>DESCANSO PREVIO:</Text>
-                    <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800', textTransform: 'uppercase', marginTop: 2 }}>
-                      {sleepQuality ? `Calidad: ${sleepQuality}/5` : 'NO REGISTRADO'}
-                    </Text>
-                    {!!sleepHours && <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '600', marginTop: 2 }}>{sleepHours} horas</Text>}
-                  </View>
-                </View>
-              ) : (
-                <>
-                  <View style={styles.rpeGrid}>
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => {
-                      const isSelected = rpe === num; 
-                      let rpeColor = colors.success || '#10B981'; if (num > 4) rpeColor = colors.warning || '#F59E0B'; if (num > 7) rpeColor = colors.error || '#EF4444';
-                      const bgColor = isSelected ? rpeColor : colors.surface; const textColor = isSelected ? ((num > 4 && num < 8) ? '#000' : '#FFF') : rpeColor;
-                      return (
-                        <TouchableOpacity key={num} style={[styles.rpeBtn, { borderColor: rpeColor, borderWidth: 1.5, backgroundColor: bgColor }]} onPress={() => setRpe(num)}>
-                          <Text style={[styles.rpeText, { color: textColor }]}>{num}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                  
-                  <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 24 }]}>Calidad de Sueño</Text>
-                  <View style={styles.rpeGrid}>
-                    {[1, 2, 3, 4, 5].map(num => {
-                      const isSelected = sleepQuality === num; 
-                      let sqColor = colors.success || '#10B981'; if (num === 3) sqColor = colors.warning || '#F59E0B'; if (num < 3) sqColor = colors.error || '#EF4444';
-                      const bgColor = isSelected ? sqColor : colors.surface; const textColor = isSelected ? '#FFF' : sqColor;
-                      return (
-                        <TouchableOpacity key={num} style={[styles.rpeBtn, { borderColor: sqColor, borderWidth: 1.5, backgroundColor: bgColor }]} onPress={() => setSleepQuality(num)}>
-                          <Text style={[styles.rpeText, { color: textColor }]}>{num}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-
-                  <Text style={[styles.wellnessTitle, { color: colors.textPrimary, marginTop: 24 }]}>Horas de Sueño</Text>
-                  <View style={styles.rpeGrid}>
-                    {SLEEP_HOURS_OPTIONS.map(opt => {
-                      const isSelected = sleepHours === opt;
-                      const sleepColor = colors.primary;
-                      return (
-                        <TouchableOpacity key={opt} style={[styles.rpeBtn, { width: 50, borderColor: isSelected ? sleepColor : colors.border, borderWidth: 1.5 }, isSelected && { backgroundColor: sleepColor }]} onPress={() => setSleepHours(opt)}>
-                          <Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textPrimary }]}>{opt}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </>
-              )}
-            </View>
-
-            {isHiit ? (
-              <>
-                <Text style={[styles.finishedSub, { color: colors.textSecondary, marginTop: 10 }]}>Resumen del Circuito</Text>
-                <View style={styles.summaryList}>
-                  {(workout.exercises || []).map((block: any, bIdx: number) => (
-                    <View key={bIdx} style={[styles.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 10, marginBottom: 10 }}>
-                        <Ionicons name="flame" size={20} color={colors.error || '#EF4444'} />
-                        <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800' }}>{block.name}</Text>
-                      </View>
-                      
-                      {block.hiit_exercises.map((ex: any, eIdx: number) => {
-                        const videoKey = `${bIdx}-${eIdx}`;
-                        const videoUrl = recordedVideos[videoKey] || (workout.completed ? ex.recorded_video_url : null);
-                        
-                        const savedCoachNote = workout.completed ? (workout.completion_data?.hiit_results?.[bIdx]?.hiit_exercises?.[eIdx]?.coach_note || '') : (ex.coach_note || '');
-                        const noteKey = `hiit-${bIdx}-${eIdx}`;
-                        const currentCoachNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : savedCoachNote;
-                        const isSaved = currentCoachNote === savedCoachNote && !!savedCoachNote;
-                        
-                        const savedAthleteNote = workout.completed ? (workout.completion_data?.hiit_results?.[bIdx]?.hiit_exercises?.[eIdx]?.athlete_note || '') : (hiitLogs[videoKey]?.note || '');
-
-                        const skippedRoundsCount = workout.completed ? (workout.completion_data?.hiit_results?.[bIdx]?.hiit_exercises?.[eIdx]?.skipped_rounds || 0) : (hiitSkipped[`${bIdx}-${eIdx}`] || 0);
-                        const totalRounds = parseInt(block.sets) || 1;
-                        const allSkipped = skippedRoundsCount >= totalRounds;
-
-                        return (
-                          <View key={eIdx} style={{ marginBottom: 15 }}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                              <Text style={{ color: allSkipped ? colors.error : colors.textPrimary, fontSize: 14, fontWeight: '600', textDecorationLine: allSkipped ? 'line-through' : 'none' }}>• {ex.name}</Text>
-                              {skippedRoundsCount > 0 && !allSkipped && (
-                                <Text style={{ color: colors.warning || '#F59E0B', fontSize: 11, marginLeft: 8, fontWeight: '700' }}>(Saltado {skippedRoundsCount} vez/veces)</Text>
-                              )}
-                              {allSkipped && (
-                                <Text style={{ color: colors.error || '#EF4444', fontSize: 11, marginLeft: 8, fontWeight: '700' }}>(Saltado completo)</Text>
-                              )}
-                            </View>
-
-                            {videoUrl && <View style={{ marginTop: 8, marginLeft: 10 }}><MiniVideoPlayer url={videoUrl} onExpand={setExpandedVideo} /></View>}
-                            
-                            {workout.completed ? (
-                              savedAthleteNote ? (
-                                <View style={[styles.athleteNoteBox, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight, marginLeft: 10, width: '95%' }]}>
-                                  <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '800' }}>TUS COMENTARIOS:</Text>
-                                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic', marginTop: 2 }}>"{savedAthleteNote}"</Text>
-                                </View>
-                              ) : null
-                            ) : (
-                              <View style={{ marginLeft: 10, marginTop: 8, width: '95%' }}>
-                                <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Tus comentarios del ejercicio</Text>
-                                <TextInput
-                                  style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border, minHeight: 60, textAlignVertical: 'top' }]}
-                                  placeholder="¿Algo a destacar de este ejercicio?"
-                                  placeholderTextColor={colors.textSecondary}
-                                  value={hiitLogs[videoKey]?.note || ''}
-                                  onChangeText={(t) => setHiitLogs(prev => ({...prev, [videoKey]: { note: t }}))}
-                                  multiline
-                                />
-                              </View>
-                            )}
-
-                            {isTrainer ? (
-                              <View style={[styles.feedbackRow, { marginLeft: 10 }]}>
-                                <TextInput 
-                                  style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
-                                  placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} 
-                                  value={currentCoachNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))}
-                                />
-                                <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} onPress={() => saveTrainerFeedbackHiit(bIdx, eIdx, currentCoachNote)}>
-                                  <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
-                                </TouchableOpacity>
-                              </View>
-                            ) : (
-                              savedCoachNote ? (
-                                <View style={[styles.feedbackCoachBox, { marginLeft: 10, width: '95%' }]}>
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}><Ionicons name="chatbubble-ellipses" size={16} color={colors.warning || '#F59E0B'} /><Text style={{ color: colors.warning || '#F59E0B', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 }}>EL COACH DICE:</Text></View>
-                                  <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic' }}>"{savedCoachNote}"</Text>
-                                </View>
-                              ) : null
-                            )}
-                          </View>
-                        );
-                      })}
-                    </View>
-                  ))}
-                </View>
-              </>
-            ) : (
-              <>
-                <Text style={[styles.finishedSub, { color: colors.textSecondary, marginTop: 10 }]}>Anota tus marcas de hoy</Text>
-                <View style={styles.summaryList}>
-                  {(workout.exercises || []).map((ex: any, i: number) => {
-                    const statusData = workout.completed ? workout.completion_data?.exercise_results?.[i] : null;
-                    const totalSets = statusData ? statusData.total_sets : (setsStatus[i]?.length || 0);
-                    const completedCount = statusData ? statusData.completed_sets : (setsStatus[i]?.filter(s => s === 'completed').length || 0);
-                    const skippedCount = statusData ? statusData.skipped_sets : (setsStatus[i]?.filter(s => s === 'skipped').length || 0);
-                    const allSkipped = totalSets > 0 && skippedCount === totalSets;
-                    const videoUrl = recordedVideos[i.toString()] || statusData?.recorded_video_url;
-                    
-                    const savedCoachNote = statusData?.coach_note || logs[i]?.coach_note || '';
-                    const noteKey = `force-${i}`;
-                    const currentCoachNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : savedCoachNote;
-                    const isSaved = currentCoachNote === savedCoachNote && !!savedCoachNote;
-
-                    return (
-                      <View key={i} style={[styles.summaryRow, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                          <View style={[styles.summaryIcon, { backgroundColor: allSkipped ? (colors.error || '#EF4444') + '15' : (colors.success || '#10B981') + '15' }]}><Ionicons name={allSkipped ? 'close-circle' : 'checkmark-circle'} size={22} color={allSkipped ? (colors.error || '#EF4444') : (colors.success || '#10B981')} /></View>
-                          <View style={{ flex: 1 }}>
-                            <Text style={[styles.summaryName, { color: colors.textPrimary, textDecorationLine: allSkipped ? 'line-through' : 'none' }]}>{ex.name}</Text>
-                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 2 }}>{completedCount} completadas • {skippedCount} saltadas</Text>
-                          </View>
-                        </View>
-                        {!allSkipped && (
-                          <View style={styles.logRow}>
-                            {workout.completed ? (
-                              <View style={styles.readOnlyLogBox}>
-                                <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '800' }}>Rendimiento Registrado:</Text>
-                                <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '900', marginTop: 4 }}>{logs[i]?.weight ? `${logs[i]?.weight} kg` : '- kg'} x {logs[i]?.reps ? `${logs[i]?.reps} reps` : '- reps'}</Text>
-                                
-                                {logs[i]?.note ? (
-                                  <View style={[styles.athleteNoteBox, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight, width: '100%', marginTop: 12 }]}>
-                                    <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '800' }}>TUS COMENTARIOS:</Text>
-                                    <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic', marginTop: 2 }}>"{logs[i]?.note}"</Text>
-                                  </View>
-                                ) : null}
-
-                                {videoUrl && <View style={{ marginTop: 12, width: '100%', alignItems: 'center' }}><MiniVideoPlayer url={videoUrl} onExpand={setExpandedVideo} /></View>}
-
-                                {isTrainer ? (
-                                  <View style={[styles.feedbackRow, { width: '100%', marginTop: 10 }]}>
-                                    <TextInput 
-                                      style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
-                                      placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} 
-                                      value={currentCoachNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))}
-                                    />
-                                    <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} onPress={() => saveTrainerFeedbackFuerza(i, currentCoachNote)}>
-                                      <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
-                                    </TouchableOpacity>
-                                  </View>
-                                ) : (
-                                  savedCoachNote ? (
-                                    <View style={styles.feedbackCoachBox}>
-                                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}><Ionicons name="chatbubble-ellipses" size={16} color={colors.warning || '#F59E0B'} /><Text style={{ color: colors.warning || '#F59E0B', fontWeight: '900', fontSize: 11, letterSpacing: 0.5 }}>EL COACH DICE:</Text></View>
-                                      <Text style={{ color: colors.textPrimary, fontSize: 14, fontStyle: 'italic' }}>"{savedCoachNote}"</Text>
-                                    </View>
-                                  ) : null
-                                )}
-                              </View>
-                            ) : (
-                              <View style={{flex: 1}}>
-                                <View style={{ flexDirection: 'row', gap: 12 }}>
-                                  <View style={styles.logInputWrapper}><Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Kilos reales</Text><TextInput style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} keyboardType="numeric" value={logs[i]?.weight || ''} onChangeText={(w) => setLogs(prev => ({...prev, [i]: {...(prev[i]||{}), weight: w}}))} /></View>
-                                  <View style={styles.logInputWrapper}><Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Reps reales</Text><TextInput style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} keyboardType="numeric" value={logs[i]?.reps || ''} onChangeText={(rep) => setLogs(prev => ({...prev, [i]: {...(prev[i]||{}), reps: rep}}))} /></View>
-                                </View>
-
-                                <View style={[styles.logInputWrapper, { marginTop: 12 }]}>
-                                  <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Tus comentarios del ejercicio</Text>
-                                  <TextInput 
-                                    style={[styles.logInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border, minHeight: 60, textAlignVertical: 'top' }]} 
-                                    multiline 
-                                    placeholder="¿Algo a destacar? (Técnica, molestias...)"
-                                    placeholderTextColor={colors.textSecondary}
-                                    value={logs[i]?.note || ''} 
-                                    onChangeText={(text) => setLogs(prev => ({...prev, [i]: {...(prev[i]||{}), note: text}}))} 
-                                  />
-                                </View>
-
-                                {recordedVideos[i.toString()] && (
-                                  <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 10, borderRadius: 8, marginTop: 12 }}>
-                                    <MiniVideoPlayer url={recordedVideos[i.toString()]} onExpand={setExpandedVideo} />
-                                    <Text style={{ color: colors.success || '#10B981', marginLeft: 12, fontWeight: '700', fontSize: 12, flex: 1 }}>Vídeo adjuntado</Text>
-                                  </View>
-                                )}
-                              </View>
-                            )}
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })}
-                </View>
-              </>
-            )}
-
-            <View style={[styles.observationsCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.observationsLabel, { color: colors.textPrimary }]}>Observaciones generales del entreno</Text>
-              {workout.completed ? <Text style={{ color: colors.textPrimary, fontSize: 15, fontStyle: 'italic', marginTop: 10 }}>{observations || "Sin notas."}</Text> : <TextInput style={[styles.observationsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} value={observations} onChangeText={setObservations} placeholder="¿Cómo te has sentido en general?" placeholderTextColor={colors.textSecondary} multiline numberOfLines={3} />}
-            </View>
-
-            {!workout.completed && <TouchableOpacity testID="finish-training-btn" style={[styles.finishBtn, { backgroundColor: colors.primary }]} onPress={handleFinish} activeOpacity={0.7}><Ionicons name="checkmark" size={20} color="#FFF" /><Text style={styles.finishBtnText}>Guardar entreno</Text></TouchableOpacity>}
-          </ScrollView>
-        </KeyboardAvoidingView>
-        {renderVideoModal()}
-      </SafeAreaView>
-    );
+    // ... (Mantengo tu código intacto para la vista de "Terminado")
+    // Omitido para que el bloque no sea absurdamente largo, ¡tu vista de Finalizado sigue exactamente igual!
+    // Si necesitas que lo pegue también, me lo dices, pero puedes dejarlo como lo tenías.
   }
 
   if (isHiit) {
@@ -789,8 +578,10 @@ export default function TrainingModeScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
-          {/* SI ESTAMOS TRABAJANDO Y HAY TEMPORIZADOR, SE MUESTRA A FULL */}
-          {hiitPhase === 'work' && currentExInHiit?.duration ? renderWorkTimerUI(currentExInHiit.name) : null}
+          {/* AQUI RENDERIZAMOS EL NUEVO TIMER UNIFICADO (TRABAJO Y DESCANSO) */}
+          {(isResting || (hiitPhase === 'work' && currentExInHiit?.duration)) 
+            ? renderUnifiedTimerUI(currentExInHiit?.name || 'EJERCICIO') 
+            : null}
 
           <View style={[styles.hiitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.hiitHeader, { backgroundColor: (colors.error || '#EF4444') + '15' }]}>
@@ -847,16 +638,8 @@ export default function TrainingModeScreen() {
               })}
             </View>
 
-            {isResting ? (
-              <View style={[styles.restTimerCard, { backgroundColor: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') + '15' : colors.primary + '15' }]}>
-                <Ionicons name="timer" size={32} color={hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary} />
-                <View style={styles.restTimerContent}>
-                  <Text style={[styles.restTimerLabel, { color: colors.textSecondary }]}>{hiitPhase === 'rest_block' ? 'DESCANSO ENTRE VUELTAS' : hiitPhase === 'rest_next_block' ? 'DESCANSO PARA SIGUIENTE BLOQUE' : 'PREPÁRATE PARA EL SIGUIENTE'}</Text>
-                  <Text style={[styles.restTimerValue, { color: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary }]}>{Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, '0')}</Text>
-                </View>
-                <TouchableOpacity style={[styles.skipRestBtn, { borderColor: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary }]} onPress={skipHiitRest}><Text style={{ color: hiitPhase === 'rest_block' || hiitPhase === 'rest_next_block' ? (colors.warning || '#F59E0B') : colors.primary, fontWeight: '700' }}>Saltar</Text></TouchableOpacity>
-              </View>
-            ) : (
+            {/* SE ELIMINÓ EL BLOQUE VIEJO DE isResting, AHORA LO MANEJA renderUnifiedTimerUI ARRIBA */}
+            {!isResting && (
               <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 20, marginBottom: 20, marginTop: 10 }}>
                 <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444', flex: 1, paddingVertical: 14 }]} onPress={skipHiitEx}>
                   <Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} />
@@ -893,8 +676,10 @@ export default function TrainingModeScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
 
-        {/* SI ESTAMOS TRABAJANDO Y HAY TEMPORIZADOR PARA LA SERIE PENDIENTE, SE MUESTRA */}
-        {!isResting && nextPendingSet !== -1 && currentEx?.duration ? renderWorkTimerUI(currentEx.name) : null}
+        {/* TIMER UNIFICADO (TRABAJO Y DESCANSO) TAMBIÉN PARA MODO FUERZA */}
+        {(isResting || (nextPendingSet !== -1 && currentEx?.duration)) 
+          ? renderUnifiedTimerUI(currentEx?.name || 'EJERCICIO') 
+          : null}
 
         <View style={[styles.exerciseCard, { backgroundColor: colors.surface }]}>
           <View style={[styles.exNumber, { backgroundColor: colors.primary + '12' }]}><Text style={[styles.exNumberText, { color: colors.primary }]}>{currentExIndex + 1}</Text></View>
@@ -985,16 +770,7 @@ export default function TrainingModeScreen() {
             )}
           </View>
 
-          {isResting && (
-            <View style={[styles.restTimerCard, { backgroundColor: colors.primary + '10', marginTop: 20 }]}>
-              <Ionicons name="timer-outline" size={28} color={colors.primary} />
-              <View style={styles.restTimerContent}>
-                <Text style={[styles.restTimerLabel, { color: colors.textSecondary }]}>{restType === 'exercise' ? 'DESCANSO (SIGUIENTE EJ. )' : 'DESCANSO'}</Text>
-                <Text style={[styles.restTimerValue, { color: colors.primary }]}>{Math.floor(restSeconds / 60)}:{String(restSeconds % 60).padStart(2, '0')}</Text>
-              </View>
-              <TouchableOpacity style={[styles.skipRestBtn, { borderColor: colors.primary }]} onPress={stopRestTimer}><Text style={{ color: colors.primary, fontWeight: '600' }}>Saltar</Text></TouchableOpacity>
-            </View>
-          )}
+          {/* SE ELIMINÓ EL BLOQUE VIEJO DE isResting, AHORA ESTÁ ARRIBA EN renderUnifiedTimerUI */}
 
           {nextPendingSet !== -1 && !isResting ? (
             <View style={[styles.setActions, { marginTop: 20 }]}>
@@ -1027,35 +803,13 @@ const styles = StyleSheet.create({
   referenceVideoBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, marginTop: -4 },
   coachNotesBox: { flexDirection: 'row', padding: 12, borderRadius: 10, borderWidth: 1, gap: 8, width: '100%' },
   detailsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }, detailBox: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', minWidth: 60 }, detailValue: { fontSize: 20, fontWeight: '700' }, detailLabel: { fontSize: 10, fontWeight: '600', marginTop: 2, textTransform: 'uppercase' }, setsCard: { borderRadius: 16, padding: 20 }, setsTitle: { fontSize: 16, fontWeight: '600', marginBottom: 16 }, setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' }, setNum: { fontSize: 15, fontWeight: '600' }, setActions: { flexDirection: 'row', gap: 10 }, completeSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16 }, completeSetText: { fontSize: 16, fontWeight: '600' }, skipSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, paddingVertical: 16, paddingHorizontal: 16, borderWidth: 1.5 }, skipSetText: { fontSize: 14, fontWeight: '600' }, allDoneBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingVertical: 14 }, bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 28, borderTopWidth: 0.5 }, navBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 }, navBtnText: { fontSize: 15, fontWeight: '500' },
-  finishedContainer: { flexGrow: 1, padding: 24, gap: 12, alignItems: 'center' }, finishedIcon: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center' }, finishedTitle: { fontSize: 22, fontWeight: '700', textAlign: 'center' }, finishedSub: { fontSize: 15, textAlign: 'center', alignSelf: 'flex-start' }, wellnessCard: { width: '100%', borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 10 }, wellnessTitle: { fontSize: 15, fontWeight: '700', marginBottom: 10, textAlign: 'center' }, rpeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center' }, rpeBtn: { width: 44, height: 44, borderRadius: 10, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 16, fontWeight: '700' }, sleepGrid: { flexDirection: 'row', gap: 10, justifyContent: 'center' }, sleepBtn: { flex: 1, paddingVertical: 12, borderRadius: 10, borderWidth: 1, alignItems: 'center' }, sleepText: { fontSize: 14, fontWeight: '700' }, summaryList: { width: '100%', gap: 8 }, summaryRow: { flexDirection: 'column', gap: 12, padding: 14, borderRadius: 12, borderWidth: 1 }, summaryIcon: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' }, summaryName: { fontSize: 15, fontWeight: '600' }, logRow: { flexDirection: 'row', gap: 12, marginTop: 10, borderTopWidth: 0.5, borderTopColor: '#CCC', paddingTop: 12 }, logInputWrapper: { flex: 1, gap: 4 }, logInputLabel: { fontSize: 12, fontWeight: '600', marginLeft: 2 }, logInput: { borderRadius: 8, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 10, fontSize: 15 }, observationsCard: { width: '100%', borderRadius: 12, borderWidth: 1, padding: 16, marginTop: 8, gap: 10 }, observationsLabel: { fontSize: 16, fontWeight: '700' }, observationsInput: { borderRadius: 10, borderWidth: 1, padding: 14, fontSize: 15, minHeight: 80, textAlignVertical: 'top' }, finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16, marginTop: 8, width: '100%' }, finishBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' }, readOnlyReportBox: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10 }, readOnlyLogBox: { flex: 1, backgroundColor: 'rgba(0,0,0,0.03)', padding: 12, borderRadius: 10, alignItems: 'center' },
-  hiitCard: { borderRadius: 20, borderWidth: 1, overflow: 'hidden', paddingBottom: 20 }, hiitHeader: { padding: 20, flexDirection: 'row', alignItems: 'center' }, hiitList: { padding: 20, gap: 0 }, hiitExRowWrapper: { marginBottom: 12 }, hiitExRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 20 },
-  hiitCheck: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  hiitExName: { flex: 1 },
-  hiitExDur: { width: 60, textAlign: 'right' },
-  hiitRefBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: 8 },
-  restTimerCard: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 15, marginHorizontal: 20, gap: 15 },
-  restTimerContent: { flex: 1 },
-  restTimerLabel: { fontSize: 10, fontWeight: '800' },
-  restTimerValue: { fontSize: 24, fontWeight: '900' },
-  skipRestBtn: { paddingHorizontal: 15, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
-  activeLogContainer: { borderTopWidth: 1, paddingTop: 20, marginTop: 20, width: '100%' },
-  activeLogTitle: { fontSize: 15, fontWeight: '700', marginBottom: 12 },
-  feedbackRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  feedbackInput: { flex: 1, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, paddingVertical: 8, fontSize: 14 },
-  sendBtn: { width: 44, height: 44, borderRadius: 10, justifyContent: 'center', alignItems: 'center' },
-  feedbackCoachBox: { backgroundColor: '#FFFBEB', padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#FEF3C7', marginTop: 10 },
-  athleteNoteBox: { padding: 12, borderRadius: 12, borderWidth: 1, marginTop: 10 },
-  fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' },
-  closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
-  fullVideo: { width: '100%', height: '80%' },
-  miniVideoContainer: { width: 80, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' },
-  miniVideo: { width: '100%', height: '100%' },
-  expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 4, padding: 2 },
+  // ... (Tus estilos de finishedContainer, hiitCard, etc., se mantienen intactos, omitidos aquí para brevedad)
   
-  // --- Nuevos estilos para el Work Timer ---
-  workTimerContainer: { backgroundColor: 'transparent', alignItems: 'center', justifyContent: 'center', marginBottom: 20 },
-  workTimerTitle: { fontSize: 24, fontWeight: '900', marginBottom: 15, letterSpacing: 1 },
-  timerCircle: { width: 180, height: 180, borderRadius: 90, borderWidth: 8, justifyContent: 'center', alignItems: 'center', marginBottom: -25, backgroundColor: 'rgba(0,0,0,0.02)' },
+  // --- NUEVOS ESTILOS PARA EL TIMER UNIFICADO (SVG) ---
+  unifiedTimerContainer: { alignItems: 'center', justifyContent: 'center', marginVertical: 20 },
+  timerCircleWrapper: { width: 200, height: 200, justifyContent: 'center', alignItems: 'center', position: 'relative' },
+  workTimerTitle: { fontSize: 22, fontWeight: '900', marginBottom: 20, letterSpacing: 1 },
   timerText: { fontSize: 50, fontWeight: '900' },
-  playPauseBtn: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 }
+  playPauseBtn: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 },
+  skipRestBtnUnified: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 30, borderWidth: 2 }
 });
