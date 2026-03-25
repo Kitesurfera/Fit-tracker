@@ -106,7 +106,7 @@ export default function EditWorkoutScreen() {
   const updateExercise = (index: number, field: string, value: string) => {
     const updated = [...exercises]; updated[index] = { ...updated[index], [field]: value }; setExercises(updated);
   };
-  const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '' }]);
+  const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '' }]);
   const removeExercise = (index: number) => setExercises(exercises.filter((_, i) => i !== index));
   
   const moveExerciseUp = (index: number) => {
@@ -118,11 +118,11 @@ export default function EditWorkoutScreen() {
     const newExs = [...exercises]; [newExs[index + 1], newExs[index]] = [newExs[index], newExs[index + 1]]; setExercises(newExs);
   };
 
-  const addHiitBlock = () => setHiitBlocks([...hiitBlocks, { _key: Math.random().toString(), name: `Bloque ${hiitBlocks.length + 1}`, sets: '3', rest_exercise: '15', rest_block: '60', rest_between_blocks: '120', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '', exercise_notes: '', video_url: '' }] }]);
+  const addHiitBlock = () => setHiitBlocks([...hiitBlocks, { _key: Math.random().toString(), name: `Bloque ${hiitBlocks.length + 1}`, sets: '3', rest_exercise: '15', rest_block: '60', rest_between_blocks: '120', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', exercise_notes: '', video_url: '' }] }]);
   const removeHiitBlock = (bIndex: number) => setHiitBlocks(hiitBlocks.filter((_, i) => i !== bIndex));
   const updateHiitBlock = (bIndex: number, field: string, value: string) => { const updated = [...hiitBlocks]; updated[bIndex] = { ...updated[bIndex], [field]: value }; setHiitBlocks(updated); };
   
-  const addHiitExercise = (bIndex: number) => { const updated = [...hiitBlocks]; updated[bIndex].exercises.push({ _key: Math.random().toString(), name: '', duration_reps: '', exercise_notes: '', video_url: '' }); setHiitBlocks(updated); };
+  const addHiitExercise = (bIndex: number) => { const updated = [...hiitBlocks]; updated[bIndex].exercises.push({ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', exercise_notes: '', video_url: '' }); setHiitBlocks(updated); };
   const removeHiitExercise = (bIndex: number, eIndex: number) => { const updated = [...hiitBlocks]; updated[bIndex].exercises = updated[bIndex].exercises.filter((_: any, i: number) => i !== eIndex); setHiitBlocks(updated); };
   const updateHiitExercise = (bIndex: number, eIndex: number, field: string, value: string) => { const updated = [...hiitBlocks]; updated[bIndex].exercises[eIndex] = { ...updated[bIndex].exercises[eIndex], [field]: value }; setHiitBlocks(updated); };
   
@@ -170,7 +170,6 @@ export default function EditWorkoutScreen() {
     }
   };
 
-  // --- LÓGICA DE MEMORIA BLINDADA ---
   const saveMappingsAndContinue = async () => {
     try {
       const stored = await AsyncStorage.getItem('custom_muscle_map');
@@ -222,7 +221,7 @@ export default function EditWorkoutScreen() {
 
     if (workoutType === 'traditional') {
       payloadData.exercises = exercises.filter(e => e.name.trim()).map(ex => ({
-        name: ex.name, sets: ex.sets, reps: ex.reps, weight: ex.weight,
+        name: ex.name, sets: ex.sets, reps: ex.reps, duration: ex.duration, weight: ex.weight,
         rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes
       }));
     } else {
@@ -230,7 +229,7 @@ export default function EditWorkoutScreen() {
         is_hiit_block: true, name: block.name, sets: block.sets, rest_exercise: block.rest_exercise,
         rest_block: block.rest_block, rest_between_blocks: block.rest_between_blocks, 
         hiit_exercises: block.exercises.filter((e: any) => e.name.trim()).map((e: any) => ({ 
-          name: e.name, duration_reps: e.duration_reps, exercise_notes: e.exercise_notes, video_url: e.video_url 
+          name: e.name, duration_reps: e.duration_reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url 
         }))
       })).filter(b => b.hiit_exercises.length > 0);
     }
@@ -311,11 +310,16 @@ export default function EditWorkoutScreen() {
                       {exercises.length > 1 && <TouchableOpacity onPress={() => removeExercise(i)} style={styles.iconBtn}><Ionicons name="trash-outline" size={18} color={colors.error || '#EF4444'} /></TouchableOpacity>}
                     </View>
                   </View>
-                  <View style={[styles.exDetailsRow, { borderTopColor: colors.border }]}>
-                    <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Series</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.sets} onChangeText={v => updateExercise(i, 'sets', v)} placeholder="-" keyboardType="numeric" /></View>
-                    <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Reps</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.reps} onChangeText={v => updateExercise(i, 'reps', v)} placeholder="-" keyboardType="numeric" /></View>
-                    <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Desc. S.</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.rest} onChangeText={v => updateExercise(i, 'rest', v)} placeholder="s" keyboardType="numeric" /></View>
-                    <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Desc. Ej.</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.rest_exercise} onChangeText={v => updateExercise(i, 'rest_exercise', v)} placeholder="s" keyboardType="numeric" /></View>
+                  <View style={[styles.exDetailsContainer, { borderTopColor: colors.border }]}>
+                    <View style={styles.exDetailsRow}>
+                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Series</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.sets} onChangeText={v => updateExercise(i, 'sets', v)} placeholder="-" keyboardType="numeric" /></View>
+                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Reps</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.reps} onChangeText={v => updateExercise(i, 'reps', v)} placeholder="-" keyboardType="numeric" /></View>
+                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Dur. (s)</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.duration} onChangeText={v => updateExercise(i, 'duration', v)} placeholder="Seg" keyboardType="numeric" /></View>
+                    </View>
+                    <View style={[styles.exDetailsRow, { borderTopWidth: 0 }]}>
+                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Desc. Serie</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.rest} onChangeText={v => updateExercise(i, 'rest', v)} placeholder="s" keyboardType="numeric" /></View>
+                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Desc. Ejerc.</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.rest_exercise} onChangeText={v => updateExercise(i, 'rest_exercise', v)} placeholder="s" keyboardType="numeric" /></View>
+                    </View>
                   </View>
                   <View style={[styles.mediaContainer, { borderTopColor: colors.border }]}>
                     <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
@@ -353,12 +357,15 @@ export default function EditWorkoutScreen() {
                         <View style={styles.hiitExRow}>
                           <View style={styles.hiitExNum}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>{eIndex + 1}</Text></View>
                           <TextInput style={[styles.hiitExInput, { flex: 2, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'name', v)} placeholder="Ej: Burpees" placeholderTextColor={colors.textSecondary} />
-                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="40s o 15r" placeholderTextColor={colors.textSecondary} />
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: 60 }}>
                              {eIndex > 0 && <TouchableOpacity onPress={() => moveHiitExerciseUp(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="arrow-up" size={16} color={colors.textSecondary} /></TouchableOpacity>}
                              {eIndex < block.exercises.length - 1 && <TouchableOpacity onPress={() => moveHiitExerciseDown(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="arrow-down" size={16} color={colors.textSecondary} /></TouchableOpacity>}
                              <TouchableOpacity onPress={() => removeHiitExercise(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="close-circle" size={20} color={colors.textSecondary} /></TouchableOpacity>
                           </View>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, paddingLeft: 28 }}>
+                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="Aviso (Ej: 15r)" placeholderTextColor={colors.textSecondary} />
+                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration', v)} placeholder="Duración (s)" placeholderTextColor={colors.textSecondary} keyboardType="numeric" />
                         </View>
                         <TextInput style={[styles.hiitNotesInput, { color: colors.textPrimary, borderColor: colors.border }]} value={ex.video_url} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'video_url', v)} placeholder="URL de vídeo (opcional)" placeholderTextColor={colors.textSecondary} />
                         <TextInput style={[styles.hiitNotesInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 4 }]} value={ex.exercise_notes} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'exercise_notes', v)} placeholder="Observaciones técnicas (opcional)" placeholderTextColor={colors.textSecondary} />
@@ -445,7 +452,8 @@ const styles = StyleSheet.create({
   exNameInput: { flex: 1, fontSize: 16, fontWeight: '500', minWidth: 0 }, 
   exActions: { flexDirection: 'row', gap: 4 }, 
   iconBtn: { padding: 4 }, 
-  exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5 }, 
+  exDetailsContainer: { borderTopWidth: 0.5 },
+  exDetailsRow: { flexDirection: 'row', borderTopWidth: 0.5, borderColor: 'rgba(0,0,0,0.05)' }, 
   exDetail: { flex: 1, alignItems: 'center', padding: 8, borderRightWidth: 0.5, borderRightColor: 'rgba(0,0,0,0.1)' }, 
   exDetailLabel: { fontSize: 10, fontWeight: '700', marginBottom: 4 }, 
   exDetailInput: { width: '100%', textAlign: 'center', borderRadius: 6, padding: 8, fontSize: 14, fontWeight: '600' }, 
