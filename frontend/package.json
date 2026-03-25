@@ -13,7 +13,7 @@
   "dependencies": {
     "expo-av": "~14.0.1",
     "react-native-body-highlighter": "^2.0.2",
-    "react-native-svg": "14.1.0",
+    "react-native-svg": "^15.8.0",
     "expo-notifications": "~0.28.1",
     "expo-device": "~6.0.2",
     "@babel/runtime": "^7.20.6",
