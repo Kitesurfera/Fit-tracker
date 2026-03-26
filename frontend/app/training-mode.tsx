@@ -96,35 +96,64 @@ export default function TrainingModeScreen() {
   const [isWorking, setIsWorking] = useState(false);
   const workIntervalRef = useRef<any>(null);
 
-  // --- SISTEMA DE AUDIO LOCAL ---
+  // --- REFERENCIAS PARA PRECARGAR LOS SONIDOS ---
+  const beepSoundRef = useRef<Audio.Sound | null>(null);
+  const endSoundRef = useRef<Audio.Sound | null>(null);
+
+  // --- EFECTO DE PRECARGA DE AUDIO ---
+  useEffect(() => {
+    async function initAudio() {
+      try {
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: true,
+        });
+
+        // Cargamos los archivos desde tu carpeta assets externa a app
+        const { sound: beep } = await Audio.Sound.createAsync(require('../assets/beep.mp3'));
+        const { sound: end } = await Audio.Sound.createAsync(require('../assets/end.mp3'));
+        
+        beepSoundRef.current = beep;
+        endSoundRef.current = end;
+      } catch (e) {
+        console.log("Error cargando audios locales:", e);
+      }
+    }
+
+    initAudio();
+
+    // Limpiamos memoria al desmontar
+    return () => {
+      if (beepSoundRef.current) beepSoundRef.current.unloadAsync();
+      if (endSoundRef.current) endSoundRef.current.unloadAsync();
+    };
+  }, []);
+
+  // --- SISTEMA DE AUDIO OPTIMIZADO ---
   const playSound = async (type: 'beep' | 'end') => {
     try {
-      // ⚠️ CAMBIA LOS NOMBRES AQUÍ SI TUS ARCHIVOS SE LLAMAN DIFERENTE ⚠️
-      const soundAsset = type === 'beep'
-        ? require('../assets/beep.mp3') 
-        : require('../assets/finish.mp3'); 
-
-      const { sound } = await Audio.Sound.createAsync(soundAsset, { shouldPlay: true });
+      const soundObj = type === 'beep' ? beepSoundRef.current : endSoundRef.current;
       
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          sound.unloadAsync();
-        }
-      });
+      if (soundObj) {
+        await soundObj.replayAsync(); 
+      }
     } catch (error) {
       console.log(`Error al reproducir el sonido ${type}:`, error);
     }
   };
 
-  // Efectos para la cuenta atrás (5, 4, 3, 2, 1)
+  // --- EFECTOS DE CUENTA ATRÁS (Últimos 5 segundos) ---
   useEffect(() => {
-    if (isWorking && workSeconds > 0 && workSeconds <= 5) playSound('beep');
+    if (isWorking && workSeconds > 0 && workSeconds <= 5) {
+      playSound('beep');
+    }
   }, [workSeconds, isWorking]);
 
   useEffect(() => {
-    if (isResting && restSeconds > 0 && restSeconds <= 5) playSound('beep');
+    if (isResting && restSeconds > 0 && restSeconds <= 5) {
+      playSound('beep');
+    }
   }, [restSeconds, isResting]);
-  // ---------------------------------
 
   const startRestTimer = (seconds: number) => {
     stopWorkTimer();
@@ -251,7 +280,7 @@ export default function TrainingModeScreen() {
       restIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
         if (remaining <= 0) {
-          playSound('end'); // <--- SONIDO DE FINAL DE DESCANSO
+          playSound('end'); // --- SONIDO FINAL ---
           stopRestTimer();
         } else {
           setRestSeconds(remaining);
@@ -267,7 +296,7 @@ export default function TrainingModeScreen() {
       workIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((workTargetTime - Date.now()) / 1000);
         if (remaining <= 0) {
-          playSound('end'); // <--- SONIDO DE FINAL DE TRABAJO
+          playSound('end'); // --- SONIDO FINAL ---
           handleWorkComplete();
         } else {
           setWorkSeconds(remaining);
