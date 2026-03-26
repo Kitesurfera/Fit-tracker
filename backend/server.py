@@ -327,7 +327,9 @@ async def register(data: UserRegister):
         "name": data.name, "role": "trainer", "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.users.insert_one(user)
-    return {"token": create_token(user_id, "trainer"), "user": {k: v for k, v in user.items() if k not in ('password', '_id')}}
+    
+    user_data = {k: v for k, v in user.items() if k not in ('password', '_id')}
+    return {"token": create_token(user_id, "trainer"), "user": user_data}
 
 @api_router.post("/auth/login")
 async def login(data: UserLogin):
@@ -335,14 +337,18 @@ async def login(data: UserLogin):
     if not user or not verify_password(data.password, user['password']):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
     token = create_token(user['id'], user['role'])
+    
+    user_data = {k: v for k, v in user.items() if k not in ('_id', 'password')}
+    
     return {
         "token": token,
-        "user": {
-            "id": user['id'], "email": user['email'], "name": user['name'],
-            "role": user['role'], "is_injured": user.get("is_injured", False),
-            "gender": user.get("gender")
-        }
+        "user": user_data
     }
+
+@api_router.get("/auth/me")
+async def get_me(user=Depends(get_current_user)):
+    user_data = {k: v for k, v in user.items() if k not in ('_id', 'password')}
+    return {"user": user_data}
 
 @api_router.put("/profile")
 async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
