@@ -7,7 +7,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-// IMPORTAMOS AUDIO DE EXPO-AV
 import { Video, ResizeMode, Audio } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
@@ -97,41 +96,35 @@ export default function TrainingModeScreen() {
   const [isWorking, setIsWorking] = useState(false);
   const workIntervalRef = useRef<any>(null);
 
-  // --- NUEVA FUNCIÓN PARA REPRODUCIR EL BEEP ---
-  const playBeep = async () => {
+  // --- SISTEMA DE AUDIO LOCAL ---
+  const playSound = async (type: 'beep' | 'end') => {
     try {
-      // IDEAL: Cambiar esta URL por un require local para evitar latencia de red en la app final.
-      // Ejemplo: require('../assets/beep.mp3')
-      const beepUrl = 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg'; 
-      const { sound } = await Audio.Sound.createAsync(
-        { uri: beepUrl },
-        { shouldPlay: true }
-      );
+      // ⚠️ CAMBIA LOS NOMBRES AQUÍ SI TUS ARCHIVOS SE LLAMAN DIFERENTE ⚠️
+      const soundAsset = type === 'beep'
+        ? require('./assets/beep.mp3') 
+        : require('./assets/finish.mp3'); 
+
+      const { sound } = await Audio.Sound.createAsync(soundAsset, { shouldPlay: true });
       
-      // Limpiamos el audio de la memoria en cuanto termine
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
           sound.unloadAsync();
         }
       });
     } catch (error) {
-      console.log("Error al reproducir el beep:", error);
+      console.log(`Error al reproducir el sonido ${type}:`, error);
     }
   };
 
-  // --- EFECTOS QUE ESCUCHAN LOS ÚLTIMOS 5 SEGUNDOS ---
+  // Efectos para la cuenta atrás (5, 4, 3, 2, 1)
   useEffect(() => {
-    if (isWorking && workSeconds > 0 && workSeconds <= 5) {
-      playBeep();
-    }
+    if (isWorking && workSeconds > 0 && workSeconds <= 5) playSound('beep');
   }, [workSeconds, isWorking]);
 
   useEffect(() => {
-    if (isResting && restSeconds > 0 && restSeconds <= 5) {
-      playBeep();
-    }
+    if (isResting && restSeconds > 0 && restSeconds <= 5) playSound('beep');
   }, [restSeconds, isResting]);
-  // ----------------------------------------------------
+  // ---------------------------------
 
   const startRestTimer = (seconds: number) => {
     stopWorkTimer();
@@ -252,11 +245,13 @@ export default function TrainingModeScreen() {
     return () => { isMounted = false; };
   }, [stableWorkoutId]);
 
+  // Efecto Temporizador Descanso
   useEffect(() => {
     if (isResting && restTargetTime) {
       restIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
         if (remaining <= 0) {
+          playSound('end'); // <--- SONIDO DE FINAL DE DESCANSO
           stopRestTimer();
         } else {
           setRestSeconds(remaining);
@@ -266,11 +261,13 @@ export default function TrainingModeScreen() {
     return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
   }, [isResting, restTargetTime]);
 
+  // Efecto Temporizador Trabajo
   useEffect(() => {
     if (isWorking && workTargetTime) {
       workIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((workTargetTime - Date.now()) / 1000);
         if (remaining <= 0) {
+          playSound('end'); // <--- SONIDO DE FINAL DE TRABAJO
           handleWorkComplete();
         } else {
           setWorkSeconds(remaining);
