@@ -7,43 +7,32 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Video, ResizeMode } from 'expo-av';
+// IMPORTAMOS AUDIO DE EXPO-AV
+import { Video, ResizeMode, Audio } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useKeepAwake } from 'expo-keep-awake';
-import Svg, { Circle } from 'react-native-svg'; // <-- AÑADIDO PARA EL ANILLO
+import Svg, { Circle } from 'react-native-svg';
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
 const SLEEP_HOURS_OPTIONS = ['<6', '6', '7', '8', '9+'];
 
-// --- FUNCIÓN TRADUCTORA DE TIEMPO ---
-// Convierte "1m 30s", "90", "1:30", "2m" a segundos enteros (ej. 90)
 const parseTimeToSeconds = (timeStr: string | number | undefined | null): number => {
   if (!timeStr) return 0;
   const str = String(timeStr).toLowerCase().trim();
-  
-  // Si es solo un número puro (ej. "90")
   if (/^\d+$/.test(str)) return parseInt(str, 10);
-
   let totalSeconds = 0;
-
-  // Busca minutos (ej. "1m", "1 min")
   const minMatch = str.match(/(\d+)\s*(m|min)/);
   if (minMatch) totalSeconds += parseInt(minMatch[1], 10) * 60;
-
-  // Busca segundos (ej. "30s", "30 seg")
   const secMatch = str.match(/(\d+)\s*(s|seg)/);
   if (secMatch) totalSeconds += parseInt(secMatch[1], 10);
-
-  // Soporte para formato "1:30"
   const colonMatch = str.match(/^(\d+):(\d{2})$/);
   if (colonMatch) {
     totalSeconds += parseInt(colonMatch[1], 10) * 60;
     totalSeconds += parseInt(colonMatch[2], 10);
   }
-
   return totalSeconds;
 };
 
@@ -95,25 +84,60 @@ export default function TrainingModeScreen() {
   const [sleepHours, setSleepHours] = useState<string>('');
   const [observations, setObservations] = useState('');
   
-  // --- TEMPORIZADORES BLINDADOS ---
   const [restTargetTime, setRestTargetTime] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
-  const [restTotalSeconds, setRestTotalSeconds] = useState(1); // NUEVO: Para calcular el % del anillo
+  const [restTotalSeconds, setRestTotalSeconds] = useState(1);
   const [isResting, setIsResting] = useState(false);
   const [restType, setRestType] = useState<'set' | 'exercise' | null>(null);
   const restIntervalRef = useRef<any>(null);
 
   const [workTargetTime, setWorkTargetTime] = useState<number | null>(null);
   const [workSeconds, setWorkSeconds] = useState(0);
-  const [workTotalSeconds, setWorkTotalSeconds] = useState(1); // NUEVO: Para calcular el % del anillo
+  const [workTotalSeconds, setWorkTotalSeconds] = useState(1);
   const [isWorking, setIsWorking] = useState(false);
   const workIntervalRef = useRef<any>(null);
+
+  // --- NUEVA FUNCIÓN PARA REPRODUCIR EL BEEP ---
+  const playBeep = async () => {
+    try {
+      // IDEAL: Cambiar esta URL por un require local para evitar latencia de red en la app final.
+      // Ejemplo: require('../assets/beep.mp3')
+      const beepUrl = 'https://actions.google.com/sounds/v1/alarms/beep_short.ogg'; 
+      const { sound } = await Audio.Sound.createAsync(
+        { uri: beepUrl },
+        { shouldPlay: true }
+      );
+      
+      // Limpiamos el audio de la memoria en cuanto termine
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync();
+        }
+      });
+    } catch (error) {
+      console.log("Error al reproducir el beep:", error);
+    }
+  };
+
+  // --- EFECTOS QUE ESCUCHAN LOS ÚLTIMOS 5 SEGUNDOS ---
+  useEffect(() => {
+    if (isWorking && workSeconds > 0 && workSeconds <= 5) {
+      playBeep();
+    }
+  }, [workSeconds, isWorking]);
+
+  useEffect(() => {
+    if (isResting && restSeconds > 0 && restSeconds <= 5) {
+      playBeep();
+    }
+  }, [restSeconds, isResting]);
+  // ----------------------------------------------------
 
   const startRestTimer = (seconds: number) => {
     stopWorkTimer();
     setRestTargetTime(Date.now() + seconds * 1000);
     setRestSeconds(seconds);
-    setRestTotalSeconds(seconds); // Guardamos el total para el anillo
+    setRestTotalSeconds(seconds); 
     setIsResting(true);
   };
 
@@ -228,7 +252,6 @@ export default function TrainingModeScreen() {
     return () => { isMounted = false; };
   }, [stableWorkoutId]);
 
-  // Efecto Temporizador Descanso
   useEffect(() => {
     if (isResting && restTargetTime) {
       restIntervalRef.current = setInterval(() => {
@@ -243,7 +266,6 @@ export default function TrainingModeScreen() {
     return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
   }, [isResting, restTargetTime]);
 
-  // Efecto Temporizador Trabajo (Ejercicio)
   useEffect(() => {
     if (isWorking && workTargetTime) {
       workIntervalRef.current = setInterval(() => {
@@ -258,7 +280,6 @@ export default function TrainingModeScreen() {
     return () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); };
   }, [isWorking, workTargetTime]);
 
-  // Inicializador del Temporizador de Trabajo (Fuerza)
   useEffect(() => {
     if (!isHiit && workout && !isResting) {
       const currentSets = setsStatus[currentExIndex] || [];
@@ -267,8 +288,7 @@ export default function TrainingModeScreen() {
         const dur = parseTimeToSeconds(workout.exercises[currentExIndex]?.duration);
         if (dur > 0 && !isWorking && workTargetTime === null) {
           setWorkSeconds(dur);
-          setWorkTotalSeconds(dur); // NUEVO
-          // Auto-start timer
+          setWorkTotalSeconds(dur);
           setWorkTargetTime(Date.now() + dur * 1000);
           setIsWorking(true);
         }
@@ -276,9 +296,8 @@ export default function TrainingModeScreen() {
         stopWorkTimer();
       }
     }
-  }, [currentExIndex, setsStatus, isResting, workout, isHiit]); // CORREGIDO: AÑADIDOS workout, isHiit
+  }, [currentExIndex, setsStatus, isResting, workout, isHiit]);
 
-  // Inicializador del Temporizador de Trabajo (HIIT)
   useEffect(() => {
     if (isHiit && workout && hiitPhase === 'work' && !isResting) {
       const currentBlock = workout.exercises[hiitBlockIdx];
@@ -287,14 +306,14 @@ export default function TrainingModeScreen() {
       const dur = parseTimeToSeconds(currentEx?.duration);
       if (dur > 0 && !isWorking && workTargetTime === null) {
         setWorkSeconds(dur);
-        setWorkTotalSeconds(dur); // NUEVO
+        setWorkTotalSeconds(dur);
         setWorkTargetTime(Date.now() + dur * 1000);
         setIsWorking(true);
       } else if (dur === 0) {
         stopWorkTimer();
       }
     }
-  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit]); // CORREGIDO: AÑADIDOS workout, isHiit
+  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit]);
 
   useEffect(() => {
     if (!isResting && workout) {
@@ -507,7 +526,6 @@ export default function TrainingModeScreen() {
     </Modal>
   );
 
-  // --- NUEVA UI UNIFICADA PARA EL ANILLO DE TIEMPO (TRABAJO Y DESCANSO) ---
   const renderUnifiedTimerUI = (exName: string) => {
     const isRest = isResting;
     const current = isRest ? restSeconds : workSeconds;
@@ -528,7 +546,6 @@ export default function TrainingModeScreen() {
       else label = 'DESCANSO';
     }
 
-    // Configuración del SVG (Anillo descoloreándose)
     const radius = 85;
     const strokeWidth = 12;
     const circumference = 2 * Math.PI * radius;
@@ -540,9 +557,7 @@ export default function TrainingModeScreen() {
 
         <View style={styles.timerCircleWrapper}>
           <Svg width="200" height="200" viewBox="0 0 200 200" style={{ position: 'absolute' }}>
-            {/* Fondo translúcido del anillo */}
             <Circle cx="100" cy="100" r={radius} stroke={ringColor} strokeWidth={strokeWidth} strokeOpacity={0.15} fill="none" />
-            {/* Anillo de progreso activo */}
             <Circle
               cx="100" cy="100" r={radius}
               stroke={ringColor} strokeWidth={strokeWidth} fill="none"
@@ -771,7 +786,6 @@ export default function TrainingModeScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
-          {/* AQUI RENDERIZAMOS EL NUEVO TIMER UNIFICADO (TRABAJO Y DESCANSO) */}
           {(isResting || (hiitPhase === 'work' && currentExInHiit?.duration)) 
             ? renderUnifiedTimerUI(currentExInHiit?.name || 'EJERCICIO') 
             : null}
@@ -831,7 +845,6 @@ export default function TrainingModeScreen() {
               })}
             </View>
 
-            {/* SE ELIMINÓ EL BLOQUE VIEJO DE isResting, AHORA LO MANEJA renderUnifiedTimerUI ARRIBA */}
             {!isResting && (
               <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 20, marginBottom: 20, marginTop: 10 }}>
                 <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444', flex: 1, paddingVertical: 14 }]} onPress={skipHiitEx}>
@@ -869,7 +882,6 @@ export default function TrainingModeScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
 
-        {/* TIMER UNIFICADO (TRABAJO Y DESCANSO) TAMBIÉN PARA MODO FUERZA */}
         {(isResting || (nextPendingSet !== -1 && currentEx?.duration)) 
           ? renderUnifiedTimerUI(currentEx?.name || 'EJERCICIO') 
           : null}
@@ -963,8 +975,6 @@ export default function TrainingModeScreen() {
             )}
           </View>
 
-          {/* SE ELIMINÓ EL BLOQUE VIEJO DE isResting, AHORA ESTÁ ARRIBA EN renderUnifiedTimerUI */}
-
           {nextPendingSet !== -1 && !isResting ? (
             <View style={[styles.setActions, { marginTop: 20 }]}>
               <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444' }]} onPress={skipSet}><Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} /><Text style={[styles.skipSetText, { color: colors.error || '#EF4444' }]}>Saltar</Text></TouchableOpacity>
@@ -1001,7 +1011,6 @@ const styles = StyleSheet.create({
   hiitCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, hiitHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, hiitList: { padding: 16, gap: 12 }, hiitExRowWrapper: { overflow: 'hidden' }, hiitExRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12 }, hiitCheck: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }, hiitExName: { fontSize: 16, fontWeight: '600' }, hiitExDur: { fontSize: 16, fontWeight: '700' }, hiitRefBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: 8, alignSelf: 'flex-start' }, feedbackInput: { borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 60, textAlignVertical: 'top', fontSize: 14 },
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 4 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, fullVideo: { width: '100%', height: '100%' }, closeModalBtn: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
   
-  // --- NUEVOS ESTILOS PARA EL TIMER UNIFICADO (SVG) ---
   unifiedTimerContainer: { alignItems: 'center', justifyContent: 'center', marginVertical: 20 },
   timerCircleWrapper: { width: 200, height: 200, justifyContent: 'center', alignItems: 'center', position: 'relative' },
   workTimerTitle: { fontSize: 22, fontWeight: '900', marginBottom: 20, letterSpacing: 1 },
