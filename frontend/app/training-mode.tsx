@@ -101,8 +101,8 @@ export default function TrainingModeScreen() {
     try {
       // ⚠️ CAMBIA LOS NOMBRES AQUÍ SI TUS ARCHIVOS SE LLAMAN DIFERENTE ⚠️
       const soundAsset = type === 'beep'
-        ? require('./assets/beep.mp3') 
-        : require('./assets/finish.mp3'); 
+        ? require('../assets/beep.mp3') 
+        : require('../assets/finish.mp3'); 
 
       const { sound } = await Audio.Sound.createAsync(soundAsset, { shouldPlay: true });
       
