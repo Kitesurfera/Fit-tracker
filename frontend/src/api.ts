@@ -26,6 +26,25 @@ export const api = {
     return res.json();
   },
 
+  // Iniciar sesión o registrarse con el token de Google
+  googleLogin: async (googleToken: string, role: string = 'athlete') => {
+    try {
+      const response = await fetch(`${API_URL}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: googleToken, role }),
+      });
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.detail || 'Error al iniciar sesión con Google');
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('API Google Login Error:', error);
+      throw error;
+    }
+  },
+
   postWellness: async (data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/wellness`, {
