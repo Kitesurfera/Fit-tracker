@@ -8,6 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode, Audio } from 'expo-av';
+import * as Speech from 'expo-speech';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // <-- IMPORTANTE
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
@@ -96,15 +98,31 @@ export default function TrainingModeScreen() {
   const [isWorking, setIsWorking] = useState(false);
   const workIntervalRef = useRef<any>(null);
 
-  // --- REFERENCIAS PARA PRECARGAR LOS SONIDOS ---
+  // --- REFERENCIAS DE AUDIO Y PREFERENCIA DE VOZ ---
   const beepSoundRef = useRef<Audio.Sound | null>(null);
   const finishSoundRef = useRef<Audio.Sound | null>(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
 
-  // --- EFECTO DE PRECARGA DE AUDIO OPTIMIZADO CON LOGS ---
+  // --- CARGAR PREFERENCIA DE VOZ ---
+  useEffect(() => {
+    AsyncStorage.getItem('voice_enabled').then(val => {
+      if (val === 'false') setVoiceEnabled(false);
+    });
+  }, []);
+
+  // --- FUNCIÓN DE VOZ (EXPO-SPEECH CON FILTRO) ---
+  const announce = (text: string) => {
+    if (!voiceEnabled) return; // Si está desactivado, no hace nada
+    Speech.stop(); 
+    Speech.speak(text, {
+      language: 'es-ES',
+      rate: 0.95, 
+    });
+  };
+
   useEffect(() => {
     async function initAudio() {
       try {
-        console.log("Iniciando carga de audios...");
         await Audio.setAudioModeAsync({
           playsInSilentModeIOS: true,
           staysActiveInBackground: true,
@@ -115,10 +133,8 @@ export default function TrainingModeScreen() {
         
         beepSoundRef.current = beep;
         finishSoundRef.current = finish;
-        
-        console.log("✅ Audios cargados correctamente en memoria");
       } catch (e) {
-        console.log("❌ Error fatal cargando audios:", e);
+        console.log("Error cargando audios locales:", e);
       }
     }
 
@@ -127,35 +143,58 @@ export default function TrainingModeScreen() {
     return () => {
       if (beepSoundRef.current) beepSoundRef.current.unloadAsync();
       if (finishSoundRef.current) finishSoundRef.current.unloadAsync();
+      Speech.stop(); 
     };
   }, []);
 
-  // --- SISTEMA DE AUDIO ---
   const playSound = async (type: 'beep' | 'finish') => {
     try {
       const soundObj = type === 'beep' ? beepSoundRef.current : finishSoundRef.current;
-      if (soundObj) {
-        await soundObj.replayAsync(); 
-      } else {
-        console.log(`⚠️ Intento de reproducir ${type} pero el objeto de sonido es null`);
-      }
+      if (soundObj) await soundObj.replayAsync(); 
     } catch (error) {
-      console.log(`❌ Error al reproducir el sonido ${type}:`, error);
+      console.log(`Error al reproducir el sonido ${type}:`, error);
     }
   };
 
-  // --- EFECTOS DE CUENTA ATRÁS ---
+  // --- EFECTOS DE VOZ Y CUENTA ATRÁS ---
   useEffect(() => {
-    if (isWorking && workSeconds > 0 && workSeconds <= 5) {
-      playSound('beep');
-    }
+    if (isWorking && workSeconds > 0 && workSeconds <= 5) playSound('beep');
   }, [workSeconds, isWorking]);
 
   useEffect(() => {
-    if (isResting && restSeconds > 0 && restSeconds <= 5) {
-      playSound('beep');
-    }
+    if (isResting && restSeconds > 0 && restSeconds <= 5) playSound('beep');
   }, [restSeconds, isResting]);
+
+  useEffect(() => {
+    if (isResting && !finished && !workout?.completed) {
+      if (isHiit) {
+        if (hiitPhase === 'rest_block') announce('Descanso entre vueltas.');
+        else if (hiitPhase === 'rest_next_block') announce('Prepara el siguiente bloque.');
+        else announce('Descanso.');
+      } else {
+        announce('Descanso.');
+      }
+    }
+  }, [isResting, hiitPhase, isHiit, finished, workout]);
+
+  useEffect(() => {
+    if (!isHiit && workout && !isResting && !finished && !workout.completed) {
+      const currentEx = workout.exercises?.[currentExIndex];
+      if (currentEx) {
+        announce(`Siguiente ejercicio: ${currentEx.name}`);
+      }
+    }
+  }, [currentExIndex, isResting, isHiit, workout, finished]);
+
+  useEffect(() => {
+    if (isHiit && workout && hiitPhase === 'work' && !isResting && !finished && !workout.completed) {
+      const currentEx = workout.exercises?.[hiitBlockIdx]?.hiit_exercises?.[hiitExIdx];
+      if (currentEx) {
+        announce(currentEx.name);
+      }
+    }
+  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, isHiit, workout, finished]);
+
 
   const startRestTimer = (seconds: number) => {
     stopWorkTimer();
@@ -276,7 +315,6 @@ export default function TrainingModeScreen() {
     return () => { isMounted = false; };
   }, [stableWorkoutId]);
 
-  // Efecto Temporizador Descanso
   useEffect(() => {
     if (isResting && restTargetTime) {
       restIntervalRef.current = setInterval(() => {
@@ -292,7 +330,6 @@ export default function TrainingModeScreen() {
     return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
   }, [isResting, restTargetTime]);
 
-  // Efecto Temporizador Trabajo
   useEffect(() => {
     if (isWorking && workTargetTime) {
       workIntervalRef.current = setInterval(() => {
@@ -794,9 +831,6 @@ export default function TrainingModeScreen() {
     );
   }
 
-  // ==========================================
-  // RENDER: HIIT WORKOUT
-  // ==========================================
   if (isHiit) {
     const currentBlock = workout.exercises?.[hiitBlockIdx];
     if (!currentBlock) return null;
@@ -895,9 +929,6 @@ export default function TrainingModeScreen() {
     );
   }
 
-  // ==========================================
-  // RENDER: FUERZA / NORMAL WORKOUT
-  // ==========================================
   const exercises = workout.exercises || [];
   const currentEx = exercises[currentExIndex];
   const currentSets = setsStatus[currentExIndex] || [];
