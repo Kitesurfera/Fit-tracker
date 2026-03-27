@@ -9,7 +9,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
-import AsyncStorage from '@react-native-async-storage/async-storage'; // <-- IMPORTANTE
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
@@ -103,21 +103,31 @@ export default function TrainingModeScreen() {
   const finishSoundRef = useRef<Audio.Sound | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
 
-  // --- CARGAR PREFERENCIA DE VOZ ---
+  // --- CARGAR PREFERENCIA DE VOZ (BLINDADO) ---
   useEffect(() => {
-    AsyncStorage.getItem('voice_enabled').then(val => {
-      if (val === 'false') setVoiceEnabled(false);
-    });
+    const loadVoicePreference = async () => {
+      try {
+        const val = await AsyncStorage.getItem('voice_enabled');
+        if (val === 'false') setVoiceEnabled(false);
+      } catch (e) {
+        console.log("⚠️ Error cargando preferencia de voz:", e);
+      }
+    };
+    loadVoicePreference();
   }, []);
 
-  // --- FUNCIÓN DE VOZ (EXPO-SPEECH CON FILTRO) ---
-  const announce = (text: string) => {
-    if (!voiceEnabled) return; // Si está desactivado, no hace nada
-    Speech.stop(); 
-    Speech.speak(text, {
-      language: 'es-ES',
-      rate: 0.95, 
-    });
+  // --- FUNCIÓN DE VOZ PROTEGIDA ---
+  const announce = async (text: string) => {
+    if (!voiceEnabled) return; 
+    try {
+      Speech.stop(); 
+      Speech.speak(text, {
+        language: 'es-ES',
+        rate: 0.95, 
+      });
+    } catch (e) {
+      console.log("⚠️ Error ejecutando Speech:", e);
+    }
   };
 
   useEffect(() => {
@@ -143,7 +153,7 @@ export default function TrainingModeScreen() {
     return () => {
       if (beepSoundRef.current) beepSoundRef.current.unloadAsync();
       if (finishSoundRef.current) finishSoundRef.current.unloadAsync();
-      Speech.stop(); 
+      try { Speech.stop(); } catch(e) {} // Protegido al desmontar
     };
   }, []);
 
@@ -833,7 +843,15 @@ export default function TrainingModeScreen() {
 
   if (isHiit) {
     const currentBlock = workout.exercises?.[hiitBlockIdx];
-    if (!currentBlock) return null;
+    
+    // --- PARACAÍDAS ANTI-PANTALLA NEGRA ---
+    if (!currentBlock) {
+      return (
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+          <Text style={[styles.errorText, { color: colors.textPrimary }]}>Cargando bloque HIIT...</Text>
+        </SafeAreaView>
+      );
+    }
 
     const currentExInHiit = currentBlock.hiit_exercises[hiitExIdx];
 
@@ -931,6 +949,16 @@ export default function TrainingModeScreen() {
 
   const exercises = workout.exercises || [];
   const currentEx = exercises[currentExIndex];
+  
+  // --- PARACAÍDAS ANTI-PANTALLA NEGRA 2 ---
+  if (!currentEx) {
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={[styles.errorText, { color: colors.textPrimary }]}>Cargando ejercicio...</Text>
+      </SafeAreaView>
+    );
+  }
+
   const currentSets = setsStatus[currentExIndex] || [];
   const nextPendingSet = currentSets.findIndex(s => s === 'pending');
   const progress = exercises.length > 0 ? ((currentExIndex) / exercises.length) * 100 : 0;
