@@ -22,6 +22,10 @@ import time
 # IMPORTACIONES PARA PUSH DE EXPO
 from exponent_server_sdk import PushClient, PushMessage, PushServerError
 
+# IMPORTACIONES PARA GOOGLE OAUTH
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
@@ -35,6 +39,9 @@ db = client[os.environ['DB_NAME']]
 JWT_SECRET = os.environ.get('JWT_SECRET', 'fitness-tracker-secret-key-2026')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 72
+
+# REEMPLAZA ESTO CON TU CLIENT ID DE GOOGLE CLOUD
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', 'TU_CLIENT_ID_DE_GOOGLE.apps.googleusercontent.com')
 
 security = HTTPBearer()
 app = FastAPI()
@@ -93,6 +100,11 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
+# Modelo para recibir el token de Google
+class GoogleAuth(BaseModel):
+    token: str
+    role: Optional[str] = "trainer" # Por defecto, si es cuenta nueva, que sea entrenador para explorar
+
 class AthleteCreate(BaseModel):
     email: str
     password: str
@@ -128,8 +140,8 @@ class ProfileUpdate(BaseModel):
 
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
-    date: Optional[str] = None        # Añadido para poder editar la fecha
-    athlete_id: Optional[str] = None  # Añadido por seguridad
+    date: Optional[str] = None        
+    athlete_id: Optional[str] = None  
     exercises: Optional[List[dict]] = None
     notes: Optional[str] = None
     completed: Optional[bool] = None
@@ -344,6 +356,58 @@ async def login(data: UserLogin):
         "token": token,
         "user": user_data
     }
+
+# --- NUEVA RUTA: LOGIN CON GOOGLE ---
+@api_router.post("/auth/google")
+async def google_login(data: GoogleAuth):
+    try:
+        # 1. Verificamos matemáticamente el token usando la librería oficial de Google
+        id_info = id_token.verify_oauth2_token(
+            data.token, 
+            google_requests.Request(), 
+            GOOGLE_CLIENT_ID
+        )
+
+        # 2. Sacamos los datos del usuario que nos da Google
+        email = id_info.get('email')
+        name = id_info.get('name', 'Usuario de Google')
+        
+        if not email:
+            raise HTTPException(status_code=400, detail="Token de Google no contiene email")
+
+        # 3. Buscamos si el usuario ya existe (¡La clave de la sincronización!)
+        user = await db.users.find_one({"email": email})
+
+        # 4. Si no existe, lo creamos sobre la marcha
+        if not user:
+            user_id = str(uuid.uuid4())
+            user = {
+                "id": user_id,
+                "email": email,
+                "password": hash_password(str(uuid.uuid4())), # Contraseña irrecuperable al azar
+                "name": name,
+                "role": data.role, 
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }
+            await db.users.insert_one(user)
+
+        # 5. Generamos NUESTRO token (el JWT que el frontend ya sabe usar)
+        token = create_token(user['id'], user['role'])
+        
+        user_data = {k: v for k, v in user.items() if k not in ('_id', 'password')}
+        
+        return {
+            "token": token,
+            "user": user_data
+        }
+
+    except ValueError as e:
+        logger.error(f"Error verificando token de Google: {str(e)}")
+        raise HTTPException(status_code=401, detail="Token de Google inválido")
+    except Exception as e:
+        logger.error(f"Fallo general en Google Login: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error interno procesando el login")
+
 
 @api_router.get("/auth/me")
 async def get_me(user=Depends(get_current_user)):
