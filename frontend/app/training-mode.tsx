@@ -98,24 +98,27 @@ export default function TrainingModeScreen() {
 
   // --- REFERENCIAS PARA PRECARGAR LOS SONIDOS ---
   const beepSoundRef = useRef<Audio.Sound | null>(null);
-  const endSoundRef = useRef<Audio.Sound | null>(null);
+  const finishSoundRef = useRef<Audio.Sound | null>(null);
 
-  // --- EFECTO DE PRECARGA DE AUDIO ---
+  // --- EFECTO DE PRECARGA DE AUDIO OPTIMIZADO CON LOGS ---
   useEffect(() => {
     async function initAudio() {
       try {
+        console.log("Iniciando carga de audios...");
         await Audio.setAudioModeAsync({
           playsInSilentModeIOS: true,
           staysActiveInBackground: true,
         });
 
         const { sound: beep } = await Audio.Sound.createAsync(require('../assets/beep.mp3'));
-        const { sound: end } = await Audio.Sound.createAsync(require('../assets/end.mp3'));
+        const { sound: finish } = await Audio.Sound.createAsync(require('../assets/finish.mp3'));
         
         beepSoundRef.current = beep;
-        endSoundRef.current = end;
+        finishSoundRef.current = finish;
+        
+        console.log("✅ Audios cargados correctamente en memoria");
       } catch (e) {
-        console.log("Error cargando audios locales:", e);
+        console.log("❌ Error fatal cargando audios:", e);
       }
     }
 
@@ -123,19 +126,21 @@ export default function TrainingModeScreen() {
 
     return () => {
       if (beepSoundRef.current) beepSoundRef.current.unloadAsync();
-      if (endSoundRef.current) endSoundRef.current.unloadAsync();
+      if (finishSoundRef.current) finishSoundRef.current.unloadAsync();
     };
   }, []);
 
-  // --- SISTEMA DE AUDIO OPTIMIZADO ---
-  const playSound = async (type: 'beep' | 'end') => {
+  // --- SISTEMA DE AUDIO ---
+  const playSound = async (type: 'beep' | 'finish') => {
     try {
-      const soundObj = type === 'beep' ? beepSoundRef.current : endSoundRef.current;
+      const soundObj = type === 'beep' ? beepSoundRef.current : finishSoundRef.current;
       if (soundObj) {
         await soundObj.replayAsync(); 
+      } else {
+        console.log(`⚠️ Intento de reproducir ${type} pero el objeto de sonido es null`);
       }
     } catch (error) {
-      console.log(`Error al reproducir el sonido ${type}:`, error);
+      console.log(`❌ Error al reproducir el sonido ${type}:`, error);
     }
   };
 
@@ -277,7 +282,7 @@ export default function TrainingModeScreen() {
       restIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
         if (remaining <= 0) {
-          playSound('end');
+          playSound('finish');
           stopRestTimer();
         } else {
           setRestSeconds(remaining);
@@ -293,7 +298,7 @@ export default function TrainingModeScreen() {
       workIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((workTargetTime - Date.now()) / 1000);
         if (remaining <= 0) {
-          playSound('end');
+          playSound('finish');
           handleWorkComplete();
         } else {
           setWorkSeconds(remaining);
@@ -816,7 +821,6 @@ export default function TrainingModeScreen() {
             ? renderUnifiedTimerUI(currentExInHiit?.name || 'EJERCICIO') 
             : null}
 
-          {/* BOTONES HIIT MOVIDOS DIRECTAMENTE DEBAJO DEL TEMPORIZADOR */}
           {!isResting && (
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
               <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444', flex: 1, paddingVertical: 14 }]} onPress={skipHiitEx}>
@@ -916,7 +920,6 @@ export default function TrainingModeScreen() {
           ? renderUnifiedTimerUI(currentEx?.name || 'EJERCICIO') 
           : null}
 
-        {/* BOTONES NORMALES MOVIDOS DIRECTAMENTE DEBAJO DEL TEMPORIZADOR */}
         {nextPendingSet !== -1 && !isResting && (
           <View style={[styles.setActions, { marginBottom: 4 }]}>
             <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444' }]} onPress={skipSet}>
@@ -1019,7 +1022,6 @@ export default function TrainingModeScreen() {
             )}
           </View>
 
-          {/* MENSAJE DE COMPLETADO DE LA TARJETA DEL FONDO */}
           {nextPendingSet === -1 ? (
             <View style={[styles.allDoneBadge, { backgroundColor: (colors.success || '#10B981') + '12', marginTop: 20 }]}><Ionicons name="checkmark-circle" size={18} color={colors.success || '#10B981'} /><Text style={{ color: colors.success || '#10B981', fontSize: 14, fontWeight: '600' }}>Todas completadas o saltadas</Text></View>
           ) : null}
