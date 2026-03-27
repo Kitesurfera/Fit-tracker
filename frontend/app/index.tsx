@@ -16,9 +16,19 @@ import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/hooks/useTheme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { api } from '../src/api';
+
+// --- IMPORTACIONES PARA GOOGLE OAUTH ---
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
+
+// Cierra la sesión del navegador web de Expo si se queda pillada
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
-  const { user, loading, login, register } = useAuth();
+  // ⚠️ Asegúrate de tener una función en AuthContext que acepte el token directamente
+  // Por ejemplo: loginWithToken(token, user)
+  const { user, loading, login, register, loginWithToken } = useAuth() as any; 
   const router = useRouter();
   const { colors } = useTheme();
 
@@ -30,6 +40,45 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  // --- CONFIGURACIÓN DE GOOGLE OAUTH ---
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com',
+  });
+
+  // Escucha la respuesta del navegador de Google
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      if (id_token) {
+        handleGoogleLoginToBackend(id_token);
+      }
+    } else if (response?.type === 'error') {
+      setError("No se pudo completar el inicio de sesión con Google.");
+    }
+  }, [response]);
+
+  const handleGoogleLoginToBackend = async (idToken: string) => {
+    setIsGoogleLoading(true);
+    setError('');
+    try {
+      // Si está en modo registro, pedimos rol de trainer, si no, atleta
+      const role = isLoginValue ? 'athlete' : 'trainer';
+      const data = await api.googleLogin(idToken, role);
+      
+      // Guardamos la sesión (necesitarás este método en tu AuthContext)
+      if (loginWithToken) {
+        await loginWithToken(data.token, data.user);
+      } else {
+        throw new Error("Falta configurar loginWithToken en AuthContext");
+      }
+    } catch (e: any) {
+      setError(e.message || 'Error al conectar con Google');
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!loading && user) {
@@ -150,7 +199,7 @@ export default function LoginScreen() {
             <TouchableOpacity
               style={[styles.mainBtn, { backgroundColor: colors.primary }]}
               onPress={handleSubmit}
-              disabled={submitting}
+              disabled={submitting || isGoogleLoading}
               activeOpacity={0.8}
             >
               {submitting ? (
@@ -159,6 +208,32 @@ export default function LoginScreen() {
                 <Text style={styles.mainBtnText}>
                   {isLoginValue ? 'INICIAR SESIÓN' : 'CREAR CUENTA'}
                 </Text>
+              )}
+            </TouchableOpacity>
+
+            {/* --- SEPARADOR GOOGLE --- */}
+            <View style={styles.dividerContainer}>
+              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+              <Text style={[styles.dividerText, { color: colors.textSecondary }]}>O continúa con</Text>
+              <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
+            </View>
+
+            {/* --- BOTÓN DE GOOGLE --- */}
+            <TouchableOpacity 
+              style={[styles.googleBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}
+              onPress={() => promptAsync()}
+              disabled={!request || submitting || isGoogleLoading}
+              activeOpacity={0.8}
+            >
+              {isGoogleLoading ? (
+                <ActivityIndicator color={colors.textPrimary} />
+              ) : (
+                <>
+                  <Ionicons name="logo-google" size={20} color={colors.textPrimary} />
+                  <Text style={[styles.googleBtnText, { color: colors.textPrimary }]}>
+                    Google
+                  </Text>
+                </>
               )}
             </TouchableOpacity>
 
@@ -223,6 +298,22 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   mainBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 1 },
+  
+  // Nuevos estilos para Google Auth
+  dividerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 10 },
+  dividerLine: { flex: 1, height: 1 },
+  dividerText: { marginHorizontal: 16, fontSize: 12, fontWeight: '600', textTransform: 'uppercase' },
+  googleBtn: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    justifyContent: 'center', 
+    gap: 10, 
+    paddingVertical: 16, 
+    borderRadius: 15, 
+    borderWidth: 1 
+  },
+  googleBtnText: { fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
+  
   toggleBtn: { alignItems: 'center', paddingVertical: 20 },
   toggleText: { fontSize: 14 },
 });
