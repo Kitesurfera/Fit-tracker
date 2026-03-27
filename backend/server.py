@@ -40,8 +40,8 @@ JWT_SECRET = os.environ.get('JWT_SECRET', 'fitness-tracker-secret-key-2026')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 72
 
-# REEMPLAZA ESTO CON TU CLIENT ID DE GOOGLE CLOUD
-GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', 'TU_CLIENT_ID_DE_GOOGLE.apps.googleusercontent.com')
+
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com')
 
 security = HTTPBearer()
 app = FastAPI()
