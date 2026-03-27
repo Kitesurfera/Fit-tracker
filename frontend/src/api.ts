@@ -29,7 +29,8 @@ export const api = {
   // Iniciar sesión o registrarse con el token de Google
   googleLogin: async (googleToken: string, role: string = 'athlete') => {
     try {
-      const response = await fetch(`${API_URL}/auth/google`, {
+      // FIX: Usamos BACKEND_URL y añadimos /api a la ruta
+      const response = await fetch(`${BACKEND_URL}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: googleToken, role }),
