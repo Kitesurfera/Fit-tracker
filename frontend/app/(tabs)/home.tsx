@@ -66,6 +66,9 @@ export default function HomeScreen() {
   const [viewMicroInfo, setViewMicroInfo] = useState<any>(null);
   const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(null);
   
+  // NUEVO ESTADO: Controla qué tarjeta de sesión está desplegada en el dashboard
+  const [expandedPreviewId, setExpandedPreviewId] = useState<string | null>(null);
+  
   const [showHistory, setShowHistory] = useState(false);
 
   const [showSkipModal, setShowSkipModal] = useState(false);
@@ -405,6 +408,7 @@ export default function HomeScreen() {
     return <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}><ActivityIndicator size="large" color={colors.primary} /></View>;
   }
 
+  // --- RENDERIZADO MEJORADO: Tarjetas Desplegables ---
   const renderWorkoutCard = (item: any) => {
     let hasSessionFeedback = false;
     if (item.completed && item.completion_data) {
@@ -413,29 +417,91 @@ export default function HomeScreen() {
     }
 
     const isSkipped = item.observations?.includes('[NO COMPLETADA]');
+    
+    // Verificamos si esta tarjeta es la que está desplegada
+    const isExpanded = expandedPreviewId === item.id;
+    const toggleExpand = () => setExpandedPreviewId(isExpanded ? null : item.id);
 
     return (
-      <View key={item.id} style={[styles.sessionCard, { backgroundColor: colors.surface, opacity: item.completed ? 0.8 : 1 }]}>
-        <TouchableOpacity style={{flexDirection: 'row', alignItems: 'center', flex: 1}} onPress={() => router.push(`/training-mode?workoutId=${item.id}`)}>
-          <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
-            <Ionicons name={item.completed ? "checkmark-done" : "barbell"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{String(item.title || 'Sesión')}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date || 'Sin fecha'}</Text>
-            {hasSessionFeedback && <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}><Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text></View>}
-            {isSkipped && <Text style={{color: colors.error || '#EF4444', fontSize: 10, fontWeight: '800', marginTop: 4}}>SESIÓN SALTADA</Text>}
-          </View>
-        </TouchableOpacity>
-
-        {!item.completed && !isTrainer && (
-          <TouchableOpacity style={{ padding: 10, marginRight: 5 }} onPress={() => { setSkipWorkoutId(item.id); setShowSkipModal(true); }}>
-            <Ionicons name="close-circle-outline" size={26} color={colors.error || '#EF4444'} />
+      <View 
+        key={item.id} 
+        style={[
+          styles.sessionCardWrapper, 
+          { 
+            backgroundColor: colors.surface, 
+            opacity: item.completed ? 0.8 : 1,
+            borderColor: isExpanded ? colors.primary : 'transparent',
+            borderWidth: isExpanded ? 1 : 0
+          }
+        ]}
+      >
+        <View style={styles.sessionCardRow}>
+          {/* Clicar en la cabecera expande la preview (o va directo si ya está completada) */}
+          <TouchableOpacity 
+            style={{flexDirection: 'row', alignItems: 'center', flex: 1}} 
+            onPress={() => item.completed ? router.push(`/training-mode?workoutId=${item.id}`) : toggleExpand()}
+            activeOpacity={0.7}
+          >
+            <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}>
+              <Ionicons name={item.completed ? "checkmark-done" : "calendar-outline"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }]}>{String(item.title || 'Sesión')}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{item.date || 'Sin fecha'}</Text>
+              {hasSessionFeedback && <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}><Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text></View>}
+              {isSkipped && <Text style={{color: colors.error || '#EF4444', fontSize: 10, fontWeight: '800', marginTop: 4}}>SESIÓN SALTADA</Text>}
+            </View>
           </TouchableOpacity>
+
+          {!item.completed && !isTrainer && (
+            <TouchableOpacity style={{ padding: 10, marginRight: 5 }} onPress={() => { setSkipWorkoutId(item.id); setShowSkipModal(true); }}>
+              <Ionicons name="close-circle-outline" size={26} color={colors.error || '#EF4444'} />
+            </TouchableOpacity>
+          )}
+          
+          <TouchableOpacity onPress={() => item.completed ? router.push(`/training-mode?workoutId=${item.id}`) : toggleExpand()}>
+            <Ionicons 
+              name={item.completed ? "play" : (isExpanded ? "chevron-up" : "chevron-down")} 
+              size={20} 
+              color={item.completed ? colors.border : colors.primary} 
+              style={{padding: 5}} 
+            />
+          </TouchableOpacity>
+        </View>
+
+        {/* --- CONTENIDO DESPLEGABLE (PREVIEW) --- */}
+        {isExpanded && !item.completed && (
+          <View style={{ marginTop: 15, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
+            <Text style={{fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, letterSpacing: 0.5}}>VISTA PREVIA DE EJERCICIOS</Text>
+            
+            {item.exercises && item.exercises.length > 0 ? (
+              item.exercises.slice(0, 4).map((ex: any, idx: number) => (
+                <View key={idx} style={{flexDirection: 'row', alignItems: 'center', marginBottom: 6}}>
+                  <Ionicons name="barbell-outline" size={14} color={colors.textSecondary} style={{marginRight: 6}} />
+                  <Text style={{color: colors.textPrimary, fontSize: 13, flex: 1}} numberOfLines={1}>
+                    {ex.is_hiit_block ? `⚡ Circuito HIIT: ${ex.name}` : `${ex.name}`}
+                  </Text>
+                  {!ex.is_hiit_block && <Text style={{color: colors.primary, fontSize: 12, fontWeight: '700'}}>{ex.sets}x{ex.reps}</Text>}
+                </View>
+              ))
+            ) : (
+              <Text style={{color: colors.textSecondary, fontStyle: 'italic', fontSize: 12}}>No hay ejercicios registrados en esta sesión.</Text>
+            )}
+            
+            {item.exercises?.length > 4 && (
+               <Text style={{color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4}}>+ {item.exercises.length - 4} ejercicios más...</Text>
+            )}
+
+            <TouchableOpacity
+              style={{backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 16, borderRadius: 14, marginTop: 15, gap: 8}}
+              onPress={() => router.push(`/training-mode?workoutId=${item.id}`)}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="play" size={20} color="#FFF" />
+              <Text style={{color: '#FFF', fontWeight: '800', fontSize: 15}}>INICIAR ENTRENAMIENTO</Text>
+            </TouchableOpacity>
+          </View>
         )}
-        <TouchableOpacity onPress={() => router.push(`/training-mode?workoutId=${item.id}`)}>
-          <Ionicons name="play" size={20} color={item.completed ? colors.border : colors.primary} style={{padding: 5}} />
-        </TouchableOpacity>
       </View>
     );
   };
@@ -664,14 +730,20 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { padding: 20 }, headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }, dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }, welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 }, refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' }, actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }, athleteCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' }, athleteInfoArea: { flexDirection: 'row', alignItems: 'center', flex: 1, padding: 18 }, athleteActionsArea: { flexDirection: 'row', alignItems: 'center', paddingRight: 15, gap: 10 }, iconHitbox: { padding: 8 }, avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 16, fontWeight: '700' }, tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 }, tipText: { fontSize: 13, fontWeight: '600', flex: 1, fontStyle: 'italic' }, phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 25, alignItems: 'center' }, phaseInfo: { flex: 1 }, phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 }, phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 }, macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 }, phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }, phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' }, metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 }, metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' }, metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 }, metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 }, fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 30, gap: 10 }, actionText: { fontWeight: '800', fontSize: 15 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5, textTransform: 'uppercase' }, sessionCard: { flexDirection: 'row', alignItems: 'center', padding: 12, paddingLeft: 18, borderRadius: 22, marginHorizontal: 20, marginBottom: 12 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 }, modalTitle: { fontSize: 22, fontWeight: '900', textAlign: 'center' }, input: { borderWidth: 1, padding: 16, borderRadius: 15, fontSize: 16 }, genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 }, genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }, submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 }, cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, feedbackAlertCard: { padding: 18, borderRadius: 20, marginBottom: 25, elevation: 3 }, modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }, modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 }, phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' }, infoTitleMacro: { fontSize: 18, fontWeight: '900', marginTop: 4, textAlign: 'center' }, divider: { height: 1, width: '80%', marginVertical: 15, opacity: 0.5 }, infoTitleMicro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' }, microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 }, datesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }, microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' }, microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 }, microWorkoutExercises: { padding: 14, borderTopWidth: 1 }, historyToggleBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 5 }, historyToggleText: { flex: 1, fontSize: 12, fontWeight: '800', marginLeft: 10, letterSpacing: 1 },
+  container: { padding: 20 }, headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }, dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }, welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 }, refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' }, actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }, athleteCard: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' }, athleteInfoArea: { flexDirection: 'row', alignItems: 'center', flex: 1, padding: 18 }, athleteActionsArea: { flexDirection: 'row', alignItems: 'center', paddingRight: 15, gap: 10 }, iconHitbox: { padding: 8 }, avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 16, fontWeight: '700' }, tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 }, tipText: { fontSize: 13, fontWeight: '600', flex: 1, fontStyle: 'italic' }, phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 25, alignItems: 'center' }, phaseInfo: { flex: 1 }, phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 }, phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 }, macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 }, phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }, phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' }, metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 }, metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' }, metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 }, metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 }, fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 30, gap: 10 }, actionText: { fontWeight: '800', fontSize: 15 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5, textTransform: 'uppercase' }, 
+  
+  // Modificaciones para la tarjeta desplegable
+  sessionCardWrapper: { padding: 12, paddingLeft: 18, borderRadius: 22, marginHorizontal: 20, marginBottom: 12 },
+  sessionCardRow: { flexDirection: 'row', alignItems: 'center' },
+  
+  avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 }, modalTitle: { fontSize: 22, fontWeight: '900', textAlign: 'center' }, input: { borderWidth: 1, padding: 16, borderRadius: 15, fontSize: 16 }, genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 }, genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }, submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 }, cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, feedbackAlertCard: { padding: 18, borderRadius: 20, marginBottom: 25, elevation: 3 }, modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }, modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 }, phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' }, infoTitleMacro: { fontSize: 18, fontWeight: '900', marginTop: 4, textAlign: 'center' }, divider: { height: 1, width: '80%', marginVertical: 15, opacity: 0.5 }, infoTitleMicro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' }, microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 }, datesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }, microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' }, microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 }, microWorkoutExercises: { padding: 14, borderTopWidth: 1 }, historyToggleBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 5 }, historyToggleText: { flex: 1, fontSize: 12, fontWeight: '800', marginLeft: 10, letterSpacing: 1 },
   timelineDayCard: { width: 60, height: 90, borderRadius: 14, alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
   timelineWeekday: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
   timelineDayNumber: { fontSize: 20, fontWeight: '800' },
   fatigueBadge: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' },
   
-  // ESTILOS NUEVOS DE LA TARJETA BIOLÓGICA
+  // ESTILOS DE LA TARJETA BIOLÓGICA
   insightCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
   insightHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
   insightTitle: { fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
