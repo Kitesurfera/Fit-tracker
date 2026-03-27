@@ -109,7 +109,6 @@ export default function TrainingModeScreen() {
           staysActiveInBackground: true,
         });
 
-        // Cargamos los archivos desde tu carpeta assets externa a app
         const { sound: beep } = await Audio.Sound.createAsync(require('../assets/beep.mp3'));
         const { sound: end } = await Audio.Sound.createAsync(require('../assets/end.mp3'));
         
@@ -122,7 +121,6 @@ export default function TrainingModeScreen() {
 
     initAudio();
 
-    // Limpiamos memoria al desmontar
     return () => {
       if (beepSoundRef.current) beepSoundRef.current.unloadAsync();
       if (endSoundRef.current) endSoundRef.current.unloadAsync();
@@ -133,7 +131,6 @@ export default function TrainingModeScreen() {
   const playSound = async (type: 'beep' | 'end') => {
     try {
       const soundObj = type === 'beep' ? beepSoundRef.current : endSoundRef.current;
-      
       if (soundObj) {
         await soundObj.replayAsync(); 
       }
@@ -142,7 +139,7 @@ export default function TrainingModeScreen() {
     }
   };
 
-  // --- EFECTOS DE CUENTA ATRÁS (Últimos 5 segundos) ---
+  // --- EFECTOS DE CUENTA ATRÁS ---
   useEffect(() => {
     if (isWorking && workSeconds > 0 && workSeconds <= 5) {
       playSound('beep');
@@ -280,7 +277,7 @@ export default function TrainingModeScreen() {
       restIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
         if (remaining <= 0) {
-          playSound('end'); // --- SONIDO FINAL ---
+          playSound('end');
           stopRestTimer();
         } else {
           setRestSeconds(remaining);
@@ -296,7 +293,7 @@ export default function TrainingModeScreen() {
       workIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((workTargetTime - Date.now()) / 1000);
         if (remaining <= 0) {
-          playSound('end'); // --- SONIDO FINAL ---
+          playSound('end');
           handleWorkComplete();
         } else {
           setWorkSeconds(remaining);
@@ -792,6 +789,9 @@ export default function TrainingModeScreen() {
     );
   }
 
+  // ==========================================
+  // RENDER: HIIT WORKOUT
+  // ==========================================
   if (isHiit) {
     const currentBlock = workout.exercises?.[hiitBlockIdx];
     if (!currentBlock) return null;
@@ -815,6 +815,20 @@ export default function TrainingModeScreen() {
           {(isResting || (hiitPhase === 'work' && currentExInHiit?.duration)) 
             ? renderUnifiedTimerUI(currentExInHiit?.name || 'EJERCICIO') 
             : null}
+
+          {/* BOTONES HIIT MOVIDOS DIRECTAMENTE DEBAJO DEL TEMPORIZADOR */}
+          {!isResting && (
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+              <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444', flex: 1, paddingVertical: 14 }]} onPress={skipHiitEx}>
+                <Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} />
+                <Text style={{ color: colors.error || '#EF4444', fontWeight: '700', marginLeft: 6 }}>Saltar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 2, paddingVertical: 14, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={advanceHiit}>
+                <Ionicons name="play" size={22} color="#FFF" />
+                <Text style={[styles.completeSetText, { color: '#FFF' }]}>{currentExInHiit?.duration ? 'Siguiente' : 'Completar'}</Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           <View style={[styles.hiitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.hiitHeader, { backgroundColor: (colors.error || '#EF4444') + '15' }]}>
@@ -870,19 +884,6 @@ export default function TrainingModeScreen() {
                 );
               })}
             </View>
-
-            {!isResting && (
-              <View style={{ flexDirection: 'row', gap: 10, marginHorizontal: 20, marginBottom: 20, marginTop: 10 }}>
-                <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444', flex: 1, paddingVertical: 14 }]} onPress={skipHiitEx}>
-                  <Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} />
-                  <Text style={{ color: colors.error || '#EF4444', fontWeight: '700', marginLeft: 6 }}>Saltar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 2, paddingVertical: 14, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={advanceHiit}>
-                  <Ionicons name="play" size={22} color="#FFF" />
-                  <Text style={[styles.completeSetText, { color: '#FFF' }]}>{currentExInHiit?.duration ? 'Siguiente' : 'Completar'}</Text>
-                </TouchableOpacity>
-              </View>
-            )}
           </View>
         </ScrollView>
         {renderVideoModal()}
@@ -890,6 +891,9 @@ export default function TrainingModeScreen() {
     );
   }
 
+  // ==========================================
+  // RENDER: FUERZA / NORMAL WORKOUT
+  // ==========================================
   const exercises = workout.exercises || [];
   const currentEx = exercises[currentExIndex];
   const currentSets = setsStatus[currentExIndex] || [];
@@ -911,6 +915,20 @@ export default function TrainingModeScreen() {
         {(isResting || (nextPendingSet !== -1 && currentEx?.duration)) 
           ? renderUnifiedTimerUI(currentEx?.name || 'EJERCICIO') 
           : null}
+
+        {/* BOTONES NORMALES MOVIDOS DIRECTAMENTE DEBAJO DEL TEMPORIZADOR */}
+        {nextPendingSet !== -1 && !isResting && (
+          <View style={[styles.setActions, { marginBottom: 4 }]}>
+            <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444' }]} onPress={skipSet}>
+              <Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} />
+              <Text style={[styles.skipSetText, { color: colors.error || '#EF4444' }]}>Saltar</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 1, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={completeSet}>
+              <Ionicons name="checkmark-circle-outline" size={22} color="#FFF" />
+              <Text style={[styles.completeSetText, { color: '#FFF' }]}>{currentEx?.duration ? 'Hecho' : `Completar serie ${nextPendingSet + 1}`}</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         <View style={[styles.exerciseCard, { backgroundColor: colors.surface }]}>
           <View style={[styles.exNumber, { backgroundColor: colors.primary + '12' }]}><Text style={[styles.exNumberText, { color: colors.primary }]}>{currentExIndex + 1}</Text></View>
@@ -1001,12 +1019,8 @@ export default function TrainingModeScreen() {
             )}
           </View>
 
-          {nextPendingSet !== -1 && !isResting ? (
-            <View style={[styles.setActions, { marginTop: 20 }]}>
-              <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444' }]} onPress={skipSet}><Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} /><Text style={[styles.skipSetText, { color: colors.error || '#EF4444' }]}>Saltar</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 1, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={completeSet}><Ionicons name="checkmark-circle-outline" size={22} color="#FFF" /><Text style={[styles.completeSetText, { color: '#FFF' }]}>{currentEx?.duration ? 'Hecho' : `Completar serie ${nextPendingSet + 1}`}</Text></TouchableOpacity>
-            </View>
-          ) : nextPendingSet === -1 ? (
+          {/* MENSAJE DE COMPLETADO DE LA TARJETA DEL FONDO */}
+          {nextPendingSet === -1 ? (
             <View style={[styles.allDoneBadge, { backgroundColor: (colors.success || '#10B981') + '12', marginTop: 20 }]}><Ionicons name="checkmark-circle" size={18} color={colors.success || '#10B981'} /><Text style={{ color: colors.success || '#10B981', fontSize: 14, fontWeight: '600' }}>Todas completadas o saltadas</Text></View>
           ) : null}
 
