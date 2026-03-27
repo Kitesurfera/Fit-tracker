@@ -11,6 +11,9 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "expo-auth-session": "~5.5.2",
+    "expo-crypto": "~13.0.2",
+    "@react-native-async-storage/async-storage": "1.23.1",
     "expo-av": "~14.0.1",
     "react-native-body-highlighter": "^2.0.2",
     "react-native-svg": "^15.8.0",
