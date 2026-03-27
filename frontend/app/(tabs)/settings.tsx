@@ -1,17 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  Platform, Alert, ScrollView, Linking, ActivityIndicator, KeyboardAvoidingView
+  Platform, Alert, ScrollView, Linking, ActivityIndicator, KeyboardAvoidingView, Switch
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
 
 export default function SettingsScreen() {
-  // Asegúrate de que tu useTheme ahora devuelva 'themeMode' y 'changeTheme'
   const { colors, themeMode, changeTheme } = useTheme();
   const { user, logout } = useAuth();
   const router = useRouter();
@@ -27,7 +27,21 @@ export default function SettingsScreen() {
   });
   const [savingMeasures, setSavingMeasures] = useState(false);
 
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+
+  // Cargar preferencia de voz al entrar
+  useEffect(() => {
+    AsyncStorage.getItem('voice_enabled').then(val => {
+      if (val === 'false') setVoiceEnabled(false);
+    });
+  }, []);
+
   // --- FUNCIONES ---
+  const toggleVoice = async (value: boolean) => {
+    setVoiceEnabled(value);
+    await AsyncStorage.setItem('voice_enabled', value ? 'true' : 'false');
+  };
+
   const handleSaveProfile = async () => {
     if (!name.trim()) return;
     setSavingProfile(true);
@@ -188,7 +202,7 @@ export default function SettingsScreen() {
             </TouchableOpacity>
           </View>
 
-          {/* SECCIÓN APARIENCIA (NUEVA) */}
+          {/* SECCIÓN APARIENCIA */}
           <Text style={[styles.sectionTitle, { marginTop: 25 }]}>APARIENCIA</Text>
           <View style={[styles.listCard, { backgroundColor: colors.surface, padding: 10 }]}>
             <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'space-between' }}>
@@ -215,6 +229,28 @@ export default function SettingsScreen() {
                 <Ionicons name="phone-portrait-outline" size={24} color={themeMode === 'system' ? colors.primary : colors.textSecondary} />
                 <Text style={[styles.themeBtnText, { color: themeMode === 'system' ? colors.primary : colors.textSecondary }]}>Auto</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* SECCIÓN ENTRENAMIENTO */}
+          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ENTRENAMIENTO</Text>
+          <View style={[styles.listCard, { backgroundColor: colors.surface }]}>
+            <View style={styles.settingRowAction}>
+              <View style={styles.settingIconText}>
+                <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}>
+                  <Ionicons name="volume-high-outline" size={22} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Asistente de Voz</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Anuncia ejercicios y descansos</Text>
+                </View>
+              </View>
+              <Switch
+                value={voiceEnabled}
+                onValueChange={toggleVoice}
+                trackColor={{ false: colors.border, true: colors.primary }}
+                thumbColor="#FFF"
+              />
             </View>
           </View>
 
@@ -317,7 +353,6 @@ const styles = StyleSheet.create({
   iconBox: { width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   settingText: { fontSize: 16, fontWeight: '700' },
 
-  // --- Estilos para los botones de Tema ---
   themeBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 14, borderWidth: 2, borderColor: 'transparent' },
   themeBtnText: { fontSize: 12, fontWeight: '800', marginTop: 6, textTransform: 'uppercase' }
 });
