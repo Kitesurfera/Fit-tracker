@@ -8,6 +8,7 @@ interface User {
   email: string;
   name: string;
   role: 'trainer' | 'athlete';
+  [key: string]: any; // Para permitir otros campos que puedan venir del backend
 }
 
 interface AuthContextType {
@@ -15,6 +16,8 @@ interface AuthContextType {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
+  loginWithToken: (token: string, user: User) => Promise<void>; // NUEVO: Para Google Auth
   logout: () => Promise<void>;
   updateUser: (data: Partial<User>) => void;
 }
@@ -68,6 +71,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(data.user);
   };
 
+  // NUEVO: Función para registrar un usuario tradicional (necesaria para tu pantalla de login)
+  const register = async (name: string, email: string, password: string) => {
+    const res = await fetch(`${BACKEND_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Error en el registro');
+    }
+
+    const data = await res.json();
+    await AsyncStorage.setItem('auth_token', data.token);
+    await AsyncStorage.setItem('user_data', JSON.stringify(data.user));
+    
+    setToken(data.token);
+    setUser(data.user);
+  };
+
+  // NUEVO: Función para inyectar directamente el token y el usuario (ideal para OAuth)
+  const loginWithToken = async (newToken: string, newUser: User) => {
+    await AsyncStorage.setItem('auth_token', newToken);
+    await AsyncStorage.setItem('user_data', JSON.stringify(newUser));
+    
+    setToken(newToken);
+    setUser(newUser);
+  };
+
   const logout = async () => {
     try {
       // Limpieza brutal: lo borra TODO del dispositivo
@@ -88,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, loginWithToken, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
