@@ -357,7 +357,7 @@ async def login(data: UserLogin):
         "user": user_data
     }
 
-# --- NUEVA RUTA: LOGIN CON GOOGLE ---
+# --- NUEVA RUTA: LOGIN CON GOOGLE (OPCIÓN A: CERRADA Y EXCLUSIVA) ---
 @api_router.post("/auth/google")
 async def google_login(data: GoogleAuth):
     try:
@@ -375,21 +375,29 @@ async def google_login(data: GoogleAuth):
         if not email:
             raise HTTPException(status_code=400, detail="Token de Google no contiene email")
 
-        # 3. Buscamos si el usuario ya existe (¡La clave de la sincronización!)
+        # 3. Buscamos si el usuario ya existe
         user = await db.users.find_one({"email": email})
 
-        # 4. Si no existe, lo creamos sobre la marcha
+        # 4. Lógica de App Cerrada (Opción A)
         if not user:
-            user_id = str(uuid.uuid4())
-            user = {
-                "id": user_id,
-                "email": email,
-                "password": hash_password(str(uuid.uuid4())), # Contraseña irrecuperable al azar
-                "name": name,
-                "role": data.role, 
-                "created_at": datetime.now(timezone.utc).isoformat()
-            }
-            await db.users.insert_one(user)
+            # Si un atleta intenta entrar sin que tú lo hayas dado de alta previamente: ¡Bloqueado!
+            if data.role == 'athlete':
+                raise HTTPException(
+                    status_code=403, 
+                    detail="Aún no tienes invitación. Contacta con tu entrenador para que te dé de alta."
+                )
+            # Si eres tú (o un entrenador) registrándose desde la pestaña "Crear Cuenta", te dejamos pasar
+            else:
+                user_id = str(uuid.uuid4())
+                user = {
+                    "id": user_id,
+                    "email": email,
+                    "password": hash_password(str(uuid.uuid4())), # Contraseña irrecuperable al azar
+                    "name": name,
+                    "role": data.role, 
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                await db.users.insert_one(user)
 
         # 5. Generamos NUESTRO token (el JWT que el frontend ya sabe usar)
         token = create_token(user['id'], user['role'])
@@ -404,6 +412,9 @@ async def google_login(data: GoogleAuth):
     except ValueError as e:
         logger.error(f"Error verificando token de Google: {str(e)}")
         raise HTTPException(status_code=401, detail="Token de Google inválido")
+    except HTTPException:
+        # Re-lanzamos las excepciones HTTP controladas (como el error 403 del atleta no invitado)
+        raise
     except Exception as e:
         logger.error(f"Fallo general en Google Login: {str(e)}")
         raise HTTPException(status_code=500, detail="Error interno procesando el login")
