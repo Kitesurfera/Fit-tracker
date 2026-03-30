@@ -12,7 +12,6 @@ Notifications.setNotificationHandler({
 
 export async function requestNotificationPermissions() {
   if (Platform.OS === 'web') {
-    // Verificamos si el navegador soporta notificaciones
     if (!('Notification' in window)) {
       console.log('Este navegador no soporta notificaciones web.');
       return false;
@@ -20,23 +19,42 @@ export async function requestNotificationPermissions() {
     const permission = await Notification.requestPermission();
     return permission === 'granted';
   } else {
-    // Dispositivos nativos (iOS/Android)
     const { status } = await Notifications.requestPermissionsAsync();
     return status === 'granted';
   }
 }
 
-export async function scheduleDailyWellnessReminder() {
+// --- NUEVA FUNCION: Genera el token universal ---
+export async function getExpoToken() {
   const hasPermission = await requestNotificationPermissions();
-  if (!hasPermission) {
-    console.log("No se concedieron permisos de notificación.");
-    return;
+  if (!hasPermission) return null;
+
+  if (Platform.OS === 'android') {
+    await Notifications.setNotificationChannelAsync('default', {
+      name: 'default',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 250, 250, 250],
+      lightColor: '#FF231F7C',
+    });
   }
 
-  // Cancelamos avisos anteriores para no acumular spam
+  try {
+    // Obtiene el token de Expo (Sirve para Web, iOS y Android)
+    // Nota: Si usas EAS Build, Expo inyecta el projectId automáticamente.
+    const tokenData = await Notifications.getExpoPushTokenAsync();
+    return tokenData.data;
+  } catch (error) {
+    console.error("Error obteniendo el Push Token de Expo:", error);
+    return null;
+  }
+}
+
+export async function scheduleDailyWellnessReminder() {
+  const hasPermission = await requestNotificationPermissions();
+  if (!hasPermission) return;
+
   await Notifications.cancelAllScheduledNotificationsAsync();
 
-  // Programamos el aviso para las 9:30 AM todos los días
   await Notifications.scheduleNotificationAsync({
     content: {
       title: "¡Buenos días! 🌊",
@@ -53,7 +71,6 @@ export async function scheduleDailyWellnessReminder() {
   console.log("Recordatorio diario programado a las 9:30 AM");
 }
 
-// Función extra para probar que funciona en el momento
 export async function testNotification() {
   const hasPermission = await requestNotificationPermissions();
   if (!hasPermission) return;
@@ -63,6 +80,6 @@ export async function testNotification() {
       title: "¡Notificaciones activadas! 🚀",
       body: "Si ves esto, tu dispositivo está listo para recibir avisos.",
     },
-    trigger: null, // null significa que salta inmediatamente
+    trigger: null, 
   });
 }
