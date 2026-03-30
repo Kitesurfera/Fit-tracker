@@ -28,8 +28,6 @@ const DAILY_TIPS = [
   "Tu mayor logro es convertir el ejercicio en un hábito, no en una obligación."
 ];
 
-const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
-
 const getLocalDateStr = (date: Date) => {
   if (!(date instanceof Date) || isNaN(date.getTime())) return '';
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -68,8 +66,6 @@ export default function HomeScreen() {
 
   const [viewMicroInfo, setViewMicroInfo] = useState<any>(null);
   const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(null);
-  
-  // NUEVO ESTADO: Controla qué tarjeta de sesión está desplegada en el dashboard
   const [expandedPreviewId, setExpandedPreviewId] = useState<string | null>(null);
   
   const [showHistory, setShowHistory] = useState(false);
@@ -250,10 +246,7 @@ useFocusEffect(
       if (authLoading || (!user && !isTrainer)) return;
       const init = async () => {
         await syncManager.syncPendingWorkouts();
-        
-        // --- NUEVO: Programamos la notificación al abrir la app ---
         await scheduleDailyWellnessReminder();
-        // --------------------------------------------------------
 
         if (isTrainer) { await loadData(true); return; }
         const sData = await loadData(true);
@@ -338,7 +331,7 @@ useFocusEffect(
     }
   };
 
-  const handleShareStatus = () => {
+const handleShareStatus = () => {
     const latestWellness = summary?.latest_wellness || {};
     const fatigue = latestWellness.fatigue || '?';
     const sleep = latestWellness.sleep_quality || '?';
@@ -348,6 +341,12 @@ useFocusEffect(
     const trained = todayWorkout ? (todayWorkout.completed ? '✅ Completada' : '❌ Pendiente') : 'Libre / Descanso';
     const workoutName = todayWorkout ? ` (${todayWorkout.title})` : '';
     
+    // Extraemos el RPE si el entrenamiento está completado y tiene el dato
+    let rpeText = '';
+    if (todayWorkout?.completed && todayWorkout.completion_data?.rpe) {
+      rpeText = `\n   - Esfuerzo Percibido (RPE): ${todayWorkout.completion_data.rpe}/10`;
+    }
+
     const activeMicroText = activeMicro ? `${activeMicro.nombre} [${activeMicro.tipo}]` : 'Planificación Libre';
     
     const phaseText = phaseInfo ? phaseInfo.name : 'Sin registro';
@@ -369,44 +368,15 @@ useFocusEffect(
                     discomfortsText + `\n\n` +
                     `🏋️‍♀️ *Entrenamiento:*\n` +
                     `   - Fase actual: ${activeMicroText}\n` +
-                    `   - Sesión de hoy: ${trained}${workoutName}`;
+                    `   - Sesión de hoy: ${trained}${workoutName}` + 
+                    rpeText; // Añadimos la línea del RPE al final del bloque
     
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
-
   const handleCloseMicroInfo = () => {
     setViewMicroInfo(null);
     setExpandedWorkoutId(null);
   };
-
-  const simplifiedHeatmapData = useMemo(() => {
-    const daysToPreview = 14; 
-    const timelineData: any[] = [];
-    
-    for (let i = daysToPreview - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      const record = wellnessHistory.find(w => w.date === dateStr);
-      
-      let color = colors.border + '40'; 
-      if (record) {
-        if (record.fatigue <= 2) color = colors.success || '#10B981';
-        else if (record.fatigue === 3) color = '#F59E0B';
-        else color = colors.error || '#EF4444';
-      }
-      
-      timelineData.push({
-        dayNumber: d.getDate(),
-        weekday: WEEKDAYS[d.getDay()],
-        date: dateStr,
-        color,
-        fatigue: record?.fatigue,
-        isToday: dateStr === todayStr
-      });
-    }
-    return timelineData;
-  }, [wellnessHistory, colors, todayStr]);
 
   const microWorkouts = useMemo(() => {
     if (!viewMicroInfo) return [];
@@ -627,38 +597,6 @@ useFocusEffect(
               <Text style={[styles.actionText, { color: '#FFF', fontSize: 13 }]}>Probar Notificación</Text>
             </TouchableOpacity>
 
-            <View style={{ marginBottom: 30 }}>
-              <Text style={styles.sectionTitle}>HISTORIAL DE FATIGA (ÚLTIMOS 14 DÍAS)</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
-                {simplifiedHeatmapData.map((item, idx) => (
-                  <View 
-                    key={idx} 
-                    style={[
-                      styles.timelineDayCard, 
-                      { 
-                        backgroundColor: colors.surface, 
-                        borderColor: item.color,
-                        borderWidth: item.fatigue ? 2 : 1 
-                      },
-                      item.isToday && { borderColor: colors.primary, backgroundColor: colors.surfaceHighlight }
-                    ]}
-                  >
-                    <Text style={[styles.timelineWeekday, { color: colors.textSecondary }, item.isToday && { color: colors.primary }]}>
-                      {item.weekday}
-                    </Text>
-                    <Text style={[styles.timelineDayNumber, { color: colors.textPrimary }, item.isToday && { fontWeight: '900' }]}>
-                      {item.dayNumber}
-                    </Text>
-                    <View style={[styles.fatigueBadge, { backgroundColor: item.fatigue ? item.color + '15' : 'transparent' }]}>
-                      <Text style={{ fontSize: 13, fontWeight: '900', color: item.fatigue ? item.color : colors.textSecondary }}>
-                        {item.fatigue ? `${item.fatigue}` : '-'}
-                      </Text>
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
-            </View>
-
             {hasUnreadFeedback && (
               <TouchableOpacity style={[styles.feedbackAlertCard, { backgroundColor: colors.warning || '#F59E0B' }]} onPress={handleFeedbackClick}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><Ionicons name="chatbubbles" size={28} color="#FFF" /><View style={{ flex: 1 }}><Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16 }}>¡TIENES FEEDBACK NUEVO!</Text><Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 13, marginTop: 2 }}>El coach ha comentado tu técnica.</Text></View><Ionicons name="chevron-forward" size={24} color="#FFF" /></View>
@@ -751,10 +689,6 @@ const styles = StyleSheet.create({
   sessionCardRow: { flexDirection: 'row', alignItems: 'center' },
   
   avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40 }, modalTitle: { fontSize: 22, fontWeight: '900', textAlign: 'center' }, input: { borderWidth: 1, padding: 16, borderRadius: 15, fontSize: 16 }, genderRow: { flexDirection: 'row', gap: 10, marginBottom: 25 }, genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }, submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2 }, cycleChipsContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 }, dashboardPhaseChip: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, feedbackAlertCard: { padding: 18, borderRadius: 20, marginBottom: 25, elevation: 3 }, modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }, modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 }, phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' }, infoTitleMacro: { fontSize: 18, fontWeight: '900', marginTop: 4, textAlign: 'center' }, divider: { height: 1, width: '80%', marginVertical: 15, opacity: 0.5 }, infoTitleMicro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' }, microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 }, datesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 }, microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' }, microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 }, microWorkoutExercises: { padding: 14, borderTopWidth: 1 }, historyToggleBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 5 }, historyToggleText: { flex: 1, fontSize: 12, fontWeight: '800', marginLeft: 10, letterSpacing: 1 },
-  timelineDayCard: { width: 60, height: 90, borderRadius: 14, alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10 },
-  timelineWeekday: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
-  timelineDayNumber: { fontSize: 20, fontWeight: '800' },
-  fatigueBadge: { width: 30, height: 30, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
   modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' },
   
   // ESTILOS DE LA TARJETA BIOLÓGICA
