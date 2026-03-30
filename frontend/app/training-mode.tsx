@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, TextInput, Alert, Platform, Modal
+  ActivityIndicator, Linking, TextInput, Alert, Platform, Modal, Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,10 +16,13 @@ import { useAuth } from '../src/context/AuthContext';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
+import Svg, { Circle, Path, G, Text as SvgText } from 'react-native-svg';
 
 // Importamos los nuevos componentes
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
 import HiitCard from '../src/components/training/HiitCard';
+
+const { width } = Dimensions.get('window');
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
@@ -90,10 +93,13 @@ export default function TrainingModeScreen() {
   const [sleepHours, setSleepHours] = useState<string>('');
   const [observations, setObservations] = useState('');
   
+  // NUEVO: Estado para el mapa corporal
+  const [showBodyMap, setShowBodyMap] = useState(false);
+  const [soreJoints, setSoreJoints] = useState<string[]>([]);
+  
   const [showIndicationsModal, setShowIndicationsModal] = useState(false);
   const hasShownIndicationsRef = useRef(false);
 
-  // Referencia para el swipe de fuerza
   const forceSwipeableRef = useRef<Swipeable>(null);
 
   const [prepTargetTime, setPrepTargetTime] = useState<number | null>(null);
@@ -314,6 +320,7 @@ export default function TrainingModeScreen() {
               setRpe(currentWorkout.completion_data.rpe || null);
               setSleepQuality(currentWorkout.completion_data.sleep_quality || null);
               setSleepHours(currentWorkout.completion_data.sleep_hours || '');
+              if (currentWorkout.completion_data.sore_joints) setSoreJoints(currentWorkout.completion_data.sore_joints);
               
               const savedVideos: Record<string, string> = {}; 
               
@@ -600,7 +607,7 @@ export default function TrainingModeScreen() {
   const buildCompletionData = () => {
     if (isHiit) {
       return { 
-        rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, hiit_completed: true,
+        rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, hiit_completed: true,
         hiit_results: (workout.exercises || []).map((block: any, bIdx: number) => ({
           ...block,
           hiit_exercises: block.hiit_exercises.map((ex: any, eIdx: number) => ({
@@ -613,7 +620,7 @@ export default function TrainingModeScreen() {
       };
     }
     return {
-      rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours,
+      rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints,
       exercise_results: (workout.exercises || []).map((ex: any, i: number) => {
         if (workout.completed && workout.completion_data) return workout.completion_data?.exercise_results?.[i] || {};
         const sets = setsStatus[i] || [];
@@ -707,7 +714,148 @@ export default function TrainingModeScreen() {
     </Modal>
   );
 
-  // Vistas auxiliares para el Swipeable de la tarjeta de fuerza
+  // NUEVO: Funciones y Modal del Mapa Corporal
+  const toggleJoint = (joint: string) => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSoreJoints(prev => prev.includes(joint) ? prev.filter(j => j !== joint) : [...prev, joint]);
+  };
+
+  const isJointSelected = (joint: string) => soreJoints.includes(joint);
+
+  const renderBodyMapModal = () => {
+    const primaryColor = colors.primary;
+    const errorColor = colors.error || '#EF4444';
+    const bodyOutlineColor = colors.textSecondary;
+    
+    // Coordenadas para Frontal
+    const frontPoints = [
+      { id: 'Hombro Izq', cx: 130, cy: 120, r: 15 },
+      { id: 'Hombro Der', cx: 270, cy: 120, r: 15 },
+      { id: 'Codo Izq', cx: 100, cy: 200, r: 15 },
+      { id: 'Codo Der', cx: 300, cy: 200, r: 15 },
+      { id: 'Muñeca Izq', cx: 80, cy: 280, r: 12 },
+      { id: 'Muñeca Der', cx: 320, cy: 280, r: 12 },
+      { id: 'Costillas', cx: 200, cy: 190, r: 25 },
+      { id: 'Cadera', cx: 200, cy: 260, r: 25 },
+      { id: 'Rodilla Izq', cx: 160, cy: 380, r: 18 },
+      { id: 'Rodilla Der', cx: 240, cy: 380, r: 18 },
+      { id: 'Tobillo Izq', cx: 150, cy: 490, r: 15 },
+      { id: 'Tobillo Der', cx: 250, cy: 490, r: 15 },
+    ];
+
+    // Coordenadas para Trasero
+    const backPoints = [
+      { id: 'Cuello', cx: 200, cy: 90, r: 18 },
+      { id: 'Escápula Izq', cx: 160, cy: 140, r: 18 },
+      { id: 'Escápula Der', cx: 240, cy: 140, r: 18 },
+      { id: 'Lumbares', cx: 200, cy: 240, r: 28 },
+      { id: 'Tendón Izq', cx: 150, cy: 470, r: 15 },
+      { id: 'Tendón Der', cx: 250, cy: 470, r: 15 },
+    ];
+
+    return (
+      <Modal visible={showBodyMap} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.bodyMapModalContent, { backgroundColor: colors.background }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Registrar Dolor / Impacto</Text>
+              <TouchableOpacity onPress={() => setShowBodyMap(false)}>
+                <Ionicons name="close" size={28} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center' }}>
+              Toca las articulaciones que hayas sentido sobrecargadas por las botas o los aterrizajes.
+            </Text>
+
+            <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center' }}>
+              
+              {/* FIGURA FRONTAL */}
+              <View style={{ width: width * 0.85, alignItems: 'center' }}>
+                <Text style={{ fontWeight: '700', color: colors.textPrimary, marginBottom: 10 }}>VISTA FRONTAL</Text>
+                <Svg height="550" width="400" viewBox="0 0 400 550">
+                  {/* Silueta Base Frontal Simplificada */}
+                  <Path d="M200 20 C 180 20, 180 60, 200 80 C 220 60, 220 20, 200 20 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> {/* Cabeza */}
+                  <Path d="M200 80 L 200 100 L 140 120 L 100 200 L 80 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Brazo Izq */}
+                  <Path d="M200 80 L 200 100 L 260 120 L 300 200 L 320 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Brazo Der */}
+                  <Path d="M140 120 L 160 260 L 240 260 L 260 120 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> {/* Torso */}
+                  <Path d="M170 260 L 160 380 L 150 490 L 130 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Pierna Izq */}
+                  <Path d="M230 260 L 240 380 L 250 490 L 270 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Pierna Der */}
+                  <Path d="M170 260 L 200 280 L 230 260" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> {/* Pelvis */}
+
+                  {/* Puntos Interactivos Frontales */}
+                  {frontPoints.map(point => (
+                    <G key={point.id} onPress={() => toggleJoint(point.id)}>
+                      <Circle cx={point.cx} cy={point.cy} r={point.r + 10} fill="transparent" />
+                      <Circle 
+                        cx={point.cx} 
+                        cy={point.cy} 
+                        r={point.r} 
+                        fill={isJointSelected(point.id) ? errorColor : primaryColor} 
+                        opacity={isJointSelected(point.id) ? 0.9 : 0.3} 
+                      />
+                      {isJointSelected(point.id) && (
+                        <SvgText x={point.cx} y={point.cy - point.r - 5} fill={errorColor} fontSize="12" fontWeight="bold" textAnchor="middle">
+                          {point.id}
+                        </SvgText>
+                      )}
+                    </G>
+                  ))}
+                </Svg>
+              </View>
+
+              {/* FIGURA TRASERA */}
+              <View style={{ width: width * 0.85, alignItems: 'center' }}>
+                <Text style={{ fontWeight: '700', color: colors.textPrimary, marginBottom: 10 }}>VISTA TRASERA</Text>
+                <Svg height="550" width="400" viewBox="0 0 400 550">
+                  {/* Silueta Base Trasera Simplificada */}
+                  <Path d="M200 20 C 180 20, 180 60, 200 80 C 220 60, 220 20, 200 20 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> {/* Cabeza */}
+                  <Path d="M200 80 L 200 100 L 140 120 L 100 200 L 80 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Brazo Izq */}
+                  <Path d="M200 80 L 200 100 L 260 120 L 300 200 L 320 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Brazo Der */}
+                  <Path d="M140 120 L 160 260 L 240 260 L 260 120 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> {/* Torso */}
+                  <Path d="M200 100 L 200 260" stroke={bodyOutlineColor} strokeWidth="2" strokeDasharray="5,5" fill="none" /> {/* Columna */}
+                  <Path d="M170 260 L 160 380 L 150 490 L 130 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Pierna Izq */}
+                  <Path d="M230 260 L 240 380 L 250 490 L 270 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Pierna Der */}
+                  
+                  {/* Puntos Interactivos Traseros */}
+                  {backPoints.map(point => (
+                    <G key={point.id} onPress={() => toggleJoint(point.id)}>
+                      <Circle cx={point.cx} cy={point.cy} r={point.r + 10} fill="transparent" />
+                      <Circle 
+                        cx={point.cx} 
+                        cy={point.cy} 
+                        r={point.r} 
+                        fill={isJointSelected(point.id) ? errorColor : primaryColor} 
+                        opacity={isJointSelected(point.id) ? 0.9 : 0.3} 
+                      />
+                      {isJointSelected(point.id) && (
+                        <SvgText x={point.cx} y={point.cy - point.r - 5} fill={errorColor} fontSize="12" fontWeight="bold" textAnchor="middle">
+                          {point.id}
+                        </SvgText>
+                      )}
+                    </G>
+                  ))}
+                </Svg>
+              </View>
+
+            </ScrollView>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 10, marginBottom: 20 }}>
+               <Text style={{ fontSize: 12, color: colors.textSecondary }}>Desliza para ver la parte trasera</Text>
+            </View>
+
+            <TouchableOpacity 
+              style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', width: '100%' }} 
+              onPress={() => setShowBodyMap(false)}
+            >
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar Selección</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+    );
+  };
+
   const renderForceLeftActions = () => (
     <View style={[styles.swipeActionForce, { backgroundColor: colors.success || '#10B981', alignItems: 'flex-start', paddingLeft: 30 }]}>
       <Ionicons name="checkmark-circle" size={32} color="#FFF" />
@@ -789,6 +937,25 @@ export default function TrainingModeScreen() {
                 </View>
               </View>
 
+              {/* NUEVO: Botón para abrir el Mapa Corporal */}
+              <View>
+                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA ARTICULAR O IMPACTO (Opcional)</Text>
+                <TouchableOpacity 
+                  style={{ 
+                    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, 
+                    backgroundColor: soreJoints.length > 0 ? (colors.error || '#EF4444') + '15' : colors.surfaceHighlight, 
+                    padding: 16, borderRadius: 12, borderWidth: 1, 
+                    borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border 
+                  }}
+                  onPress={() => setShowBodyMap(true)}
+                >
+                  <Ionicons name="body" size={24} color={soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.primary} />
+                  <Text style={{ fontWeight: '700', color: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.textPrimary }}>
+                    {soreJoints.length > 0 ? `${soreJoints.length} Zonas Marcadas` : 'Abrir Mapa Corporal'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+
               <View>
                 <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12 }]}>OBSERVACIONES GENERALES</Text>
                 <TextInput style={[styles.obsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} multiline placeholder="¿Alguna molestia? ¿Mucha energía?..." placeholderTextColor={colors.textSecondary} value={observations} onChangeText={setObservations} />
@@ -802,6 +969,11 @@ export default function TrainingModeScreen() {
               {workout.completion_data.rpe && <Text style={{ color: colors.textPrimary, marginBottom: 5 }}>RPE: <Text style={{ fontWeight: '700' }}>{workout.completion_data.rpe}/10</Text></Text>}
               {workout.completion_data.sleep_quality && <Text style={{ color: colors.textPrimary, marginBottom: 5 }}>Calidad de sueño: <Text style={{ fontWeight: '700' }}>{workout.completion_data.sleep_quality}/5 estrellas</Text></Text>}
               {workout.completion_data.sleep_hours && <Text style={{ color: colors.textPrimary, marginBottom: 5 }}>Horas de sueño: <Text style={{ fontWeight: '700' }}>{workout.completion_data.sleep_hours}h</Text></Text>}
+              {workout.completion_data.sore_joints && workout.completion_data.sore_joints.length > 0 && (
+                <Text style={{ color: colors.textPrimary, marginBottom: 5 }}>
+                  Impacto Articular: <Text style={{ fontWeight: '700', color: colors.error || '#EF4444' }}>{workout.completion_data.sore_joints.join(', ')}</Text>
+                </Text>
+              )}
               {workout.observations && <Text style={{ color: colors.textPrimary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
             </View>
           )}
@@ -814,6 +986,7 @@ export default function TrainingModeScreen() {
           )}
         </ScrollView>
         {renderVideoModal()}
+        {renderBodyMapModal()}
       </SafeAreaView>
     );
 
@@ -1063,5 +1236,6 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   indicationsModalContent: { width: '85%', padding: 24, borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
   swipeActionForce: { justifyContent: 'center', flex: 1, borderRadius: 16, marginBottom: 0 },
-  swipeTextForce: { color: '#FFF', fontWeight: '800', fontSize: 14, marginTop: 4 }
+  swipeTextForce: { color: '#FFF', fontWeight: '800', fontSize: 14, marginTop: 4 },
+  bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, maxHeight: '90%' },
 });
