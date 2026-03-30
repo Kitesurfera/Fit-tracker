@@ -12,11 +12,10 @@ import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
-import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import Svg, { Circle, Path, G, Text as SvgText } from 'react-native-svg';
 import NetInfo from '@react-native-community/netinfo';
 
-// IMPORTACIONES CORREGIDAS PARA app/training-mode.tsx (solo un ../)
+// IMPORTACIONES
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
@@ -100,8 +99,6 @@ export default function TrainingModeScreen() {
   
   const [showIndicationsModal, setShowIndicationsModal] = useState(false);
   const hasShownIndicationsRef = useRef(false);
-
-  const forceSwipeableRef = useRef<Swipeable>(null);
 
   const [prepTargetTime, setPrepTargetTime] = useState<number | null>(null);
   const [prepSeconds, setPrepSeconds] = useState(0);
@@ -227,7 +224,6 @@ const startWorkTimerAfterPrep = () => {
     if (workTotalSeconds > 0) {
       setWorkTargetTime(Date.now() + workTotalSeconds * 1000);
     } else {
-      // Si el ejercicio es por repeticiones (0 seg), lo dejamos sin target de tiempo
       setWorkTargetTime(null);
     }
   };
@@ -243,14 +239,11 @@ const startWorkTimerAfterPrep = () => {
     else announce("Descanso.");
   };
 
-  // --- LÓGICA DE CONTROL DE TEMPORIZADORES CORREGIDA ---
   const toggleWorkTimer = () => {
     if (workTargetTime) {
-      // PAUSAR: Solo limpiamos el intervalo, no ponemos isWorking en false
       if (workIntervalRef.current) clearInterval(workIntervalRef.current);
       setWorkTargetTime(null);
     } else {
-      // REANUDAR
       setWorkTargetTime(Date.now() + workSeconds * 1000);
     }
   };
@@ -268,7 +261,6 @@ const startWorkTimerAfterPrep = () => {
     setRestSeconds(restTotalSeconds);
     setIsResting(true);
   };
-  // ------------------------------------------------------
 
   const handleWorkComplete = () => {
     stopWorkTimer();
@@ -443,7 +435,6 @@ useEffect(() => {
         const currentEx = workout.exercises[currentExIndex];
         const dur = parseTimeToSeconds(currentEx?.duration);
         
-        // SIEMPRE activamos la preparación de 5s, tenga el ejercicio tiempo o no.
         if (!isWorking && workTargetTime === null && workSeconds === 0) {
           startPrepTimer(dur, currentEx.name);
         }
@@ -460,7 +451,6 @@ useEffect(() => {
       const currentEx = currentBlock.hiit_exercises[hiitExIdx];
       const dur = parseTimeToSeconds(currentEx?.duration_reps || currentEx?.duration);
       
-      // SIEMPRE activamos la preparación de 5s, tenga el ejercicio tiempo o no.
       if (!isWorking && workTargetTime === null && workSeconds === 0) {
         startPrepTimer(dur, currentEx.name);
       }
@@ -545,7 +535,6 @@ useEffect(() => {
   const completeSet = () => {
     stopAllTimers();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    forceSwipeableRef.current?.close();
 
     const exercises = workout.exercises || []; const currentEx = exercises[currentExIndex]; const currentSets = setsStatus[currentExIndex] || [];
     const nextPendingSet = currentSets.findIndex(s => s === 'pending'); if (nextPendingSet === -1) return;
@@ -571,7 +560,6 @@ useEffect(() => {
   const skipSet = () => {
     stopAllTimers();
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-    forceSwipeableRef.current?.close();
 
     const currentSets = setsStatus[currentExIndex] || []; const nextPendingSet = currentSets.findIndex(s => s === 'pending'); if (nextPendingSet === -1) return;
     updateSetStatus(currentExIndex, nextPendingSet, 'skipped');
@@ -807,20 +795,6 @@ useEffect(() => {
     );
   };
 
-  const renderForceLeftActions = () => (
-    <View style={[styles.swipeActionForce, { backgroundColor: colors.success || '#10B981', alignItems: 'flex-start', paddingLeft: 30 }]}>
-      <Ionicons name="checkmark-circle" size={32} color="#FFF" />
-      <Text style={styles.swipeTextForce}>Completar</Text>
-    </View>
-  );
-
-  const renderForceRightActions = () => (
-    <View style={[styles.swipeActionForce, { backgroundColor: colors.error || '#EF4444', alignItems: 'flex-end', paddingRight: 30 }]}>
-      <Ionicons name="play-skip-forward" size={32} color="#FFF" />
-      <Text style={styles.swipeTextForce}>Saltar</Text>
-    </View>
-  );
-
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Entrenamiento no encontrado.</Text><TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.primary }]} onPress={() => router.back()}><Text style={styles.backBtnText}>Volver</Text></TouchableOpacity></SafeAreaView>;
 
@@ -970,15 +944,6 @@ useEffect(() => {
               onSkip={skipHiitEx}
             />
 
-            {/* PISTA VISUAL DE DESLIZAMIENTO PARA HIIT */}
-            {!isResting && !isPrep && (
-              <View style={{ marginBottom: 12, alignItems: 'center', backgroundColor: colors.surfaceHighlight, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 12, alignSelf: 'center' }}>
-                <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '700', opacity: 0.9 }}>
-                  💡 Desliza la lista inferior a los lados para saltar/completar
-                </Text>
-              </View>
-            )}
-
             <HiitCard
               currentBlock={currentBlock} hiitRound={hiitRound} hiitPhase={hiitPhase}
               hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} colors={colors}
@@ -1038,41 +1003,64 @@ useEffect(() => {
               onSkip={skipSet}
             />
 
-            {/* PISTA VISUAL DE DESLIZAMIENTO PARA FUERZA */}
-            {nextPendingSet !== -1 && !isResting && !isPrep && (
-              <View style={{ marginBottom: 12, alignItems: 'center', backgroundColor: colors.surfaceHighlight, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 12, alignSelf: 'center' }}>
-                <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '700', opacity: 0.9 }}>
-                  💡 Desliza la tarjeta inferior hacia los lados para saltar/completar serie
-                </Text>
-              </View>
-            )}
-
-            <Swipeable
-              ref={forceSwipeableRef}
-              renderLeftActions={renderForceLeftActions}
-              renderRightActions={renderForceRightActions}
-              onSwipeableLeftOpen={completeSet}
-              onSwipeableRightOpen={skipSet}
-              enabled={nextPendingSet !== -1 && !isResting && !isPrep}
-            >
-              <View style={[styles.exerciseCard, { backgroundColor: colors.surface }]}>
-                <View style={[styles.exNumber, { backgroundColor: colors.primary + '12' }]}><Text style={[styles.exNumberText, { color: colors.primary }]}>{currentExIndex + 1}</Text></View>
-                <Text style={[styles.exerciseName, { color: colors.textPrimary }]}>{currentEx.name}</Text>
-
-                {currentEx.video_url && <TouchableOpacity style={[styles.referenceVideoBtn, { backgroundColor: (colors.error || '#EF4444') + '15' }]} onPress={() => Linking.openURL(currentEx.video_url)}><Ionicons name="logo-youtube" size={18} color={colors.error || '#EF4444'} /><Text style={{ color: colors.error || '#EF4444', fontSize: 13, fontWeight: '700' }}>Ver Vídeo de Referencia</Text></TouchableOpacity>}
-                {currentEx.exercise_notes && <View style={[styles.coachNotesBox, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}><Ionicons name="information-circle" size={18} color={colors.primary} /><Text style={{ color: colors.textPrimary, flex: 1, fontSize: 13, fontStyle: 'italic', lineHeight: 18 }}>{currentEx.exercise_notes}</Text></View>}
-
-                <View style={styles.detailsGrid}>
-                  {currentEx.sets && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.sets}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Series</Text></View>}
-                  {currentEx.reps && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.reps}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Reps</Text></View>}
-                  {currentEx.duration && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.duration}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Dur.</Text></View>}
-                  {currentEx.weight && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.weight}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Kg</Text></View>}
-                  {currentEx.rest && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.S.</Text></View>}
-                  {currentEx.rest_exercise && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest_exercise}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.Ej.</Text></View>}
+            {/* TARJETA DE EJERCICIO REDISEÑADA Y COMPACTA */}
+            <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                
+                {/* Cabecera: Nombre y Enlace al Vídeo */}
+                <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}>
+                  <Text style={[styles.compactExName, { color: colors.textPrimary }]}>{currentEx.name}</Text>
+                  {currentEx.video_url && (
+                    <TouchableOpacity onPress={() => Linking.openURL(currentEx.video_url)}>
+                      <Ionicons name="logo-youtube" size={28} color={colors.error || '#EF4444'} />
+                    </TouchableOpacity>
+                  )}
                 </View>
-              </View>
-            </Swipeable>
 
+                {/* Notas del Entrenador (Solo si existen) */}
+                {currentEx.exercise_notes && (
+                  <View style={[styles.compactNotesBox, { backgroundColor: colors.primary + '10' }]}>
+                    <Ionicons name="information-circle" size={16} color={colors.primary} />
+                    <Text style={{ color: colors.textPrimary, flex: 1, fontSize: 13, fontStyle: 'italic', lineHeight: 18 }}>{currentEx.exercise_notes}</Text>
+                  </View>
+                )}
+
+                {/* Grid de Detalles (Series, Reps, etc.) */}
+                <View style={styles.compactDetailsGrid}>
+                  {currentEx.sets && (
+                    <View style={styles.compactDetailItem}>
+                      <Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>Series</Text>
+                      <Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{currentEx.sets}</Text>
+                    </View>
+                  )}
+                  {currentEx.reps && (
+                    <View style={styles.compactDetailItem}>
+                      <Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>Reps</Text>
+                      <Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{currentEx.reps}</Text>
+                    </View>
+                  )}
+                  {currentEx.weight && (
+                    <View style={styles.compactDetailItem}>
+                      <Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>Kg</Text>
+                      <Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{currentEx.weight}</Text>
+                    </View>
+                  )}
+                  {currentEx.duration && (
+                    <View style={styles.compactDetailItem}>
+                      <Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>Tiempo</Text>
+                      <Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{currentEx.duration}</Text>
+                    </View>
+                  )}
+                  {currentEx.rest && (
+                    <View style={styles.compactDetailItem}>
+                      <Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>Desc.</Text>
+                      <Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{currentEx.rest}</Text>
+                    </View>
+                  )}
+                </View>
+
+            </View>
+
+            {/* SECCIÓN DE SERIES */}
             <View style={[styles.setsCard, { backgroundColor: colors.surface, marginTop: 16 }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <Text style={[styles.setsTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Progreso de Series</Text>
@@ -1174,26 +1162,28 @@ useEffect(() => {
     }
   }
 
-  return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      {mainContent}
-    </GestureHandlerRootView>
-  );
+  return mainContent;
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1 }, errorText: { fontSize: 18, fontWeight: '700', marginTop: 15, textAlign: 'center' }, backBtn: { marginTop: 20, paddingHorizontal: 25, paddingVertical: 12, borderRadius: 12 }, backBtnText: { color: '#FFF', fontWeight: '800' }, topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }, topTitle: { fontSize: 16, fontWeight: '600' }, topProgress: { fontSize: 14, fontWeight: '500' }, progressBar: { height: 3, marginHorizontal: 16, borderRadius: 2, overflow: 'hidden' }, progressFill: { height: '100%', borderRadius: 2 }, content: { padding: 20, paddingBottom: 100, gap: 16 }, 
-  exerciseCard: { borderRadius: 16, padding: 24, alignItems: 'center', gap: 16 }, exNumber: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' }, exNumberText: { fontSize: 20, fontWeight: '800' }, exerciseName: { fontSize: 24, fontWeight: '700', textAlign: 'center' }, 
-  referenceVideoBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, marginTop: -4 },
-  coachNotesBox: { flexDirection: 'row', padding: 12, borderRadius: 10, borderWidth: 1, gap: 8, width: '100%' },
-  detailsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }, detailBox: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', minWidth: 60 }, detailValue: { fontSize: 20, fontWeight: '700' }, detailLabel: { fontSize: 10, fontWeight: '600', marginTop: 2, textTransform: 'uppercase' }, setsCard: { borderRadius: 16, padding: 20 }, setsTitle: { fontSize: 16, fontWeight: '600', marginBottom: 16 }, setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' }, setNum: { fontSize: 15, fontWeight: '600' }, setActions: { flexDirection: 'row', gap: 10 }, completeSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16 }, completeSetText: { fontSize: 16, fontWeight: '600' }, skipSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, paddingVertical: 16, paddingHorizontal: 16, borderWidth: 1.5 }, skipSetText: { fontSize: 14, fontWeight: '600' }, allDoneBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingVertical: 14 }, bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 28, borderTopWidth: 0.5 }, navBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 }, navBtnText: { fontSize: 15, fontWeight: '500' },
+  
+  // NUEVOS ESTILOS PARA LA TARJETA COMPACTA DE EJERCICIO (Sustituye a exerciseCard)
+  compactExerciseCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
+  compactExHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  compactExName: { fontSize: 18, fontWeight: '800', flex: 1, paddingRight: 10 },
+  compactNotesBox: { flexDirection: 'row', padding: 12, gap: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  compactDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 16, gap: 10, justifyContent: 'flex-start' },
+  compactDetailItem: { alignItems: 'flex-start', minWidth: '30%', marginBottom: 4 },
+  compactDetailLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 },
+  compactDetailValue: { fontSize: 18, fontWeight: '700' },
+  
+  setsCard: { borderRadius: 16, padding: 20 }, setsTitle: { fontSize: 16, fontWeight: '600', marginBottom: 16 }, setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' }, setNum: { fontSize: 15, fontWeight: '600' }, setActions: { flexDirection: 'row', gap: 10 }, completeSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16 }, completeSetText: { fontSize: 16, fontWeight: '600' }, skipSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, paddingVertical: 16, paddingHorizontal: 16, borderWidth: 1.5 }, skipSetText: { fontSize: 14, fontWeight: '600' }, allDoneBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingVertical: 14 }, bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 28, borderTopWidth: 0.5 }, navBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 }, navBtnText: { fontSize: 15, fontWeight: '500' },
   activeLogContainer: { width: '100%', marginTop: 0 }, activeLogTitle: { fontSize: 14, fontWeight: '700', marginBottom: 12 }, logInputWrapper: { flex: 1 }, logInputLabel: { fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase' }, logInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15, fontWeight: '600' },
   finishedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }, finishedIconContainer: { width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(245, 158, 11, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 24 }, finishedTitle: { fontSize: 28, fontWeight: '800', marginBottom: 8, textAlign: 'center' }, finishedSubtitle: { fontSize: 16, textAlign: 'center', marginBottom: 40 }, finishWorkoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 18, paddingHorizontal: 32, borderRadius: 16, width: '100%', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 18, fontWeight: '700' }, label: { fontSize: 12, fontWeight: '700', letterSpacing: 1 }, rpeCircle: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 14, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, textAlignVertical: 'top', fontSize: 15 },
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 4 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, fullVideo: { width: '100%', height: '100%' }, closeModalBtn: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
   fabIndications: { position: 'absolute', bottom: 100, right: 20, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4, zIndex: 99 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   indicationsModalContent: { width: '85%', padding: 24, borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
-  swipeActionForce: { justifyContent: 'center', flex: 1, borderRadius: 16, marginBottom: 0 },
-  swipeTextForce: { color: '#FFF', fontWeight: '800', fontSize: 14, marginTop: 4 },
   bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, maxHeight: '90%' },
 });
