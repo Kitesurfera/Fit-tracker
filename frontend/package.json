@@ -11,6 +11,8 @@
     "lint": "expo lint"
   },
   "dependencies": {
+    "expo-haptics": "~13.0.1",
+    "react-native-gesture-handler": "~2.16.1"
     "expo-auth-session": "~5.5.2",
     "expo-crypto": "~13.0.2",
     "expo-speech": "~11.3.0",
