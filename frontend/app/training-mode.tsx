@@ -12,8 +12,8 @@ import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
-import Svg, { Circle, Path, G, Text as SvgText } from 'react-native-svg';
 import NetInfo from '@react-native-community/netinfo';
+import Body from 'react-native-body-highlighter'; // NUEVO IMPORT
 
 // IMPORTACIONES
 import { useTheme } from '../src/hooks/useTheme';
@@ -28,6 +28,16 @@ const { width } = Dimensions.get('window');
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
 const SLEEP_HOURS_OPTIONS = ['<6', '6', '7', '8', '9+'];
+
+// DICCIONARIO PARA TRADUCIR LAS PARTES DEL CUERPO
+const SLUG_TRANSLATIONS: Record<string, string> = {
+  'chest': 'Pecho', 'upper-back': 'Espalda Alta', 'lower-back': 'Lumbar',
+  'quadriceps': 'Cuádriceps', 'hamstring': 'Isquiotibiales', 'gluteal': 'Glúteos',
+  'front-deltoids': 'Hombro Frontal', 'back-deltoids': 'Hombro Trasero',
+  'biceps': 'Bíceps', 'triceps': 'Tríceps', 'abs': 'Abdomen', 'obliques': 'Oblicuos',
+  'calves': 'Gemelos', 'forearm': 'Antebrazo', 'adductor': 'Aductores', 'abductors': 'Abductores',
+  'neck': 'Cuello', 'trapezius': 'Trapecio', 'head': 'Cabeza', 'hands': 'Manos', 'feet': 'Pies'
+};
 
 const parseTimeToSeconds = (timeStr: string | number | undefined | null): number => {
   if (!timeStr) return 0;
@@ -703,89 +713,57 @@ useEffect(() => {
     </Modal>
   );
 
-  const toggleJoint = (joint: string) => {
+  const toggleJoint = (slug: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setSoreJoints(prev => prev.includes(joint) ? prev.filter(j => j !== joint) : [...prev, joint]);
+    setSoreJoints(prev => prev.includes(slug) ? prev.filter(j => j !== slug) : [...prev, slug]);
   };
 
-  const isJointSelected = (joint: string) => soreJoints.includes(joint);
-
   const renderBodyMapModal = () => {
-    const primaryColor = colors.primary;
     const errorColor = colors.error || '#EF4444';
-    const bodyOutlineColor = colors.textSecondary;
-    
-    const frontPoints = [
-      { id: 'Hombro Izq', cx: 130, cy: 120, r: 15 }, { id: 'Hombro Der', cx: 270, cy: 120, r: 15 },
-      { id: 'Codo Izq', cx: 100, cy: 200, r: 15 }, { id: 'Codo Der', cx: 300, cy: 200, r: 15 },
-      { id: 'Muñeca Izq', cx: 80, cy: 280, r: 12 }, { id: 'Muñeca Der', cx: 320, cy: 280, r: 12 },
-      { id: 'Costillas', cx: 200, cy: 190, r: 25 }, { id: 'Cadera', cx: 200, cy: 260, r: 25 },
-      { id: 'Rodilla Izq', cx: 160, cy: 380, r: 18 }, { id: 'Rodilla Der', cx: 240, cy: 380, r: 18 },
-      { id: 'Tobillo Izq', cx: 150, cy: 490, r: 15 }, { id: 'Tobillo Der', cx: 250, cy: 490, r: 15 },
-    ];
-
-    const backPoints = [
-      { id: 'Cuello', cx: 200, cy: 90, r: 18 }, { id: 'Escápula Izq', cx: 160, cy: 140, r: 18 },
-      { id: 'Escápula Der', cx: 240, cy: 140, r: 18 }, { id: 'Lumbares', cx: 200, cy: 240, r: 28 },
-      { id: 'Tendón Izq', cx: 150, cy: 470, r: 15 }, { id: 'Tendón Der', cx: 250, cy: 470, r: 15 },
-    ];
+    // Mapeamos lo seleccionado para darle intensidad 1 y que se ilumine
+    const bodyData = soreJoints.map(slug => ({ slug, intensity: 1 }));
 
     return (
       <Modal visible={showBodyMap} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.bodyMapModalContent, { backgroundColor: colors.background }]}>
+            
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Registrar Dolor / Impacto</Text>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Registrar Fatiga</Text>
               <TouchableOpacity onPress={() => setShowBodyMap(false)}>
                 <Ionicons name="close" size={28} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
+            
             <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center' }}>
-              Toca las articulaciones que hayas sentido sobrecargadas por las botas o los aterrizajes.
+              Toca las zonas musculares o articulares que hayas sentido más sobrecargadas.
             </Text>
-            <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center' }}>
-              <View style={{ width: width * 0.85, alignItems: 'center' }}>
-                <Text style={{ fontWeight: '700', color: colors.textPrimary, marginBottom: 10 }}>VISTA FRONTAL</Text>
-                <Svg height="550" width="400" viewBox="0 0 400 550">
-                  <Path d="M200 20 C 180 20, 180 60, 200 80 C 220 60, 220 20, 200 20 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> 
-                  <Path d="M200 80 L 200 100 L 140 120 L 100 200 L 80 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
-                  <Path d="M200 80 L 200 100 L 260 120 L 300 200 L 320 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
-                  <Path d="M140 120 L 160 260 L 240 260 L 260 120 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> 
-                  <Path d="M170 260 L 160 380 L 150 490 L 130 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
-                  <Path d="M230 260 L 240 380 L 250 490 L 270 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
-                  <Path d="M170 260 L 200 280 L 230 260" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> 
-                  {frontPoints.map(point => (
-                    <G key={point.id} onPress={() => toggleJoint(point.id)}>
-                      <Circle cx={point.cx} cy={point.cy} r={point.r + 10} fill="transparent" />
-                      <Circle cx={point.cx} cy={point.cy} r={point.r} fill={isJointSelected(point.id) ? errorColor : primaryColor} opacity={isJointSelected(point.id) ? 0.9 : 0.3} />
-                      {isJointSelected(point.id) && <SvgText x={point.cx} y={point.cy - point.r - 5} fill={errorColor} fontSize="12" fontWeight="bold" textAnchor="middle">{point.id}</SvgText>}
-                    </G>
-                  ))}
-                </Svg>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 25 }}>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10, letterSpacing: 1 }}>FRONTAL</Text>
+                <Body 
+                  data={bodyData} 
+                  gender="female" 
+                  side="front" 
+                  scale={0.8} 
+                  colors={['#E2E8F0', errorColor]} 
+                  onBodyPartPress={(b) => toggleJoint(b.slug)} 
+                />
               </View>
-              <View style={{ width: width * 0.85, alignItems: 'center' }}>
-                <Text style={{ fontWeight: '700', color: colors.textPrimary, marginBottom: 10 }}>VISTA TRASERA</Text>
-                <Svg height="550" width="400" viewBox="0 0 400 550">
-                  <Path d="M200 20 C 180 20, 180 60, 200 80 C 220 60, 220 20, 200 20 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> 
-                  <Path d="M200 80 L 200 100 L 140 120 L 100 200 L 80 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
-                  <Path d="M200 80 L 200 100 L 260 120 L 300 200 L 320 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
-                  <Path d="M140 120 L 160 260 L 240 260 L 260 120 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> 
-                  <Path d="M200 100 L 200 260" stroke={bodyOutlineColor} strokeWidth="2" strokeDasharray="5,5" fill="none" /> 
-                  <Path d="M170 260 L 160 380 L 150 490 L 130 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
-                  <Path d="M230 260 L 240 380 L 250 490 L 270 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
-                  {backPoints.map(point => (
-                    <G key={point.id} onPress={() => toggleJoint(point.id)}>
-                      <Circle cx={point.cx} cy={point.cy} r={point.r + 10} fill="transparent" />
-                      <Circle cx={point.cx} cy={point.cy} r={point.r} fill={isJointSelected(point.id) ? errorColor : primaryColor} opacity={isJointSelected(point.id) ? 0.9 : 0.3} />
-                      {isJointSelected(point.id) && <SvgText x={point.cx} y={point.cy - point.r - 5} fill={errorColor} fontSize="12" fontWeight="bold" textAnchor="middle">{point.id}</SvgText>}
-                    </G>
-                  ))}
-                </Svg>
+              <View style={{ alignItems: 'center', flex: 1 }}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10, letterSpacing: 1 }}>DORSAL</Text>
+                <Body 
+                  data={bodyData} 
+                  gender="female" 
+                  side="back" 
+                  scale={0.8} 
+                  colors={['#E2E8F0', errorColor]} 
+                  onBodyPartPress={(b) => toggleJoint(b.slug)} 
+                />
               </View>
-            </ScrollView>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 10, marginBottom: 20 }}>
-               <Text style={{ fontSize: 12, color: colors.textSecondary }}>Desliza para ver la parte trasera</Text>
             </View>
+
             <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', width: '100%' }} onPress={() => setShowBodyMap(false)}>
               <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar Selección</Text>
             </TouchableOpacity>
@@ -895,7 +873,9 @@ useEffect(() => {
               {workout.completion_data.sleep_hours && <Text style={{ color: colors.textPrimary, marginBottom: 5 }}>Horas de sueño: <Text style={{ fontWeight: '700' }}>{workout.completion_data.sleep_hours}h</Text></Text>}
               {workout.completion_data.sore_joints && workout.completion_data.sore_joints.length > 0 && (
                 <Text style={{ color: colors.textPrimary, marginBottom: 5 }}>
-                  Impacto Articular: <Text style={{ fontWeight: '700', color: colors.error || '#EF4444' }}>{workout.completion_data.sore_joints.join(', ')}</Text>
+                  Sobrecarga/Impacto: <Text style={{ fontWeight: '700', color: colors.error || '#EF4444' }}>
+                    {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}
+                  </Text>
                 </Text>
               )}
               {workout.observations && <Text style={{ color: colors.textPrimary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
@@ -1168,7 +1148,6 @@ useEffect(() => {
 const styles = StyleSheet.create({
   container: { flex: 1 }, errorText: { fontSize: 18, fontWeight: '700', marginTop: 15, textAlign: 'center' }, backBtn: { marginTop: 20, paddingHorizontal: 25, paddingVertical: 12, borderRadius: 12 }, backBtnText: { color: '#FFF', fontWeight: '800' }, topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 12 }, topTitle: { fontSize: 16, fontWeight: '600' }, topProgress: { fontSize: 14, fontWeight: '500' }, progressBar: { height: 3, marginHorizontal: 16, borderRadius: 2, overflow: 'hidden' }, progressFill: { height: '100%', borderRadius: 2 }, content: { padding: 20, paddingBottom: 100, gap: 16 }, 
   
-  // NUEVOS ESTILOS PARA LA TARJETA COMPACTA DE EJERCICIO (Sustituye a exerciseCard)
   compactExerciseCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' },
   compactExHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   compactExName: { fontSize: 18, fontWeight: '800', flex: 1, paddingRight: 10 },
