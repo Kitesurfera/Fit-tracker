@@ -1,7 +1,6 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, StyleSheet, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Swipeable } from 'react-native-gesture-handler';
 
 interface HiitCardProps {
   currentBlock: any;
@@ -26,26 +25,10 @@ export default function HiitCard({
   onAdvanceHiit, onSkipHiitEx
 }: HiitCardProps) {
   
-  const swipeableRef = useRef<Swipeable>(null);
-  
   const totalExs = currentBlock.hiit_exercises.length;
   const dynamicPadding = totalExs <= 3 ? 18 : totalExs <= 5 ? 12 : 8;
   const dynamicFontName = totalExs <= 3 ? 20 : totalExs <= 5 ? 18 : 15;
   const dynamicFontDur = totalExs <= 3 ? 18 : totalExs <= 5 ? 16 : 14;
-
-  const renderLeftActions = () => (
-    <View style={[styles.swipeAction, { backgroundColor: colors.success || '#10B981', alignItems: 'flex-start', paddingLeft: 20 }]}>
-      <Ionicons name="checkmark-circle" size={28} color="#FFF" />
-      <Text style={styles.swipeText}>Completar</Text>
-    </View>
-  );
-
-  const renderRightActions = () => (
-    <View style={[styles.swipeAction, { backgroundColor: colors.error || '#EF4444', alignItems: 'flex-end', paddingRight: 20 }]}>
-      <Ionicons name="play-skip-forward" size={28} color="#FFF" />
-      <Text style={styles.swipeText}>Saltar</Text>
-    </View>
-  );
 
   return (
     <View style={[styles.hiitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -63,8 +46,8 @@ export default function HiitCard({
           const isDone = hiitExIdx > idx;
           const videoKey = `${hiitBlockIdx}-${idx}`;
 
-          const rowContent = (
-            <View style={[styles.hiitExRowWrapper, isCurrent && { backgroundColor: colors.surfaceHighlight, borderRadius: 10, borderWidth: 1, borderColor: colors.primary }]}>
+          return (
+            <View key={idx} style={[styles.hiitExRowWrapper, isCurrent && { backgroundColor: colors.surfaceHighlight, borderRadius: 10, borderWidth: 1, borderColor: colors.primary }]}>
               <View style={[styles.hiitExRow, { paddingVertical: dynamicPadding }]}>
                 <View style={[styles.hiitCheck, { backgroundColor: isDone ? (colors.success || '#10B981') : isCurrent ? colors.primary : colors.border }]}>
                   <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>{isDone ? <Ionicons name="checkmark" size={12} color="#FFF" /> : idx + 1}</Text>
@@ -117,22 +100,6 @@ export default function HiitCard({
               )}
             </View>
           );
-
-          if (isCurrent) {
-            return (
-              <Swipeable
-                key={idx}
-                ref={swipeableRef}
-                renderLeftActions={renderLeftActions}
-                renderRightActions={renderRightActions}
-                onSwipeableLeftOpen={() => { swipeableRef.current?.close(); onAdvanceHiit(); }}
-                onSwipeableRightOpen={() => { swipeableRef.current?.close(); onSkipHiitEx(); }}
-              >
-                {rowContent}
-              </Swipeable>
-            );
-          }
-          return <React.Fragment key={idx}>{rowContent}</React.Fragment>;
         })}
       </View>
     </View>
@@ -149,7 +116,5 @@ const styles = StyleSheet.create({
   hiitExName: { fontSize: 16, fontWeight: '600' }, 
   hiitExDur: { fontSize: 16, fontWeight: '700' }, 
   hiitRefBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: 8, alignSelf: 'flex-start' }, 
-  feedbackInput: { borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 60, textAlignVertical: 'top', fontSize: 14 },
-  swipeAction: { justifyContent: 'center', flex: 1, borderRadius: 10, marginBottom: 0 },
-  swipeText: { color: '#FFF', fontWeight: '800', fontSize: 12, marginTop: 4 }
+  feedbackInput: { borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 60, textAlignVertical: 'top', fontSize: 14 }
 });
