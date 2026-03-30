@@ -222,9 +222,14 @@ export default function TrainingModeScreen() {
     else announce("Prepárate.");
   };
 
-  const startWorkTimerAfterPrep = () => {
+const startWorkTimerAfterPrep = () => {
     setIsWorking(true);
-    setWorkTargetTime(Date.now() + workTotalSeconds * 1000);
+    if (workTotalSeconds > 0) {
+      setWorkTargetTime(Date.now() + workTotalSeconds * 1000);
+    } else {
+      // Si el ejercicio es por repeticiones (0 seg), lo dejamos sin target de tiempo
+      setWorkTargetTime(null);
+    }
   };
 
   const startRestTimer = (seconds: number, nextExName?: string) => {
@@ -430,14 +435,16 @@ export default function TrainingModeScreen() {
     return () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); };
   }, [isWorking, workTargetTime]);
 
-  useEffect(() => {
+useEffect(() => {
     if (!isHiit && workout && !isResting && !isPrep && !showIndicationsModal) {
       const currentSets = setsStatus[currentExIndex] || [];
       const nextPendingSet = currentSets.findIndex(s => s === 'pending');
       if (nextPendingSet !== -1) {
         const currentEx = workout.exercises[currentExIndex];
         const dur = parseTimeToSeconds(currentEx?.duration);
-        if (dur > 0 && !isWorking && workTargetTime === null && workSeconds === 0) {
+        
+        // SIEMPRE activamos la preparación de 5s, tenga el ejercicio tiempo o no.
+        if (!isWorking && workTargetTime === null && workSeconds === 0) {
           startPrepTimer(dur, currentEx.name);
         }
       } else {
@@ -446,16 +453,16 @@ export default function TrainingModeScreen() {
     }
   }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal]);
 
-  useEffect(() => {
+useEffect(() => {
     if (isHiit && workout && hiitPhase === 'work' && !isResting && !isPrep && !showIndicationsModal) {
       const currentBlock = workout.exercises[hiitBlockIdx];
       if (!currentBlock) return;
       const currentEx = currentBlock.hiit_exercises[hiitExIdx];
       const dur = parseTimeToSeconds(currentEx?.duration_reps || currentEx?.duration);
-      if (dur > 0 && !isWorking && workTargetTime === null && workSeconds === 0) {
+      
+      // SIEMPRE activamos la preparación de 5s, tenga el ejercicio tiempo o no.
+      if (!isWorking && workTargetTime === null && workSeconds === 0) {
         startPrepTimer(dur, currentEx.name);
-      } else if (dur === 0) {
-        stopWorkTimer();
       }
     }
   }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal]);
