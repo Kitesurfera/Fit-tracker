@@ -11,6 +11,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import WellnessModal from '../../src/components/WellnessModal';
+import { syncManager } from '../../src/offline';
 
 const DAILY_TIPS = [
   "El descanso es tan importante como tu serie más pesada.",
@@ -242,10 +243,14 @@ export default function HomeScreen() {
     }
   };
 
-  useFocusEffect(
+useFocusEffect(
     useCallback(() => {
       if (authLoading || (!user && !isTrainer)) return;
       const init = async () => {
+        // --- NUEVO: Intentar sincronizar datos pendientes al abrir la app ---
+        await syncManager.syncPendingWorkouts();
+        // -------------------------------------------------------------------
+
         if (isTrainer) { await loadData(true); return; }
         const sData = await loadData(true);
         if (sData?.latest_wellness?.date !== todayStr) setShowWellness(true);
