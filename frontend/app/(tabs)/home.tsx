@@ -13,6 +13,7 @@ import { api } from '../../src/api';
 import WellnessModal from '../../src/components/WellnessModal';
 import { syncManager } from '../../src/offline';
 import { scheduleDailyWellnessReminder, testNotification } from '../../src/notifications';
+import { subscribeToWebPush } from '../../src/webPush';
 
 const DAILY_TIPS = [
   "El descanso es tan importante como tu serie más pesada.",
