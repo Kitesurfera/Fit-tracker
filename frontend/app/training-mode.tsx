@@ -85,6 +85,10 @@ export default function TrainingModeScreen() {
   const [sleepHours, setSleepHours] = useState<string>('');
   const [observations, setObservations] = useState('');
   
+  // --- INDICACIONES GENERALES ---
+  const [showIndicationsModal, setShowIndicationsModal] = useState(false);
+  const hasShownIndicationsRef = useRef(false);
+
   // --- TEMPORIZADORES ESTADOS ---
   const [prepTargetTime, setPrepTargetTime] = useState<number | null>(null);
   const [prepSeconds, setPrepSeconds] = useState(0);
@@ -330,6 +334,12 @@ export default function TrainingModeScreen() {
                 initial[i] = Array(total).fill('pending');
               });
               setSetsStatus(initial);
+            }
+
+            // AUTO-SHOW DE INDICACIONES
+            if (currentWorkout.notes && currentWorkout.notes.trim() !== '' && !hasShownIndicationsRef.current) {
+               setShowIndicationsModal(true);
+               hasShownIndicationsRef.current = true;
             }
           }
         }
@@ -624,6 +634,28 @@ export default function TrainingModeScreen() {
       <View style={styles.fullscreenVideoOverlay}>
         <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
         {expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
+      </View>
+    </Modal>
+  );
+
+  const renderIndicationsModal = () => (
+    <Modal visible={showIndicationsModal} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 }}>
+            <Ionicons name="clipboard" size={28} color={colors.primary} />
+            <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, flex: 1 }}>Indicaciones</Text>
+          </View>
+          <ScrollView style={{ maxHeight: 300, marginBottom: 20 }}>
+            <Text style={{ color: colors.textPrimary, fontSize: 15, lineHeight: 22 }}>{workout?.notes}</Text>
+          </ScrollView>
+          <TouchableOpacity 
+            style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} 
+            onPress={() => setShowIndicationsModal(false)}
+          >
+            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>¡A por ello!</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </Modal>
   );
@@ -985,7 +1017,15 @@ export default function TrainingModeScreen() {
             </View>
           </View>
         </ScrollView>
+
+        {workout?.notes && !finished && (
+          <TouchableOpacity style={[styles.fabIndications, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
+            <Ionicons name="clipboard" size={26} color="#FFF" />
+          </TouchableOpacity>
+        )}
+
         {renderVideoModal()}
+        {renderIndicationsModal()}
       </SafeAreaView>
     );
   }
@@ -1131,6 +1171,12 @@ export default function TrainingModeScreen() {
 
       </ScrollView>
 
+      {workout?.notes && !finished && (
+        <TouchableOpacity style={[styles.fabIndications, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
+          <Ionicons name="clipboard" size={26} color="#FFF" />
+        </TouchableOpacity>
+      )}
+
       <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
         <TouchableOpacity style={[styles.navBtn, { opacity: currentExIndex === 0 ? 0.3 : 1 }]} onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }} disabled={currentExIndex === 0}><Ionicons name="arrow-back" size={22} color={colors.textPrimary} /><Text style={[styles.navBtnText, { color: colors.textPrimary }]}>Anterior</Text></TouchableOpacity>
         {currentExIndex < exercises.length - 1 ? (
@@ -1139,7 +1185,9 @@ export default function TrainingModeScreen() {
           <TouchableOpacity style={styles.navBtn} onPress={() => { stopAllTimers(); setFinished(true); }}><Text style={[styles.navBtnText, { color: colors.success || '#10B981', fontWeight: '700' }]}>Terminar</Text><Ionicons name="flag" size={20} color={colors.success || '#10B981'} /></TouchableOpacity>
         )}
       </View>
+      
       {renderVideoModal()}
+      {renderIndicationsModal()}
     </SafeAreaView>
   );
 }
@@ -1159,5 +1207,9 @@ const styles = StyleSheet.create({
   workTimerTitle: { fontSize: 22, fontWeight: '900', marginBottom: 20, letterSpacing: 1 },
   timerText: { fontSize: 50, fontWeight: '900' },
   playPauseBtn: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 },
-  skipRestBtnUnified: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 30, borderWidth: 2 }
+  skipRestBtnUnified: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 30, borderWidth: 2 },
+  
+  // Novedad: Botón Flotante y Modal de Indicaciones
+  fabIndications: { position: 'absolute', bottom: 100, right: 20, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4, zIndex: 99 },
+  indicationsModalContent: { width: '85%', padding: 24, borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
 });
