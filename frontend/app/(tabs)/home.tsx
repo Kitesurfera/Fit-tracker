@@ -12,6 +12,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import WellnessModal from '../../src/components/WellnessModal';
 import { syncManager } from '../../src/offline';
+import { scheduleDailyWellnessReminder, testNotification } from '../../src/notifications';
 
 const DAILY_TIPS = [
   "El descanso es tan importante como tu serie más pesada.",
@@ -247,9 +248,11 @@ useFocusEffect(
     useCallback(() => {
       if (authLoading || (!user && !isTrainer)) return;
       const init = async () => {
-        // --- NUEVO: Intentar sincronizar datos pendientes al abrir la app ---
         await syncManager.syncPendingWorkouts();
-        // -------------------------------------------------------------------
+        
+        // --- NUEVO: Programamos la notificación al abrir la app ---
+        await scheduleDailyWellnessReminder();
+        // --------------------------------------------------------
 
         if (isTrainer) { await loadData(true); return; }
         const sData = await loadData(true);
@@ -617,6 +620,11 @@ useFocusEffect(
                 <Text style={[styles.actionText, { color: '#FFF', fontSize: 13 }]}>Enviar Status</Text>
               </TouchableOpacity>
             </View>
+
+            <TouchableOpacity style={[styles.fullBtn, { backgroundColor: colors.primary, marginTop: -15, marginBottom: 30 }]} onPress={testNotification}>
+              <Ionicons name="notifications-outline" size={20} color="#FFF" />
+              <Text style={[styles.actionText, { color: '#FFF', fontSize: 13 }]}>Probar Notificación</Text>
+            </TouchableOpacity>
 
             <View style={{ marginBottom: 30 }}>
               <Text style={styles.sectionTitle}>HISTORIAL DE FATIGA (ÚLTIMOS 14 DÍAS)</Text>
