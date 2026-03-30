@@ -244,18 +244,32 @@ export default function HomeScreen() {
 useFocusEffect(
     useCallback(() => {
       if (authLoading || (!user && !isTrainer)) return;
+      
       const init = async () => {
-        await syncManager.syncPendingWorkouts();
-        await scheduleDailyWellnessReminder();
+        try {
+          await syncManager.syncPendingWorkouts();
+        } catch (e) {
+          console.log("Error en sync:", e);
+        }
 
-        if (isTrainer) { await loadData(true); return; }
+        // 1. Si es Entrenador, cargamos los datos directamente y cortamos aquí
+        if (isTrainer) { 
+          await loadData(true); 
+          return; 
+        }
+        
+        // 2. Si es Atleta, cargamos sus datos y comprobamos la fatiga
         const sData = await loadData(true);
         if (sData?.latest_wellness?.date !== todayStr) setShowWellness(true);
+        
+        // 3. Programamos la notificación al final, SIN 'await' y capturando el error 
+        // para que si el navegador web la bloquea, no rompa la pantalla.
+        scheduleDailyWellnessReminder().catch(() => {});
       };
+      
       init();
     }, [isTrainer, user, authLoading, todayStr])
   );
-
   useEffect(() => {
     const checkFeedbackStatus = async () => {
       if (!user || isTrainer) return;
