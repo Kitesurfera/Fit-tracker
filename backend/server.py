@@ -13,14 +13,15 @@ import jwt
 import uuid
 from pathlib import Path
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 import shutil
 import asyncio
 import time
+import json
 
-# IMPORTACIONES PARA PUSH DE EXPO
-from exponent_server_sdk import PushClient, PushMessage, PushServerError
+# IMPORTACIONES PARA WEB PUSH
+from pywebpush import webpush, WebPushException
 
 # IMPORTACIONES PARA GOOGLE OAUTH
 from google.oauth2 import id_token
@@ -40,8 +41,13 @@ JWT_SECRET = os.environ.get('JWT_SECRET', 'fitness-tracker-secret-key-2026')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 72
 
-
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com')
+
+# --- CONFIGURACIÓN VAPID PARA WEB PUSH ---
+VAPID_PRIVATE_KEY = os.environ.get("PRIVATE_VAPID_KEY")
+VAPID_CLAIMS = {
+    "sub": "mailto:claudiakiter31@gmail.com"
+}
 
 security = HTTPBearer()
 app = FastAPI()
@@ -100,10 +106,9 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
-# Modelo para recibir el token de Google
 class GoogleAuth(BaseModel):
     token: str
-    role: Optional[str] = "trainer" # Por defecto, si es cuenta nueva, que sea entrenador para explorar
+    role: Optional[str] = "trainer" 
 
 class AthleteCreate(BaseModel):
     email: str
@@ -197,6 +202,11 @@ class PushTest(BaseModel):
     title: str
     message: str
 
+# NUEVO MODELO PARA SUSCRIPCIONES PUSH WEB
+class WebPushSubscription(BaseModel):
+    endpoint: str
+    keys: Dict[str, str]
+
 # --- Auth Helpers ---
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -225,30 +235,55 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return user
 
-# --- UTILIDAD PARA MANDAR NOTIFICACIONES ---
-def send_push_notification(token: str, title: str, message: str, extra=None):
+
+# --- UTILIDAD PARA MANDAR NOTIFICACIONES WEB PUSH ---
+def send_web_push(subscription_info: dict, title: str, message: str):
+    if not VAPID_PRIVATE_KEY:
+        logger.error("No hay PRIVATE_VAPID_KEY configurado en el servidor.")
+        return False
+
     try:
-        response = PushClient().publish(
-            PushMessage(to=token, title=title, body=message, data=extra)
+        payload = json.dumps({"title": title, "body": message})
+        webpush(
+            subscription_info=subscription_info,
+            data=payload,
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims=VAPID_CLAIMS
         )
         return True
-    except PushServerError as exc:
-        logger.error(f"Error de servidor Expo: {exc.errors}")
+    except WebPushException as ex:
+        logger.error(f"Error enviando Web Push: {repr(ex)}")
+        # Si la respuesta de Mozilla/Google dice que la suscripción ha caducado
+        if ex.response and ex.response.status_code in [404, 410]:
+            logger.warning("La suscripción ha expirado o el usuario la revocó.")
+            # Opcional: Podrías añadir lógica aquí para borrar la suscripción de la base de datos
         return False
     except Exception as e:
-        logger.error(f"Fallo enviando push: {str(e)}")
+        logger.error(f"Fallo general enviando push: {str(e)}")
         return False
+
+# --- RUTA PARA GUARDAR LA SUSCRIPCIÓN WEB PUSH ---
+@api_router.post("/notifications/subscribe")
+async def subscribe_web_push(subscription: WebPushSubscription, user=Depends(get_current_user)):
+    """Guarda el 'ticket' de notificaciones del navegador en el usuario."""
+    # Guardamos la info de suscripción tal cual nos la pasa el navegador
+    await db.users.update_one(
+        {"id": user['id']}, 
+        {"$set": {"web_push_subscription": subscription.dict()}}
+    )
+    logger.info(f"Suscripción guardada para {user.get('name')}")
+    return {"status": "success", "message": "Suscripción Push activada"}
 
 # --- RUTA PARA PROBAR NOTIFICACIONES ---
 @api_router.post("/notifications/test")
 async def test_notification(data: PushTest, user=Depends(get_current_user)):
     target_user = await db.users.find_one({"id": user['id']})
-    token = target_user.get("push_token")
+    subscription = target_user.get("web_push_subscription")
     
-    if not token:
-        raise HTTPException(status_code=400, detail="No tienes el token configurado en tu perfil.")
+    if not subscription:
+        raise HTTPException(status_code=400, detail="No tienes notificaciones activadas en este dispositivo.")
         
-    success = send_push_notification(token, data.title, data.message)
+    success = send_web_push(subscription, data.title, data.message)
     if not success:
         raise HTTPException(status_code=500, detail="Fallo al contactar con el servicio de push.")
         
@@ -295,12 +330,12 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
     if user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
         
-        if trainer and trainer.get('push_token'):
+        if trainer and trainer.get('web_push_subscription'):
             athlete_name = user.get('name', 'Un deportista')
             titulo = f"📊 {athlete_name} ha actualizado su estado"
             mensaje = f"Fatiga: {data.fatigue}/10 | Estrés: {data.stress}/10 | Agujetas: {data.soreness}/10"
             
-            background_tasks.add_task(send_push_notification, trainer['push_token'], titulo, mensaje)
+            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], titulo, mensaje)
             
     return {"status": "success"}
 
@@ -357,49 +392,41 @@ async def login(data: UserLogin):
         "user": user_data
     }
 
-# --- NUEVA RUTA: LOGIN CON GOOGLE (OPCIÓN A: CERRADA Y EXCLUSIVA) ---
 @api_router.post("/auth/google")
 async def google_login(data: GoogleAuth):
     try:
-        # 1. Verificamos matemáticamente el token usando la librería oficial de Google
         id_info = id_token.verify_oauth2_token(
             data.token, 
             google_requests.Request(), 
             GOOGLE_CLIENT_ID
         )
 
-        # 2. Sacamos los datos del usuario que nos da Google
         email = id_info.get('email')
         name = id_info.get('name', 'Usuario de Google')
         
         if not email:
             raise HTTPException(status_code=400, detail="Token de Google no contiene email")
 
-        # 3. Buscamos si el usuario ya existe
         user = await db.users.find_one({"email": email})
 
-        # 4. Lógica de App Cerrada (Opción A)
         if not user:
-            # Si un atleta intenta entrar sin que tú lo hayas dado de alta previamente: ¡Bloqueado!
             if data.role == 'athlete':
                 raise HTTPException(
                     status_code=403, 
                     detail="Aún no tienes invitación. Contacta con tu entrenador para que te dé de alta."
                 )
-            # Si eres tú (o un entrenador) registrándose desde la pestaña "Crear Cuenta", te dejamos pasar
             else:
                 user_id = str(uuid.uuid4())
                 user = {
                     "id": user_id,
                     "email": email,
-                    "password": hash_password(str(uuid.uuid4())), # Contraseña irrecuperable al azar
+                    "password": hash_password(str(uuid.uuid4())), 
                     "name": name,
                     "role": data.role, 
                     "created_at": datetime.now(timezone.utc).isoformat()
                 }
                 await db.users.insert_one(user)
 
-        # 5. Generamos NUESTRO token (el JWT que el frontend ya sabe usar)
         token = create_token(user['id'], user['role'])
         
         user_data = {k: v for k, v in user.items() if k not in ('_id', 'password')}
@@ -413,12 +440,10 @@ async def google_login(data: GoogleAuth):
         logger.error(f"Error verificando token de Google: {str(e)}")
         raise HTTPException(status_code=401, detail="Token de Google inválido")
     except HTTPException:
-        # Re-lanzamos las excepciones HTTP controladas (como el error 403 del atleta no invitado)
         raise
     except Exception as e:
         logger.error(f"Fallo general en Google Login: {str(e)}")
         raise HTTPException(status_code=500, detail="Error interno procesando el login")
-
 
 @api_router.get("/auth/me")
 async def get_me(user=Depends(get_current_user)):
@@ -476,7 +501,6 @@ async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_
     if data.password and len(data.password) > 0:
         update_data["password"] = hash_password(data.password)
 
-    # --- NUEVOS CAMPOS DEL CICLO MENSTRUAL ---
     if hasattr(data, 'last_period_date') and data.last_period_date is not None:
         update_data["last_period_date"] = data.last_period_date
     if hasattr(data, 'cycle_length') and data.cycle_length is not None:
@@ -515,11 +539,11 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
     # --- NOTIFICACIÓN AL DEPORTISTA ---
     if user['role'] == 'trainer':
         athlete = await db.users.find_one({"id": data.athlete_id})
-        if athlete and athlete.get('push_token'):
+        if athlete and athlete.get('web_push_subscription'):
             trainer_name = user.get('name', 'Tu entrenador')
             titulo = "🏋️‍♂️ ¡Nueva sesión programada!"
             mensaje = f"{trainer_name} ha añadido '{data.title}' para el {data.date}."
-            background_tasks.add_task(send_push_notification, athlete['push_token'], titulo, mensaje)
+            background_tasks.add_task(send_web_push, athlete['web_push_subscription'], titulo, mensaje)
             
     return {"status": "success", "workout": workout}
 
@@ -546,11 +570,11 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
             trainer_name = user.get('name', 'Tu entrenador')
             for a_id in athlete_ids:
                 athlete = await db.users.find_one({"id": a_id})
-                if athlete and athlete.get('push_token'):
+                if athlete and athlete.get('web_push_subscription'):
                     count = sum(1 for w in data.workouts if w.athlete_id == a_id)
                     titulo = "📅 ¡Nuevas sesiones programadas!"
                     mensaje = f"{trainer_name} ha añadido {count} nueva(s) sesión(es) a tu calendario."
-                    background_tasks.add_task(send_push_notification, athlete['push_token'], titulo, mensaje)
+                    background_tasks.add_task(send_web_push, athlete['web_push_subscription'], titulo, mensaje)
             
     return {"status": "success", "inserted": len(new_workouts)}
 
@@ -576,12 +600,12 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks:
     # --- NOTIFICACIÓN AL ENTRENADOR: ENTRENAMIENTO COMPLETADO ---
     if data.completed is True and not existing.get('completed') and user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
-        if trainer and trainer.get('push_token'):
+        if trainer and trainer.get('web_push_subscription'):
             athlete_name = user.get('name', 'Un deportista')
             titulo = "✅ ¡Entrenamiento superado!"
             mensaje = f"{athlete_name} ha terminado la sesión '{existing.get('title', 'Sin título')}'."
             
-            background_tasks.add_task(send_push_notification, trainer['push_token'], titulo, mensaje)
+            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], titulo, mensaje)
 
     return {"status": "success"}
 
@@ -590,7 +614,6 @@ async def delete_workout(workout_id: str, user=Depends(get_current_user)):
     await db.workouts.delete_one({"id": workout_id})
     return {"status": "success"}
 
-# --- RUTA DE SUSCRIPCIÓN A CALENDARIO (NUEVA Y GENÉRICA) ---
 @api_router.get("/calendar/{athlete_id}/entrenamientos.ics")
 async def get_athlete_calendar(athlete_id: str):
     """
@@ -759,7 +782,7 @@ async def create_test(data: TestCreate, background_tasks: BackgroundTasks, user=
     # --- NOTIFICACIÓN AL ENTRENADOR: NUEVA MEDIDA / TEST ---
     if user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
-        if trainer and trainer.get('push_token'):
+        if trainer and trainer.get('web_push_subscription'):
             athlete_name = user.get('name', 'Un deportista')
             nombre_test = data.custom_name if data.custom_name else data.test_name
             
@@ -772,7 +795,7 @@ async def create_test(data: TestCreate, background_tasks: BackgroundTasks, user=
             titulo = "📏 Nuevo registro físico"
             mensaje = f"{athlete_name} ha registrado: {nombre_mostrar} ({data.value} {data.unit})"
             
-            background_tasks.add_task(send_push_notification, trainer['push_token'], titulo, mensaje)
+            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], titulo, mensaje)
 
     return {"status": "success", "test": test_doc}
 
