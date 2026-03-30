@@ -1213,7 +1213,7 @@ export default function TrainingModeScreen() {
 
       {workout?.notes && !finished && (
         <TouchableOpacity style={[styles.fabIndications, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
-          <Ionicons name="clipboard" size={26} color="#FFF" />
+          <Ionicons name="warning" size={26} color="#FFF" />
         </TouchableOpacity>
       )}
 
