@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
-import { subscribeToWebPush } from '../../src/webPush';
+import { getExpoToken, testNotification } from '../../src/notifications';
 
 export default function SettingsScreen() {
   const { colors, themeMode, changeTheme } = useTheme();
@@ -22,7 +22,7 @@ export default function SettingsScreen() {
   // --- ESTADOS ---
   const [name, setName] = useState(user?.name || '');
   const [savingProfile, setSavingProfile] = useState(false);
-  const [pushEnabled, setPushEnabled] = useState(!!user?.web_push_subscription);
+  const [pushEnabled, setPushEnabled] = useState(!!user?.web_push_subscription || !!user?.push_token);
   const [loadingPush, setLoadingPush] = useState(false);
 
   const [measurements, setMeasurements] = useState({
@@ -44,31 +44,43 @@ export default function SettingsScreen() {
     await AsyncStorage.setItem('voice_enabled', value ? 'true' : 'false');
   };
 
-  const togglePush = async (value: boolean) => {
+const togglePush = async (value: boolean) => {
     if (loadingPush) return;
     setLoadingPush(true);
     
     try {
       if (value) {
-        // ACTIVAR: Pedimos permiso, generamos el ticket y lo subimos
-        await subscribeToWebPush();
-        await api.testWebPush(); // Lanzamos notificación de prueba
+        // ACTIVAR: Obtenemos el Token Universal
+        const token = await getExpoToken();
+        
+        if (!token) {
+          throw new Error("Permiso denegado o fallo al generar el token.");
+        }
+
+        // Lo subimos al backend usando tu función de perfil
+        if (api.updateProfile) {
+          await api.updateProfile({ push_token: token }); 
+        }
+
+        // Lanzamos un aviso local para confirmar visualmente
+        await testNotification();
         setPushEnabled(true);
       } else {
-        // DESACTIVAR: Borramos la suscripción en el backend
+        // DESACTIVAR: Limpiamos los tokens en la base de datos
         if (api.updateProfile) {
-          await api.updateProfile({ web_push_subscription: null });
+          await api.updateProfile({ push_token: null, web_push_subscription: null });
         }
         setPushEnabled(false);
       }
     } catch (e) {
       console.error("Error con el toggle de push:", e);
       if (Platform.OS === 'web') window.alert("No se pudieron configurar las notificaciones.");
+      else Alert.alert("Error", "No se pudieron activar las notificaciones.");
+      setPushEnabled(false); // Forzamos el toggle a volver a su sitio si hay error
     } finally {
       setLoadingPush(false);
     }
   };
-
   const handleSaveProfile = async () => {
     if (!name.trim()) return;
     setSavingProfile(true);
