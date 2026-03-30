@@ -17,6 +17,8 @@ import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import Svg, { Circle, Path, G, Text as SvgText } from 'react-native-svg';
+import NetInfo from '@react-native-community/netinfo';
+import { syncManager } from '../src/offline';
 
 // Importamos los nuevos componentes
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
@@ -637,17 +639,41 @@ export default function TrainingModeScreen() {
     };
   };
 
-  const handleFinish = async () => {
+const handleFinish = async () => {
     if (workout.completed) { router.back(); return; }
     if (!stableWorkoutId) return;
     stopAllTimers();
+    
     const completionData = buildCompletionData();
+    
     try {
       const updateData: any = { completed: true, completion_data: completionData, title: workout.title, exercises: workout.exercises };
       if (observations.trim()) updateData.observations = observations.trim();
-      await api.updateWorkout(stableWorkoutId, updateData);
+
+      // --- NUEVA LÓGICA OFFLINE ---
+      const netState = await NetInfo.fetch();
+      
+      if (netState.isConnected) {
+        // Hay internet: Guardamos normal
+        await api.updateWorkout(stableWorkoutId, updateData);
+        // Opcional: Ya que tenemos conexión, forzamos que se suba lo que hubiera pendiente de otros días
+        syncManager.syncPendingWorkouts(); 
+      } else {
+        // No hay internet: A la sala de espera
+        await syncManager.savePendingWorkout(stableWorkoutId, updateData);
+        
+        if (Platform.OS !== 'web') {
+          Alert.alert("Guardado Local", "Estás sin conexión. El entrenamiento se ha guardado en tu móvil y se subirá automáticamente cuando vuelvas a tener internet.");
+        } else {
+          window.alert("Estás sin conexión. El entrenamiento se guardará y se subirá cuando haya internet.");
+        }
+      }
+      // ----------------------------
+
       router.back();
-    } catch (e) { if (Platform.OS !== 'web') Alert.alert("Error", "Hubo un error al guardar."); }
+    } catch (e) { 
+      if (Platform.OS !== 'web') Alert.alert("Error", "Hubo un error al guardar."); 
+    }
   };
 
   const saveTrainerFeedbackFuerza = async (exerciseIndex: number, noteText: string) => {
