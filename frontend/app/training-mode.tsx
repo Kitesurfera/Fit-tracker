@@ -112,6 +112,9 @@ export default function TrainingModeScreen() {
   const finishSoundRef = useRef<Audio.Sound | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
 
+  // Referencia para evitar repetir anuncios seguidos
+  const lastAnnouncedRef = useRef<string>('');
+
   useEffect(() => {
     const loadVoicePreference = async () => {
       try {
@@ -191,14 +194,16 @@ export default function TrainingModeScreen() {
     stopRestTimer();
   };
 
-  const startPrepTimer = (workDur: number) => {
+  const startPrepTimer = (workDur: number, exName?: string) => {
     stopAllTimers();
     setIsPrep(true);
     setPrepSeconds(5);
     setPrepTargetTime(Date.now() + 5000);
     setWorkTotalSeconds(workDur);
     setWorkSeconds(workDur);
-    announce("Prepárate");
+    
+    if (exName) announce(`Siguiente: ${exName}. Prepárate.`);
+    else announce("Prepárate.");
   };
 
   const startWorkTimerAfterPrep = () => {
@@ -206,12 +211,15 @@ export default function TrainingModeScreen() {
     setWorkTargetTime(Date.now() + workTotalSeconds * 1000);
   };
 
-  const startRestTimer = (seconds: number) => {
+  const startRestTimer = (seconds: number, nextExName?: string) => {
     stopAllTimers();
     setRestTargetTime(Date.now() + seconds * 1000);
     setRestSeconds(seconds);
     setRestTotalSeconds(seconds); 
     setIsResting(true);
+
+    if (nextExName) announce(`Descanso. Siguiente: ${nextExName}`);
+    else announce("Descanso.");
   };
 
   const toggleWorkTimer = () => {
@@ -243,31 +251,37 @@ export default function TrainingModeScreen() {
   useEffect(() => { if (isWorking && workSeconds > 0 && workSeconds <= 5) playSound('beep'); }, [workSeconds, isWorking]);
   useEffect(() => { if (isResting && restSeconds > 0 && restSeconds <= 5) playSound('beep'); }, [restSeconds, isResting]);
 
+  // --- CONTROL DE VOZ INTELIGENTE PARA EJERCICIOS SIN TIEMPO ---
   useEffect(() => {
-    if (isResting && !finished && !workout?.completed) {
-      if (isHiit) {
-        if (hiitPhase === 'rest_block') announce('Descanso entre vueltas.');
-        else if (hiitPhase === 'rest_next_block') announce('Prepara el siguiente bloque.');
-        else announce('Descanso.');
-      } else {
-        announce('Descanso.');
+    if (showIndicationsModal || !workout || isResting || finished || workout.completed || isPrep) return;
+
+    let textToAnnounce = "";
+    let idToTrack = "";
+
+    if (isHiit) {
+      const currentBlock = workout.exercises[hiitBlockIdx];
+      const currentEx = currentBlock?.hiit_exercises?.[hiitExIdx];
+      if (currentEx) {
+        idToTrack = `hiit-${hiitBlockIdx}-${hiitRound}-${hiitExIdx}`;
+        textToAnnounce = currentEx.name;
+      }
+    } else {
+      const currentEx = workout.exercises[currentExIndex];
+      if (currentEx) {
+        const currentSets = setsStatus[currentExIndex] || [];
+        const nextPendingSet = currentSets.findIndex(s => s === 'pending');
+        if (nextPendingSet !== -1) {
+          idToTrack = `trad-${currentExIndex}`;
+          textToAnnounce = currentEx.name;
+        }
       }
     }
-  }, [isResting, hiitPhase, isHiit, finished, workout]);
 
-  useEffect(() => {
-    if (!isHiit && workout && !isResting && !finished && !workout.completed && !isPrep) {
-      const currentEx = workout.exercises?.[currentExIndex];
-      if (currentEx) announce(`Siguiente ejercicio: ${currentEx.name}`);
+    if (textToAnnounce && lastAnnouncedRef.current !== idToTrack) {
+      announce(textToAnnounce);
+      lastAnnouncedRef.current = idToTrack;
     }
-  }, [currentExIndex, isResting, isHiit, workout, finished, isPrep]);
-
-  useEffect(() => {
-    if (isHiit && workout && hiitPhase === 'work' && !isResting && !finished && !workout.completed && !isPrep) {
-      const currentEx = workout.exercises?.[hiitBlockIdx]?.hiit_exercises?.[hiitExIdx];
-      if (currentEx) announce(currentEx.name);
-    }
-  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, isHiit, workout, finished, isPrep]);
+  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, isResting, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
 
   // --- OBTENER DATOS DE LA SESIÓN ---
   useEffect(() => {
@@ -336,7 +350,7 @@ export default function TrainingModeScreen() {
               setSetsStatus(initial);
             }
 
-            // AUTO-SHOW DE INDICACIONES
+            // AUTO-SHOW DE INDICACIONES (Solo al inicio)
             if (currentWorkout.notes && currentWorkout.notes.trim() !== '' && !hasShownIndicationsRef.current) {
                setShowIndicationsModal(true);
                hasShownIndicationsRef.current = true;
@@ -399,36 +413,37 @@ export default function TrainingModeScreen() {
 
   // --- AUTO START DE PREPARACIÓN / EJERCICIO ---
   useEffect(() => {
-    if (!isHiit && workout && !isResting && !isPrep) {
+    if (!isHiit && workout && !isResting && !isPrep && !showIndicationsModal) {
       const currentSets = setsStatus[currentExIndex] || [];
       const nextPendingSet = currentSets.findIndex(s => s === 'pending');
       if (nextPendingSet !== -1) {
-        const dur = parseTimeToSeconds(workout.exercises[currentExIndex]?.duration);
+        const currentEx = workout.exercises[currentExIndex];
+        const dur = parseTimeToSeconds(currentEx?.duration);
         if (dur > 0 && !isWorking && workTargetTime === null && workSeconds === 0) {
-          startPrepTimer(dur);
+          startPrepTimer(dur, currentEx.name);
         }
       } else {
         stopWorkTimer();
       }
     }
-  }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds]);
+  }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal]);
 
   useEffect(() => {
-    if (isHiit && workout && hiitPhase === 'work' && !isResting && !isPrep) {
+    if (isHiit && workout && hiitPhase === 'work' && !isResting && !isPrep && !showIndicationsModal) {
       const currentBlock = workout.exercises[hiitBlockIdx];
       if (!currentBlock) return;
       const currentEx = currentBlock.hiit_exercises[hiitExIdx];
       const dur = parseTimeToSeconds(currentEx?.duration_reps || currentEx?.duration);
       if (dur > 0 && !isWorking && workTargetTime === null && workSeconds === 0) {
-        startPrepTimer(dur);
+        startPrepTimer(dur, currentEx.name);
       } else if (dur === 0) {
         stopWorkTimer();
       }
     }
-  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds]);
+  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal]);
 
   useEffect(() => {
-    if (!isResting && workout) {
+    if (!isResting && workout && !showIndicationsModal) {
       if (isHiit) {
         if (hiitPhase === 'rest_ex') { setHiitPhase('work'); setHiitExIdx(prev => prev + 1); } 
         else if (hiitPhase === 'rest_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitRound(prev => prev + 1); } 
@@ -437,7 +452,7 @@ export default function TrainingModeScreen() {
         if (restType === 'exercise') { autoAdvance(currentExIndex); setRestType(null); }
       }
     }
-  }, [isResting]);
+  }, [isResting, showIndicationsModal]);
 
   // --- LÓGICAS DE SALTO Y AVANCE ---
   const advanceHiitLogic = () => {
@@ -448,15 +463,34 @@ export default function TrainingModeScreen() {
 
     if (hiitExIdx < totalExercises - 1) {
       const restTime = parseTimeToSeconds(currentBlock.rest_exercise);
-      if (restTime > 0) { startRestTimer(restTime); setHiitPhase('rest_ex'); } else { setHiitExIdx(hiitExIdx + 1); }
+      if (restTime > 0) { 
+        const nextEx = currentBlock.hiit_exercises[hiitExIdx + 1];
+        startRestTimer(restTime, nextEx.name); 
+        setHiitPhase('rest_ex'); 
+      } else { 
+        setHiitExIdx(hiitExIdx + 1); 
+      }
     } else {
       if (hiitRound < totalRounds) {
         const restTime = parseTimeToSeconds(currentBlock.rest_block);
-        if (restTime > 0) { startRestTimer(restTime); setHiitPhase('rest_block'); } else { setHiitRound(hiitRound + 1); setHiitExIdx(0); }
+        if (restTime > 0) { 
+          const nextEx = currentBlock.hiit_exercises[0];
+          startRestTimer(restTime, nextEx.name); 
+          setHiitPhase('rest_block'); 
+        } else { 
+          setHiitRound(hiitRound + 1); setHiitExIdx(0); 
+        }
       } else {
         if (hiitBlockIdx < workout.exercises.length - 1) {
           const restNextBlockTime = parseTimeToSeconds(currentBlock.rest_between_blocks);
-          if (restNextBlockTime > 0) { startRestTimer(restNextBlockTime); setHiitPhase('rest_next_block'); } else { setHiitBlockIdx(hiitBlockIdx + 1); setHiitRound(1); setHiitExIdx(0); setHiitPhase('work'); }
+          if (restNextBlockTime > 0) { 
+            const nextBlock = workout.exercises[hiitBlockIdx + 1];
+            const nextEx = nextBlock.hiit_exercises[0];
+            startRestTimer(restNextBlockTime, nextEx.name); 
+            setHiitPhase('rest_next_block'); 
+          } else { 
+            setHiitBlockIdx(hiitBlockIdx + 1); setHiitRound(1); setHiitExIdx(0); setHiitPhase('work'); 
+          }
         } else { setFinished(true); }
       }
     }
@@ -491,10 +525,17 @@ export default function TrainingModeScreen() {
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
     if (remaining === 0) {
       const restTimeExercise = parseTimeToSeconds(currentEx?.rest_exercise);
-      if (restTimeExercise > 0 && currentExIndex < exercises.length - 1) { startRestTimer(restTimeExercise); setRestType('exercise'); } else { autoAdvance(currentExIndex); }
+      if (restTimeExercise > 0 && currentExIndex < exercises.length - 1) { 
+        const nextEx = exercises[currentExIndex + 1];
+        startRestTimer(restTimeExercise, nextEx.name); 
+        setRestType('exercise'); 
+      } else { autoAdvance(currentExIndex); }
     } else {
       const restTimeSet = parseTimeToSeconds(currentEx?.rest);
-      if (restTimeSet > 0) { startRestTimer(restTimeSet); setRestType('set'); }
+      if (restTimeSet > 0) { 
+        startRestTimer(restTimeSet, currentEx.name); 
+        setRestType('set'); 
+      }
     }
   };
 
@@ -639,7 +680,7 @@ export default function TrainingModeScreen() {
   );
 
   const renderIndicationsModal = () => (
-    <Modal visible={showIndicationsModal} transparent animationType="fade">
+    <Modal visible={showIndicationsModal} transparent animationType="slide">
       <View style={styles.modalOverlay}>
         <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 }}>
@@ -730,7 +771,6 @@ export default function TrainingModeScreen() {
                 <Ionicons name={isWorking ? "pause" : "play"} size={32} color="#FFF" />
               </TouchableOpacity>
               
-              {/* BOTÓN DE REINICIAR (Exclusivo de Fuerza) */}
               {!isHiit && (
                 <TouchableOpacity style={[styles.playPauseBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={resetWorkTimer}>
                   <Ionicons name="refresh" size={32} color={colors.textPrimary} />
@@ -1209,7 +1249,8 @@ const styles = StyleSheet.create({
   playPauseBtn: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 },
   skipRestBtnUnified: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 30, borderWidth: 2 },
   
-  // Novedad: Botón Flotante y Modal de Indicaciones
+  // Botón Flotante y Modales
   fabIndications: { position: 'absolute', bottom: 100, right: 20, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4, zIndex: 99 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   indicationsModalContent: { width: '85%', padding: 24, borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
 });
