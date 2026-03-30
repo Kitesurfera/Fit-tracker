@@ -2,7 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 // Tu clave pública de vapidkeys.com
-const VAPID_PUBLIC_KEY = "PEGA_AQUI_TU_CLAVE_PUBLICA";
+const VAPID_PUBLIC_KEY = "BET8FW1boucxY6IQRRGxfLCHRfYIQeuTk7-34LH0DunW1DEEg61OaD5MY1HhfwtNJbfRzIlpDzBOoUt0lcIUWrk";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
