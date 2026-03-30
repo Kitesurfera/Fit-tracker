@@ -55,6 +55,9 @@ export default function AthleteDetailScreen() {
   const [expandedWorkouts, setExpandedWorkouts] = useState<Record<string, boolean>>({});
   const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({}); 
   
+  // Nuevo estado para controlar el desplegable del próximo entrenamiento
+  const [isNextWorkoutExpanded, setIsNextWorkoutExpanded] = useState(false);
+  
   const [showHistory, setShowHistory] = useState(false);
   const [showFuture, setShowFuture] = useState(false); 
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -315,13 +318,10 @@ export default function AthleteDetailScreen() {
     return { startStr: getLocalDateStr(start), endStr: getLocalDateStr(end) };
   }, [todayStr]);
 
-  // Lógica del Próximo Entrenamiento
   const nextWorkout = useMemo(() => {
-    // 1. Buscamos si hay algo hoy sin completar
     const pendingToday = workouts.find(w => w.date === todayStr && !w.completed);
     if (pendingToday) return pendingToday;
 
-    // 2. Si lo de hoy está hecho (o no hay), buscamos el más cercano en el futuro
     const future = workouts
       .filter(w => w.date > todayStr && !w.completed)
       .sort((a,b) => String(a.date).localeCompare(String(b.date)));
@@ -349,21 +349,71 @@ export default function AthleteDetailScreen() {
         <Text style={[styles.sectionTitle]}>PRÓXIMO ENTRENAMIENTO</Text>
         {nextWorkout ? (
           <TouchableOpacity 
-            style={[styles.nextWorkoutCard, { backgroundColor: colors.surface }]}
-            onPress={() => router.push(`/edit-workout?workoutId=${nextWorkout.id}`)}
+            style={[styles.nextWorkoutCard, { backgroundColor: colors.surface, flexDirection: 'column', alignItems: 'stretch' }]}
+            onPress={() => setIsNextWorkoutExpanded(!isNextWorkoutExpanded)}
+            activeOpacity={0.8}
           >
-            <View style={[styles.nextWorkoutIcon, { backgroundColor: colors.primary + '20' }]}>
-              <Ionicons name="calendar-outline" size={24} color={colors.primary} />
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={[styles.nextWorkoutIcon, { backgroundColor: colors.primary + '20' }]}>
+                <Ionicons name="calendar-outline" size={24} color={colors.primary} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
+                  {nextWorkout.date === todayStr ? 'HOY' : nextWorkout.date.split('-').reverse().join('/')}
+                </Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800' }}>
+                  {nextWorkout.title}
+                </Text>
+              </View>
+              <Ionicons name={isNextWorkoutExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
-                {nextWorkout.date === todayStr ? 'HOY' : nextWorkout.date.split('-').reverse().join('/')}
-              </Text>
-              <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800' }}>
-                {nextWorkout.title}
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+
+            {isNextWorkoutExpanded && (
+              <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
+                {nextWorkout.exercises?.map((ex: any, idx: number) => {
+                  const isHiitBlock = ex.is_hiit_block || ex.hiit_exercises !== undefined;
+
+                  if (isHiitBlock) {
+                    return (
+                      <View key={idx} style={{ marginBottom: 12 }}>
+                        <Text style={{ color: colors.error || '#EF4444', fontSize: 13, fontWeight: '800', marginBottom: 6 }}>
+                          <Ionicons name="flame" size={12} /> {ex.name} ({ex.sets} Vueltas)
+                        </Text>
+                        {ex.hiit_exercises?.map((hEx: any, hIdx: number) => (
+                          <View key={hIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 10, marginBottom: 4 }}>
+                            <Text style={{ color: colors.textPrimary, fontSize: 12, flex: 1, fontWeight: '500' }}>• {hEx.name}</Text>
+                            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800' }}>{hEx.duration_reps || hEx.duration}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    );
+                  } else {
+                    return (
+                      <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                        <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', flex: 1 }}>
+                          <Ionicons name="barbell-outline" size={14} color={colors.textSecondary} /> {ex.name}
+                        </Text>
+                        <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
+                          {(ex.sets && ex.reps) && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>{ex.sets}x{ex.reps}</Text>}
+                          {ex.duration && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>{ex.duration}</Text>}
+                          {ex.weight ? <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '600' }}>{ex.weight} kg</Text> : null}
+                        </View>
+                      </View>
+                    );
+                  }
+                })}
+
+                <TouchableOpacity 
+                  style={{ backgroundColor: colors.surfaceHighlight, paddingVertical: 12, borderRadius: 10, marginTop: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
+                  onPress={() => router.push(isTrainer ? `/edit-workout?workoutId=${nextWorkout.id}` : `/training-mode?workoutId=${nextWorkout.id}`)}
+                >
+                  <Ionicons name={isTrainer ? "pencil" : "play"} size={16} color={colors.textPrimary} />
+                  <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 13 }}>
+                    {isTrainer ? 'Editar Sesión Completa' : 'Ir a Entrenar'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </TouchableOpacity>
         ) : (
           <View style={[styles.nextWorkoutCard, { backgroundColor: colors.surface, flexDirection: 'column', alignItems: 'flex-start', padding: 20 }]}>
@@ -720,6 +770,6 @@ const styles = StyleSheet.create({
   container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 100 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }, sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }, fullVideo: { width: '100%', height: '80%' }, exerciseCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 }, exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, exerciseName: { fontSize: 14, fontWeight: '800' }, feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, feedbackInput: { flex: 1, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 10, borderWidth: 1, fontSize: 13 }, sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2 },
   whatsappFab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center', elevation: 5, zIndex: 100 },
   toggleSectionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, borderRadius: 12, marginBottom: 15 },
-  nextWorkoutCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 20, marginBottom: 25, elevation: 1 },
+  nextWorkoutCard: { padding: 16, borderRadius: 20, marginBottom: 25, elevation: 1 },
   nextWorkoutIcon: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 15 }
 });
