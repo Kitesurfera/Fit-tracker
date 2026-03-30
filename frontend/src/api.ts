@@ -16,6 +16,7 @@ const getAuthHeaders = async () => {
 };
 
 export const api = {
+  // --- AUTENTICACIÓN ---
   login: async (email, password) => {
     const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
@@ -26,10 +27,8 @@ export const api = {
     return res.json();
   },
 
-  // Iniciar sesión o registrarse con el token de Google
   googleLogin: async (googleToken: string, role: string = 'athlete') => {
     try {
-      // FIX: Usamos BACKEND_URL y añadimos /api a la ruta
       const response = await fetch(`${BACKEND_URL}/api/auth/google`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -46,6 +45,28 @@ export const api = {
     }
   },
 
+  // --- NOTIFICACIONES PUSH ---
+  subscribeWebPush: async (subscriptionData: any) => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/notifications/subscribe`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(subscriptionData),
+    });
+    return res.json();
+  },
+
+  testWebPush: async () => {
+    const headers = await getAuthHeaders();
+    const res = await fetch(`${BACKEND_URL}/api/notifications/test`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ title: "¡Prueba!", message: "El sistema Web Push funciona." }),
+    });
+    return res.json();
+  },
+
+  // --- WELLNESS ---
   postWellness: async (data: any) => {
     const headers = await getAuthHeaders();
     const res = await fetch(`${BACKEND_URL}/api/wellness`, {
