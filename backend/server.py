@@ -121,7 +121,7 @@ class ProfileUpdate(BaseModel):
     is_injured: Optional[bool] = None
     injury_notes: Optional[str] = None
     equipment: Optional[str] = None
-    push_token: Optional[str] = None
+    web_push_subscription: Optional[dict] = None  # <-- Cambiado a dict para web push
     last_period_date: Optional[str] = None  
     cycle_length: Optional[int] = None      
     period_length: Optional[int] = None     
@@ -210,32 +210,30 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return user
 
-# --- UTILIDAD PARA MANDAR NOTIFICACIONES VIA EXPO ---
-def send_expo_push(push_token: str, title: str, message: str):
-    """Envía una notificación push a través de los servidores de Expo."""
-    if not push_token or not push_token.startswith("ExponentPushToken"):
-        logger.warning(f"Token de Expo inválido o ausente: {push_token}")
+from pywebpush import webpush, WebPushException
+
+# Configuración VAPID
+VAPID_PRIVATE_KEY = "HEbQpgf3KOB2smfjz8recSVKHC7p3sjZBjznzxrct-c"
+VAPID_CLAIMS = {
+    "sub": "mailto:claudiakiter31@gmail.com"
+}
+
+def send_web_push(subscription_info: dict, title: str, message: str):
+    if not subscription_info or not isinstance(subscription_info, dict):
+        logger.warning("No hay información de suscripción web válida.")
         return False
 
     try:
-        response = requests.post(
-            "https://exp.host/--/api/v2/push/send",
-            headers={
-                "Accept": "application/json",
-                "Accept-encoding": "gzip, deflate",
-                "Content-Type": "application/json",
-            },
-            json={
-                "to": push_token,
-                "title": title,
-                "body": message,
-                "sound": "default",
-            }
+        payload = json.dumps({"title": title, "body": message})
+        webpush(
+            subscription_info=subscription_info,
+            data=payload,
+            vapid_private_key=VAPID_PRIVATE_KEY,
+            vapid_claims=VAPID_CLAIMS
         )
-        response.raise_for_status()
         return True
     except Exception as e:
-        logger.error(f"Fallo enviando push a Expo: {str(e)}")
+        logger.error(f"Fallo enviando web push: {str(e)}")
         return False
 
 # --- RUTAS DE WELLNESS ---
@@ -264,11 +262,11 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
     # Notificación al entrenador
     if user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
-        if trainer and trainer.get('push_token'):
+        if trainer and trainer.get('web_push_subscription'):
             athlete_name = user.get('name', 'Un deportista')
             titulo = f"📊 {athlete_name} ha actualizado su estado"
             mensaje = f"Fatiga: {data.fatigue}/10 | Estrés: {data.stress}/10 | Agujetas: {data.soreness}/10"
-            background_tasks.add_task(send_expo_push, trainer['push_token'], titulo, mensaje)
+            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], titulo, mensaje)
     return {"status": "success"}
 
 @api_router.get("/analytics/summary")
@@ -307,6 +305,8 @@ async def login(data: UserLogin):
 @api_router.post("/auth/google")
 async def google_login(data: GoogleAuth):
     try:
+        import google.auth.transport.requests as google_requests
+        from google.oauth2 import id_token
         id_info = id_token.verify_oauth2_token(data.token, google_requests.Request(), GOOGLE_CLIENT_ID)
         email = id_info.get('email')
         if not email: raise HTTPException(status_code=400, detail="Token de Google no contiene email")
@@ -377,9 +377,9 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
     # Notificación al deportista
     if user['role'] == 'trainer':
         athlete = await db.users.find_one({"id": data.athlete_id})
-        if athlete and athlete.get('push_token'):
+        if athlete and athlete.get('web_push_subscription'):
             trainer_name = user.get('name', 'Tu entrenador')
-            background_tasks.add_task(send_expo_push, athlete['push_token'], "🏋️‍♂️ ¡Nueva sesión!", f"{trainer_name} ha añadido '{data.title}' para el {data.date}.")
+            background_tasks.add_task(send_web_push, athlete['web_push_subscription'], "🏋️‍♂️ ¡Nueva sesión!", f"{trainer_name} ha añadido '{data.title}' para el {data.date}.")
     return {"status": "success", "workout": workout}
 
 @api_router.post("/workouts/bulk")
@@ -396,9 +396,9 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
             trainer_name = user.get('name', 'Tu entrenador')
             for a_id in athlete_ids:
                 athlete = await db.users.find_one({"id": a_id})
-                if athlete and athlete.get('push_token'):
+                if athlete and athlete.get('web_push_subscription'):
                     count = sum(1 for wk in data.workouts if wk.athlete_id == a_id)
-                    background_tasks.add_task(send_expo_push, athlete['push_token'], "📅 Planes actualizados", f"{trainer_name} ha añadido {count} sesiones a tu calendario.")
+                    background_tasks.add_task(send_web_push, athlete['web_push_subscription'], "📅 Planes actualizados", f"{trainer_name} ha añadido {count} sesiones a tu calendario.")
     return {"status": "success", "inserted": len(new_workouts)}
 
 @api_router.get("/workouts")
@@ -417,8 +417,8 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks:
     # Notificación al entrenador si se completa
     if data.completed is True and not existing.get('completed') and user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
-        if trainer and trainer.get('push_token'):
-            background_tasks.add_task(send_expo_push, trainer['push_token'], "✅ ¡Entrenamiento superado!", f"{user.get('name')} ha terminado '{existing.get('title')}'.")
+        if trainer and trainer.get('web_push_subscription'):
+            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], "✅ ¡Entrenamiento superado!", f"{user.get('name')} ha terminado '{existing.get('title')}'.")
     return {"status": "success"}
 
 @api_router.delete("/workouts/{workout_id}")
@@ -471,9 +471,9 @@ async def create_test(data: TestCreate, background_tasks: BackgroundTasks, user=
     # Notificación al entrenador
     if user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
-        if trainer and trainer.get('push_token'):
+        if trainer and trainer.get('web_push_subscription'):
             nombre_test = (data.custom_name if data.custom_name else data.test_name).upper()
-            background_tasks.add_task(send_expo_push, trainer['push_token'], "📏 Nuevo registro físico", f"{user.get('name')} ha registrado: {nombre_test} ({data.value} {data.unit})")
+            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], "📏 Nuevo registro físico", f"{user.get('name')} ha registrado: {nombre_test} ({data.value} {data.unit})")
     return {"status": "success", "test": test_doc}
 
 @api_router.get("/tests")
