@@ -1,8 +1,9 @@
 import * as Notifications from 'expo-notifications';
-import { Platform, Alert } from 'react-native';
-import Constants from 'expo-constants';
+import { Platform } from 'react-native';
 
-// Esto le dice a la app cómo comportarse si la notificación llega mientras la estás usando
+// Tu clave pública de vapidkeys.com
+const VAPID_PUBLIC_KEY = "PEGA_AQUI_TU_CLAVE_PUBLICA";
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -11,83 +12,51 @@ Notifications.setNotificationHandler({
   }),
 });
 
+// Función matemática necesaria para el navegador
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = '='.repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+
 export async function requestNotificationPermissions() {
   if (Platform.OS === 'web') {
     if (!('Notification' in window)) {
-      console.log('Este navegador no soporta notificaciones web.');
       window.alert('Tu navegador no soporta notificaciones web.');
       return false;
     }
-    
-    // Si estamos en Safari iOS normal, esto suele fallar o ser denegado automáticamente
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') {
-      window.alert('Permiso denegado. En Safari iOS, debes añadir la web a la pantalla de inicio primero.');
+      window.alert('Permiso denegado. En iOS, recuerda que debes pulsar "Compartir > Añadir a la pantalla de inicio" para que funcione.');
     }
     return permission === 'granted';
-  } else {
-    const { status } = await Notifications.requestPermissionsAsync();
-    return status === 'granted';
   }
+  return false;
 }
 
-// --- GENERACIÓN DEL TOKEN UNIVERSAL ---
-export async function getExpoToken() {
+// --- GENERACIÓN DEL TOKEN WEB PURO ---
+export async function getWebPushSubscription() {
   const hasPermission = await requestNotificationPermissions();
   if (!hasPermission) return null;
 
-  if (Platform.OS === 'android') {
-    await Notifications.setNotificationChannelAsync('default', {
-      name: 'default',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 250, 250, 250],
-      lightColor: '#FF231F7C',
-    });
-  }
-
   try {
-    // Intentamos extraer el ID del proyecto directamente de la configuración de Expo
-    const projectId = 
-      Constants?.expoConfig?.extra?.eas?.projectId || 
-      Constants?.easConfig?.projectId;
-
-    // Obtiene el token de Expo usando el ID del proyecto
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId: projectId, 
-    });
-    
-    return tokenData.data;
-  } catch (error) {
-    console.error("Error obteniendo el Push Token de Expo:", error);
-    
-    if (Platform.OS === 'web') {
-      window.alert("Fallo al generar token web. Expo Push requiere configuración adicional (VAPID) para funcionar en navegadores.");
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+      return subscription.toJSON(); // Esto es el objeto exacto que necesita Python
     }
-    
+  } catch (error) {
+    console.error("Error obteniendo la suscripción web:", error);
     return null;
   }
-}
-
-export async function scheduleDailyWellnessReminder() {
-  const hasPermission = await requestNotificationPermissions();
-  if (!hasPermission) return;
-
-  await Notifications.cancelAllScheduledNotificationsAsync();
-
-  await Notifications.scheduleNotificationAsync({
-    content: {
-      title: "¡Buenos días! 🌊",
-      body: "¿Cómo te has levantado hoy? Entra a registrar tu fatiga para ajustar la sesión.",
-      sound: true,
-    },
-    trigger: {
-      hour: 9,
-      minute: 30,
-      repeats: true,
-    },
-  });
-  
-  console.log("Recordatorio diario programado a las 9:30 AM");
 }
 
 export async function testNotification() {
@@ -97,7 +66,7 @@ export async function testNotification() {
   await Notifications.scheduleNotificationAsync({
     content: {
       title: "¡Notificaciones activadas! 🚀",
-      body: "Si ves esto, tu dispositivo está listo para recibir avisos.",
+      body: "Si ves esto, tu navegador está listo para recibir avisos.",
     },
     trigger: null, 
   });
