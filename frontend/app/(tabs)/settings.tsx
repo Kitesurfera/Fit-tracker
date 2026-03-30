@@ -10,7 +10,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
-import { getExpoToken, testNotification } from '../../src/notifications';
+import { getWebPushSubscription, testNotification } from '../../src/notifications';
 
 export default function SettingsScreen() {
   const { colors, themeMode, changeTheme } = useTheme();
@@ -44,43 +44,40 @@ export default function SettingsScreen() {
     await AsyncStorage.setItem('voice_enabled', value ? 'true' : 'false');
   };
 
-const togglePush = async (value: boolean) => {
+  const togglePush = async (value: boolean) => {
     if (loadingPush) return;
     setLoadingPush(true);
     
     try {
       if (value) {
-        // ACTIVAR: Obtenemos el Token Universal
-        const token = await getExpoToken();
+        // Obtenemos el objeto de suscripción del navegador
+        const subscription = await getWebPushSubscription();
         
-        if (!token) {
-          throw new Error("Permiso denegado o fallo al generar el token.");
+        if (!subscription) {
+          throw new Error("Permiso denegado o fallo al generar la suscripción.");
         }
 
-        // Lo subimos al backend usando tu función de perfil
         if (api.updateProfile) {
-          await api.updateProfile({ push_token: token }); 
+          await api.updateProfile({ web_push_subscription: subscription }); 
         }
 
-        // Lanzamos un aviso local para confirmar visualmente
         await testNotification();
         setPushEnabled(true);
       } else {
-        // DESACTIVAR: Limpiamos los tokens en la base de datos
         if (api.updateProfile) {
-          await api.updateProfile({ push_token: null, web_push_subscription: null });
+          await api.updateProfile({ web_push_subscription: null });
         }
         setPushEnabled(false);
       }
     } catch (e) {
       console.error("Error con el toggle de push:", e);
-      if (Platform.OS === 'web') window.alert("No se pudieron configurar las notificaciones.");
-      else Alert.alert("Error", "No se pudieron activar las notificaciones.");
-      setPushEnabled(false); // Forzamos el toggle a volver a su sitio si hay error
+      window.alert("No se pudieron activar las notificaciones.");
+      setPushEnabled(false);
     } finally {
       setLoadingPush(false);
     }
   };
+
   const handleSaveProfile = async () => {
     if (!name.trim()) return;
     setSavingProfile(true);
