@@ -238,23 +238,32 @@ export default function TrainingModeScreen() {
     else announce("Descanso.");
   };
 
+  // --- LÓGICA DE CONTROL DE TEMPORIZADORES CORREGIDA ---
   const toggleWorkTimer = () => {
-    if (isWorking) {
-      setIsWorking(false);
+    if (workTargetTime) {
+      // PAUSAR: Solo limpiamos el intervalo, no ponemos isWorking en false
       if (workIntervalRef.current) clearInterval(workIntervalRef.current);
       setWorkTargetTime(null);
     } else {
-      setIsWorking(true);
+      // REANUDAR
       setWorkTargetTime(Date.now() + workSeconds * 1000);
     }
   };
 
   const resetWorkTimer = () => {
-    setIsWorking(false);
     if (workIntervalRef.current) clearInterval(workIntervalRef.current);
-    setWorkTargetTime(null);
+    setWorkTargetTime(Date.now() + workTotalSeconds * 1000);
     setWorkSeconds(workTotalSeconds);
+    setIsWorking(true);
   };
+
+  const resetRestTimer = () => {
+    if (restIntervalRef.current) clearInterval(restIntervalRef.current);
+    setRestTargetTime(Date.now() + restTotalSeconds * 1000);
+    setRestSeconds(restTotalSeconds);
+    setIsResting(true);
+  };
+  // ------------------------------------------------------
 
   const handleWorkComplete = () => {
     stopWorkTimer();
@@ -949,7 +958,7 @@ export default function TrainingModeScreen() {
               onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
               onSkipRest={skipHiitRest} 
               onResetWork={resetWorkTimer}
-              onResetRest={() => setRestSeconds(restTotalSeconds)}
+              onResetRest={resetRestTimer}
               onComplete={advanceHiit}
               onSkip={skipHiitEx}
             />
@@ -1017,7 +1026,7 @@ export default function TrainingModeScreen() {
               onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
               onSkipRest={stopRestTimer} 
               onResetWork={resetWorkTimer}
-              onResetRest={() => setRestSeconds(restTotalSeconds)}
+              onResetRest={resetRestTimer}
               onComplete={completeSet}
               onSkip={skipSet}
             />
