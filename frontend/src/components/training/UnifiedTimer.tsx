@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import Svg, { Circle } from 'react-native-svg';
 
 export default function UnifiedTimer({ 
-  isPrep, isResting, isWorking, prepSeconds, restSeconds, workSeconds, 
+  isPrep, isResting, isWorking, isPaused, prepSeconds, restSeconds, workSeconds, 
   restTotalSeconds, workTotalSeconds, exName, colors, isHiit,
   onToggleWork, onStopPrep, onSkipRest, onResetWork, onResetRest,
   onComplete, onSkip
@@ -15,7 +15,7 @@ export default function UnifiedTimer({
   // 1. Valores actuales
   const currentSeconds = isPrep ? prepSeconds : isResting ? restSeconds : workSeconds;
   const currentTotal = isPrep ? 5 : isResting ? restTotalSeconds : workTotalSeconds;
-  const currentTitle = isPrep ? 'PREPÁRATE' : isResting ? 'DESCANSO' : '¡A TOPE!';
+  const currentTitle = isPrep ? 'PREPÁRATE' : isResting ? 'DESCANSO' : (isPaused ? 'EN PAUSA' : '¡A TOPE!');
   
   // 2. Colores
   const activeColor = isResting || isPrep ? (colors.success || '#10B981') : colors.primary;
@@ -38,7 +38,7 @@ export default function UnifiedTimer({
         <Svg width={size} height={size} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
           <Circle stroke={inactiveColor} fill="none" cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} />
           <Circle
-            stroke={activeColor} fill="none" cx={size / 2} cy={size / 2} r={radius}
+            stroke={isPaused ? colors.warning || '#F59E0B' : activeColor} fill="none" cx={size / 2} cy={size / 2} r={radius}
             strokeWidth={strokeWidth} strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset} strokeLinecap="round"
           />
@@ -48,7 +48,7 @@ export default function UnifiedTimer({
           <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '800', letterSpacing: 1.5, marginBottom: 4 }}>
             {currentTitle}
           </Text>
-          <Text style={{ color: activeColor, fontSize: 64, fontWeight: '900', letterSpacing: -2 }}>
+          <Text style={{ color: isPaused ? (colors.warning || '#F59E0B') : activeColor, fontSize: 64, fontWeight: '900', letterSpacing: -2 }}>
             {currentSeconds}
           </Text>
           <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '700', textAlign: 'center', marginTop: 4 }} numberOfLines={2}>
@@ -82,8 +82,9 @@ export default function UnifiedTimer({
               <TouchableOpacity style={[styles.roundBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={onResetWork}>
                 <Ionicons name="refresh" size={24} color={colors.textPrimary} />
               </TouchableOpacity>
+              {/* ICONO DINÁMICO AQUÍ 👇 */}
               <TouchableOpacity style={[styles.roundBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={onToggleWork}>
-                <Ionicons name="pause" size={24} color={colors.textPrimary} />
+                <Ionicons name={isPaused ? "play" : "pause"} size={24} color={colors.textPrimary} />
               </TouchableOpacity>
               <TouchableOpacity style={[styles.actionBtn, { backgroundColor: (colors.error || '#EF4444') + '15', flex: 1, paddingVertical: 0 }]} onPress={onSkip}>
                 <Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} />
