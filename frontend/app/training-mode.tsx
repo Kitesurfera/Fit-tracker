@@ -10,17 +10,17 @@ import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useTheme } from '../src/hooks/useTheme';
-import { api } from '../src/api';
-import { useAuth } from '../src/context/AuthContext';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
 import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 import Svg, { Circle, Path, G, Text as SvgText } from 'react-native-svg';
 import NetInfo from '@react-native-community/netinfo';
-import { syncManager } from '../src/offline';
 
-// Importamos los nuevos componentes
+// IMPORTACIONES CORREGIDAS PARA app/training-mode.tsx (solo un ../)
+import { useTheme } from '../src/hooks/useTheme';
+import { api } from '../src/api';
+import { useAuth } from '../src/context/AuthContext';
+import { syncManager } from '../src/offline';
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
 import HiitCard from '../src/components/training/HiitCard';
 
@@ -95,7 +95,6 @@ export default function TrainingModeScreen() {
   const [sleepHours, setSleepHours] = useState<string>('');
   const [observations, setObservations] = useState('');
   
-  // NUEVO: Estado para el mapa corporal
   const [showBodyMap, setShowBodyMap] = useState(false);
   const [soreJoints, setSoreJoints] = useState<string[]>([]);
   
@@ -639,7 +638,7 @@ export default function TrainingModeScreen() {
     };
   };
 
-const handleFinish = async () => {
+  const handleFinish = async () => {
     if (workout.completed) { router.back(); return; }
     if (!stableWorkoutId) return;
     stopAllTimers();
@@ -650,63 +649,23 @@ const handleFinish = async () => {
       const updateData: any = { completed: true, completion_data: completionData, title: workout.title, exercises: workout.exercises };
       if (observations.trim()) updateData.observations = observations.trim();
 
-      // --- NUEVA LÓGICA OFFLINE ---
       const netState = await NetInfo.fetch();
       
       if (netState.isConnected) {
-        // Hay internet: Guardamos normal
         await api.updateWorkout(stableWorkoutId, updateData);
-        // Opcional: Ya que tenemos conexión, forzamos que se suba lo que hubiera pendiente de otros días
         syncManager.syncPendingWorkouts(); 
       } else {
-        // No hay internet: A la sala de espera
         await syncManager.savePendingWorkout(stableWorkoutId, updateData);
-        
         if (Platform.OS !== 'web') {
           Alert.alert("Guardado Local", "Estás sin conexión. El entrenamiento se ha guardado en tu móvil y se subirá automáticamente cuando vuelvas a tener internet.");
         } else {
           window.alert("Estás sin conexión. El entrenamiento se guardará y se subirá cuando haya internet.");
         }
       }
-      // ----------------------------
-
       router.back();
     } catch (e) { 
       if (Platform.OS !== 'web') Alert.alert("Error", "Hubo un error al guardar."); 
     }
-  };
-
-  const saveTrainerFeedbackFuerza = async (exerciseIndex: number, noteText: string) => {
-    try {
-      const updatedExerciseResults = (workout.completion_data?.exercise_results || []).map((ex: any, i: number) => {
-        if (i !== exerciseIndex) return ex;
-        return { ...ex, coach_note: noteText };
-      });
-      const payload = { ...workout, completion_data: { ...workout.completion_data, exercise_results: updatedExerciseResults } };
-      await api.updateWorkout(workout.id, payload);
-      setWorkout(payload);
-      setLogs(prev => ({...prev, [exerciseIndex]: {...(prev[exerciseIndex]||{}), coach_note: noteText}}));
-      if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
-    } catch (e) { console.log("Error guardando nota:", e); }
-  };
-
-  const saveTrainerFeedbackHiit = async (blockIndex: number, exIndex: number, noteText: string) => {
-    try {
-      const updatedHiitResults = (workout.completion_data?.hiit_results || []).map((block: any, bIdx: number) => {
-        if (bIdx !== blockIndex) return block;
-        return {
-          ...block,
-          hiit_exercises: (block.hiit_exercises || []).map((ex: any, eIdx: number) => {
-            if (eIdx !== exIndex) return ex;
-            return { ...ex, coach_note: noteText };
-          })
-        };
-      });
-      const payload = { ...workout, completion_data: { ...workout.completion_data, hiit_results: updatedHiitResults } };
-      await api.updateWorkout(workout.id, payload);
-      setWorkout(payload);
-      if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
-    } catch (e) { console.log("Error guardando nota HIIT:", e); }
   };
 
   const renderVideoModal = () => (
@@ -740,7 +699,6 @@ const handleFinish = async () => {
     </Modal>
   );
 
-  // NUEVO: Funciones y Modal del Mapa Corporal
   const toggleJoint = (joint: string) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setSoreJoints(prev => prev.includes(joint) ? prev.filter(j => j !== joint) : [...prev, joint]);
@@ -753,30 +711,19 @@ const handleFinish = async () => {
     const errorColor = colors.error || '#EF4444';
     const bodyOutlineColor = colors.textSecondary;
     
-    // Coordenadas para Frontal
     const frontPoints = [
-      { id: 'Hombro Izq', cx: 130, cy: 120, r: 15 },
-      { id: 'Hombro Der', cx: 270, cy: 120, r: 15 },
-      { id: 'Codo Izq', cx: 100, cy: 200, r: 15 },
-      { id: 'Codo Der', cx: 300, cy: 200, r: 15 },
-      { id: 'Muñeca Izq', cx: 80, cy: 280, r: 12 },
-      { id: 'Muñeca Der', cx: 320, cy: 280, r: 12 },
-      { id: 'Costillas', cx: 200, cy: 190, r: 25 },
-      { id: 'Cadera', cx: 200, cy: 260, r: 25 },
-      { id: 'Rodilla Izq', cx: 160, cy: 380, r: 18 },
-      { id: 'Rodilla Der', cx: 240, cy: 380, r: 18 },
-      { id: 'Tobillo Izq', cx: 150, cy: 490, r: 15 },
-      { id: 'Tobillo Der', cx: 250, cy: 490, r: 15 },
+      { id: 'Hombro Izq', cx: 130, cy: 120, r: 15 }, { id: 'Hombro Der', cx: 270, cy: 120, r: 15 },
+      { id: 'Codo Izq', cx: 100, cy: 200, r: 15 }, { id: 'Codo Der', cx: 300, cy: 200, r: 15 },
+      { id: 'Muñeca Izq', cx: 80, cy: 280, r: 12 }, { id: 'Muñeca Der', cx: 320, cy: 280, r: 12 },
+      { id: 'Costillas', cx: 200, cy: 190, r: 25 }, { id: 'Cadera', cx: 200, cy: 260, r: 25 },
+      { id: 'Rodilla Izq', cx: 160, cy: 380, r: 18 }, { id: 'Rodilla Der', cx: 240, cy: 380, r: 18 },
+      { id: 'Tobillo Izq', cx: 150, cy: 490, r: 15 }, { id: 'Tobillo Der', cx: 250, cy: 490, r: 15 },
     ];
 
-    // Coordenadas para Trasero
     const backPoints = [
-      { id: 'Cuello', cx: 200, cy: 90, r: 18 },
-      { id: 'Escápula Izq', cx: 160, cy: 140, r: 18 },
-      { id: 'Escápula Der', cx: 240, cy: 140, r: 18 },
-      { id: 'Lumbares', cx: 200, cy: 240, r: 28 },
-      { id: 'Tendón Izq', cx: 150, cy: 470, r: 15 },
-      { id: 'Tendón Der', cx: 250, cy: 470, r: 15 },
+      { id: 'Cuello', cx: 200, cy: 90, r: 18 }, { id: 'Escápula Izq', cx: 160, cy: 140, r: 18 },
+      { id: 'Escápula Der', cx: 240, cy: 140, r: 18 }, { id: 'Lumbares', cx: 200, cy: 240, r: 28 },
+      { id: 'Tendón Izq', cx: 150, cy: 470, r: 15 }, { id: 'Tendón Der', cx: 250, cy: 470, r: 15 },
     ];
 
     return (
@@ -789,91 +736,53 @@ const handleFinish = async () => {
                 <Ionicons name="close" size={28} color={colors.textPrimary} />
               </TouchableOpacity>
             </View>
-            
             <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center' }}>
               Toca las articulaciones que hayas sentido sobrecargadas por las botas o los aterrizajes.
             </Text>
-
             <ScrollView horizontal pagingEnabled showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center' }}>
-              
-              {/* FIGURA FRONTAL */}
               <View style={{ width: width * 0.85, alignItems: 'center' }}>
                 <Text style={{ fontWeight: '700', color: colors.textPrimary, marginBottom: 10 }}>VISTA FRONTAL</Text>
                 <Svg height="550" width="400" viewBox="0 0 400 550">
-                  {/* Silueta Base Frontal Simplificada */}
-                  <Path d="M200 20 C 180 20, 180 60, 200 80 C 220 60, 220 20, 200 20 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> {/* Cabeza */}
-                  <Path d="M200 80 L 200 100 L 140 120 L 100 200 L 80 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Brazo Izq */}
-                  <Path d="M200 80 L 200 100 L 260 120 L 300 200 L 320 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Brazo Der */}
-                  <Path d="M140 120 L 160 260 L 240 260 L 260 120 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> {/* Torso */}
-                  <Path d="M170 260 L 160 380 L 150 490 L 130 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Pierna Izq */}
-                  <Path d="M230 260 L 240 380 L 250 490 L 270 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Pierna Der */}
-                  <Path d="M170 260 L 200 280 L 230 260" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> {/* Pelvis */}
-
-                  {/* Puntos Interactivos Frontales */}
+                  <Path d="M200 20 C 180 20, 180 60, 200 80 C 220 60, 220 20, 200 20 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> 
+                  <Path d="M200 80 L 200 100 L 140 120 L 100 200 L 80 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
+                  <Path d="M200 80 L 200 100 L 260 120 L 300 200 L 320 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
+                  <Path d="M140 120 L 160 260 L 240 260 L 260 120 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> 
+                  <Path d="M170 260 L 160 380 L 150 490 L 130 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
+                  <Path d="M230 260 L 240 380 L 250 490 L 270 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
+                  <Path d="M170 260 L 200 280 L 230 260" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> 
                   {frontPoints.map(point => (
                     <G key={point.id} onPress={() => toggleJoint(point.id)}>
                       <Circle cx={point.cx} cy={point.cy} r={point.r + 10} fill="transparent" />
-                      <Circle 
-                        cx={point.cx} 
-                        cy={point.cy} 
-                        r={point.r} 
-                        fill={isJointSelected(point.id) ? errorColor : primaryColor} 
-                        opacity={isJointSelected(point.id) ? 0.9 : 0.3} 
-                      />
-                      {isJointSelected(point.id) && (
-                        <SvgText x={point.cx} y={point.cy - point.r - 5} fill={errorColor} fontSize="12" fontWeight="bold" textAnchor="middle">
-                          {point.id}
-                        </SvgText>
-                      )}
+                      <Circle cx={point.cx} cy={point.cy} r={point.r} fill={isJointSelected(point.id) ? errorColor : primaryColor} opacity={isJointSelected(point.id) ? 0.9 : 0.3} />
+                      {isJointSelected(point.id) && <SvgText x={point.cx} y={point.cy - point.r - 5} fill={errorColor} fontSize="12" fontWeight="bold" textAnchor="middle">{point.id}</SvgText>}
                     </G>
                   ))}
                 </Svg>
               </View>
-
-              {/* FIGURA TRASERA */}
               <View style={{ width: width * 0.85, alignItems: 'center' }}>
                 <Text style={{ fontWeight: '700', color: colors.textPrimary, marginBottom: 10 }}>VISTA TRASERA</Text>
                 <Svg height="550" width="400" viewBox="0 0 400 550">
-                  {/* Silueta Base Trasera Simplificada */}
-                  <Path d="M200 20 C 180 20, 180 60, 200 80 C 220 60, 220 20, 200 20 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> {/* Cabeza */}
-                  <Path d="M200 80 L 200 100 L 140 120 L 100 200 L 80 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Brazo Izq */}
-                  <Path d="M200 80 L 200 100 L 260 120 L 300 200 L 320 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Brazo Der */}
-                  <Path d="M140 120 L 160 260 L 240 260 L 260 120 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> {/* Torso */}
-                  <Path d="M200 100 L 200 260" stroke={bodyOutlineColor} strokeWidth="2" strokeDasharray="5,5" fill="none" /> {/* Columna */}
-                  <Path d="M170 260 L 160 380 L 150 490 L 130 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Pierna Izq */}
-                  <Path d="M230 260 L 240 380 L 250 490 L 270 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> {/* Pierna Der */}
-                  
-                  {/* Puntos Interactivos Traseros */}
+                  <Path d="M200 20 C 180 20, 180 60, 200 80 C 220 60, 220 20, 200 20 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> 
+                  <Path d="M200 80 L 200 100 L 140 120 L 100 200 L 80 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
+                  <Path d="M200 80 L 200 100 L 260 120 L 300 200 L 320 280" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
+                  <Path d="M140 120 L 160 260 L 240 260 L 260 120 Z" stroke={bodyOutlineColor} strokeWidth="3" fill="none" /> 
+                  <Path d="M200 100 L 200 260" stroke={bodyOutlineColor} strokeWidth="2" strokeDasharray="5,5" fill="none" /> 
+                  <Path d="M170 260 L 160 380 L 150 490 L 130 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
+                  <Path d="M230 260 L 240 380 L 250 490 L 270 510" stroke={bodyOutlineColor} strokeWidth="4" fill="none" /> 
                   {backPoints.map(point => (
                     <G key={point.id} onPress={() => toggleJoint(point.id)}>
                       <Circle cx={point.cx} cy={point.cy} r={point.r + 10} fill="transparent" />
-                      <Circle 
-                        cx={point.cx} 
-                        cy={point.cy} 
-                        r={point.r} 
-                        fill={isJointSelected(point.id) ? errorColor : primaryColor} 
-                        opacity={isJointSelected(point.id) ? 0.9 : 0.3} 
-                      />
-                      {isJointSelected(point.id) && (
-                        <SvgText x={point.cx} y={point.cy - point.r - 5} fill={errorColor} fontSize="12" fontWeight="bold" textAnchor="middle">
-                          {point.id}
-                        </SvgText>
-                      )}
+                      <Circle cx={point.cx} cy={point.cy} r={point.r} fill={isJointSelected(point.id) ? errorColor : primaryColor} opacity={isJointSelected(point.id) ? 0.9 : 0.3} />
+                      {isJointSelected(point.id) && <SvgText x={point.cx} y={point.cy - point.r - 5} fill={errorColor} fontSize="12" fontWeight="bold" textAnchor="middle">{point.id}</SvgText>}
                     </G>
                   ))}
                 </Svg>
               </View>
-
             </ScrollView>
-            
             <View style={{ flexDirection: 'row', justifyContent: 'center', marginTop: 10, marginBottom: 20 }}>
                <Text style={{ fontSize: 12, color: colors.textSecondary }}>Desliza para ver la parte trasera</Text>
             </View>
-
-            <TouchableOpacity 
-              style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', width: '100%' }} 
-              onPress={() => setShowBodyMap(false)}
-            >
+            <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', width: '100%' }} onPress={() => setShowBodyMap(false)}>
               <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar Selección</Text>
             </TouchableOpacity>
           </View>
@@ -963,7 +872,6 @@ const handleFinish = async () => {
                 </View>
               </View>
 
-              {/* NUEVO: Botón para abrir el Mapa Corporal */}
               <View>
                 <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA ARTICULAR O IMPACTO (Opcional)</Text>
                 <TouchableOpacity 
@@ -1036,21 +944,22 @@ const handleFinish = async () => {
               isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds}
               restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds}
               workTotalSeconds={workTotalSeconds} exName={currentExInHiit?.name || 'EJERCICIO'}
-              hiitPhase={hiitPhase} restType={restType} colors={colors} isHiit={isHiit}
-              onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
-              onSkipRest={skipHiitRest} onResetWork={resetWorkTimer}
+              colors={colors} isHiit={isHiit}
+              onToggleWork={toggleWorkTimer} 
+              onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
+              onSkipRest={skipHiitRest} 
+              onResetWork={resetWorkTimer}
+              onResetRest={() => setRestSeconds(restTotalSeconds)}
+              onComplete={advanceHiit}
+              onSkip={skipHiitEx}
             />
 
+            {/* PISTA VISUAL DE DESLIZAMIENTO PARA HIIT */}
             {!isResting && !isPrep && (
-              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-                <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444', flex: 1, paddingVertical: 14 }]} onPress={skipHiitEx}>
-                  <Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} />
-                  <Text style={{ color: colors.error || '#EF4444', fontWeight: '700', marginLeft: 6 }}>Saltar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 2, paddingVertical: 14, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={advanceHiit}>
-                  <Ionicons name="play" size={22} color="#FFF" />
-                  <Text style={[styles.completeSetText, { color: '#FFF' }]}>{currentExInHiit?.duration ? 'Siguiente' : 'Completar'}</Text>
-                </TouchableOpacity>
+              <View style={{ marginBottom: 12, alignItems: 'center', backgroundColor: colors.surfaceHighlight, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 12, alignSelf: 'center' }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '700', opacity: 0.9 }}>
+                  💡 Desliza la lista inferior a los lados para saltar/completar
+                </Text>
               </View>
             )}
 
@@ -1059,7 +968,7 @@ const handleFinish = async () => {
               hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} colors={colors}
               hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos}
               handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading}
-              renderVideoPlayer={(url) => <MiniVideoPlayer url={url} onExpand={setExpandedVideo} />}
+              renderVideoPlayer={(url: string) => <MiniVideoPlayer url={url} onExpand={setExpandedVideo} />}
               onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx}
             />
           </ScrollView>
@@ -1103,14 +1012,22 @@ const handleFinish = async () => {
               isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds}
               restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds}
               workTotalSeconds={workTotalSeconds} exName={currentEx?.name || 'EJERCICIO'}
-              hiitPhase={hiitPhase} restType={restType} colors={colors} isHiit={isHiit}
-              onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
-              onSkipRest={stopRestTimer} onResetWork={resetWorkTimer}
+              colors={colors} isHiit={false}
+              onToggleWork={toggleWorkTimer} 
+              onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
+              onSkipRest={stopRestTimer} 
+              onResetWork={resetWorkTimer}
+              onResetRest={() => setRestSeconds(restTotalSeconds)}
+              onComplete={completeSet}
+              onSkip={skipSet}
             />
 
+            {/* PISTA VISUAL DE DESLIZAMIENTO PARA FUERZA */}
             {nextPendingSet !== -1 && !isResting && !isPrep && (
-              <View style={{ marginBottom: 10, alignItems: 'center' }}>
-                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700', opacity: 0.6 }}>💡 Desliza la tarjeta de abajo para completar o saltar</Text>
+              <View style={{ marginBottom: 12, alignItems: 'center', backgroundColor: colors.surfaceHighlight, paddingVertical: 8, paddingHorizontal: 16, borderRadius: 12, alignSelf: 'center' }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 13, fontWeight: '700', opacity: 0.9 }}>
+                  💡 Desliza la tarjeta inferior hacia los lados para saltar/completar serie
+                </Text>
               </View>
             )}
 
@@ -1241,7 +1158,6 @@ const handleFinish = async () => {
     }
   }
 
-  // Envolvemos todo en el GestureHandlerRootView
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       {mainContent}
