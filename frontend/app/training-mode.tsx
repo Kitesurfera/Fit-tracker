@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, TextInput, Alert, Platform, KeyboardAvoidingView, Modal
+  ActivityIndicator, Linking, TextInput, Alert, Platform, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +14,10 @@ import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useKeepAwake } from 'expo-keep-awake';
-import Svg, { Circle } from 'react-native-svg';
+
+// Importamos los nuevos componentes
+import UnifiedTimer from '../src/components/training/UnifiedTimer';
+import HiitCard from '../src/components/training/HiitCard';
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
@@ -112,7 +115,6 @@ export default function TrainingModeScreen() {
   const finishSoundRef = useRef<Audio.Sound | null>(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
 
-  // Referencia para evitar repetir anuncios seguidos
   const lastAnnouncedRef = useRef<string>('');
 
   useEffect(() => {
@@ -246,12 +248,10 @@ export default function TrainingModeScreen() {
     else completeSet();
   };
 
-  // --- EFECTOS DE AUDIO Y CUENTA ATRÁS ---
   useEffect(() => { if (isPrep && prepSeconds > 0 && prepSeconds <= 3) playSound('beep'); }, [prepSeconds, isPrep]);
   useEffect(() => { if (isWorking && workSeconds > 0 && workSeconds <= 5) playSound('beep'); }, [workSeconds, isWorking]);
   useEffect(() => { if (isResting && restSeconds > 0 && restSeconds <= 5) playSound('beep'); }, [restSeconds, isResting]);
 
-  // --- CONTROL DE VOZ INTELIGENTE PARA EJERCICIOS SIN TIEMPO ---
   useEffect(() => {
     if (showIndicationsModal || !workout || isResting || finished || workout.completed || isPrep) return;
 
@@ -283,7 +283,6 @@ export default function TrainingModeScreen() {
     }
   }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, isResting, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
 
-  // --- OBTENER DATOS DE LA SESIÓN ---
   useEffect(() => {
     let isMounted = true;
     const fetchWorkoutDetail = async () => {
@@ -350,7 +349,6 @@ export default function TrainingModeScreen() {
               setSetsStatus(initial);
             }
 
-            // AUTO-SHOW DE INDICACIONES (Solo al inicio)
             if (currentWorkout.notes && currentWorkout.notes.trim() !== '' && !hasShownIndicationsRef.current) {
                setShowIndicationsModal(true);
                hasShownIndicationsRef.current = true;
@@ -364,7 +362,6 @@ export default function TrainingModeScreen() {
     return () => { isMounted = false; };
   }, [stableWorkoutId]);
 
-  // --- BUCLES DE TIEMPO ---
   useEffect(() => {
     if (isPrep && prepTargetTime) {
       prepIntervalRef.current = setInterval(() => {
@@ -411,7 +408,6 @@ export default function TrainingModeScreen() {
     return () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); };
   }, [isWorking, workTargetTime]);
 
-  // --- AUTO START DE PREPARACIÓN / EJERCICIO ---
   useEffect(() => {
     if (!isHiit && workout && !isResting && !isPrep && !showIndicationsModal) {
       const currentSets = setsStatus[currentExIndex] || [];
@@ -454,7 +450,6 @@ export default function TrainingModeScreen() {
     }
   }, [isResting, showIndicationsModal]);
 
-  // --- LÓGICAS DE SALTO Y AVANCE ---
   const advanceHiitLogic = () => {
     stopAllTimers();
     const currentBlock = workout.exercises[hiitBlockIdx];
@@ -557,7 +552,6 @@ export default function TrainingModeScreen() {
     autoAdvance(currentExIndex);
   };
 
-  // --- CONTROL DE VIDEOS ---
   const handleRecordVideoOptions = (key: string) => {
     if (Platform.OS === 'web') { launchVideoPicker('library', key); return; }
     Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ { text: "Cancelar", style: "cancel" }, { text: "Elegir de la Galería", onPress: () => launchVideoPicker('library', key) }, { text: "Grabar ahora", onPress: () => launchVideoPicker('camera', key) } ]);
@@ -590,7 +584,6 @@ export default function TrainingModeScreen() {
     } finally { setVideoUploading(null); }
   };
 
-  // --- GUARDADO DE SESIÓN ---
   const buildCompletionData = () => {
     if (isHiit) {
       return { 
@@ -684,7 +677,7 @@ export default function TrainingModeScreen() {
       <View style={styles.modalOverlay}>
         <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface }]}>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 }}>
-            <Ionicons name="clipboard" size={28} color={colors.primary} />
+            <Ionicons name="warning" size={28} color={colors.primary} />
             <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, flex: 1 }}>Indicaciones</Text>
           </View>
           <ScrollView style={{ maxHeight: 300, marginBottom: 20 }}>
@@ -701,89 +694,6 @@ export default function TrainingModeScreen() {
     </Modal>
   );
 
-  // --- UI DEL TEMPORIZADOR UNIFICADO ---
-  const renderUnifiedTimerUI = (exName: string) => {
-    const isRest = isResting;
-    const current = isPrep ? prepSeconds : (isRest ? restSeconds : workSeconds);
-    const total = isPrep ? 5 : (isRest ? restTotalSeconds : workTotalSeconds);
-    const isPaused = !isPrep && !isRest && !isWorking;
-
-    if (!isPrep && !isRest && (current <= 0 && !isWorking)) return null;
-    if (isRest && current <= 0) return null;
-
-    const ringColor = isPrep ? '#3B82F6' : (isRest ? (colors.warning || '#F59E0B') : colors.primary);
-    const progressPercent = total > 0 ? current / total : 0;
-    
-    let label = exName.toUpperCase();
-    if (isPrep) {
-      label = '¡PREPÁRATE!';
-    } else if (isRest) {
-      if (hiitPhase === 'rest_block') label = 'DESCANSO ENTRE VUELTAS';
-      else if (hiitPhase === 'rest_next_block') label = 'PREPARA EL SIGUIENTE BLOQUE';
-      else if (restType === 'exercise') label = 'DESCANSO (SIGUIENTE EJ.)';
-      else label = 'DESCANSO';
-    }
-
-    const radius = 85;
-    const strokeWidth = 12;
-    const circumference = 2 * Math.PI * radius;
-    const strokeDashoffset = circumference - (progressPercent * circumference);
-
-    return (
-      <View style={styles.unifiedTimerContainer}>
-        <Text style={[styles.workTimerTitle, { color: ringColor, textAlign: 'center', marginHorizontal: 20 }]}>{label}</Text>
-
-        <View style={styles.timerCircleWrapper}>
-          <Svg width="200" height="200" viewBox="0 0 200 200" style={{ position: 'absolute' }}>
-            <Circle cx="100" cy="100" r={radius} stroke={ringColor} strokeWidth={strokeWidth} strokeOpacity={0.15} fill="none" />
-            <Circle
-              cx="100" cy="100" r={radius}
-              stroke={ringColor} strokeWidth={strokeWidth} fill="none"
-              strokeLinecap="round"
-              strokeDasharray={circumference}
-              strokeDashoffset={strokeDashoffset}
-              transform="rotate(-90 100 100)"
-            />
-          </Svg>
-
-          <TouchableOpacity activeOpacity={0.8} onPress={() => !isPrep && !isRest && toggleWorkTimer()} disabled={isPrep || isRest}>
-            <View style={{ justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={[styles.timerText, { color: isPaused ? colors.textSecondary : ringColor }]}>
-                {isPrep ? current : `${Math.floor(current / 60)}:${String(current % 60).padStart(2, '0')}`}
-              </Text>
-              <Text style={{ color: colors.textSecondary, fontSize: 16, fontWeight: '800', marginTop: -5 }}>SEG</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        <View style={{ flexDirection: 'row', gap: 15, marginTop: 25, justifyContent: 'center' }}>
-          {isPrep ? (
-            <TouchableOpacity style={[styles.skipRestBtnUnified, { borderColor: ringColor }]} onPress={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}>
-              <Text style={{ color: ringColor, fontWeight: '700', fontSize: 16 }}>Omitir Previo</Text>
-            </TouchableOpacity>
-          ) : isRest ? (
-            <TouchableOpacity style={[styles.skipRestBtnUnified, { borderColor: ringColor }]} onPress={isHiit ? skipHiitRest : stopRestTimer}>
-              <Text style={{ color: ringColor, fontWeight: '700', fontSize: 16 }}>Saltar Descanso</Text>
-            </TouchableOpacity>
-          ) : (
-            <View style={{ flexDirection: 'row', gap: 15 }}>
-              <TouchableOpacity style={[styles.playPauseBtn, { backgroundColor: isPaused ? (colors.warning || '#F59E0B') : colors.primary }]} onPress={toggleWorkTimer}>
-                <Ionicons name={isWorking ? "pause" : "play"} size={32} color="#FFF" />
-              </TouchableOpacity>
-              
-              {!isHiit && (
-                <TouchableOpacity style={[styles.playPauseBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={resetWorkTimer}>
-                  <Ionicons name="refresh" size={32} color={colors.textPrimary} />
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </View>
-      </View>
-    );
-  };
-
-  // --- RENDER DE PANTALLAS ---
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Entrenamiento no encontrado.</Text><TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.primary }]} onPress={() => router.back()}><Text style={styles.backBtnText}>Volver</Text></TouchableOpacity></SafeAreaView>;
 
@@ -957,23 +867,10 @@ export default function TrainingModeScreen() {
     );
   }
 
-  // --- RENDERIZADO HIIT ---
   if (isHiit) {
     const currentBlock = workout.exercises?.[hiitBlockIdx];
-    
-    if (!currentBlock) {
-      return (
-        <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
-          <Text style={[styles.errorText, { color: colors.textPrimary }]}>Cargando bloque HIIT...</Text>
-        </SafeAreaView>
-      );
-    }
-
+    if (!currentBlock) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Cargando bloque HIIT...</Text></SafeAreaView>;
     const currentExInHiit = currentBlock.hiit_exercises[hiitExIdx];
-    const totalExs = currentBlock.hiit_exercises.length;
-    const dynamicPadding = totalExs <= 3 ? 18 : totalExs <= 5 ? 12 : 8;
-    const dynamicFontName = totalExs <= 3 ? 20 : totalExs <= 5 ? 18 : 15;
-    const dynamicFontDur = totalExs <= 3 ? 18 : totalExs <= 5 ? 16 : 14;
 
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -984,9 +881,14 @@ export default function TrainingModeScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
-          {(isResting || isPrep || (hiitPhase === 'work' && currentExInHiit?.duration)) 
-            ? renderUnifiedTimerUI(currentExInHiit?.name || 'EJERCICIO') 
-            : null}
+          <UnifiedTimer
+            isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds}
+            restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds}
+            workTotalSeconds={workTotalSeconds} exName={currentExInHiit?.name || 'EJERCICIO'}
+            hiitPhase={hiitPhase} restType={restType} colors={colors} isHiit={isHiit}
+            onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
+            onSkipRest={skipHiitRest} onResetWork={resetWorkTimer}
+          />
 
           {!isResting && !isPrep && (
             <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
@@ -1001,66 +903,18 @@ export default function TrainingModeScreen() {
             </View>
           )}
 
-          <View style={[styles.hiitCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.hiitHeader, { backgroundColor: (colors.error || '#EF4444') + '15' }]}>
-              <Ionicons name="flame" size={24} color={colors.error || '#EF4444'} />
-              <View style={{ flex: 1, marginLeft: 10 }}><Text style={{ color: colors.error || '#EF4444', fontWeight: '900', fontSize: 18, textTransform: 'uppercase' }}>{currentBlock.name}</Text><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>Vuelta {hiitRound} de {currentBlock.sets}</Text></View>
-            </View>
-
-            <View style={styles.hiitList}>
-              {currentBlock.hiit_exercises.map((ex: any, idx: number) => {
-                const isCurrent = hiitPhase === 'work' && idx === hiitExIdx;
-                const isDone = hiitExIdx > idx;
-                const videoKey = `${hiitBlockIdx}-${idx}`;
-
-                return (
-                  <View key={idx} style={[styles.hiitExRowWrapper, isCurrent && { backgroundColor: colors.surfaceHighlight, borderRadius: 10, borderWidth: 1, borderColor: colors.primary }]}>
-                    <View style={[styles.hiitExRow, { paddingVertical: dynamicPadding }]}>
-                      <View style={[styles.hiitCheck, { backgroundColor: isDone ? (colors.success || '#10B981') : isCurrent ? colors.primary : colors.border }]}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>{isDone ? <Ionicons name="checkmark" size={12} color="#FFF" /> : idx + 1}</Text></View>
-                      <Text style={[styles.hiitExName, { fontSize: dynamicFontName, color: isCurrent ? colors.textPrimary : colors.textSecondary, fontWeight: isCurrent ? '800' : '600', flex: 1 }]}>{ex.name}</Text>
-                      <Text style={[styles.hiitExDur, { fontSize: dynamicFontDur, color: isCurrent ? colors.primary : colors.textSecondary, fontWeight: '800' }]}>{ex.duration_reps || ex.duration}</Text>
-                    </View>
-                    
-                    {isCurrent && (
-                      <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-                        {ex.video_url && <TouchableOpacity style={[styles.hiitRefBtn, { backgroundColor: colors.primary + '15', marginBottom: 10 }]} onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={16} color={colors.primary} /><Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>Ver Vídeo de Referencia</Text></TouchableOpacity>}
-                        {ex.exercise_notes && <View style={{ flexDirection: 'row', marginBottom: 10 }}><Ionicons name="information-circle" size={14} color={colors.textSecondary} /><Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginLeft: 4, flex: 1 }}>{ex.exercise_notes}</Text></View>}
-
-                        <View style={{ borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 10, marginTop: 5 }}>
-                          <TextInput 
-                            style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border, marginBottom: 12 }]}
-                            placeholder="Comentarios rápidos (opcional)..."
-                            placeholderTextColor={colors.textSecondary}
-                            value={hiitLogs[videoKey]?.note || ''}
-                            onChangeText={(t) => setHiitLogs(prev => ({...prev, [videoKey]: {...(prev[videoKey]||{}), note: t}}))}
-                          />
-
-                          {recordedVideos[videoKey] ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 10, borderRadius: 8 }}>
-                              <MiniVideoPlayer url={recordedVideos[videoKey]} onExpand={setExpandedVideo} />
-                              <View style={{ marginLeft: 12, flex: 1 }}>
-                                <Text style={{ color: colors.success || '#10B981', fontWeight: '700', fontSize: 12, marginBottom: 4 }}>Vídeo subido</Text>
-                                <TouchableOpacity onPress={() => handleRecordVideoOptions(videoKey)}><Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' }}>Cambiar</Text></TouchableOpacity>
-                              </View>
-                            </View>
-                          ) : (
-                            <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 10, borderRadius: 8, borderWidth: 1, borderColor: colors.primary, borderStyle: 'dashed' }} onPress={() => handleRecordVideoOptions(videoKey)} disabled={videoUploading === videoKey}>
-                              {videoUploading === videoKey ? <ActivityIndicator color={colors.primary} size="small" /> : <><Ionicons name="videocam" size={18} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 6, fontWeight: '700', fontSize: 12 }}>Grabar técnica</Text></>}
-                            </TouchableOpacity>
-                          )}
-                        </View>
-                      </View>
-                    )}
-                  </View>
-                );
-              })}
-            </View>
-          </View>
+          <HiitCard
+            currentBlock={currentBlock} hiitRound={hiitRound} hiitPhase={hiitPhase}
+            hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} colors={colors}
+            hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos}
+            handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading}
+            renderVideoPlayer={(url) => <MiniVideoPlayer url={url} onExpand={setExpandedVideo} />}
+          />
         </ScrollView>
 
         {workout?.notes && !finished && (
           <TouchableOpacity style={[styles.fabIndications, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
-            <Ionicons name="clipboard" size={26} color="#FFF" />
+            <Ionicons name="warning" size={26} color="#FFF" />
           </TouchableOpacity>
         )}
 
@@ -1074,13 +928,7 @@ export default function TrainingModeScreen() {
   const exercises = workout.exercises || [];
   const currentEx = exercises[currentExIndex];
   
-  if (!currentEx) {
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}>
-        <Text style={[styles.errorText, { color: colors.textPrimary }]}>Cargando ejercicio...</Text>
-      </SafeAreaView>
-    );
-  }
+  if (!currentEx) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Cargando ejercicio...</Text></SafeAreaView>;
 
   const currentSets = setsStatus[currentExIndex] || [];
   const nextPendingSet = currentSets.findIndex(s => s === 'pending');
@@ -1098,9 +946,14 @@ export default function TrainingModeScreen() {
 
       <ScrollView contentContainerStyle={styles.content}>
 
-        {(isResting || isPrep || (nextPendingSet !== -1 && currentEx?.duration)) 
-          ? renderUnifiedTimerUI(currentEx?.name || 'EJERCICIO') 
-          : null}
+        <UnifiedTimer
+          isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds}
+          restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds}
+          workTotalSeconds={workTotalSeconds} exName={currentEx?.name || 'EJERCICIO'}
+          hiitPhase={hiitPhase} restType={restType} colors={colors} isHiit={isHiit}
+          onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
+          onSkipRest={stopRestTimer} onResetWork={resetWorkTimer}
+        />
 
         {nextPendingSet !== -1 && !isResting && !isPrep && (
           <View style={[styles.setActions, { marginBottom: 4 }]}>
@@ -1240,16 +1093,7 @@ const styles = StyleSheet.create({
   detailsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }, detailBox: { borderRadius: 12, paddingVertical: 12, paddingHorizontal: 14, alignItems: 'center', minWidth: 60 }, detailValue: { fontSize: 20, fontWeight: '700' }, detailLabel: { fontSize: 10, fontWeight: '600', marginTop: 2, textTransform: 'uppercase' }, setsCard: { borderRadius: 16, padding: 20 }, setsTitle: { fontSize: 16, fontWeight: '600', marginBottom: 16 }, setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' }, setNum: { fontSize: 15, fontWeight: '600' }, setActions: { flexDirection: 'row', gap: 10 }, completeSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 12, paddingVertical: 16 }, completeSetText: { fontSize: 16, fontWeight: '600' }, skipSetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 4, borderRadius: 12, paddingVertical: 16, paddingHorizontal: 16, borderWidth: 1.5 }, skipSetText: { fontSize: 14, fontWeight: '600' }, allDoneBadge: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, borderRadius: 10, paddingVertical: 14 }, bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14, paddingBottom: 28, borderTopWidth: 0.5 }, navBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8 }, navBtnText: { fontSize: 15, fontWeight: '500' },
   activeLogContainer: { width: '100%', marginTop: 0 }, activeLogTitle: { fontSize: 14, fontWeight: '700', marginBottom: 12 }, logInputWrapper: { flex: 1 }, logInputLabel: { fontSize: 11, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase' }, logInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15, fontWeight: '600' },
   finishedContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }, finishedIconContainer: { width: 120, height: 120, borderRadius: 60, backgroundColor: 'rgba(245, 158, 11, 0.1)', justifyContent: 'center', alignItems: 'center', marginBottom: 24 }, finishedTitle: { fontSize: 28, fontWeight: '800', marginBottom: 8, textAlign: 'center' }, finishedSubtitle: { fontSize: 16, textAlign: 'center', marginBottom: 40 }, finishWorkoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 18, paddingHorizontal: 32, borderRadius: 16, width: '100%', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 18, fontWeight: '700' }, label: { fontSize: 12, fontWeight: '700', letterSpacing: 1 }, rpeCircle: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 14, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, textAlignVertical: 'top', fontSize: 15 },
-  hiitCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, hiitHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, hiitList: { padding: 16, gap: 12 }, hiitExRowWrapper: { overflow: 'hidden' }, hiitExRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12 }, hiitCheck: { width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center' }, hiitExName: { fontSize: 16, fontWeight: '600' }, hiitExDur: { fontSize: 16, fontWeight: '700' }, hiitRefBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, padding: 8, borderRadius: 8, alignSelf: 'flex-start' }, feedbackInput: { borderWidth: 1, borderRadius: 8, padding: 10, minHeight: 60, textAlignVertical: 'top', fontSize: 14 },
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 12, padding: 4 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, fullVideo: { width: '100%', height: '100%' }, closeModalBtn: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
-  unifiedTimerContainer: { alignItems: 'center', justifyContent: 'center', marginVertical: 20 },
-  timerCircleWrapper: { width: 200, height: 200, justifyContent: 'center', alignItems: 'center', position: 'relative' },
-  workTimerTitle: { fontSize: 22, fontWeight: '900', marginBottom: 20, letterSpacing: 1 },
-  timerText: { fontSize: 50, fontWeight: '900' },
-  playPauseBtn: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, elevation: 8 },
-  skipRestBtnUnified: { paddingHorizontal: 30, paddingVertical: 15, borderRadius: 30, borderWidth: 2 },
-  
-  // Botón Flotante y Modales
   fabIndications: { position: 'absolute', bottom: 100, right: 20, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4, zIndex: 99 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   indicationsModalContent: { width: '85%', padding: 24, borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
