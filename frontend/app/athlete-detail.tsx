@@ -53,10 +53,10 @@ export default function AthleteDetailScreen() {
   const [loading, setLoading] = useState(true);
 
   const [expandedWorkouts, setExpandedWorkouts] = useState<Record<string, boolean>>({});
-  const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({}); // NUEVO: Estado para sub-desplegables
+  const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({}); 
   
   const [showHistory, setShowHistory] = useState(false);
-  const [showFuture, setShowFuture] = useState(false); // Para sesiones muy futuras
+  const [showFuture, setShowFuture] = useState(false); 
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [workoutToDuplicate, setWorkoutToDuplicate] = useState<any>(null);
   const [duplicateDate, setDuplicateDate] = useState(new Date().toISOString().split('T')[0]);
@@ -296,28 +296,38 @@ export default function AthleteDetailScreen() {
     return data;
   }, [history]);
 
-  // --- LÓGICA DE VENTANA DE TIEMPO INTELIGENTE ---
   const activeWindow = useMemo(() => {
     const now = new Date();
-    const day = now.getDay(); // 0: Dom, 1: Lun, ..., 6: Sáb
+    const day = now.getDay(); 
     
     let start = new Date(now);
     let end = new Date(now);
 
     if (day === 6) { 
-      // Sábado -> Ventana: Hoy (Sáb) hasta Domingo de la semana siguiente (+8 días)
       end.setDate(now.getDate() + 8);
     } else if (day === 0) { 
-      // Domingo -> Ventana: Hoy (Dom) hasta Domingo de la semana siguiente (+7 días)
       end.setDate(now.getDate() + 7);
     } else { 
-      // Lunes a Viernes -> Ventana: Lunes a Domingo de ESTA semana
       start.setDate(now.getDate() - (day - 1));
       end.setDate(now.getDate() + (7 - day));
     }
     
     return { startStr: getLocalDateStr(start), endStr: getLocalDateStr(end) };
   }, [todayStr]);
+
+  // Lógica del Próximo Entrenamiento
+  const nextWorkout = useMemo(() => {
+    // 1. Buscamos si hay algo hoy sin completar
+    const pendingToday = workouts.find(w => w.date === todayStr && !w.completed);
+    if (pendingToday) return pendingToday;
+
+    // 2. Si lo de hoy está hecho (o no hay), buscamos el más cercano en el futuro
+    const future = workouts
+      .filter(w => w.date > todayStr && !w.completed)
+      .sort((a,b) => String(a.date).localeCompare(String(b.date)));
+    
+    return future.length > 0 ? future[0] : null;
+  }, [workouts, todayStr]);
 
   const renderDashboard = () => {
     const discomfortsObj = summary?.latest_wellness?.discomforts || {};
@@ -332,6 +342,39 @@ export default function AthleteDetailScreen() {
               <Text style={{color: colors.error || '#EF4444', fontWeight: '900', fontSize: 12}}>ESTADO: LESIONADA / BAJA</Text>
               <Text style={{color: colors.textPrimary, fontSize: 13, marginTop: 2}}>{summary.injury_notes}</Text>
             </View>
+          </View>
+        )}
+
+        {/* PRÓXIMO ENTRENAMIENTO */}
+        <Text style={[styles.sectionTitle]}>PRÓXIMO ENTRENAMIENTO</Text>
+        {nextWorkout ? (
+          <TouchableOpacity 
+            style={[styles.nextWorkoutCard, { backgroundColor: colors.surface }]}
+            onPress={() => router.push(`/edit-workout?workoutId=${nextWorkout.id}`)}
+          >
+            <View style={[styles.nextWorkoutIcon, { backgroundColor: colors.primary + '20' }]}>
+              <Ionicons name="calendar-outline" size={24} color={colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
+                {nextWorkout.date === todayStr ? 'HOY' : nextWorkout.date.split('-').reverse().join('/')}
+              </Text>
+              <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800' }}>
+                {nextWorkout.title}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+          </TouchableOpacity>
+        ) : (
+          <View style={[styles.nextWorkoutCard, { backgroundColor: colors.surface, flexDirection: 'column', alignItems: 'flex-start', padding: 20 }]}>
+            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontStyle: 'italic', fontSize: 13 }}>No hay sesiones pendientes próximamente.</Text>
+            <TouchableOpacity 
+              style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+              onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
+            >
+              <Ionicons name="add" size={18} color="#FFF" />
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>Programar Sesión</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -421,7 +464,6 @@ export default function AthleteDetailScreen() {
   const renderWorkoutItem = (wk: any) => {
     const isExpanded = !!expandedWorkouts[wk.id];
     
-    // Determinamos qué ejercicios renderizar dependiendo de si está completado o no
     let isWorkoutHiit = false;
     let itemsToRender = [];
 
@@ -485,12 +527,10 @@ export default function AthleteDetailScreen() {
               </View>
             )}
 
-            {/* RENDERIZADO UNIFICADO DE EJERCICIOS Y BLOQUES */}
             {itemsToRender?.map((blockOrEx: any, idx: number) => {
               const isHiitBlock = blockOrEx.is_hiit_block || blockOrEx.hiit_exercises !== undefined;
               
               if (isHiitBlock) {
-                // RENDERIZADO DE BLOQUE (Desplegable)
                 const blockKey = `${wk.id}-block-${idx}`;
                 const isBlockExpanded = !!expandedBlocks[blockKey];
 
@@ -526,7 +566,6 @@ export default function AthleteDetailScreen() {
                                     </TouchableOpacity>
                                 )}
 
-                                {/* Feedback Coach en HIIT */}
                                 {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
                                     <View style={styles.feedbackRow}>
                                         <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Feedback para este ejercicio..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
@@ -543,7 +582,6 @@ export default function AthleteDetailScreen() {
                   </View>
                 );
               } else {
-                // RENDERIZADO DE EJERCICIO NORMAL (Fuerza)
                 const noteKey = `${wk.id}-force-${idx}`;
                 const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (blockOrEx.coach_note || '');
                 const isSaved = currentNote === blockOrEx.coach_note && !!blockOrEx.coach_note;
@@ -569,7 +607,6 @@ export default function AthleteDetailScreen() {
                       </TouchableOpacity>
                     )}
                     
-                    {/* Feedback Coach en Fuerza */}
                     {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
                       <View style={styles.feedbackRow}>
                         <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
@@ -589,7 +626,6 @@ export default function AthleteDetailScreen() {
   };
 
   const renderWorkouts = () => {
-    // Clasificamos los entrenamientos según la ventana activa
     const activeWeekWorkouts = workouts.filter(w => w.date >= activeWindow.startStr && w.date <= activeWindow.endStr).sort((a,b) => String(a.date).localeCompare(String(b.date)));
     const historyWorkouts = workouts.filter(w => w.date < activeWindow.startStr).sort((a,b) => String(b.date).localeCompare(String(a.date)));
     const futureWorkouts = workouts.filter(w => w.date > activeWindow.endStr).sort((a,b) => String(a.date).localeCompare(String(b.date)));
@@ -597,7 +633,6 @@ export default function AthleteDetailScreen() {
     return (
       <View style={styles.tabContainer}>
         
-        {/* SEMANA ACTUAL (Inteligente) */}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
           <Text style={[styles.sectionTitle, { marginBottom: 0, color: colors.primary }]}>SEMANA ACTUAL</Text>
           <TouchableOpacity style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}>
@@ -609,7 +644,6 @@ export default function AthleteDetailScreen() {
         
         {activeWeekWorkouts.length > 0 ? activeWeekWorkouts.map(renderWorkoutItem) : <Text style={{ color: colors.textSecondary, marginBottom: 20, fontStyle: 'italic' }}>No hay sesiones en esta ventana.</Text>}
 
-        {/* PROGRAMACIÓN FUTURA (Opcional) */}
         {futureWorkouts.length > 0 && (
           <>
             <TouchableOpacity style={styles.toggleSectionBtn} onPress={() => setShowFuture(!showFuture)} activeOpacity={0.7}>
@@ -620,7 +654,6 @@ export default function AthleteDetailScreen() {
           </>
         )}
 
-        {/* HISTORIAL */}
         <TouchableOpacity style={[styles.toggleSectionBtn, { backgroundColor: colors.surfaceHighlight, marginTop: 20 }]} onPress={() => setShowHistory(!showHistory)} activeOpacity={0.7}>
           <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14 }}>HISTORIAL DE SESIONES ({historyWorkouts.length})</Text>
           <Ionicons name={showHistory ? "chevron-up" : "chevron-down"} size={20} color={colors.textPrimary} />
@@ -686,5 +719,7 @@ export default function AthleteDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 100 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }, sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }, fullVideo: { width: '100%', height: '80%' }, exerciseCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 }, exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, exerciseName: { fontSize: 14, fontWeight: '800' }, feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, feedbackInput: { flex: 1, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 10, borderWidth: 1, fontSize: 13 }, sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2 },
   whatsappFab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center', elevation: 5, zIndex: 100 },
-  toggleSectionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, borderRadius: 12, marginBottom: 15 }
+  toggleSectionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, borderRadius: 12, marginBottom: 15 },
+  nextWorkoutCard: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 20, marginBottom: 25, elevation: 1 },
+  nextWorkoutIcon: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 15 }
 });
