@@ -14,6 +14,8 @@ import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
 import { useKeepAwake } from 'expo-keep-awake';
+import * as Haptics from 'expo-haptics';
+import { GestureHandlerRootView, Swipeable } from 'react-native-gesture-handler';
 
 // Importamos los nuevos componentes
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
@@ -88,11 +90,12 @@ export default function TrainingModeScreen() {
   const [sleepHours, setSleepHours] = useState<string>('');
   const [observations, setObservations] = useState('');
   
-  // --- INDICACIONES GENERALES ---
   const [showIndicationsModal, setShowIndicationsModal] = useState(false);
   const hasShownIndicationsRef = useRef(false);
 
-  // --- TEMPORIZADORES ESTADOS ---
+  // Referencia para el swipe de fuerza
+  const forceSwipeableRef = useRef<Swipeable>(null);
+
   const [prepTargetTime, setPrepTargetTime] = useState<number | null>(null);
   const [prepSeconds, setPrepSeconds] = useState(0);
   const [isPrep, setIsPrep] = useState(false);
@@ -161,6 +164,11 @@ export default function TrainingModeScreen() {
 
   const playSound = async (type: 'beep' | 'finish') => {
     try {
+      if (type === 'beep') {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      }
       const soundObj = type === 'beep' ? beepSoundRef.current : finishSoundRef.current;
       if (soundObj) await soundObj.replayAsync(); 
     } catch (error) {
@@ -168,7 +176,6 @@ export default function TrainingModeScreen() {
     }
   };
 
-  // --- CONTROL GENERAL DE TEMPORIZADORES ---
   const stopPrepTimer = () => {
     if (prepIntervalRef.current) clearInterval(prepIntervalRef.current);
     setIsPrep(false);
@@ -313,9 +320,7 @@ export default function TrainingModeScreen() {
               if (!isWorkoutHiit) {
                 const savedLogs: Record<number, {weight: string, reps: string, note?: string, coach_note?: string}> = {};
                 currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
-                  savedLogs[idx] = { 
-                    weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '', coach_note: res.coach_note || '' 
-                  };
+                  savedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '', coach_note: res.coach_note || '' };
                   if (res.recorded_video_url) savedVideos[idx.toString()] = res.recorded_video_url;
                 });
                 setLogs(savedLogs);
@@ -452,6 +457,7 @@ export default function TrainingModeScreen() {
 
   const advanceHiitLogic = () => {
     stopAllTimers();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const currentBlock = workout.exercises[hiitBlockIdx];
     const totalExercises = currentBlock.hiit_exercises.length;
     const totalRounds = parseInt(currentBlock.sets) || 1;
@@ -495,6 +501,7 @@ export default function TrainingModeScreen() {
 
   const skipHiitEx = () => {
     stopAllTimers();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
     const key = `${hiitBlockIdx}-${hiitExIdx}`;
     setHiitSkipped(prev => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
     advanceHiitLogic();
@@ -513,6 +520,9 @@ export default function TrainingModeScreen() {
 
   const completeSet = () => {
     stopAllTimers();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    forceSwipeableRef.current?.close();
+
     const exercises = workout.exercises || []; const currentEx = exercises[currentExIndex]; const currentSets = setsStatus[currentExIndex] || [];
     const nextPendingSet = currentSets.findIndex(s => s === 'pending'); if (nextPendingSet === -1) return;
     updateSetStatus(currentExIndex, nextPendingSet, 'completed');
@@ -536,6 +546,9 @@ export default function TrainingModeScreen() {
 
   const skipSet = () => {
     stopAllTimers();
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    forceSwipeableRef.current?.close();
+
     const currentSets = setsStatus[currentExIndex] || []; const nextPendingSet = currentSets.findIndex(s => s === 'pending'); if (nextPendingSet === -1) return;
     updateSetStatus(currentExIndex, nextPendingSet, 'skipped');
     const remaining = currentSets.filter((s, i) => i !== nextPendingSet && s === 'pending').length;
@@ -694,11 +707,28 @@ export default function TrainingModeScreen() {
     </Modal>
   );
 
+  // Vistas auxiliares para el Swipeable de la tarjeta de fuerza
+  const renderForceLeftActions = () => (
+    <View style={[styles.swipeActionForce, { backgroundColor: colors.success || '#10B981', alignItems: 'flex-start', paddingLeft: 30 }]}>
+      <Ionicons name="checkmark-circle" size={32} color="#FFF" />
+      <Text style={styles.swipeTextForce}>Completar</Text>
+    </View>
+  );
+
+  const renderForceRightActions = () => (
+    <View style={[styles.swipeActionForce, { backgroundColor: colors.error || '#EF4444', alignItems: 'flex-end', paddingRight: 30 }]}>
+      <Ionicons name="play-skip-forward" size={32} color="#FFF" />
+      <Text style={styles.swipeTextForce}>Saltar</Text>
+    </View>
+  );
+
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Entrenamiento no encontrado.</Text><TouchableOpacity style={[styles.backBtn, { backgroundColor: colors.primary }]} onPress={() => router.back()}><Text style={styles.backBtnText}>Volver</Text></TouchableOpacity></SafeAreaView>;
 
+  let mainContent;
+
   if (finished || workout.completed) {
-    return (
+    mainContent = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
@@ -782,306 +812,241 @@ export default function TrainingModeScreen() {
               <Ionicons name="checkmark-done" size={24} color="#FFF" />
             </TouchableOpacity>
           )}
-
-          {workout.completed && isTrainer && !isHiit && (
-            <View style={{ width: '100%', marginTop: 30 }}>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginBottom: 20 }}>Feedback del Entrenador</Text>
-              {workout.completion_data?.exercise_results?.map((ex: any, i: number) => (
-                <View key={i} style={{ backgroundColor: colors.surface, padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: colors.border }}>
-                  <Text style={{ fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 5 }}>{ex.name}</Text>
-                  
-                  {ex.recorded_video_url && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceHighlight, padding: 8, borderRadius: 8, marginBottom: 10 }}>
-                      <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
-                      <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13, marginLeft: 10 }}>Vídeo del atleta adjunto</Text>
-                    </View>
-                  )}
-
-                  {ex.athlete_note ? <Text style={{ color: colors.textSecondary, fontStyle: 'italic', marginBottom: 10 }}>Nota atleta: "{ex.athlete_note}"</Text> : null}
-                  
-                  <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 5 }}>TU NOTA / CORRECCIÓN TÉCNICA:</Text>
-                  <TextInput
-                    style={{ backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderRadius: 8, padding: 10, minHeight: 60, textAlignVertical: 'top' }}
-                    multiline
-                    placeholder="Escribe un comentario..."
-                    placeholderTextColor={colors.textSecondary}
-                    value={draftNotes[i] !== undefined ? draftNotes[i] : (ex.coach_note || '')}
-                    onChangeText={(t) => setDraftNotes({...draftNotes, [i]: t})}
-                  />
-                  <TouchableOpacity 
-                    style={{ alignSelf: 'flex-end', marginTop: 10, backgroundColor: colors.primary, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8 }}
-                    onPress={() => saveTrainerFeedbackFuerza(i, draftNotes[i] || '')}
-                  >
-                    <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>Enviar Feedback</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-
-          {workout.completed && isTrainer && isHiit && (
-            <View style={{ width: '100%', marginTop: 30 }}>
-              <Text style={{ fontSize: 20, fontWeight: '800', color: colors.textPrimary, marginBottom: 20 }}>Feedback del Entrenador (HIIT)</Text>
-              {workout.completion_data?.hiit_results?.map((block: any, bIdx: number) => (
-                <View key={bIdx} style={{ marginBottom: 20 }}>
-                  <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>{block.name}</Text>
-                  {block.hiit_exercises?.map((ex: any, eIdx: number) => {
-                    const k = `${bIdx}-${eIdx}`;
-                    return (
-                      <View key={eIdx} style={{ backgroundColor: colors.surface, padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: colors.border }}>
-                        <Text style={{ fontSize: 15, fontWeight: '700', color: colors.textPrimary, marginBottom: 5 }}>{ex.name}</Text>
-                        
-                        {ex.recorded_video_url && (
-                          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.surfaceHighlight, padding: 8, borderRadius: 8, marginBottom: 10 }}>
-                            <MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} />
-                            <Text style={{ color: colors.primary, fontWeight: '600', fontSize: 13, marginLeft: 10 }}>Vídeo del atleta adjunto</Text>
-                          </View>
-                        )}
-                        
-                        {ex.athlete_note ? <Text style={{ color: colors.textSecondary, fontStyle: 'italic', marginBottom: 10 }}>Nota atleta: "{ex.athlete_note}"</Text> : null}
-
-                        <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textSecondary, marginBottom: 5 }}>TU NOTA:</Text>
-                        <TextInput
-                          style={{ backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderRadius: 8, padding: 10, minHeight: 60, textAlignVertical: 'top' }}
-                          multiline placeholder="Escribe un comentario..." placeholderTextColor={colors.textSecondary}
-                          value={draftNotes[k] !== undefined ? draftNotes[k] : (ex.coach_note || '')}
-                          onChangeText={(t) => setDraftNotes({...draftNotes, [k]: t})}
-                        />
-                        <TouchableOpacity 
-                          style={{ alignSelf: 'flex-end', marginTop: 10, backgroundColor: colors.primary, paddingHorizontal: 15, paddingVertical: 8, borderRadius: 8 }}
-                          onPress={() => saveTrainerFeedbackHiit(bIdx, eIdx, draftNotes[k] || '')}
-                        >
-                          <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 12 }}>Enviar Feedback</Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
-                </View>
-              ))}
-            </View>
-          )}
-
         </ScrollView>
         {renderVideoModal()}
       </SafeAreaView>
     );
-  }
 
-  if (isHiit) {
+  } else if (isHiit) {
     const currentBlock = workout.exercises?.[hiitBlockIdx];
-    if (!currentBlock) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Cargando bloque HIIT...</Text></SafeAreaView>;
-    const currentExInHiit = currentBlock.hiit_exercises[hiitExIdx];
+    if (!currentBlock) {
+      mainContent = <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Cargando bloque HIIT...</Text></SafeAreaView>;
+    } else {
+      const currentExInHiit = currentBlock.hiit_exercises[hiitExIdx];
 
-    return (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
-          <Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text>
-          <Text style={[styles.topProgress, { color: colors.textSecondary }]}>Bloque {hiitBlockIdx + 1}/{workout.exercises.length}</Text>
-        </View>
+      mainContent = (
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
+            <Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text>
+            <Text style={[styles.topProgress, { color: colors.textSecondary }]}>Bloque {hiitBlockIdx + 1}/{workout.exercises.length}</Text>
+          </View>
 
-        <ScrollView contentContainerStyle={styles.content}>
-          <UnifiedTimer
-            isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds}
-            restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds}
-            workTotalSeconds={workTotalSeconds} exName={currentExInHiit?.name || 'EJERCICIO'}
-            hiitPhase={hiitPhase} restType={restType} colors={colors} isHiit={isHiit}
-            onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
-            onSkipRest={skipHiitRest} onResetWork={resetWorkTimer}
-          />
+          <ScrollView contentContainerStyle={styles.content}>
+            <UnifiedTimer
+              isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds}
+              restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds}
+              workTotalSeconds={workTotalSeconds} exName={currentExInHiit?.name || 'EJERCICIO'}
+              hiitPhase={hiitPhase} restType={restType} colors={colors} isHiit={isHiit}
+              onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
+              onSkipRest={skipHiitRest} onResetWork={resetWorkTimer}
+            />
 
-          {!isResting && !isPrep && (
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
-              <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444', flex: 1, paddingVertical: 14 }]} onPress={skipHiitEx}>
-                <Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} />
-                <Text style={{ color: colors.error || '#EF4444', fontWeight: '700', marginLeft: 6 }}>Saltar</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 2, paddingVertical: 14, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={advanceHiit}>
-                <Ionicons name="play" size={22} color="#FFF" />
-                <Text style={[styles.completeSetText, { color: '#FFF' }]}>{currentExInHiit?.duration ? 'Siguiente' : 'Completar'}</Text>
-              </TouchableOpacity>
-            </View>
+            {!isResting && !isPrep && (
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 10 }}>
+                <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444', flex: 1, paddingVertical: 14 }]} onPress={skipHiitEx}>
+                  <Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} />
+                  <Text style={{ color: colors.error || '#EF4444', fontWeight: '700', marginLeft: 6 }}>Saltar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 2, paddingVertical: 14, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={advanceHiit}>
+                  <Ionicons name="play" size={22} color="#FFF" />
+                  <Text style={[styles.completeSetText, { color: '#FFF' }]}>{currentExInHiit?.duration ? 'Siguiente' : 'Completar'}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <HiitCard
+              currentBlock={currentBlock} hiitRound={hiitRound} hiitPhase={hiitPhase}
+              hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} colors={colors}
+              hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos}
+              handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading}
+              renderVideoPlayer={(url) => <MiniVideoPlayer url={url} onExpand={setExpandedVideo} />}
+              onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx}
+            />
+          </ScrollView>
+
+          {workout?.notes && !finished && (
+            <TouchableOpacity style={[styles.fabIndications, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
+              <Ionicons name="warning" size={26} color="#FFF" />
+            </TouchableOpacity>
           )}
 
-          <HiitCard
-            currentBlock={currentBlock} hiitRound={hiitRound} hiitPhase={hiitPhase}
-            hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} colors={colors}
-            hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos}
-            handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading}
-            renderVideoPlayer={(url) => <MiniVideoPlayer url={url} onExpand={setExpandedVideo} />}
-          />
-        </ScrollView>
+          {renderVideoModal()}
+          {renderIndicationsModal()}
+        </SafeAreaView>
+      );
+    }
+  } else {
+    // RENDERIZADO FUERZA
+    const exercises = workout.exercises || [];
+    const currentEx = exercises[currentExIndex];
+    
+    if (!currentEx) {
+      mainContent = <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Cargando ejercicio...</Text></SafeAreaView>;
+    } else {
+      const currentSets = setsStatus[currentExIndex] || [];
+      const nextPendingSet = currentSets.findIndex(s => s === 'pending');
+      const progress = exercises.length > 0 ? ((currentExIndex) / exercises.length) * 100 : 0;
 
-        {workout?.notes && !finished && (
-          <TouchableOpacity style={[styles.fabIndications, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
-            <Ionicons name="warning" size={26} color="#FFF" />
-          </TouchableOpacity>
-        )}
-
-        {renderVideoModal()}
-        {renderIndicationsModal()}
-      </SafeAreaView>
-    );
-  }
-
-  // --- RENDERIZADO FUERZA ---
-  const exercises = workout.exercises || [];
-  const currentEx = exercises[currentExIndex];
-  
-  if (!currentEx) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={[styles.errorText, { color: colors.textPrimary }]}>Cargando ejercicio...</Text></SafeAreaView>;
-
-  const currentSets = setsStatus[currentExIndex] || [];
-  const nextPendingSet = currentSets.findIndex(s => s === 'pending');
-  const progress = exercises.length > 0 ? ((currentExIndex) / exercises.length) * 100 : 0;
-
-  return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={styles.topBar}>
-        <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
-        <Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text>
-        <Text style={[styles.topProgress, { color: colors.textSecondary }]}>{currentExIndex + 1}/{exercises.length}</Text>
-      </View>
-
-      <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.min(progress, 100)}%` }]} /></View>
-
-      <ScrollView contentContainerStyle={styles.content}>
-
-        <UnifiedTimer
-          isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds}
-          restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds}
-          workTotalSeconds={workTotalSeconds} exName={currentEx?.name || 'EJERCICIO'}
-          hiitPhase={hiitPhase} restType={restType} colors={colors} isHiit={isHiit}
-          onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
-          onSkipRest={stopRestTimer} onResetWork={resetWorkTimer}
-        />
-
-        {nextPendingSet !== -1 && !isResting && !isPrep && (
-          <View style={[styles.setActions, { marginBottom: 4 }]}>
-            <TouchableOpacity style={[styles.skipSetBtn, { borderColor: colors.error || '#EF4444' }]} onPress={skipSet}>
-              <Ionicons name="play-skip-forward" size={18} color={colors.error || '#EF4444'} />
-              <Text style={[styles.skipSetText, { color: colors.error || '#EF4444' }]}>Saltar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.completeSetBtn, { backgroundColor: colors.primary, flex: 1, marginHorizontal: 0, marginBottom: 0, marginTop: 0 }]} onPress={completeSet}>
-              <Ionicons name="checkmark-circle-outline" size={22} color="#FFF" />
-              <Text style={[styles.completeSetText, { color: '#FFF' }]}>{currentEx?.duration ? 'Hecho' : `Completar serie ${nextPendingSet + 1}`}</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <View style={[styles.exerciseCard, { backgroundColor: colors.surface }]}>
-          <View style={[styles.exNumber, { backgroundColor: colors.primary + '12' }]}><Text style={[styles.exNumberText, { color: colors.primary }]}>{currentExIndex + 1}</Text></View>
-          <Text style={[styles.exerciseName, { color: colors.textPrimary }]}>{currentEx.name}</Text>
-
-          {currentEx.video_url && <TouchableOpacity style={[styles.referenceVideoBtn, { backgroundColor: (colors.error || '#EF4444') + '15' }]} onPress={() => Linking.openURL(currentEx.video_url)}><Ionicons name="logo-youtube" size={18} color={colors.error || '#EF4444'} /><Text style={{ color: colors.error || '#EF4444', fontSize: 13, fontWeight: '700' }}>Ver Vídeo de Referencia</Text></TouchableOpacity>}
-          {currentEx.exercise_notes && <View style={[styles.coachNotesBox, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}><Ionicons name="information-circle" size={18} color={colors.primary} /><Text style={{ color: colors.textPrimary, flex: 1, fontSize: 13, fontStyle: 'italic', lineHeight: 18 }}>{currentEx.exercise_notes}</Text></View>}
-
-          <View style={styles.detailsGrid}>
-            {currentEx.sets && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.sets}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Series</Text></View>}
-            {currentEx.reps && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.reps}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Reps</Text></View>}
-            {currentEx.duration && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.duration}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Dur.</Text></View>}
-            {currentEx.weight && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.weight}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Kg</Text></View>}
-            {currentEx.rest && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.S.</Text></View>}
-            {currentEx.rest_exercise && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest_exercise}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.Ej.</Text></View>}
-          </View>
-        </View>
-
-        <View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-            <Text style={[styles.setsTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Progreso de Series</Text>
-            <TouchableOpacity onPress={skipEntireExercise} style={{ paddingHorizontal: 10, paddingVertical: 5 }}>
-               <Text style={{ color: colors.error || '#EF4444', fontWeight: '700', fontSize: 13, textDecorationLine: 'underline' }}>Saltar ejercicio entero</Text>
-            </TouchableOpacity>
+      mainContent = (
+        <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
+            <Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text>
+            <Text style={[styles.topProgress, { color: colors.textSecondary }]}>{currentExIndex + 1}/{exercises.length}</Text>
           </View>
 
-          <View style={styles.setsGrid}>
-            {currentSets.map((status, i) => (
-              <View key={i} style={[styles.setCircle, { borderColor: colors.border }, status === 'completed' && { backgroundColor: colors.success || '#10B981', borderColor: colors.success || '#10B981' }, status === 'skipped' && { backgroundColor: colors.error || '#EF4444', borderColor: colors.error || '#EF4444' }]}>
-                {status === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : status === 'skipped' ? <Ionicons name="close" size={18} color="#FFF" /> : <Text style={[styles.setNum, { color: colors.textSecondary }]}>{i + 1}</Text>}
+          <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${Math.min(progress, 100)}%` }]} /></View>
+
+          <ScrollView contentContainerStyle={styles.content}>
+
+            <UnifiedTimer
+              isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds}
+              restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds}
+              workTotalSeconds={workTotalSeconds} exName={currentEx?.name || 'EJERCICIO'}
+              hiitPhase={hiitPhase} restType={restType} colors={colors} isHiit={isHiit}
+              onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }}
+              onSkipRest={stopRestTimer} onResetWork={resetWorkTimer}
+            />
+
+            {nextPendingSet !== -1 && !isResting && !isPrep && (
+              <View style={{ marginBottom: 10, alignItems: 'center' }}>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700', opacity: 0.6 }}>💡 Desliza la tarjeta de abajo para completar o saltar</Text>
               </View>
-            ))}
-          </View>
+            )}
 
-          <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
-            {recordedVideos[currentExIndex.toString()] ? (
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 12, borderRadius: 10 }}>
-                  <MiniVideoPlayer url={recordedVideos[currentExIndex.toString()]} onExpand={setExpandedVideo} />
-                  <View style={{ marginLeft: 12, flex: 1 }}>
-                    <Text style={{ color: colors.success || '#10B981', fontWeight: '700', fontSize: 13, marginBottom: 4 }}>Vídeo subido</Text>
-                    <TouchableOpacity onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' }}>Cambiar vídeo</Text></TouchableOpacity>
-                  </View>
+            <Swipeable
+              ref={forceSwipeableRef}
+              renderLeftActions={renderForceLeftActions}
+              renderRightActions={renderForceRightActions}
+              onSwipeableLeftOpen={completeSet}
+              onSwipeableRightOpen={skipSet}
+              enabled={nextPendingSet !== -1 && !isResting && !isPrep}
+            >
+              <View style={[styles.exerciseCard, { backgroundColor: colors.surface }]}>
+                <View style={[styles.exNumber, { backgroundColor: colors.primary + '12' }]}><Text style={[styles.exNumberText, { color: colors.primary }]}>{currentExIndex + 1}</Text></View>
+                <Text style={[styles.exerciseName, { color: colors.textPrimary }]}>{currentEx.name}</Text>
+
+                {currentEx.video_url && <TouchableOpacity style={[styles.referenceVideoBtn, { backgroundColor: (colors.error || '#EF4444') + '15' }]} onPress={() => Linking.openURL(currentEx.video_url)}><Ionicons name="logo-youtube" size={18} color={colors.error || '#EF4444'} /><Text style={{ color: colors.error || '#EF4444', fontSize: 13, fontWeight: '700' }}>Ver Vídeo de Referencia</Text></TouchableOpacity>}
+                {currentEx.exercise_notes && <View style={[styles.coachNotesBox, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}><Ionicons name="information-circle" size={18} color={colors.primary} /><Text style={{ color: colors.textPrimary, flex: 1, fontSize: 13, fontStyle: 'italic', lineHeight: 18 }}>{currentEx.exercise_notes}</Text></View>}
+
+                <View style={styles.detailsGrid}>
+                  {currentEx.sets && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.sets}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Series</Text></View>}
+                  {currentEx.reps && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.reps}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Reps</Text></View>}
+                  {currentEx.duration && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.duration}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Dur.</Text></View>}
+                  {currentEx.weight && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.weight}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Kg</Text></View>}
+                  {currentEx.rest && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.S.</Text></View>}
+                  {currentEx.rest_exercise && <View style={[styles.detailBox, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.detailValue, { color: colors.textPrimary }]}>{currentEx.rest_exercise}</Text><Text style={[styles.detailLabel, { color: colors.textSecondary }]}>Desc.Ej.</Text></View>}
                 </View>
+              </View>
+            </Swipeable>
+
+            <View style={[styles.setsCard, { backgroundColor: colors.surface, marginTop: 16 }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <Text style={[styles.setsTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Progreso de Series</Text>
+                <TouchableOpacity onPress={skipEntireExercise} style={{ paddingHorizontal: 10, paddingVertical: 5 }}>
+                  <Text style={{ color: colors.error || '#EF4444', fontWeight: '700', fontSize: 13, textDecorationLine: 'underline' }}>Saltar ejercicio entero</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.setsGrid}>
+                {currentSets.map((status, i) => (
+                  <View key={i} style={[styles.setCircle, { borderColor: colors.border }, status === 'completed' && { backgroundColor: colors.success || '#10B981', borderColor: colors.success || '#10B981' }, status === 'skipped' && { backgroundColor: colors.error || '#EF4444', borderColor: colors.error || '#EF4444' }]}>
+                    {status === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : status === 'skipped' ? <Ionicons name="close" size={18} color="#FFF" /> : <Text style={[styles.setNum, { color: colors.textSecondary }]}>{i + 1}</Text>}
+                  </View>
+                ))}
+              </View>
+
+              <View style={{ marginTop: 20, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
+                {recordedVideos[currentExIndex.toString()] ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 12, borderRadius: 10 }}>
+                      <MiniVideoPlayer url={recordedVideos[currentExIndex.toString()]} onExpand={setExpandedVideo} />
+                      <View style={{ marginLeft: 12, flex: 1 }}>
+                        <Text style={{ color: colors.success || '#10B981', fontWeight: '700', fontSize: 13, marginBottom: 4 }}>Vídeo subido</Text>
+                        <TouchableOpacity onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' }}>Cambiar vídeo</Text></TouchableOpacity>
+                      </View>
+                    </View>
+                ) : (
+                  <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHighlight, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.primary, borderStyle: 'dashed' }} onPress={() => handleRecordVideoOptions(currentExIndex.toString())} disabled={videoUploading === currentExIndex.toString()}>
+                    {videoUploading === currentExIndex.toString() ? <ActivityIndicator color={colors.primary} size="small" /> : <><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar y subir técnica</Text></>}
+                  </TouchableOpacity>
+                )}
+              </View>
+
+              {nextPendingSet === -1 ? (
+                <View style={[styles.allDoneBadge, { backgroundColor: (colors.success || '#10B981') + '12', marginTop: 20 }]}><Ionicons name="checkmark-circle" size={18} color={colors.success || '#10B981'} /><Text style={{ color: colors.success || '#10B981', fontSize: 14, fontWeight: '600' }}>Todas completadas o saltadas</Text></View>
+              ) : null}
+
+            </View>
+
+            <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
+              <Text style={[styles.activeLogTitle, { color: colors.textPrimary }]}>Anota tus marcas de hoy:</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <View style={styles.logInputWrapper}>
+                  <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Kilos</Text>
+                  <TextInput 
+                    style={[styles.logInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} 
+                    keyboardType="numeric" 
+                    placeholder="Ej: 60"
+                    placeholderTextColor={colors.textSecondary}
+                    value={logs[currentExIndex]?.weight || ''} 
+                    onChangeText={(w) => setLogs(prev => ({...prev, [currentExIndex]: {...(prev[currentExIndex]||{}), weight: w}}))} 
+                  />
+                </View>
+                <View style={styles.logInputWrapper}>
+                  <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Reps</Text>
+                  <TextInput 
+                    style={[styles.logInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} 
+                    keyboardType="numeric" 
+                    placeholder="Ej: 10"
+                    placeholderTextColor={colors.textSecondary}
+                    value={logs[currentExIndex]?.reps || ''} 
+                    onChangeText={(rep) => setLogs(prev => ({...prev, [currentExIndex]: {...(prev[currentExIndex]||{}), reps: rep}}))} 
+                  />
+                </View>
+              </View>
+              <View style={[styles.logInputWrapper, { marginTop: 12 }]}>
+                <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Tus comentarios del ejercicio</Text>
+                <TextInput 
+                  style={[styles.logInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border, minHeight: 60, textAlignVertical: 'top' }]} 
+                  multiline 
+                  placeholder="¿Algo a destacar? (Técnica, molestias...)"
+                  placeholderTextColor={colors.textSecondary}
+                  value={logs[currentExIndex]?.note || ''} 
+                  onChangeText={(text) => setLogs(prev => ({...prev, [currentExIndex]: {...(prev[currentExIndex]||{}), note: text}}))} 
+                />
+              </View>
+            </View>
+
+          </ScrollView>
+
+          {workout?.notes && !finished && (
+            <TouchableOpacity style={[styles.fabIndications, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
+              <Ionicons name="warning" size={26} color="#FFF" />
+            </TouchableOpacity>
+          )}
+
+          <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
+            <TouchableOpacity style={[styles.navBtn, { opacity: currentExIndex === 0 ? 0.3 : 1 }]} onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }} disabled={currentExIndex === 0}><Ionicons name="arrow-back" size={22} color={colors.textPrimary} /><Text style={[styles.navBtnText, { color: colors.textPrimary }]}>Anterior</Text></TouchableOpacity>
+            {currentExIndex < exercises.length - 1 ? (
+              <TouchableOpacity style={styles.navBtn} onPress={() => { stopAllTimers(); setCurrentExIndex(currentExIndex+1); }}><Text style={[styles.navBtnText, { color: colors.textPrimary }]}>Siguiente</Text><Ionicons name="arrow-forward" size={22} color={colors.textPrimary} /></TouchableOpacity>
             ) : (
-              <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: colors.surfaceHighlight, padding: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.primary, borderStyle: 'dashed' }} onPress={() => handleRecordVideoOptions(currentExIndex.toString())} disabled={videoUploading === currentExIndex.toString()}>
-                {videoUploading === currentExIndex.toString() ? <ActivityIndicator color={colors.primary} size="small" /> : <><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar y subir técnica</Text></>}
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.navBtn} onPress={() => { stopAllTimers(); setFinished(true); }}><Text style={[styles.navBtnText, { color: colors.success || '#10B981', fontWeight: '700' }]}>Terminar</Text><Ionicons name="flag" size={20} color={colors.success || '#10B981'} /></TouchableOpacity>
             )}
           </View>
+          
+          {renderVideoModal()}
+          {renderIndicationsModal()}
+        </SafeAreaView>
+      );
+    }
+  }
 
-          {nextPendingSet === -1 ? (
-            <View style={[styles.allDoneBadge, { backgroundColor: (colors.success || '#10B981') + '12', marginTop: 20 }]}><Ionicons name="checkmark-circle" size={18} color={colors.success || '#10B981'} /><Text style={{ color: colors.success || '#10B981', fontSize: 14, fontWeight: '600' }}>Todas completadas o saltadas</Text></View>
-          ) : null}
-
-        </View>
-
-        <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
-          <Text style={[styles.activeLogTitle, { color: colors.textPrimary }]}>Anota tus marcas de hoy:</Text>
-          <View style={{ flexDirection: 'row', gap: 12 }}>
-            <View style={styles.logInputWrapper}>
-              <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Kilos</Text>
-              <TextInput 
-                style={[styles.logInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} 
-                keyboardType="numeric" 
-                placeholder="Ej: 60"
-                placeholderTextColor={colors.textSecondary}
-                value={logs[currentExIndex]?.weight || ''} 
-                onChangeText={(w) => setLogs(prev => ({...prev, [currentExIndex]: {...(prev[currentExIndex]||{}), weight: w}}))} 
-              />
-            </View>
-            <View style={styles.logInputWrapper}>
-              <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Reps</Text>
-              <TextInput 
-                style={[styles.logInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} 
-                keyboardType="numeric" 
-                placeholder="Ej: 10"
-                placeholderTextColor={colors.textSecondary}
-                value={logs[currentExIndex]?.reps || ''} 
-                onChangeText={(rep) => setLogs(prev => ({...prev, [currentExIndex]: {...(prev[currentExIndex]||{}), reps: rep}}))} 
-              />
-            </View>
-          </View>
-          <View style={[styles.logInputWrapper, { marginTop: 12 }]}>
-            <Text style={[styles.logInputLabel, { color: colors.textSecondary }]}>Tus comentarios del ejercicio</Text>
-            <TextInput 
-              style={[styles.logInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border, minHeight: 60, textAlignVertical: 'top' }]} 
-              multiline 
-              placeholder="¿Algo a destacar? (Técnica, molestias...)"
-              placeholderTextColor={colors.textSecondary}
-              value={logs[currentExIndex]?.note || ''} 
-              onChangeText={(text) => setLogs(prev => ({...prev, [currentExIndex]: {...(prev[currentExIndex]||{}), note: text}}))} 
-            />
-          </View>
-        </View>
-
-      </ScrollView>
-
-      {workout?.notes && !finished && (
-        <TouchableOpacity style={[styles.fabIndications, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
-          <Ionicons name="warning" size={26} color="#FFF" />
-        </TouchableOpacity>
-      )}
-
-      <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}>
-        <TouchableOpacity style={[styles.navBtn, { opacity: currentExIndex === 0 ? 0.3 : 1 }]} onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }} disabled={currentExIndex === 0}><Ionicons name="arrow-back" size={22} color={colors.textPrimary} /><Text style={[styles.navBtnText, { color: colors.textPrimary }]}>Anterior</Text></TouchableOpacity>
-        {currentExIndex < exercises.length - 1 ? (
-          <TouchableOpacity style={styles.navBtn} onPress={() => { stopAllTimers(); setCurrentExIndex(currentExIndex+1); }}><Text style={[styles.navBtnText, { color: colors.textPrimary }]}>Siguiente</Text><Ionicons name="arrow-forward" size={22} color={colors.textPrimary} /></TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={styles.navBtn} onPress={() => { stopAllTimers(); setFinished(true); }}><Text style={[styles.navBtnText, { color: colors.success || '#10B981', fontWeight: '700' }]}>Terminar</Text><Ionicons name="flag" size={20} color={colors.success || '#10B981'} /></TouchableOpacity>
-        )}
-      </View>
-      
-      {renderVideoModal()}
-      {renderIndicationsModal()}
-    </SafeAreaView>
+  // Envolvemos todo en el GestureHandlerRootView
+  return (
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      {mainContent}
+    </GestureHandlerRootView>
   );
 }
 
@@ -1097,4 +1062,6 @@ const styles = StyleSheet.create({
   fabIndications: { position: 'absolute', bottom: 100, right: 20, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4, zIndex: 99 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   indicationsModalContent: { width: '85%', padding: 24, borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
+  swipeActionForce: { justifyContent: 'center', flex: 1, borderRadius: 16, marginBottom: 0 },
+  swipeTextForce: { color: '#FFF', fontWeight: '800', fontSize: 14, marginTop: 4 }
 });
