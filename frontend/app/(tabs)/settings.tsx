@@ -10,10 +10,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
+import { subscribeToWebPush } from '../../src/webPush';
 
 export default function SettingsScreen() {
   const { colors, themeMode, changeTheme } = useTheme();
-  const { user, logout } = useAuth();
+  const { user, logout } = useAuth(); 
   const router = useRouter();
 
   const isAthlete = user?.role === 'athlete';
@@ -21,12 +22,13 @@ export default function SettingsScreen() {
   // --- ESTADOS ---
   const [name, setName] = useState(user?.name || '');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(!!user?.web_push_subscription);
+  const [loadingPush, setLoadingPush] = useState(false);
 
   const [measurements, setMeasurements] = useState({
     weight: '', shoulders: '', chest: '', arm: '', thigh: ''
   });
   const [savingMeasures, setSavingMeasures] = useState(false);
-
   const [voiceEnabled, setVoiceEnabled] = useState(true);
 
   // Cargar preferencia de voz al entrar
@@ -40,6 +42,31 @@ export default function SettingsScreen() {
   const toggleVoice = async (value: boolean) => {
     setVoiceEnabled(value);
     await AsyncStorage.setItem('voice_enabled', value ? 'true' : 'false');
+  };
+
+  const togglePush = async (value: boolean) => {
+    if (loadingPush) return;
+    setLoadingPush(true);
+    
+    try {
+      if (value) {
+        // ACTIVAR: Pedimos permiso, generamos el ticket y lo subimos
+        await subscribeToWebPush();
+        await api.testWebPush(); // Lanzamos notificación de prueba
+        setPushEnabled(true);
+      } else {
+        // DESACTIVAR: Borramos la suscripción en el backend
+        if (api.updateProfile) {
+          await api.updateProfile({ web_push_subscription: null });
+        }
+        setPushEnabled(false);
+      }
+    } catch (e) {
+      console.error("Error con el toggle de push:", e);
+      if (Platform.OS === 'web') window.alert("No se pudieron configurar las notificaciones.");
+    } finally {
+      setLoadingPush(false);
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -232,9 +259,36 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          {/* SECCIÓN ENTRENAMIENTO */}
-          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ENTRENAMIENTO</Text>
+          {/* SECCIÓN NOTIFICACIONES Y ASISTENTE */}
+          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>NOTIFICACIONES Y VOZ</Text>
           <View style={[styles.listCard, { backgroundColor: colors.surface }]}>
+            
+            {/* TOGGLE PUSH NOTIFICATIONS */}
+            <View style={styles.settingRowAction}>
+              <View style={styles.settingIconText}>
+                <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}>
+                  <Ionicons name="notifications-outline" size={22} color={colors.primary} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Avisos de la App</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Notificaciones Push sobre tu plan</Text>
+                </View>
+              </View>
+              {loadingPush ? (
+                <ActivityIndicator size="small" color={colors.primary} style={{ marginRight: 10 }} />
+              ) : (
+                <Switch
+                  value={pushEnabled}
+                  onValueChange={togglePush}
+                  trackColor={{ false: colors.border, true: colors.primary }}
+                  thumbColor="#FFF"
+                />
+              )}
+            </View>
+
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+            {/* TOGGLE ASISTENTE DE VOZ */}
             <View style={styles.settingRowAction}>
               <View style={styles.settingIconText}>
                 <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}>
@@ -286,7 +340,7 @@ export default function SettingsScreen() {
             </>
           )}
 
-          {/* SECCIÓN SISTEMA Y AVISOS */}
+          {/* SECCIÓN SISTEMA */}
           <Text style={[styles.sectionTitle, { marginTop: 25 }]}>INTEGRACIONES</Text>
           <View style={[styles.listCard, { backgroundColor: colors.surface }]}>
             <TouchableOpacity style={styles.settingRowAction} onPress={handleSubscribeCalendar} activeOpacity={0.7}>
@@ -338,6 +392,7 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 12, fontWeight: '800', color: '#888', marginBottom: 12, letterSpacing: 1, marginLeft: 8 },
   card: { borderRadius: 24, padding: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 8, elevation: 2 },
   listCard: { borderRadius: 20, overflow: 'hidden' },
+  divider: { height: 1, marginHorizontal: 20, opacity: 0.5 },
   
   inputLabel: { fontSize: 13, fontWeight: '700' },
   input: { borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 15 },
