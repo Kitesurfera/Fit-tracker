@@ -1,5 +1,6 @@
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
+import Constants from 'expo-constants';
 
 // Esto le dice a la app cómo comportarse si la notificación llega mientras la estás usando
 Notifications.setNotificationHandler({
@@ -14,9 +15,15 @@ export async function requestNotificationPermissions() {
   if (Platform.OS === 'web') {
     if (!('Notification' in window)) {
       console.log('Este navegador no soporta notificaciones web.');
+      window.alert('Tu navegador no soporta notificaciones web.');
       return false;
     }
+    
+    // Si estamos en Safari iOS normal, esto suele fallar o ser denegado automáticamente
     const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      window.alert('Permiso denegado. En Safari iOS, debes añadir la web a la pantalla de inicio primero.');
+    }
     return permission === 'granted';
   } else {
     const { status } = await Notifications.requestPermissionsAsync();
@@ -24,7 +31,7 @@ export async function requestNotificationPermissions() {
   }
 }
 
-// --- NUEVA FUNCION: Genera el token universal ---
+// --- GENERACIÓN DEL TOKEN UNIVERSAL ---
 export async function getExpoToken() {
   const hasPermission = await requestNotificationPermissions();
   if (!hasPermission) return null;
@@ -39,12 +46,24 @@ export async function getExpoToken() {
   }
 
   try {
-    // Obtiene el token de Expo (Sirve para Web, iOS y Android)
-    // Nota: Si usas EAS Build, Expo inyecta el projectId automáticamente.
-    const tokenData = await Notifications.getExpoPushTokenAsync();
+    // Intentamos extraer el ID del proyecto directamente de la configuración de Expo
+    const projectId = 
+      Constants?.expoConfig?.extra?.eas?.projectId || 
+      Constants?.easConfig?.projectId;
+
+    // Obtiene el token de Expo usando el ID del proyecto
+    const tokenData = await Notifications.getExpoPushTokenAsync({
+      projectId: projectId, 
+    });
+    
     return tokenData.data;
   } catch (error) {
     console.error("Error obteniendo el Push Token de Expo:", error);
+    
+    if (Platform.OS === 'web') {
+      window.alert("Fallo al generar token web. Expo Push requiere configuración adicional (VAPID) para funcionar en navegadores.");
+    }
+    
     return null;
   }
 }
