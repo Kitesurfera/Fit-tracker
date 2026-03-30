@@ -1,10 +1,10 @@
 import requests
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Query, Header, Request, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Header, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import StreamingResponse, Response, RedirectResponse
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
@@ -19,13 +19,6 @@ import shutil
 import asyncio
 import time
 import json
-
-# IMPORTACIONES PARA WEB PUSH
-from pywebpush import webpush, WebPushException
-
-# IMPORTACIONES PARA GOOGLE OAUTH
-from google.oauth2 import id_token
-from google.auth.transport import requests as google_requests
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -43,12 +36,6 @@ JWT_EXPIRATION_HOURS = 72
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com')
 
-# --- CONFIGURACIÓN VAPID PARA WEB PUSH ---
-VAPID_PRIVATE_KEY = os.environ.get("PRIVATE_VAPID_KEY")
-VAPID_CLAIMS = {
-    "sub": "mailto:claudiakiter31@gmail.com"
-}
-
 security = HTTPBearer()
 app = FastAPI()
 
@@ -63,7 +50,6 @@ async def cleanup_old_videos():
         try:
             now = time.time()
             thirty_days_seconds = 30 * 24 * 60 * 60  
-            
             if UPLOAD_DIR.exists():
                 for file_path in UPLOAD_DIR.iterdir():
                     if file_path.is_file():
@@ -71,10 +57,8 @@ async def cleanup_old_videos():
                         if file_age > thirty_days_seconds:
                             file_path.unlink() 
                             logger.info(f"Vídeo antiguo eliminado: {file_path.name}")
-                            
         except Exception as e:
             logger.error(f"Error en la limpieza: {str(e)}")
-        
         await asyncio.sleep(86400)
 
 @app.on_event("startup")
@@ -87,7 +71,7 @@ async def ping():
 
 api_router = APIRouter(prefix="/api")
 
-# --- Modelos Pydantic ---
+# --- MODELOS PYDANTIC ---
 class WellnessCreate(BaseModel):
     fatigue: int
     stress: int
@@ -198,16 +182,7 @@ class TestUpdate(BaseModel):
     unit: Optional[str] = None
     notes: Optional[str] = None
 
-class PushTest(BaseModel):
-    title: str
-    message: str
-
-# NUEVO MODELO PARA SUSCRIPCIONES PUSH WEB
-class WebPushSubscription(BaseModel):
-    endpoint: str
-    keys: Dict[str, str]
-
-# --- Auth Helpers ---
+# --- AUTH HELPERS ---
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
@@ -235,127 +210,76 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return user
 
-
-# --- UTILIDAD PARA MANDAR NOTIFICACIONES WEB PUSH ---
-def send_web_push(subscription_info: dict, title: str, message: str):
-    if not VAPID_PRIVATE_KEY:
-        logger.error("No hay PRIVATE_VAPID_KEY configurado en el servidor.")
+# --- UTILIDAD PARA MANDAR NOTIFICACIONES VIA EXPO ---
+def send_expo_push(push_token: str, title: str, message: str):
+    """Envía una notificación push a través de los servidores de Expo."""
+    if not push_token or not push_token.startswith("ExponentPushToken"):
+        logger.warning(f"Token de Expo inválido o ausente: {push_token}")
         return False
 
     try:
-        payload = json.dumps({"title": title, "body": message})
-        webpush(
-            subscription_info=subscription_info,
-            data=payload,
-            vapid_private_key=VAPID_PRIVATE_KEY,
-            vapid_claims=VAPID_CLAIMS
+        response = requests.post(
+            "https://exp.host/--/api/v2/push/send",
+            headers={
+                "Accept": "application/json",
+                "Accept-encoding": "gzip, deflate",
+                "Content-Type": "application/json",
+            },
+            json={
+                "to": push_token,
+                "title": title,
+                "body": message,
+                "sound": "default",
+            }
         )
+        response.raise_for_status()
         return True
-    except WebPushException as ex:
-        logger.error(f"Error enviando Web Push: {repr(ex)}")
-        # Si la respuesta de Mozilla/Google dice que la suscripción ha caducado
-        if ex.response and ex.response.status_code in [404, 410]:
-            logger.warning("La suscripción ha expirado o el usuario la revocó.")
-            # Opcional: Podrías añadir lógica aquí para borrar la suscripción de la base de datos
-        return False
     except Exception as e:
-        logger.error(f"Fallo general enviando push: {str(e)}")
+        logger.error(f"Fallo enviando push a Expo: {str(e)}")
         return False
 
-# --- RUTA PARA GUARDAR LA SUSCRIPCIÓN WEB PUSH ---
-@api_router.post("/notifications/subscribe")
-async def subscribe_web_push(subscription: WebPushSubscription, user=Depends(get_current_user)):
-    """Guarda el 'ticket' de notificaciones del navegador en el usuario."""
-    # Guardamos la info de suscripción tal cual nos la pasa el navegador
-    await db.users.update_one(
-        {"id": user['id']}, 
-        {"$set": {"web_push_subscription": subscription.dict()}}
-    )
-    logger.info(f"Suscripción guardada para {user.get('name')}")
-    return {"status": "success", "message": "Suscripción Push activada"}
-
-# --- RUTA PARA PROBAR NOTIFICACIONES ---
-@api_router.post("/notifications/test")
-async def test_notification(data: PushTest, user=Depends(get_current_user)):
-    target_user = await db.users.find_one({"id": user['id']})
-    subscription = target_user.get("web_push_subscription")
-    
-    if not subscription:
-        raise HTTPException(status_code=400, detail="No tienes notificaciones activadas en este dispositivo.")
-        
-    success = send_web_push(subscription, data.title, data.message)
-    if not success:
-        raise HTTPException(status_code=500, detail="Fallo al contactar con el servicio de push.")
-        
-    return {"status": "success", "message": "Notificación disparada"}
-
-# --- Rutas de Wellness ---
+# --- RUTAS DE WELLNESS ---
 @api_router.get("/wellness/history/{athlete_id}")
 async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer' and user['id'] != athlete_id:
         raise HTTPException(status_code=403, detail="No autorizado")
-    
-    history = await db.wellness.find(
-        {"athlete_id": athlete_id}, 
-        {"_id": 0} 
-    ).sort("date", -1).to_list(7)
+    history = await db.wellness.find({"athlete_id": athlete_id}, {"_id": 0}).sort("date", -1).to_list(7)
     return history[::-1]
 
 @api_router.post("/wellness")
 async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     today = datetime.now(timezone.utc).isoformat().split('T')[0]
-    
     wellness_data = {
-        "fatigue": data.fatigue,
-        "stress": data.stress,
-        "sleep_quality": data.sleep_quality,
-        "soreness": data.soreness,
-        "notes": data.notes,
-        "cycle_phase": data.cycle_phase,
+        "fatigue": data.fatigue, "stress": data.stress, "sleep_quality": data.sleep_quality,
+        "soreness": data.soreness, "notes": data.notes, "cycle_phase": data.cycle_phase,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    
     existing = await db.wellness.find_one({"athlete_id": user['id'], "date": today})
-    
     if existing:
         await db.wellness.update_one({"_id": existing["_id"]}, {"$set": wellness_data})
     else:
-        wellness_data["id"] = str(uuid.uuid4())
-        wellness_data["athlete_id"] = user['id']
-        wellness_data["date"] = today
-        wellness_data["created_at"] = wellness_data["updated_at"]
+        wellness_data.update({"id": str(uuid.uuid4()), "athlete_id": user['id'], "date": today, "created_at": wellness_data["updated_at"]})
         await db.wellness.insert_one(wellness_data)
 
-    # --- NOTIFICACIÓN AL ENTRENADOR EN SEGUNDO PLANO ---
+    # Notificación al entrenador
     if user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
-        
-        if trainer and trainer.get('web_push_subscription'):
+        if trainer and trainer.get('push_token'):
             athlete_name = user.get('name', 'Un deportista')
             titulo = f"📊 {athlete_name} ha actualizado su estado"
             mensaje = f"Fatiga: {data.fatigue}/10 | Estrés: {data.stress}/10 | Agujetas: {data.soreness}/10"
-            
-            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], titulo, mensaje)
-            
+            background_tasks.add_task(send_expo_push, trainer['push_token'], titulo, mensaje)
     return {"status": "success"}
 
 @api_router.get("/analytics/summary")
 async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
     target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
-    
     target_user = await db.users.find_one({"id": target_id}, {"_id": 0})
     total = await db.workouts.count_documents({"athlete_id": target_id})
     completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
-    
-    latest_well = await db.wellness.find_one(
-        {"athlete_id": target_id}, 
-        {"_id": 0}, 
-        sort=[("date", -1), ("updated_at", -1)]
-    )
-
+    latest_well = await db.wellness.find_one({"athlete_id": target_id}, {"_id": 0}, sort=[("date", -1), ("updated_at", -1)])
     return {
-        "total_workouts": total,
-        "completed_workouts": completed,
+        "total_workouts": total, "completed_workouts": completed,
         "latest_wellness": latest_well or {"fatigue": 0, "stress": 0, "sleep_quality": 0, "soreness": 0, "notes": "", "cycle_phase": ""},
         "completion_rate": round((completed / total * 100) if total > 0 else 0, 1),
         "is_injured": target_user.get("is_injured", False) if target_user else False,
@@ -363,92 +287,43 @@ async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_c
         "equipment": target_user.get("equipment", "") if target_user else ""
     }
 
-# --- Rutas de Usuarios y Autenticación ---
+# --- RUTAS DE USUARIOS Y AUTENTICACIÓN ---
 @api_router.post("/auth/register")
 async def register(data: UserRegister):
     existing = await db.users.find_one({"email": data.email})
     if existing: raise HTTPException(status_code=400, detail="Email ya registrado")
     user_id = str(uuid.uuid4())
-    user = {
-        "id": user_id, "email": data.email, "password": hash_password(data.password),
-        "name": data.name, "role": "trainer", "created_at": datetime.now(timezone.utc).isoformat(),
-    }
+    user = {"id": user_id, "email": data.email, "password": hash_password(data.password), "name": data.name, "role": "trainer", "created_at": datetime.now(timezone.utc).isoformat()}
     await db.users.insert_one(user)
-    
-    user_data = {k: v for k, v in user.items() if k not in ('password', '_id')}
-    return {"token": create_token(user_id, "trainer"), "user": user_data}
+    return {"token": create_token(user_id, "trainer"), "user": {k: v for k, v in user.items() if k not in ('password', '_id')}}
 
 @api_router.post("/auth/login")
 async def login(data: UserLogin):
     user = await db.users.find_one({"email": data.email})
     if not user or not verify_password(data.password, user['password']):
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
-    token = create_token(user['id'], user['role'])
-    
-    user_data = {k: v for k, v in user.items() if k not in ('_id', 'password')}
-    
-    return {
-        "token": token,
-        "user": user_data
-    }
+    return {"token": create_token(user['id'], user['role']), "user": {k: v for k, v in user.items() if k not in ('_id', 'password')}}
 
 @api_router.post("/auth/google")
 async def google_login(data: GoogleAuth):
     try:
-        id_info = id_token.verify_oauth2_token(
-            data.token, 
-            google_requests.Request(), 
-            GOOGLE_CLIENT_ID
-        )
-
+        id_info = id_token.verify_oauth2_token(data.token, google_requests.Request(), GOOGLE_CLIENT_ID)
         email = id_info.get('email')
-        name = id_info.get('name', 'Usuario de Google')
-        
-        if not email:
-            raise HTTPException(status_code=400, detail="Token de Google no contiene email")
-
+        if not email: raise HTTPException(status_code=400, detail="Token de Google no contiene email")
         user = await db.users.find_one({"email": email})
-
         if not user:
-            if data.role == 'athlete':
-                raise HTTPException(
-                    status_code=403, 
-                    detail="Aún no tienes invitación. Contacta con tu entrenador para que te dé de alta."
-                )
-            else:
-                user_id = str(uuid.uuid4())
-                user = {
-                    "id": user_id,
-                    "email": email,
-                    "password": hash_password(str(uuid.uuid4())), 
-                    "name": name,
-                    "role": data.role, 
-                    "created_at": datetime.now(timezone.utc).isoformat()
-                }
-                await db.users.insert_one(user)
-
-        token = create_token(user['id'], user['role'])
-        
-        user_data = {k: v for k, v in user.items() if k not in ('_id', 'password')}
-        
-        return {
-            "token": token,
-            "user": user_data
-        }
-
-    except ValueError as e:
-        logger.error(f"Error verificando token de Google: {str(e)}")
-        raise HTTPException(status_code=401, detail="Token de Google inválido")
-    except HTTPException:
-        raise
+            if data.role == 'athlete': raise HTTPException(status_code=403, detail="Sin invitación activa.")
+            user_id = str(uuid.uuid4())
+            user = {"id": user_id, "email": email, "password": hash_password(str(uuid.uuid4())), "name": id_info.get('name', 'Usuario'), "role": data.role, "created_at": datetime.now(timezone.utc).isoformat()}
+            await db.users.insert_one(user)
+        return {"token": create_token(user['id'], user['role']), "user": {k: v for k, v in user.items() if k not in ('_id', 'password')}}
     except Exception as e:
-        logger.error(f"Fallo general en Google Login: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error interno procesando el login")
+        logger.error(f"Error Google Login: {str(e)}")
+        raise HTTPException(status_code=401, detail="Token de Google inválido")
 
 @api_router.get("/auth/me")
 async def get_me(user=Depends(get_current_user)):
-    user_data = {k: v for k, v in user.items() if k not in ('_id', 'password')}
-    return {"user": user_data}
+    return {"user": {k: v for k, v in user.items() if k not in ('_id', 'password')}}
 
 @api_router.put("/profile")
 async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
@@ -456,11 +331,10 @@ async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
     await db.users.update_one({"id": user['id']}, {"$set": update_data})
     return {"status": "success"}
 
-# --- GESTIÓN DE ATLETAS POR EL ENTRENADOR ---
+# --- GESTIÓN DE ATLETAS ---
 @api_router.get("/athletes")
 async def list_athletes(user=Depends(get_current_user)):
-    if user['role'] == 'trainer':
-        return await db.users.find({"trainer_id": user['id'], "role": "athlete"}, {"_id": 0, "password": 0}).to_list(1000)
+    if user['role'] == 'trainer': return await db.users.find({"trainer_id": user['id'], "role": "athlete"}, {"_id": 0, "password": 0}).to_list(1000)
     return []
 
 @api_router.get("/athletes/{athlete_id}")
@@ -469,144 +343,82 @@ async def get_athlete(athlete_id: str, user=Depends(get_current_user)):
 
 @api_router.post("/athletes")
 async def create_athlete(data: AthleteCreate, user=Depends(get_current_user)):
-    if user['role'] != 'trainer':
-        raise HTTPException(status_code=403, detail="No autorizado")
-    
-    existing = await db.users.find_one({"email": data.email})
-    if existing: 
-        raise HTTPException(status_code=400, detail="Email ya registrado")
-    
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    if await db.users.find_one({"email": data.email}): raise HTTPException(status_code=400, detail="Email ya registrado")
     athlete_id = str(uuid.uuid4())
-    new_athlete = {
-        "id": athlete_id, "email": data.email, "password": hash_password(data.password),
-        "name": data.name, "gender": data.gender, "role": "athlete",
-        "sport": data.sport, "phone": data.phone, 
-        "trainer_id": user['id'], "created_at": datetime.now(timezone.utc).isoformat()
-    }
-    await db.users.insert_one(new_athlete)
+    await db.users.insert_one({"id": athlete_id, "email": data.email, "password": hash_password(data.password), "name": data.name, "gender": data.gender, "role": "athlete", "sport": data.sport, "phone": data.phone, "trainer_id": user['id'], "created_at": datetime.now(timezone.utc).isoformat()})
     return {"status": "success", "id": athlete_id}
 
 @api_router.put("/athletes/{athlete_id}")
 async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_current_user)):
-    if user['role'] != 'trainer':
-        raise HTTPException(status_code=403, detail="No autorizado")
-    
-    update_data = {"name": data.name, "email": data.email, "gender": data.gender}
-    
-    if hasattr(data, 'sport') and data.sport is not None: 
-        update_data["sport"] = data.sport
-    if hasattr(data, 'phone') and data.phone is not None: 
-        update_data["phone"] = data.phone 
-        
-    if data.password and len(data.password) > 0:
-        update_data["password"] = hash_password(data.password)
-
-    if hasattr(data, 'last_period_date') and data.last_period_date is not None:
-        update_data["last_period_date"] = data.last_period_date
-    if hasattr(data, 'cycle_length') and data.cycle_length is not None:
-        update_data["cycle_length"] = data.cycle_length
-    if hasattr(data, 'period_length') and data.period_length is not None:
-        update_data["period_length"] = data.period_length
-    if hasattr(data, 'is_bleeding') and data.is_bleeding is not None:
-        update_data["is_bleeding"] = data.is_bleeding
-        
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    update_data = {k: v for k, v in data.dict().items() if v is not None}
+    if data.password: update_data["password"] = hash_password(data.password)
     await db.users.update_one({"id": athlete_id}, {"$set": update_data})
     return {"status": "success"}
 
 @api_router.delete("/athletes/{athlete_id}")
 async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
-    if user['role'] != 'trainer':
-        raise HTTPException(status_code=403, detail="No autorizado")
-    
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
     await db.users.delete_one({"id": athlete_id})
     await db.workouts.delete_many({"athlete_id": athlete_id})
     await db.wellness.delete_many({"athlete_id": athlete_id})
     await db.macrociclos.delete_many({"athlete_id": athlete_id})
-    
     return {"status": "success"}
 
-# --- RUTAS DE ENTRENAMIENTOS Y PERIODIZACIÓN ---
+# --- ENTRENAMIENTOS ---
 @api_router.post("/workouts")
 async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     workout = data.dict()
-    workout["id"] = str(uuid.uuid4())
-    workout["completed"] = False 
-    workout["completion_data"] = None
-    
+    workout.update({"id": str(uuid.uuid4()), "completed": False, "completion_data": None})
     await db.workouts.insert_one(workout)
-    workout.pop('_id', None) 
+    workout.pop('_id', None)
     
-    # --- NOTIFICACIÓN AL DEPORTISTA ---
+    # Notificación al deportista
     if user['role'] == 'trainer':
         athlete = await db.users.find_one({"id": data.athlete_id})
-        if athlete and athlete.get('web_push_subscription'):
+        if athlete and athlete.get('push_token'):
             trainer_name = user.get('name', 'Tu entrenador')
-            titulo = "🏋️‍♂️ ¡Nueva sesión programada!"
-            mensaje = f"{trainer_name} ha añadido '{data.title}' para el {data.date}."
-            background_tasks.add_task(send_web_push, athlete['web_push_subscription'], titulo, mensaje)
-            
+            background_tasks.add_task(send_expo_push, athlete['push_token'], "🏋️‍♂️ ¡Nueva sesión!", f"{trainer_name} ha añadido '{data.title}' para el {data.date}.")
     return {"status": "success", "workout": workout}
 
 @api_router.post("/workouts/bulk")
 async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
-    new_workouts = []
-    athlete_ids = set()
-    
+    new_workouts, athlete_ids = [], set()
     for w in data.workouts:
         workout = w.dict()
-        workout["id"] = str(uuid.uuid4())
-        workout["completed"] = False
-        workout["completion_data"] = None
+        workout.update({"id": str(uuid.uuid4()), "completed": False, "completion_data": None})
         new_workouts.append(workout)
         athlete_ids.add(w.athlete_id)
-    
     if new_workouts:
         await db.workouts.insert_many(new_workouts)
-        for w in new_workouts:
-            w.pop('_id', None) 
-            
-        # --- NOTIFICACIÓN AL DEPORTISTA (Agrupada) ---
         if user['role'] == 'trainer':
             trainer_name = user.get('name', 'Tu entrenador')
             for a_id in athlete_ids:
                 athlete = await db.users.find_one({"id": a_id})
-                if athlete and athlete.get('web_push_subscription'):
-                    count = sum(1 for w in data.workouts if w.athlete_id == a_id)
-                    titulo = "📅 ¡Nuevas sesiones programadas!"
-                    mensaje = f"{trainer_name} ha añadido {count} nueva(s) sesión(es) a tu calendario."
-                    background_tasks.add_task(send_web_push, athlete['web_push_subscription'], titulo, mensaje)
-            
+                if athlete and athlete.get('push_token'):
+                    count = sum(1 for wk in data.workouts if wk.athlete_id == a_id)
+                    background_tasks.add_task(send_expo_push, athlete['push_token'], "📅 Planes actualizados", f"{trainer_name} ha añadido {count} sesiones a tu calendario.")
     return {"status": "success", "inserted": len(new_workouts)}
 
 @api_router.get("/workouts")
 async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = None, user=Depends(get_current_user)):
-    query = {}
-    if user['role'] == 'athlete': query['athlete_id'] = user['id']
-    elif athlete_id: query['athlete_id'] = athlete_id
+    query = {'athlete_id': user['id']} if user['role'] == 'athlete' else ({'athlete_id': athlete_id} if athlete_id else {})
     if date: query['date'] = date
     return await db.workouts.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
 
 @api_router.put("/workouts/{workout_id}")
 async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     existing = await db.workouts.find_one({"id": workout_id})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Sesión no encontrada")
-
+    if not existing: raise HTTPException(status_code=404, detail="Sesión no encontrada")
     update_data = data.dict(exclude_unset=True)
+    await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
     
-    if update_data:
-        await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
-    
-    # --- NOTIFICACIÓN AL ENTRENADOR: ENTRENAMIENTO COMPLETADO ---
+    # Notificación al entrenador si se completa
     if data.completed is True and not existing.get('completed') and user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
-        if trainer and trainer.get('web_push_subscription'):
-            athlete_name = user.get('name', 'Un deportista')
-            titulo = "✅ ¡Entrenamiento superado!"
-            mensaje = f"{athlete_name} ha terminado la sesión '{existing.get('title', 'Sin título')}'."
-            
-            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], titulo, mensaje)
-
+        if trainer and trainer.get('push_token'):
+            background_tasks.add_task(send_expo_push, trainer['push_token'], "✅ ¡Entrenamiento superado!", f"{user.get('name')} ha terminado '{existing.get('title')}'.")
     return {"status": "success"}
 
 @api_router.delete("/workouts/{workout_id}")
@@ -614,234 +426,64 @@ async def delete_workout(workout_id: str, user=Depends(get_current_user)):
     await db.workouts.delete_one({"id": workout_id})
     return {"status": "success"}
 
-@api_router.get("/calendar/{athlete_id}/entrenamientos.ics")
-async def get_athlete_calendar(athlete_id: str):
-    """
-    Ruta PÚBLICA (sin auth) para que Apple/Google Calendar puedan leer las sesiones.
-    El cliente se suscribe usando webcal://midominio.com/api/calendar/{id}/entrenamientos.ics
-    """
+# --- PERIODIZACIÓN (Simplified Tree) ---
+@api_router.get("/periodization/tree/{athlete_id}")
+async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
     try:
-        user = await db.users.find_one({"id": athlete_id})
-        if not user:
-            raise HTTPException(status_code=404, detail="Deportista no encontrado")
-
-        workouts = await db.workouts.find({
-            "athlete_id": athlete_id,
-            "date": {"$exists": True, "$ne": None, "$ne": ""}
-        }).sort("date", 1).to_list(None)
-
-        ics = "BEGIN:VCALENDAR\r\n"
-        ics += "VERSION:2.0\r\n"
-        ics += "PRODID:-//Athlete Coach App//ES\r\n"
-        ics += "CALSCALE:GREGORIAN\r\n"
-        ics += "METHOD:PUBLISH\r\n"
-        ics += f"X-WR-CALNAME:Entrenos {user.get('name', 'Deportista')}\r\n"
-        ics += "X-PUBLISHED-TTL:PT1H\r\n"
-
-        for wk in workouts:
-            try:
-                clean_date = wk['date'].replace('-', '')
-                dtstart = f"{clean_date}T090000"
-                dtend = f"{clean_date}T103000"
-                
-                uid = f"{wk['id']}@athletecoach.app"
-                status_icon = "✅" if wk.get('completed') else "💪"
-                
-                ics += "BEGIN:VEVENT\r\n"
-                ics += f"UID:{uid}\r\n"
-                ics += f"DTSTAMP:{dtstart}Z\r\n"
-                ics += f"DTSTART;TZID=Europe/Madrid:{dtstart}\r\n"
-                ics += f"DTEND;TZID=Europe/Madrid:{dtend}\r\n"
-                ics += f"SUMMARY:{status_icon} Entreno: {wk.get('title', 'Sesión')}\r\n"
-                
-                desc = "Sesión programada en tu app de entrenamiento.\\n"
-                if wk.get('notes'):
-                    desc += f"Notas: {wk.get('notes')}\\n"
-                if wk.get('completed'):
-                    desc += "¡ENTRENO COMPLETADO!\\n"
-                    
-                ics += f"DESCRIPTION:{desc}\r\n"
-                
-                if not wk.get('completed'):
-                    ics += "BEGIN:VALARM\r\n"
-                    ics += "TRIGGER:-PT15M\r\n"
-                    ics += "ACTION:DISPLAY\r\n"
-                    ics += "DESCRIPTION:Recordatorio de entreno\r\n"
-                    ics += "END:VALARM\r\n"
-                
-                ics += "END:VEVENT\r\n"
-            except Exception as e:
-                logger.error(f"Error procesando sesión {wk.get('id')} para calendario: {str(e)}")
-                continue
-
-        ics += "END:VCALENDAR"
-
-        headers = {
-            "Content-Type": "text/calendar; charset=utf-8",
-            "Content-Disposition": f'attachment; filename="entrenos_{athlete_id}.ics"',
-            "Cache-Control": "no-cache, no-store, must-revalidate"
-        }
-
-        return Response(content=ics, media_type="text/calendar", headers=headers)
-
+        macros = await db.macrociclos.find({"athlete_id": athlete_id}).to_list(100)
+        for m in macros:
+            m.pop('_id', None)
+            m["microciclos"] = await db.microciclos.find({"macrociclo_id": m["id"]}).to_list(100)
+            for mic in m["microciclos"]:
+                mic.pop('_id', None)
+                mic["workouts"] = await db.workouts.find({"microciclo_id": mic["id"]}).to_list(100)
+                for w in mic["workouts"]: w.pop('_id', None)
+        unassigned = await db.workouts.find({"athlete_id": athlete_id, "microciclo_id": {"$in": [None, ""]}}).to_list(100)
+        for u in unassigned: u.pop('_id', None)
+        return {"macros": macros, "unassigned_workouts": unassigned}
     except Exception as e:
-        logger.error(f"Error fatal generando calendario para {athlete_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error interno del servidor")
-
+        return {"macros": [], "unassigned_workouts": [], "error": str(e)}
 
 @api_router.post("/macrociclos")
 async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
     macro = data.dict()
     macro["id"] = str(uuid.uuid4())
     await db.macrociclos.insert_one(macro)
-    macro.pop('_id', None) 
+    macro.pop('_id', None)
     return {"status": "success", "macro": macro}
-
-@api_router.put("/macrociclos/{id}")
-async def update_macro(id: str, data: dict, user=Depends(get_current_user)):
-    await db.macrociclos.update_one({"id": id}, {"$set": data})
-    return {"status": "success"}
-
-@api_router.delete("/macrociclos/{id}")
-async def delete_macro(id: str, user=Depends(get_current_user)):
-    await db.macrociclos.delete_one({"id": id})
-    await db.microciclos.delete_many({"macrociclo_id": id}) 
-    return {"status": "success"}
 
 @api_router.post("/microciclos")
 async def create_micro(data: MicroCreate, user=Depends(get_current_user)):
     micro = data.dict()
     micro["id"] = str(uuid.uuid4())
     await db.microciclos.insert_one(micro)
-    micro.pop('_id', None) 
+    micro.pop('_id', None)
     return {"status": "success", "micro": micro}
 
-@api_router.put("/microciclos/{id}")
-async def update_micro(id: str, data: dict, user=Depends(get_current_user)):
-    await db.microciclos.update_one({"id": id}, {"$set": data})
-    return {"status": "success"}
-
-@api_router.delete("/microciclos/{id}")
-async def delete_micro(id: str, user=Depends(get_current_user)):
-    await db.microciclos.delete_one({"id": id})
-    await db.workouts.update_many({"microciclo_id": id}, {"$set": {"microciclo_id": None}}) 
-    return {"status": "success"}
-
-@api_router.get("/periodization/tree/{athlete_id}")
-async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
-    try:
-        macros = await db.macrociclos.find({"athlete_id": athlete_id}).to_list(100)
-        
-        final_macros = []
-        for m in macros:
-            m_id = m.get("id")
-            micros = await db.microciclos.find({"macrociclo_id": m_id}).to_list(100)
-            
-            final_micros = []
-            for mic in micros:
-                mic_id = mic.get("id")
-                workouts = await db.workouts.find({"microciclo_id": mic_id}).to_list(100)
-                
-                for w in workouts: w.pop('_id', None)
-                
-                mic["workouts"] = workouts
-                mic.pop('_id', None) 
-                final_micros.append(mic)
-            
-            m["microciclos"] = final_micros
-            m.pop('_id', None)
-            final_macros.append(m)
-            
-        unassigned = await db.workouts.find({
-            "athlete_id": athlete_id,
-            "microciclo_id": {"$in": [None, ""]}
-        }).to_list(100)
-        for u in unassigned: u.pop('_id', None)
-
-        return {
-            "macros": final_macros,
-            "unassigned_workouts": unassigned
-        }
-    except Exception as e:
-        print(f"ERROR CRÍTICO: {str(e)}")
-        return {"macros": [], "unassigned_workouts": [], "error": str(e)}
-
-# --- RUTAS DE TESTS FÍSICOS ---
+# --- TESTS FÍSICOS ---
 @api_router.post("/tests")
 async def create_test(data: TestCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
-    if user['role'] == 'athlete' and data.athlete_id != user['id']:
-        raise HTTPException(status_code=403, detail="No puedes crear tests para otro deportista")
-        
     test_doc = data.dict()
-    test_doc["id"] = str(uuid.uuid4())
-    test_doc["created_at"] = datetime.now(timezone.utc).isoformat()
-    
+    test_doc.update({"id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc).isoformat()})
     await db.tests.insert_one(test_doc)
     test_doc.pop('_id', None)
     
-    # --- NOTIFICACIÓN AL ENTRENADOR: NUEVA MEDIDA / TEST ---
+    # Notificación al entrenador
     if user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
-        if trainer and trainer.get('web_push_subscription'):
-            athlete_name = user.get('name', 'Un deportista')
-            nombre_test = data.custom_name if data.custom_name else data.test_name
-            
-            nombres_bonitos = {
-                "weight": "Peso", "biceps": "Bíceps", "waist": "Cintura", 
-                "quadriceps": "Cuádriceps", "shoulders": "Hombros", "calf": "Gemelos"
-            }
-            nombre_mostrar = nombres_bonitos.get(nombre_test, nombre_test).upper()
-            
-            titulo = "📏 Nuevo registro físico"
-            mensaje = f"{athlete_name} ha registrado: {nombre_mostrar} ({data.value} {data.unit})"
-            
-            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], titulo, mensaje)
-
+        if trainer and trainer.get('push_token'):
+            nombre_test = (data.custom_name if data.custom_name else data.test_name).upper()
+            background_tasks.add_task(send_expo_push, trainer['push_token'], "📏 Nuevo registro físico", f"{user.get('name')} ha registrado: {nombre_test} ({data.value} {data.unit})")
     return {"status": "success", "test": test_doc}
 
 @api_router.get("/tests")
 async def get_tests(athlete_id: Optional[str] = None, test_type: Optional[str] = None, user=Depends(get_current_user)):
-    query = {}
-    
-    if user['role'] == 'athlete':
-        query['athlete_id'] = user['id']
-    elif athlete_id:
-        query['athlete_id'] = athlete_id
-        
-    if test_type and test_type != 'all':
-        query['test_type'] = test_type
-        
-    tests = await db.tests.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
-    return tests
-
-@api_router.put("/tests/{test_id}")
-async def update_test(test_id: str, data: TestUpdate, user=Depends(get_current_user)):
-    update_data = {k: v for k, v in data.dict().items() if v is not None}
-    
-    if not update_data:
-        return {"status": "success"}
-        
-    existing_test = await db.tests.find_one({"id": test_id})
-    if not existing_test:
-        raise HTTPException(status_code=404, detail="Test no encontrado")
-        
-    if user['role'] == 'athlete' and existing_test['athlete_id'] != user['id']:
-        raise HTTPException(status_code=403, detail="No autorizado")
-
-    await db.tests.update_one({"id": test_id}, {"$set": update_data})
-    
-    updated_test = await db.tests.find_one({"id": test_id}, {"_id": 0})
-    return updated_test
+    query = {'athlete_id': user['id']} if user['role'] == 'athlete' else ({'athlete_id': athlete_id} if athlete_id else {})
+    if test_type and test_type != 'all': query['test_type'] = test_type
+    return await db.tests.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
 
 @api_router.delete("/tests/{test_id}")
 async def delete_test(test_id: str, user=Depends(get_current_user)):
-    existing_test = await db.tests.find_one({"id": test_id})
-    if not existing_test:
-        raise HTTPException(status_code=404, detail="Test no encontrado")
-        
-    if user['role'] == 'athlete' and existing_test['athlete_id'] != user['id']:
-        raise HTTPException(status_code=403, detail="No autorizado")
-        
     await db.tests.delete_one({"id": test_id})
     return {"status": "success"}
 
@@ -849,26 +491,17 @@ async def delete_test(test_id: str, user=Depends(get_current_user)):
 @api_router.post("/upload")
 async def upload_file(request: Request, file: UploadFile = File(...), user=Depends(get_current_user)):
     try:
-        file_extension = file.filename.split(".")[-1]
-        unique_filename = f"{uuid.uuid4()}.{file_extension}"
+        unique_filename = f"{uuid.uuid4()}.{file.filename.split('.')[-1]}"
         file_path = UPLOAD_DIR / unique_filename
-
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-
-        base_url = str(request.base_url).rstrip("/")
-        file_url = f"{base_url}/uploads/{unique_filename}"
-
-        return {"url": file_url}
-        
+        with open(file_path, "wb") as buffer: shutil.copyfileobj(file.file, buffer)
+        return {"url": f"{str(request.base_url).rstrip('/')}/uploads/{unique_filename}"}
     except Exception as e:
-        logger.error(f"Error subiendo archivo: {str(e)}")
-        raise HTTPException(status_code=500, detail="Fallo interno al procesar el vídeo")
+        logger.error(f"Error subida: {str(e)}")
+        raise HTTPException(status_code=500, detail="Fallo al procesar archivo")
 
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 10000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
