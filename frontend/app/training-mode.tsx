@@ -545,22 +545,67 @@ export default function TrainingModeScreen() {
     </Modal>
   );
 
-  const toggleJoint = (slug: string) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSoreJoints(prev => prev.includes(slug) ? prev.filter(j => j !== slug) : [...prev, slug]); };
+  // --- MODIFICADO: FUNCIÓN DE SELECCIÓN ROBUSTA ---
+  const toggleJoint = (part: any) => { 
+    if (!part || !part.slug) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setSoreJoints(prev => prev.includes(part.slug) ? prev.filter(j => j !== part.slug) : [...prev, part.slug]); 
+  };
 
+  // --- MODIFICADO: RENDER DEL MAPA (FIX 4 CUERPOS Y SELECCIÓN) ---
   const renderBodyMapModal = () => {
     const errorColor = colors.error || '#EF4444';
     const bodyData = soreJoints.map(slug => ({ slug, intensity: 1 }));
+    
     return (
       <Modal visible={showBodyMap} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.bodyMapModalContent, { backgroundColor: colors.background }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}><Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Registrar Fatiga</Text><TouchableOpacity onPress={() => setShowBodyMap(false)}><Ionicons name="close" size={28" color={colors.textPrimary} /></TouchableOpacity></View>
-            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center' }}>Toca las zonas musculares o articulares sobrecargadas.</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 25 }}>
-              <View style={{ alignItems: 'center', flex: 1 }}><Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 }}>FRONTAL</Text><Body data={bodyData} gender="female" side="front" scale={0.8} colors={['#E2E8F0', errorColor]} onBodyPartPress={(b) => toggleJoint(b.slug)} /></View>
-              <View style={{ alignItems: 'center', flex: 1 }}><Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 }}>DORSAL</Text><Body data={bodyData} gender="female" side="back" scale={0.8} colors={['#E2E8F0', errorColor]} onBodyPartPress={(b) => toggleJoint(b.slug)} /></View>
+          <View style={[styles.bodyMapModalContent, { backgroundColor: colors.background, paddingBottom: 40 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Registrar Fatiga</Text>
+              <TouchableOpacity onPress={() => setShowBodyMap(false)}>
+                <Ionicons name="close" size={28} color={colors.textPrimary} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', width: '100%' }} onPress={() => setShowBodyMap(false)}><Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar Selección</Text></TouchableOpacity>
+            
+            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center' }}>Toca las zonas musculares o articulares sobrecargadas.</Text>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'center', height: 350 }}>
+              {/* VISTA FRONTAL */}
+              <View style={{ flex: 1, alignItems: 'center', overflow: 'hidden' }}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 }}>FRONTAL</Text>
+                <Body 
+                  data={bodyData} 
+                  gender="female" 
+                  side="front" 
+                  width={width * 0.4}
+                  height={300}
+                  colors={['#E2E8F0', errorColor]} 
+                  onBodyPartPress={toggleJoint} 
+                />
+              </View>
+
+              {/* VISTA DORSAL */}
+              <View style={{ flex: 1, alignItems: 'center', overflow: 'hidden' }}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 }}>DORSAL</Text>
+                <Body 
+                  data={bodyData} 
+                  gender="female" 
+                  side="back" 
+                  width={width * 0.4}
+                  height={300}
+                  colors={['#E2E8F0', errorColor]} 
+                  onBodyPartPress={toggleJoint} 
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', width: '100%', marginTop: 20 }} 
+              onPress={() => setShowBodyMap(false)}
+            >
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar Selección</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -664,3 +709,4 @@ const styles = StyleSheet.create({
   indicationsModalContent: { width: '85%', padding: 24, borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
   bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 20, elevation: 10, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5, maxHeight: '90%' },
 });
+
