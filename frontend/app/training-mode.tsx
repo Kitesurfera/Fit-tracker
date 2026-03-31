@@ -131,6 +131,9 @@ export default function TrainingModeScreen() {
   const [soundsEnabled, setSoundsEnabled] = useState(true);
 
   const lastAnnouncedRef = useRef<string>('');
+  
+  // Ref para rastrear si acabamos de terminar un descanso
+  const justFinishedRestRef = useRef(false);
 
   useEffect(() => {
     const loadPreferences = async () => {
@@ -205,6 +208,29 @@ export default function TrainingModeScreen() {
     setWorkTotalSeconds(workDur); setWorkSeconds(workDur);
     if (exName) announce(`Siguiente: ${exName}. Prepárate.`);
     else announce("Prepárate.");
+  };
+
+  // NUEVA LÓGICA: Determina si poner la preparación o saltar directo al bloque
+  const handleStartWork = (dur: number, name?: string) => {
+    // Es el primerísimo ejercicio si estamos en índice 0 y es la primera serie
+    const isFirst = (!isHiit && currentExIndex === 0 && setsStatus[0]?.findIndex(s => s === 'pending') === 0) ||
+                    (isHiit && hiitBlockIdx === 0 && hiitExIdx === 0 && hiitRound === 1);
+
+    // Si es el primero, o si NO venimos de un descanso, ponemos la preparación
+    if (isFirst || !justFinishedRestRef.current) {
+      startPrepTimer(dur, name);
+    } else {
+      // Venimos de un descanso, así que saltamos la preparación
+      stopAllTimers();
+      setIsWorking(true);
+      setWorkTotalSeconds(dur);
+      setWorkSeconds(dur);
+      if (dur > 0) setWorkTargetTime(Date.now() + dur * 1000);
+      else setWorkTargetTime(null);
+      if (name) announce(`A por ello: ${name}`);
+    }
+    // Reiniciamos la referencia de descanso para la siguiente vuelta
+    justFinishedRestRef.current = false;
   };
 
   const startWorkTimerAfterPrep = () => {
@@ -313,7 +339,11 @@ export default function TrainingModeScreen() {
     if (isResting && restTargetTime) {
       restIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
-        if (remaining <= 0) { playSound('finish'); stopRestTimer(); } 
+        if (remaining <= 0) { 
+          playSound('finish'); 
+          justFinishedRestRef.current = true; // Acaba de terminar el descanso
+          stopRestTimer(); 
+        } 
         else { setRestSeconds(remaining); }
       }, 1000);
     }
@@ -336,7 +366,10 @@ export default function TrainingModeScreen() {
       const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending');
       if (next !== -1) {
         const ex = workout.exercises[currentExIndex]; const dur = parseTimeToSeconds(ex?.duration);
-        if (!isWorking && workTargetTime === null && workSeconds === 0) { startPrepTimer(dur, ex.name); }
+        if (!isWorking && workTargetTime === null && workSeconds === 0) { 
+          // Reemplazado startPrepTimer por nuestra nueva lógica
+          handleStartWork(dur, ex.name); 
+        }
       } else { stopWorkTimer(); }
     }
   }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal]);
@@ -345,7 +378,10 @@ export default function TrainingModeScreen() {
     if (isHiit && workout && hiitPhase === 'work' && !isResting && !isPrep && !showIndicationsModal) {
       const b = workout.exercises[hiitBlockIdx]; if (!b) return;
       const ex = b.hiit_exercises[hiitExIdx]; const dur = parseTimeToSeconds(ex?.duration_reps || ex?.duration);
-      if (!isWorking && workTargetTime === null && workSeconds === 0) { startPrepTimer(dur, ex.name); }
+      if (!isWorking && workTargetTime === null && workSeconds === 0) { 
+         // Reemplazado startPrepTimer por nuestra nueva lógica
+         handleStartWork(dur, ex.name); 
+      }
     }
   }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal]);
 
@@ -383,7 +419,16 @@ export default function TrainingModeScreen() {
 
   const advanceHiit = () => advanceHiitLogic();
   const skipHiitEx = () => { stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setHiitSkipped(prev => ({ ...prev, [`${hiitBlockIdx}-${hiitExIdx}`]: (prev[`${hiitBlockIdx}-${hiitExIdx}`] || 0) + 1 })); advanceHiitLogic(); };
-  const skipHiitRest = () => { stopAllTimers(); };
+  
+  const skipHiitRest = () => { 
+    stopAllTimers(); 
+    justFinishedRestRef.current = true; // Saltó el descanso manualmente
+  };
+  const skipTradRest = () => {
+    stopAllTimers();
+    justFinishedRestRef.current = true; // Saltó el descanso manualmente
+  };
+
   const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => { setSetsStatus(prev => { const updated = { ...prev }; updated[exIdx] = [...(prev[exIdx] || [])]; updated[exIdx][setIdx] = status; return updated; }); };
   const autoAdvance = (exIdx: number) => { stopAllTimers(); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else setTimeout(() => setFinished(true), 400); };
 
@@ -449,7 +494,6 @@ export default function TrainingModeScreen() {
     </Modal>
   );
 
-  // --- MAPA CORPORAL: CORREGIDO PARA VISIBILIDAD Y TOQUE ---
   const toggleJoint = (part: any) => { 
     if (!part?.slug) return; 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
@@ -459,9 +503,6 @@ export default function TrainingModeScreen() {
   const renderBodyMapModal = () => {
     const errorColor = colors.error || '#EF4444';
     const data = soreJoints.map(slug => ({ slug, intensity: 1 }));
-    // Calculamos un tamaño base para los cuerpos
-    const bodyWidth = width * 0.42;
-    const bodyHeight = 320;
 
     return (
       <Modal visible={showBodyMap} transparent animationType="slide">
@@ -476,35 +517,29 @@ export default function TrainingModeScreen() {
             
             <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center', fontSize: 13 }}>Toca las zonas con sobrecarga o molestias.</Text>
             
-            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', height: bodyHeight + 40 }}>
-              <View style={{ flex: 1, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', height: 350 }}>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 <Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 8 }}>FRONTAL</Text>
-                <View style={{ width: bodyWidth, height: bodyHeight }}>
                   <Body 
                     data={data} 
                     gender="female" 
                     side="front" 
-                    width={bodyWidth} 
-                    height={bodyHeight} 
+                    scale={0.75} 
                     colors={['#E2E8F0', errorColor]} 
                     onBodyPartPress={toggleJoint} 
                   />
-                </View>
               </View>
 
-              <View style={{ flex: 1, alignItems: 'center' }}>
+              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                 <Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 8 }}>DORSAL</Text>
-                <View style={{ width: bodyWidth, height: bodyHeight }}>
                   <Body 
                     data={data} 
                     gender="female" 
                     side="back" 
-                    width={bodyWidth} 
-                    height={bodyHeight} 
+                    scale={0.75} 
                     colors={['#E2E8F0', errorColor]} 
                     onBodyPartPress={toggleJoint} 
                   />
-                </View>
               </View>
             </View>
 
@@ -577,7 +612,7 @@ export default function TrainingModeScreen() {
         <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>{currentExIndex + 1}/{workout.exercises.length}</Text></View>
         <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${prog}%` }]} /></View>
         <ScrollView contentContainerStyle={styles.content}>
-          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={ex?.name} colors={colors} isHiit={false} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={stopRestTimer} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
+          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={ex?.name} colors={colors} isHiit={false} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
           <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
             <View style={styles.compactDetailsGrid}>{['sets', 'reps', 'weight', 'duration', 'rest'].map(k => ex[k] && ( <View key={k} style={styles.compactDetailItem}><Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text><Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{ex[k]}</Text></View> ))}</View>
@@ -613,4 +648,3 @@ const styles = StyleSheet.create({
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 }, bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 24, maxHeight: '90%' },
 });
-
