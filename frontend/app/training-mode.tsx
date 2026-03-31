@@ -23,7 +23,7 @@ import { syncManager } from '../src/offline';
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
 import HiitCard from '../src/components/training/HiitCard';
 
-const { width } = Dimensions.get('window');
+const { width, height: screenHeight } = Dimensions.get('window');
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
@@ -449,22 +449,71 @@ export default function TrainingModeScreen() {
     </Modal>
   );
 
-  const toggleJoint = (part: any) => { if (!part?.slug) return; Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSoreJoints(prev => prev.includes(part.slug) ? prev.filter(j => j !== part.slug) : [...prev, part.slug]); };
+  // --- MAPA CORPORAL: CORREGIDO PARA VISIBILIDAD Y TOQUE ---
+  const toggleJoint = (part: any) => { 
+    if (!part?.slug) return; 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
+    setSoreJoints(prev => prev.includes(part.slug) ? prev.filter(j => j !== part.slug) : [...prev, part.slug]); 
+  };
 
   const renderBodyMapModal = () => {
     const errorColor = colors.error || '#EF4444';
     const data = soreJoints.map(slug => ({ slug, intensity: 1 }));
+    // Calculamos un tamaño base para los cuerpos
+    const bodyWidth = width * 0.42;
+    const bodyHeight = 320;
+
     return (
       <Modal visible={showBodyMap} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.bodyMapModalContent, { backgroundColor: colors.background, paddingBottom: 40 }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}><Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Registrar Fatiga</Text><TouchableOpacity onPress={() => setShowBodyMap(false)}><Ionicons name="close" size={28} color={colors.textPrimary} /></TouchableOpacity></View>
-            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center' }}>Toca las zonas con sobrecarga.</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'center', height: 350 }}>
-              <View style={{ flex: 1, alignItems: 'center', overflow: 'hidden' }}><Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 }}>FRONTAL</Text><Body data={data} gender="female" side="front" width={width * 0.4} height={300} colors={['#E2E8F0', errorColor]} onBodyPartPress={toggleJoint} /></View>
-              <View style={{ flex: 1, alignItems: 'center', overflow: 'hidden' }}><Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 }}>DORSAL</Text><Body data={data} gender="female" side="back" width={width * 0.4} height={300} colors={['#E2E8F0', errorColor]} onBodyPartPress={toggleJoint} /></View>
+          <View style={[styles.bodyMapModalContent, { backgroundColor: colors.background, paddingBottom: 30 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Registrar Fatiga</Text>
+              <TouchableOpacity onPress={() => setShowBodyMap(false)}>
+                <Ionicons name="close" size={28} color={colors.textPrimary} />
+              </TouchableOpacity>
             </View>
-            <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', width: '100%', marginTop: 20 }} onPress={() => setShowBodyMap(false)}><Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar</Text></TouchableOpacity>
+            
+            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center', fontSize: 13 }}>Toca las zonas con sobrecarga o molestias.</Text>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', height: bodyHeight + 40 }}>
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 8 }}>FRONTAL</Text>
+                <View style={{ width: bodyWidth, height: bodyHeight }}>
+                  <Body 
+                    data={data} 
+                    gender="female" 
+                    side="front" 
+                    width={bodyWidth} 
+                    height={bodyHeight} 
+                    colors={['#E2E8F0', errorColor]} 
+                    onBodyPartPress={toggleJoint} 
+                  />
+                </View>
+              </View>
+
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 8 }}>DORSAL</Text>
+                <View style={{ width: bodyWidth, height: bodyHeight }}>
+                  <Body 
+                    data={data} 
+                    gender="female" 
+                    side="back" 
+                    width={bodyWidth} 
+                    height={bodyHeight} 
+                    colors={['#E2E8F0', errorColor]} 
+                    onBodyPartPress={toggleJoint} 
+                  />
+                </View>
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', width: '100%', marginTop: 20 }} 
+              onPress={() => setShowBodyMap(false)}
+            >
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar Selección</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -481,18 +530,27 @@ export default function TrainingModeScreen() {
         <View style={styles.topBar}><TouchableOpacity onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>Resumen</Text><View style={{ width: 26 }} /></View>
         <ScrollView contentContainerStyle={[styles.content, { alignItems: 'center', paddingVertical: 40 }]}>
           <View style={styles.finishedIconContainer}><Ionicons name="trophy" size={80} color={colors.warning || '#F59E0B'} /></View>
-          <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Buen trabajo!</Text>
+          <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
+          <Text style={[styles.finishedSubtitle, { color: colors.textSecondary }]}>¿Cómo te has sentido hoy?</Text>
           {!workout.completed && (
             <View style={{ width: '100%', gap: 24, marginTop: 20 }}>
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>ESFUERZO (RPE)</Text>
+              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>NIVEL DE ESFUERZO (RPE)</Text>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => { const isSelected = rpe === num; let c = (num >= 8) ? (colors.error || '#EF4444') : (num >= 4) ? (colors.warning || '#F59E0B') : (colors.success || '#10B981'); return ( <TouchableOpacity key={num} onPress={() => setRpe(num)} style={[styles.rpeCircle, { borderColor: colors.border }, isSelected && { backgroundColor: c, borderColor: c }]}><Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textSecondary }]}>{num}</Text></TouchableOpacity> ); })}</View>
               </View>
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>SUEÑO</Text><View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>{[1, 2, 3, 4, 5].map(num => ( <TouchableOpacity key={num} onPress={() => setSleepQuality(num)} style={{ padding: 5 }}><Ionicons name={sleepQuality && sleepQuality >= num ? "star" : "star-outline"} size={36} color={colors.warning || '#F59E0B'} /></TouchableOpacity> ))}</View></View>
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>SOBRECARGA</Text><TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: soreJoints.length > 0 ? (colors.error || '#EF4444') + '15' : colors.surfaceHighlight, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border }} onPress={() => setShowBodyMap(true)}><Ionicons name="body" size={24} color={soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.primary} /><Text style={{ fontWeight: '700', color: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.textPrimary }}>{soreJoints.length > 0 ? `${soreJoints.length} Marcadas` : 'Mapa Corporal'}</Text></TouchableOpacity></View>
-              <TextInput style={[styles.obsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} multiline placeholder="Observaciones..." placeholderTextColor={colors.textSecondary} value={observations} onChangeText={setObservations} />
+              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>CALIDAD DEL SUEÑO</Text><View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>{[1, 2, 3, 4, 5].map(num => ( <TouchableOpacity key={num} onPress={() => setSleepQuality(num)} style={{ padding: 5 }}><Ionicons name={sleepQuality && sleepQuality >= num ? "star" : "star-outline"} size={36} color={colors.warning || '#F59E0B'} /></TouchableOpacity> ))}</View></View>
+              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA O IMPACTO</Text><TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: soreJoints.length > 0 ? (colors.error || '#EF4444') + '15' : colors.surfaceHighlight, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border }} onPress={() => setShowBodyMap(true)}><Ionicons name="body" size={24} color={soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.primary} /><Text style={{ fontWeight: '700', color: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.textPrimary }}>{soreJoints.length > 0 ? `${soreJoints.length} Zonas Marcadas` : 'Abrir Mapa Corporal'}</Text></TouchableOpacity></View>
+              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12 }]}>OBSERVACIONES</Text><TextInput style={[styles.obsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} multiline placeholder="¿Algo a destacar?..." placeholderTextColor={colors.textSecondary} value={observations} onChangeText={setObservations} /></View>
             </View>
           )}
-          {!workout.completed && ( <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary }]} onPress={handleFinish}><Text style={styles.finishWorkoutBtnText}>Guardar</Text></TouchableOpacity> )}
+          {workout.completed && workout.completion_data && (
+            <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Resumen guardado:</Text>
+              <Text style={{ color: colors.textPrimary }}>RPE: {workout.completion_data.rpe}/10</Text>
+              {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5 }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
+              {workout.observations && <Text style={{ color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
+            </View>
+          )}
+          {!workout.completed && ( <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary }]} onPress={handleFinish}><Text style={styles.finishWorkoutBtnText}>Finalizar Entrenamiento</Text></TouchableOpacity> )}
         </ScrollView>
         {renderVideoModal()}{renderBodyMapModal()}
       </SafeAreaView>
@@ -502,7 +560,7 @@ export default function TrainingModeScreen() {
     if (!b) return <ActivityIndicator color={colors.primary} />;
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>{hiitBlockIdx + 1}/{workout.exercises.length}</Text></View>
+        <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>B{hiitBlockIdx + 1}/{workout.exercises.length}</Text></View>
         <ScrollView contentContainerStyle={styles.content}>
           <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={b.hiit_exercises[hiitExIdx]?.name || 'HIIT'} colors={colors} isHiit={isHiit} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
           <HiitCard currentBlock={b} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
@@ -522,18 +580,21 @@ export default function TrainingModeScreen() {
           <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={ex?.name} colors={colors} isHiit={false} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={stopRestTimer} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
           <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
-            <View style={styles.compactDetailsGrid}>{['sets', 'reps', 'weight', 'duration', 'rest'].map(k => ex[k] && ( <View key={k} style={styles.compactDetailItem}><Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k}</Text><Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{ex[k]}</Text></View> ))}</View>
+            <View style={styles.compactDetailsGrid}>{['sets', 'reps', 'weight', 'duration', 'rest'].map(k => ex[k] && ( <View key={k} style={styles.compactDetailItem}><Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text><Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{ex[k]}</Text></View> ))}</View>
           </View>
           <View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
             <View style={styles.setsGrid}>{s.map((st, i) => ( <View key={i} style={[styles.setCircle, { borderColor: colors.border }, st === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }, st === 'skipped' && { backgroundColor: colors.error, borderColor: colors.error }]}>{st === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : <Text style={{ color: colors.textSecondary }}>{i + 1}</Text>}</View> ))}</View>
-            <TouchableOpacity style={[styles.logInput, { marginTop: 20, borderColor: colors.border }]} onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8 }}>Grabar técnica</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.recordBtn, { marginTop: 20, borderColor: colors.border }]} onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text></TouchableOpacity>
           </View>
           <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
-             <TextInput style={[styles.logInput, { borderColor: colors.border }]} placeholder="Kilos" keyboardType="numeric" value={logs[currentExIndex]?.weight} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} />
-             <TextInput style={[styles.logInput, { borderColor: colors.border, marginTop: 10 }]} placeholder="Reps" keyboardType="numeric" value={logs[currentExIndex]?.reps} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], reps: t}}))} />
+             <View style={{ flexDirection: 'row', gap: 10 }}>
+               <TextInput style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder="Kilos" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={logs[currentExIndex]?.weight} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} />
+               <TextInput style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder="Reps" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={logs[currentExIndex]?.reps} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], reps: t}}))} />
+             </View>
+             <TextInput style={[styles.logInput, { borderColor: colors.border, marginTop: 10, minHeight: 60, backgroundColor: colors.background, color: colors.textPrimary }]} multiline placeholder="Anotaciones de la serie..." placeholderTextColor={colors.textSecondary} value={logs[currentExIndex]?.note} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} />
           </View>
         </ScrollView>
-        <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else setFinished(true); }}><Text style={{ color: colors.primary }}>Siguiente</Text></TouchableOpacity></View>
+        <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else setFinished(true); }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
         {renderVideoModal()}{renderIndicationsModal()}
       </SafeAreaView>
     );
@@ -542,12 +603,14 @@ export default function TrainingModeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 }, topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 }, topTitle: { fontSize: 16, fontWeight: '600' }, topProgress: { fontSize: 14 }, progressBar: { height: 3, marginHorizontal: 16, borderRadius: 2 }, progressFill: { height: '100%' }, content: { padding: 20, paddingBottom: 100, gap: 16 },
-  compactExerciseCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, compactExHeader: { flexDirection: 'row', alignItems: 'center', padding: 16 }, compactExName: { fontSize: 18, fontWeight: '800', flex: 1 }, compactDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 16, gap: 10 }, compactDetailItem: { minWidth: '30%' }, compactDetailLabel: { fontSize: 11, textTransform: 'uppercase' }, compactDetailValue: { fontSize: 18, fontWeight: '700' },
-  setsCard: { borderRadius: 16, padding: 20 }, setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' }, bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', padding: 20, borderTopWidth: 0.5 },
-  activeLogContainer: { width: '100%' }, logInput: { borderWidth: 1, borderRadius: 10, padding: 12, flexDirection: 'row', alignItems: 'center' },
-  finishedIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center' }, finishedTitle: { fontSize: 28, fontWeight: '800', textAlign: 'center' }, finishWorkoutBtn: { padding: 18, borderRadius: 16, alignItems: 'center', width: '100%', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 18, fontWeight: '700' },
-  label: { fontSize: 12, fontWeight: '700' }, rpeCircle: { width: 30, height: 30, borderRadius: 15, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { padding: 8, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 14 }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100 },
-  miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '100%' }, closeModalBtn: { position: 'absolute', top: 40, right: 20, zIndex: 10 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 20 }, bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 20 },
+  container: { flex: 1 }, topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 }, topTitle: { fontSize: 16, fontWeight: '700' }, topProgress: { fontSize: 14, fontWeight: '600' }, progressBar: { height: 4, marginHorizontal: 16, borderRadius: 2, backgroundColor: '#EEE' }, progressFill: { height: '100%', borderRadius: 2 }, content: { padding: 20, paddingBottom: 100, gap: 16 },
+  compactExerciseCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, compactExHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, compactExName: { fontSize: 18, fontWeight: '800', flex: 1 }, compactDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 16, gap: 10 }, compactDetailItem: { minWidth: '28%' }, compactDetailLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 }, compactDetailValue: { fontSize: 17, fontWeight: '700' },
+  setsCard: { borderRadius: 16, padding: 20 }, setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' }, recordBtn: { borderWidth: 1, borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed' },
+  bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', padding: 20, borderTopWidth: 0.5, paddingBottom: 35 },
+  activeLogContainer: { width: '100%' }, logInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 },
+  finishedIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.1)' }, finishedTitle: { fontSize: 26, fontWeight: '900', textAlign: 'center' }, finishedSubtitle: { fontSize: 15, textAlign: 'center', marginBottom: 20 }, finishWorkoutBtn: { padding: 18, borderRadius: 16, alignItems: 'center', width: '100%', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
+  label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }, rpeCircle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 13, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, fontSize: 15, textAlignVertical: 'top' },
+  miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 }, bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 24, maxHeight: '90%' },
 });
+
