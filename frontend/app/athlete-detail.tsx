@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, ScrollView, Dimensions, Alert, Platform, Modal, TextInput, Linking
+  ActivityIndicator, ScrollView, Alert, Platform, Modal, TextInput, Linking, useWindowDimensions
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,8 +10,6 @@ import { Video, ResizeMode } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
-
-const { width } = Dimensions.get('window');
 
 const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
@@ -45,6 +43,10 @@ export default function AthleteDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string; name: string }>();
   
+  // Detectar ancho de pantalla para diseño responsive (Ordenador vs Móvil) y tamaños de letra
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 860;
+  
   const [athlete, setAthlete] = useState<any>(null);
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [summary, setSummary] = useState<any>(null);
@@ -55,7 +57,6 @@ export default function AthleteDetailScreen() {
   const [expandedWorkouts, setExpandedWorkouts] = useState<Record<string, boolean>>({});
   const [expandedBlocks, setExpandedBlocks] = useState<Record<string, boolean>>({}); 
   
-  // Nuevo estado para controlar el desplegable del próximo entrenamiento
   const [isNextWorkoutExpanded, setIsNextWorkoutExpanded] = useState(false);
   
   const [showHistory, setShowHistory] = useState(false);
@@ -334,19 +335,19 @@ export default function AthleteDetailScreen() {
     const discomfortsEntries = Object.entries(discomfortsObj);
 
     return (
-      <View style={styles.tabContainer}>
+      <View style={[styles.tabContainer, isDesktop && { paddingBottom: 40 }]}>
         {!!summary?.is_injured && (
           <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '10', borderColor: colors.error || '#EF4444' }]}>
             <Ionicons name="warning" size={22} color={colors.error || '#EF4444'} />
             <View style={{flex:1, marginLeft: 12}}>
-              <Text style={{color: colors.error || '#EF4444', fontWeight: '900', fontSize: 12}}>ESTADO: LESIONADA / BAJA</Text>
-              <Text style={{color: colors.textPrimary, fontSize: 13, marginTop: 2}}>{summary.injury_notes}</Text>
+              <Text style={{color: colors.error || '#EF4444', fontWeight: '900', fontSize: isDesktop ? 14 : 12}}>ESTADO: LESIONADA / BAJA</Text>
+              <Text style={{color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, marginTop: 2}}>{summary.injury_notes}</Text>
             </View>
           </View>
         )}
 
         {/* PRÓXIMO ENTRENAMIENTO */}
-        <Text style={[styles.sectionTitle]}>PRÓXIMO ENTRENAMIENTO</Text>
+        <Text style={[styles.sectionTitle, isDesktop && { fontSize: 13 }]}>PRÓXIMO ENTRENAMIENTO</Text>
         {nextWorkout ? (
           <TouchableOpacity 
             style={[styles.nextWorkoutCard, { backgroundColor: colors.surface, flexDirection: 'column', alignItems: 'stretch' }]}
@@ -358,10 +359,10 @@ export default function AthleteDetailScreen() {
                 <Ionicons name="calendar-outline" size={24} color={colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800', marginBottom: 2 }}>
+                <Text style={{ color: colors.primary, fontSize: isDesktop ? 14 : 12, fontWeight: '800', marginBottom: 2 }}>
                   {nextWorkout.date === todayStr ? 'HOY' : nextWorkout.date.split('-').reverse().join('/')}
                 </Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800' }}>
+                <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 20 : 16, fontWeight: '800' }}>
                   {nextWorkout.title}
                 </Text>
               </View>
@@ -376,13 +377,13 @@ export default function AthleteDetailScreen() {
                   if (isHiitBlock) {
                     return (
                       <View key={idx} style={{ marginBottom: 12 }}>
-                        <Text style={{ color: colors.error || '#EF4444', fontSize: 13, fontWeight: '800', marginBottom: 6 }}>
+                        <Text style={{ color: colors.error || '#EF4444', fontSize: isDesktop ? 15 : 13, fontWeight: '800', marginBottom: 6 }}>
                           <Ionicons name="flame" size={12} /> {ex.name} ({ex.sets} Vueltas)
                         </Text>
                         {ex.hiit_exercises?.map((hEx: any, hIdx: number) => (
                           <View key={hIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 10, marginBottom: 4 }}>
-                            <Text style={{ color: colors.textPrimary, fontSize: 12, flex: 1, fontWeight: '500' }}>• {hEx.name}</Text>
-                            <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '800' }}>{hEx.duration_reps || hEx.duration}</Text>
+                            <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 14 : 12, flex: 1, fontWeight: '500' }}>• {hEx.name}</Text>
+                            <Text style={{ color: colors.primary, fontSize: isDesktop ? 14 : 12, fontWeight: '800' }}>{hEx.duration_reps || hEx.duration}</Text>
                           </View>
                         ))}
                       </View>
@@ -390,13 +391,13 @@ export default function AthleteDetailScreen() {
                   } else {
                     return (
                       <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                        <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700', flex: 1 }}>
+                        <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontWeight: '700', flex: 1 }}>
                           <Ionicons name="barbell-outline" size={14} color={colors.textSecondary} /> {ex.name}
                         </Text>
                         <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
-                          {(ex.sets && ex.reps) && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>{ex.sets}x{ex.reps}</Text>}
-                          {ex.duration && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>{ex.duration}</Text>}
-                          {ex.weight ? <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '600' }}>{ex.weight} kg</Text> : null}
+                          {(ex.sets && ex.reps) && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>{ex.sets}x{ex.reps}</Text>}
+                          {ex.duration && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>{ex.duration}</Text>}
+                          {ex.weight ? <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 11, fontWeight: '600' }}>{ex.weight} kg</Text> : null}
                         </View>
                       </View>
                     );
@@ -408,7 +409,7 @@ export default function AthleteDetailScreen() {
                   onPress={() => router.push(isTrainer ? `/edit-workout?workoutId=${nextWorkout.id}` : `/training-mode?workoutId=${nextWorkout.id}`)}
                 >
                   <Ionicons name={isTrainer ? "pencil" : "play"} size={16} color={colors.textPrimary} />
-                  <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 13 }}>
+                  <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 15 : 13 }}>
                     {isTrainer ? 'Editar Sesión Completa' : 'Ir a Entrenar'}
                   </Text>
                 </TouchableOpacity>
@@ -417,13 +418,13 @@ export default function AthleteDetailScreen() {
           </TouchableOpacity>
         ) : (
           <View style={[styles.nextWorkoutCard, { backgroundColor: colors.surface, flexDirection: 'column', alignItems: 'flex-start', padding: 20 }]}>
-            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontStyle: 'italic', fontSize: 13 }}>No hay sesiones pendientes próximamente.</Text>
+            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontStyle: 'italic', fontSize: isDesktop ? 15 : 13 }}>No hay sesiones pendientes próximamente.</Text>
             <TouchableOpacity 
               style={{ backgroundColor: colors.primary, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, flexDirection: 'row', alignItems: 'center', gap: 6 }}
               onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
             >
               <Ionicons name="add" size={18} color="#FFF" />
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>Programar Sesión</Text>
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: isDesktop ? 15 : 13 }}>Programar Sesión</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -433,10 +434,10 @@ export default function AthleteDetailScreen() {
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
               <Ionicons name={phaseInfo.icon as any} size={24} color={phaseInfo.color} />
               <View style={{ flex: 1 }}>
-                <Text style={{ color: phaseInfo.color, fontSize: 11, fontWeight: '900', letterSpacing: 1 }}>BIOLOGÍA (DÍA {phaseInfo.day})</Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', marginTop: 2 }}>{phaseInfo.name}</Text>
+                <Text style={{ color: phaseInfo.color, fontSize: isDesktop ? 13 : 11, fontWeight: '900', letterSpacing: 1 }}>BIOLOGÍA (DÍA {phaseInfo.day})</Text>
+                <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 18 : 15, fontWeight: '800', marginTop: 2 }}>{phaseInfo.name}</Text>
                 {phaseInfo.simpleName === 'Ovulatoria' && (
-                    <Text style={{ color: colors.error || '#EF4444', fontSize: 11, fontWeight: '800', marginTop: 4 }}>⚠️ PRECAUCIÓN: Laxitud de ligamentos</Text>
+                    <Text style={{ color: colors.error || '#EF4444', fontSize: isDesktop ? 13 : 11, fontWeight: '800', marginTop: 4 }}>⚠️ PRECAUCIÓN: Laxitud de ligamentos</Text>
                 )}
               </View>
             </View>
@@ -448,15 +449,15 @@ export default function AthleteDetailScreen() {
           onPress={() => router.push(`/periodization?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
         >
           <Ionicons name="calendar" size={20} color="#FFF" />
-          <Text style={styles.actionBtnText}>PLANIFICACIÓN (MACRO/MICRO)</Text>
+          <Text style={[styles.actionBtnText, isDesktop && { fontSize: 16 }]}>PLANIFICACIÓN (MACRO/MICRO)</Text>
         </TouchableOpacity>
 
-        <Text style={[styles.sectionTitle]}>EVOLUCIÓN DE FATIGA (ÚLTIMOS 7 DÍAS)</Text>
+        <Text style={[styles.sectionTitle, isDesktop && { fontSize: 13 }]}>EVOLUCIÓN DE FATIGA (ÚLTIMOS 7 DÍAS)</Text>
         <View style={[styles.chartCard, { backgroundColor: colors.surface, marginBottom: 25 }]}>
           <View style={styles.barsContainer}>
             {fatigueChartData.map((day, idx) => (
               <View key={idx} style={[styles.barWrapper, { justifyContent: 'flex-end', height: '100%' }]}>
-                <Text style={[styles.barValue, { color: getLevelColor(day.fatigue) }]}>
+                <Text style={[styles.barValue, { color: getLevelColor(day.fatigue) }, isDesktop && { fontSize: 11 }]}>
                   {day.fatigue > 0 ? day.fatigue : '-'}
                 </Text>
                 <View style={[
@@ -466,28 +467,28 @@ export default function AthleteDetailScreen() {
                     backgroundColor: getLevelColor(day.fatigue) 
                   }
                 ]} />
-                <Text style={styles.barDate}>{day.weekday}</Text>
-                <Text style={[styles.barDate, {marginTop: 2, fontSize: 11, color: colors.textPrimary, fontWeight: '800'}]}>{day.dayNum}</Text>
+                <Text style={[styles.barDate, isDesktop && { fontSize: 11 }]}>{day.weekday}</Text>
+                <Text style={[styles.barDate, {marginTop: 2, fontSize: isDesktop ? 13 : 11, color: colors.textPrimary, fontWeight: '800'}]}>{day.dayNum}</Text>
               </View>
             ))}
           </View>
         </View>
 
-        <Text style={[styles.sectionTitle]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
+        <Text style={[styles.sectionTitle, isDesktop && { fontSize: 13 }]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
         <View style={[styles.mainCard, { backgroundColor: colors.surface }]}>
           <View style={styles.wellnessRow}>
-            <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.fatigue) }]}>{summary?.latest_wellness?.fatigue || '-'}</Text><Text style={styles.wellLabel}>FATIGA</Text></View>
-            <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.soreness) }]}>{summary?.latest_wellness?.soreness || '-'}</Text><Text style={styles.wellLabel}>DOLOR</Text></View>
-            <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.sleep_quality, true) }]}>{summary?.latest_wellness?.sleep_quality || '-'}</Text><Text style={styles.wellLabel}>SUEÑO</Text></View>
+            <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.fatigue) }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.fatigue || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>FATIGA</Text></View>
+            <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.soreness) }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.soreness || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>DOLOR</Text></View>
+            <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.sleep_quality, true) }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.sleep_quality || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>SUEÑO</Text></View>
           </View>
           
           {!!summary?.latest_wellness?.notes && (
-            <View style={[styles.noteBox, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} /><Text style={[styles.noteText, { color: colors.textPrimary }]}>"{summary.latest_wellness.notes}"</Text></View>
+            <View style={[styles.noteBox, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} /><Text style={[styles.noteText, { color: colors.textPrimary }, isDesktop && { fontSize: 15 }]}>"{summary.latest_wellness.notes}"</Text></View>
           )}
 
           {discomfortsEntries.length > 0 && (
             <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
-              <Text style={{ fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 10 }}>ZONAS CON MOLESTIAS HOY:</Text>
+              <Text style={{ fontSize: isDesktop ? 12 : 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 10 }}>ZONAS CON MOLESTIAS HOY:</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                 {discomfortsEntries.map(([part, level]) => (
                   <View 
@@ -498,7 +499,7 @@ export default function AthleteDetailScreen() {
                       borderWidth: 1, borderColor: level === 'leve' ? '#F59E0B' : '#EF4444' 
                     }}
                   >
-                     <Text style={{ color: level === 'leve' ? '#F59E0B' : '#EF4444', fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>
+                     <Text style={{ color: level === 'leve' ? '#F59E0B' : '#EF4444', fontSize: isDesktop ? 13 : 11, fontWeight: '800', textTransform: 'uppercase' }}>
                        {part} {level === 'fuerte' ? '⚠️' : ''}
                      </Text>
                   </View>
@@ -536,8 +537,8 @@ export default function AthleteDetailScreen() {
           </View>
           
           <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>{wk.title}</Text>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.date.split('-').reverse().join('/')}</Text>
+            <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }, isDesktop && { fontSize: 18 }]}>{wk.title}</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 14 : 12 }}>{wk.date.split('-').reverse().join('/')}</Text>
           </View>
 
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginRight: 10 }}>
@@ -564,15 +565,15 @@ export default function AthleteDetailScreen() {
             
             {wk.observations?.includes('[NO COMPLETADA]') && (
               <View style={{ backgroundColor: '#EF444420', padding: 12, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#EF4444' }}>
-                 <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
-                 <Text style={{ color: colors.textPrimary, fontSize: 13, fontStyle: 'italic' }}>"{wk.observations.replace('[NO COMPLETADA] Motivo: ', '')}"</Text>
+                 <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: isDesktop ? 13 : 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
+                 <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontStyle: 'italic' }}>"{wk.observations.replace('[NO COMPLETADA] Motivo: ', '')}"</Text>
               </View>
             )}
 
             {(wk.completed && !!wk.completion_data) && (
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
-                <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12, letterSpacing: 0.5 }}>
-                  ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
+                <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12, letterSpacing: 0.5 }}>
+                  ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: isDesktop ? 16 : 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
                 </Text>
               </View>
             )}
@@ -592,7 +593,7 @@ export default function AthleteDetailScreen() {
                       activeOpacity={0.7}
                     >
                       <Ionicons name="flame" size={18} color={colors.error || '#EF4444'} />
-                      <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800', flex: 1 }}>{blockOrEx.name}</Text>
+                      <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 18 : 15, fontWeight: '800', flex: 1 }}>{blockOrEx.name}</Text>
                       <Ionicons name={isBlockExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
                     </TouchableOpacity>
                     
@@ -605,20 +606,20 @@ export default function AthleteDetailScreen() {
 
                           return (
                             <View key={eIdx} style={{ marginBottom: 15, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.primary + '50' }}>
-                                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '700' }}>{ex.name} <Text style={{ color: colors.primary, fontWeight: '800' }}>({ex.duration_reps})</Text></Text>
+                                <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontWeight: '700' }}>{ex.name} <Text style={{ color: colors.primary, fontWeight: '800' }}>({ex.duration_reps})</Text></Text>
                                 
                                 {(wk.completed && !!ex.recorded_video_url) && <View style={{ marginTop: 8 }}><MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} /></View>}
                                 
                                 {(!wk.completed && !!ex.video_url) && (
                                     <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
                                         <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
-                                        <Text style={{color: colors.error || '#EF4444', fontSize: 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica</Text>
+                                        <Text style={{color: colors.error || '#EF4444', fontSize: isDesktop ? 14 : 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica</Text>
                                     </TouchableOpacity>
                                 )}
 
                                 {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
                                     <View style={styles.feedbackRow}>
-                                        <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Feedback para este ejercicio..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
+                                        <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }, isDesktop && { fontSize: 15 }]} placeholder="Feedback para este ejercicio..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
                                         <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} onPress={() => saveHiitCoachNote(wk, idx, eIdx, currentNote)}>
                                             <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
                                         </TouchableOpacity>
@@ -639,11 +640,11 @@ export default function AthleteDetailScreen() {
                 return (
                   <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
                     <View style={styles.exerciseHeader}>
-                      <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }]}><Ionicons name="barbell-outline" size={14} color={colors.textSecondary} /> {blockOrEx.name}</Text>
+                      <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }, isDesktop && { fontSize: 16 }]}><Ionicons name="barbell-outline" size={14} color={colors.textSecondary} /> {blockOrEx.name}</Text>
                       {!wk.completed && (
                         <View style={{alignItems: 'flex-end'}}>
-                          {(blockOrEx.sets && blockOrEx.reps) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: 12}}>{blockOrEx.sets}x{blockOrEx.reps}</Text> : null}
-                          {blockOrEx.weight ? <Text style={{color: colors.textSecondary, fontSize: 11}}>{blockOrEx.weight} kg</Text> : null}
+                          {(blockOrEx.sets && blockOrEx.reps) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: isDesktop ? 14 : 12}}>{blockOrEx.sets}x{blockOrEx.reps}</Text> : null}
+                          {blockOrEx.weight ? <Text style={{color: colors.textSecondary, fontSize: isDesktop ? 13 : 11}}>{blockOrEx.weight} kg</Text> : null}
                         </View>
                       )}
                     </View>
@@ -653,13 +654,13 @@ export default function AthleteDetailScreen() {
                     {(!wk.completed && !!blockOrEx.video_url) && (
                       <TouchableOpacity onPress={() => Linking.openURL(blockOrEx.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
                         <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
-                        <Text style={{color: colors.error || '#EF4444', fontSize: 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
+                        <Text style={{color: colors.error || '#EF4444', fontSize: isDesktop ? 14 : 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
                       </TouchableOpacity>
                     )}
                     
                     {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
                       <View style={styles.feedbackRow}>
-                        <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
+                        <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }, isDesktop && { fontSize: 15 }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
                         <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} onPress={() => saveCoachNote(wk, idx, currentNote)}>
                           <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
                         </TouchableOpacity>
@@ -677,27 +678,27 @@ export default function AthleteDetailScreen() {
 
   const renderWorkouts = () => {
     const activeWeekWorkouts = workouts.filter(w => w.date >= activeWindow.startStr && w.date <= activeWindow.endStr).sort((a,b) => String(a.date).localeCompare(String(b.date)));
-    const historyWorkouts = workouts.filter(w => w.date < activeWindow.startStr).sort((a,b) => String(b.date).localeCompare(String(a.date)));
+    const historyWorkouts = workouts.filter(w => w.date < activeWindow.startStr).sort((a,b) => String(a.date).localeCompare(String(a.date)));
     const futureWorkouts = workouts.filter(w => w.date > activeWindow.endStr).sort((a,b) => String(a.date).localeCompare(String(b.date)));
 
     return (
-      <View style={styles.tabContainer}>
+      <View style={[styles.tabContainer, isDesktop && { paddingBottom: 40 }]}>
         
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-          <Text style={[styles.sectionTitle, { marginBottom: 0, color: colors.primary }]}>SEMANA ACTUAL</Text>
+          <Text style={[styles.sectionTitle, { marginBottom: 0, color: colors.primary }, isDesktop && { fontSize: 13 }]}>SEMANA ACTUAL</Text>
           <TouchableOpacity style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}>
             <Ionicons name="add" size={16} color="#FFF" />
-            <Text style={{ color: '#FFF', fontSize: 11, fontWeight: '800' }}>NUEVA</Text>
+            <Text style={{ color: '#FFF', fontSize: isDesktop ? 13 : 11, fontWeight: '800' }}>NUEVA</Text>
           </TouchableOpacity>
         </View>
-        <Text style={{ color: colors.textSecondary, fontSize: 11, marginBottom: 15, marginTop: -10 }}>Del {activeWindow.startStr.split('-').reverse().join('/')} al {activeWindow.endStr.split('-').reverse().join('/')}</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 11, marginBottom: 15, marginTop: -10 }}>Del {activeWindow.startStr.split('-').reverse().join('/')} al {activeWindow.endStr.split('-').reverse().join('/')}</Text>
         
-        {activeWeekWorkouts.length > 0 ? activeWeekWorkouts.map(renderWorkoutItem) : <Text style={{ color: colors.textSecondary, marginBottom: 20, fontStyle: 'italic' }}>No hay sesiones en esta ventana.</Text>}
+        {activeWeekWorkouts.length > 0 ? activeWeekWorkouts.map(renderWorkoutItem) : <Text style={{ color: colors.textSecondary, marginBottom: 20, fontStyle: 'italic', fontSize: isDesktop ? 15 : 13 }}>No hay sesiones en esta ventana.</Text>}
 
         {futureWorkouts.length > 0 && (
           <>
             <TouchableOpacity style={styles.toggleSectionBtn} onPress={() => setShowFuture(!showFuture)} activeOpacity={0.7}>
-              <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 12 }}>PROGRAMACIÓN FUTURA ({futureWorkouts.length})</Text>
+              <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>PROGRAMACIÓN FUTURA ({futureWorkouts.length})</Text>
               <Ionicons name={showFuture ? "chevron-up" : "chevron-down"} size={18} color={colors.textPrimary} />
             </TouchableOpacity>
             {showFuture && futureWorkouts.map(renderWorkoutItem)}
@@ -705,11 +706,11 @@ export default function AthleteDetailScreen() {
         )}
 
         <TouchableOpacity style={[styles.toggleSectionBtn, { backgroundColor: colors.surfaceHighlight, marginTop: 20 }]} onPress={() => setShowHistory(!showHistory)} activeOpacity={0.7}>
-          <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14 }}>HISTORIAL DE SESIONES ({historyWorkouts.length})</Text>
+          <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 16 : 14 }}>HISTORIAL DE SESIONES ({historyWorkouts.length})</Text>
           <Ionicons name={showHistory ? "chevron-up" : "chevron-down"} size={20} color={colors.textPrimary} />
         </TouchableOpacity>
 
-        {showHistory && (historyWorkouts.length > 0 ? historyWorkouts.map(renderWorkoutItem) : <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10 }}>No hay historial previo.</Text>)}
+        {showHistory && (historyWorkouts.length > 0 ? historyWorkouts.map(renderWorkoutItem) : <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 10, fontSize: isDesktop ? 15 : 13 }}>No hay historial previo.</Text>)}
       </View>
     );
   };
@@ -722,18 +723,40 @@ export default function AthleteDetailScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{params.name}</Text>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }, isDesktop && { fontSize: 26 }]}>{params.name}</Text>
         <TouchableOpacity onPress={loadData}><Ionicons name="sync" size={24} color={colors.primary} /></TouchableOpacity>
       </View>
-      <View style={styles.tabsRow}>
-        {[{ id: 'dashboard', label: 'RESUMEN' }, { id: 'workouts', label: 'SESIONES' }].map(tab => (
-          <TouchableOpacity key={tab.id} style={[styles.tab, activeTab === tab.id && { borderBottomColor: colors.primary, borderBottomWidth: 3 }]} onPress={() => setActiveTab(tab.id as any)}>
-            <Text style={[styles.tabText, { color: activeTab === tab.id ? colors.primary : colors.textSecondary }]}>{tab.label}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
       
-      <ScrollView showsVerticalScrollIndicator={false}>{activeContent()}</ScrollView>
+      {/* RENDERIZADO CONDICIONAL: ORDENADOR VS MÓVIL */}
+      {isDesktop ? (
+        <View style={{ flex: 1, flexDirection: 'row' }}>
+          {/* Columna Izquierda: Dashboard/Resumen */}
+          <View style={{ flex: 10, borderRightWidth: 1, borderRightColor: colors.border }}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {renderDashboard()}
+            </ScrollView>
+          </View>
+          
+          {/* Columna Derecha: Sesiones */}
+          <View style={{ flex: 13 }}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {renderWorkouts()}
+            </ScrollView>
+          </View>
+        </View>
+      ) : (
+        <>
+          {/* Sistema original de Pestañas para Móvil */}
+          <View style={styles.tabsRow}>
+            {[{ id: 'dashboard', label: 'RESUMEN' }, { id: 'workouts', label: 'SESIONES' }].map(tab => (
+              <TouchableOpacity key={tab.id} style={[styles.tab, activeTab === tab.id && { borderBottomColor: colors.primary, borderBottomWidth: 3 }]} onPress={() => setActiveTab(tab.id as any)}>
+                <Text style={[styles.tabText, { color: activeTab === tab.id ? colors.primary : colors.textSecondary }]}>{tab.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <ScrollView showsVerticalScrollIndicator={false}>{activeContent()}</ScrollView>
+        </>
+      )}
 
       {!!athlete?.phone && (
         <TouchableOpacity 
@@ -756,6 +779,7 @@ export default function AthleteDetailScreen() {
           </View>
         </View>
       </Modal>
+
       <Modal visible={!!expandedVideo} transparent animationType="fade">
         <View style={styles.fullscreenVideoOverlay}>
           <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
@@ -767,7 +791,7 @@ export default function AthleteDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 100 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }, sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }, fullVideo: { width: '100%', height: '80%' }, exerciseCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 }, exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, exerciseName: { fontSize: 14, fontWeight: '800' }, feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, feedbackInput: { flex: 1, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 10, borderWidth: 1, fontSize: 13 }, sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2 },
+  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 100 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }, sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20, width: '90%', maxWidth: 400 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }, fullVideo: { width: '100%', height: '80%' }, exerciseCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 }, exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, exerciseName: { fontSize: 14, fontWeight: '800' }, feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, feedbackInput: { flex: 1, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 10, borderWidth: 1, fontSize: 13 }, sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2 },
   whatsappFab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center', elevation: 5, zIndex: 100 },
   toggleSectionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, borderRadius: 12, marginBottom: 15 },
   nextWorkoutCard: { padding: 16, borderRadius: 20, marginBottom: 25, elevation: 1 },
