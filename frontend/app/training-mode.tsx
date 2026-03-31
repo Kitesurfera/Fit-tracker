@@ -132,7 +132,6 @@ export default function TrainingModeScreen() {
 
   const lastAnnouncedRef = useRef<string>('');
   
-  // Ref para rastrear si acabamos de terminar un descanso
   const justFinishedRestRef = useRef(false);
 
   useEffect(() => {
@@ -210,17 +209,13 @@ export default function TrainingModeScreen() {
     else announce("Prepárate.");
   };
 
-  // NUEVA LÓGICA: Determina si poner la preparación o saltar directo al bloque
   const handleStartWork = (dur: number, name?: string) => {
-    // Es el primerísimo ejercicio si estamos en índice 0 y es la primera serie
     const isFirst = (!isHiit && currentExIndex === 0 && setsStatus[0]?.findIndex(s => s === 'pending') === 0) ||
                     (isHiit && hiitBlockIdx === 0 && hiitExIdx === 0 && hiitRound === 1);
 
-    // Si es el primero, o si NO venimos de un descanso, ponemos la preparación
     if (isFirst || !justFinishedRestRef.current) {
       startPrepTimer(dur, name);
     } else {
-      // Venimos de un descanso, así que saltamos la preparación
       stopAllTimers();
       setIsWorking(true);
       setWorkTotalSeconds(dur);
@@ -229,7 +224,6 @@ export default function TrainingModeScreen() {
       else setWorkTargetTime(null);
       if (name) announce(`A por ello: ${name}`);
     }
-    // Reiniciamos la referencia de descanso para la siguiente vuelta
     justFinishedRestRef.current = false;
   };
 
@@ -341,7 +335,7 @@ export default function TrainingModeScreen() {
         const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
         if (remaining <= 0) { 
           playSound('finish'); 
-          justFinishedRestRef.current = true; // Acaba de terminar el descanso
+          justFinishedRestRef.current = true;
           stopRestTimer(); 
         } 
         else { setRestSeconds(remaining); }
@@ -367,7 +361,6 @@ export default function TrainingModeScreen() {
       if (next !== -1) {
         const ex = workout.exercises[currentExIndex]; const dur = parseTimeToSeconds(ex?.duration);
         if (!isWorking && workTargetTime === null && workSeconds === 0) { 
-          // Reemplazado startPrepTimer por nuestra nueva lógica
           handleStartWork(dur, ex.name); 
         }
       } else { stopWorkTimer(); }
@@ -379,7 +372,6 @@ export default function TrainingModeScreen() {
       const b = workout.exercises[hiitBlockIdx]; if (!b) return;
       const ex = b.hiit_exercises[hiitExIdx]; const dur = parseTimeToSeconds(ex?.duration_reps || ex?.duration);
       if (!isWorking && workTargetTime === null && workSeconds === 0) { 
-         // Reemplazado startPrepTimer por nuestra nueva lógica
          handleStartWork(dur, ex.name); 
       }
     }
@@ -422,11 +414,11 @@ export default function TrainingModeScreen() {
   
   const skipHiitRest = () => { 
     stopAllTimers(); 
-    justFinishedRestRef.current = true; // Saltó el descanso manualmente
+    justFinishedRestRef.current = true;
   };
   const skipTradRest = () => {
     stopAllTimers();
-    justFinishedRestRef.current = true; // Saltó el descanso manualmente
+    justFinishedRestRef.current = true;
   };
 
   const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => { setSetsStatus(prev => { const updated = { ...prev }; updated[exIdx] = [...(prev[exIdx] || [])]; updated[exIdx][setIdx] = status; return updated; }); };
@@ -482,13 +474,68 @@ export default function TrainingModeScreen() {
     </Modal>
   );
 
+  const renderExerciseList = () => {
+    if (!workout?.exercises) return null;
+    
+    if (isHiit) {
+      return workout.exercises.map((block: any, bIdx: number) => (
+        <View key={bIdx} style={{ marginBottom: 15 }}>
+          <Text style={{ fontWeight: '800', color: colors.error || '#EF4444', marginBottom: 8 }}>
+            {block.name} <Text style={{color: colors.textSecondary, fontSize: 12}}>({block.sets} Vueltas)</Text>
+          </Text>
+          {block.hiit_exercises?.map((ex: any, eIdx: number) => (
+            <View key={eIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 10, marginBottom: 6 }}>
+              <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '500' }}>• {ex.name}</Text>
+              <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 10 }}>
+                {ex.duration_reps || ex.duration || '-'}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ));
+    } else {
+      return workout.exercises.map((ex: any, idx: number) => (
+        <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 8 }}>
+          <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '600', paddingRight: 10 }}>
+            <Text style={{ color: colors.textSecondary }}>{idx + 1}.</Text> {ex.name}
+          </Text>
+          <View style={{ alignItems: 'flex-end' }}>
+            {(ex.sets && ex.reps) ? (
+              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.sets} x {ex.reps}</Text>
+            ) : null}
+            {ex.duration ? (
+              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.duration}</Text>
+            ) : null}
+          </View>
+        </View>
+      ));
+    }
+  };
+
   const renderIndicationsModal = () => (
     <Modal visible={showIndicationsModal} transparent animationType="slide">
       <View style={styles.modalOverlay}>
-        <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 }}><Ionicons name="warning" size={28} color={colors.primary} /><Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, flex: 1 }}>Indicaciones</Text></View>
-          <ScrollView style={{ maxHeight: 300, marginBottom: 20 }}><Text style={{ color: colors.textPrimary, fontSize: 15, lineHeight: 22 }}>{workout?.notes}</Text></ScrollView>
-          <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={() => setShowIndicationsModal(false)}><Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>¡A por ello!</Text></TouchableOpacity>
+        <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface, maxHeight: screenHeight * 0.85 }]}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 }}>
+            <Ionicons name="list" size={28} color={colors.primary} />
+            <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, flex: 1 }}>Detalles de Sesión</Text>
+          </View>
+          
+          <ScrollView style={{ marginBottom: 20 }} showsVerticalScrollIndicator={false}>
+            {workout?.notes ? (
+              <View style={{ marginBottom: 20, padding: 15, backgroundColor: colors.surfaceHighlight, borderRadius: 12 }}>
+                <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '800', marginBottom: 5 }}>INDICACIONES DEL ENTRENADOR:</Text>
+                <Text style={{ color: colors.textPrimary, fontSize: 15, lineHeight: 22, fontStyle: 'italic' }}>"{workout.notes}"</Text>
+              </View>
+            ) : null}
+            
+            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '800', marginBottom: 10, letterSpacing: 1 }}>LISTA DE EJERCICIOS</Text>
+            {renderExerciseList()}
+          </ScrollView>
+
+          <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={() => setShowIndicationsModal(false)}>
+            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Entendido / Cerrar</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </Modal>
@@ -600,6 +647,9 @@ export default function TrainingModeScreen() {
           <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={b.hiit_exercises[hiitExIdx]?.name || 'HIIT'} colors={colors} isHiit={isHiit} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
           <HiitCard currentBlock={b} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
         </ScrollView>
+        <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
+          <Ionicons name="list" size={24} color="#FFF" />
+        </TouchableOpacity>
         {renderVideoModal()}{renderIndicationsModal()}
       </SafeAreaView>
     );
@@ -629,6 +679,9 @@ export default function TrainingModeScreen() {
              <TextInput style={[styles.logInput, { borderColor: colors.border, marginTop: 10, minHeight: 60, backgroundColor: colors.background, color: colors.textPrimary }]} multiline placeholder="Anotaciones de la serie..." placeholderTextColor={colors.textSecondary} value={logs[currentExIndex]?.note} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} />
           </View>
         </ScrollView>
+        <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
+          <Ionicons name="list" size={24} color="#FFF" />
+        </TouchableOpacity>
         <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else setFinished(true); }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
         {renderVideoModal()}{renderIndicationsModal()}
       </SafeAreaView>
@@ -647,4 +700,5 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }, rpeCircle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 13, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, fontSize: 15, textAlignVertical: 'top' },
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 }, bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 24, maxHeight: '90%' },
+  floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 }
 });
