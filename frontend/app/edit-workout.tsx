@@ -256,8 +256,8 @@ export default function EditWorkoutScreen() {
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>TÍTULO Y FECHA</Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TextInput style={[styles.input, { flex: 2, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} value={title} onChangeText={setTitle} placeholder="Ej: Core y Estabilidad" placeholderTextColor={colors.textSecondary} />
-              <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" placeholderTextColor={colors.textSecondary} />
+              <TextInput style={[styles.input, { flex: 2, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} value={title} onChangeText={setTitle} placeholder="Ej: Core y Estabilidad" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+              <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
             </View>
           </View>
 
@@ -296,7 +296,7 @@ export default function EditWorkoutScreen() {
               value={notes}
               onChangeText={setNotes}
               placeholder="Ej: Calentamiento de 10 min. Enfoque en la técnica hoy..."
-              placeholderTextColor={colors.textSecondary}
+              placeholderTextColor="rgba(150, 150, 150, 0.5)"
               multiline
             />
           </View>
@@ -315,7 +315,7 @@ export default function EditWorkoutScreen() {
               {exercises.map((ex, i) => (
                 <View key={ex._key} style={[styles.exerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={styles.exerciseHeader}>
-                    <TextInput style={[styles.exNameInput, { color: colors.textPrimary }]} value={ex.name} onChangeText={v => updateExercise(i, 'name', v)} placeholder="Nombre del ejercicio" placeholderTextColor={colors.textSecondary} />
+                    <TextInput style={[styles.exNameInput, { color: colors.textPrimary }]} value={ex.name} onChangeText={v => updateExercise(i, 'name', v)} placeholder="Nombre del ejercicio" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
                     <View style={styles.exActions}>
                       {i > 0 && <TouchableOpacity onPress={() => moveExerciseUp(i)} style={styles.iconBtn}><Ionicons name="arrow-up" size={18} color={colors.textSecondary} /></TouchableOpacity>}
                       {i < exercises.length - 1 && <TouchableOpacity onPress={() => moveExerciseDown(i)} style={styles.iconBtn}><Ionicons name="arrow-down" size={18} color={colors.textSecondary} /></TouchableOpacity>}
@@ -324,21 +324,29 @@ export default function EditWorkoutScreen() {
                   </View>
                   <View style={[styles.exDetailsContainer, { borderTopColor: colors.border }]}>
                     <View style={styles.exDetailsRow}>
-                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Series</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.sets} onChangeText={v => updateExercise(i, 'sets', v)} placeholder="-" keyboardType="numeric" /></View>
-                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Reps</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.reps} onChangeText={v => updateExercise(i, 'reps', v)} placeholder="-" keyboardType="numeric" /></View>
-                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Dur. (s)</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.duration} onChangeText={v => updateExercise(i, 'duration', v)} placeholder="Ej: 90s o 1m" /></View>
+                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Series</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.sets} onChangeText={v => updateExercise(i, 'sets', v)} placeholder="-" placeholderTextColor="rgba(150, 150, 150, 0.5)" keyboardType="numeric" /></View>
+                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Reps</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.reps} onChangeText={v => updateExercise(i, 'reps', v)} placeholder="-" placeholderTextColor="rgba(150, 150, 150, 0.5)" keyboardType="numeric" /></View>
+                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Dur. (s)</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.duration} onChangeText={v => updateExercise(i, 'duration', v)} placeholder="Ej: 90s" placeholderTextColor="rgba(150, 150, 150, 0.5)" /></View>
                     </View>
-                    <View style={[styles.exDetailsRow, { borderTopWidth: 0 }]}>
-                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Desc. Serie</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.rest} onChangeText={v => updateExercise(i, 'rest', v)} placeholder="Ej: 2m" /></View>
-                      <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Desc. Ejerc.</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.rest_exercise} onChangeText={v => updateExercise(i, 'rest_exercise', v)} placeholder="Ej: 1m" /></View>
+                    <View style={[styles.exDetailsRow, { borderTopWidth: 0, backgroundColor: 'rgba(59, 130, 246, 0.03)' }]}>
+                      <View style={styles.exDetail}>
+                        <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}><Ionicons name="timer-outline" size={10}/> Desc. Serie</Text>
+                        <TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.rest} onChangeText={v => updateExercise(i, 'rest', v)} placeholder="Ej: 2m" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+                        <Text style={styles.helpText}>Al acabar 1 serie</Text>
+                      </View>
+                      <View style={styles.exDetail}>
+                        <Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}><Ionicons name="timer-outline" size={10}/> Desc. Ejercicio</Text>
+                        <TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.rest_exercise} onChangeText={v => updateExercise(i, 'rest_exercise', v)} placeholder="Ej: 1m" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+                        <Text style={styles.helpText}>Antes del próximo Ej.</Text>
+                      </View>
                     </View>
                   </View>
                   <View style={[styles.mediaContainer, { borderTopColor: colors.border }]}>
                     <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
-                    <TextInput style={[styles.urlInput, { color: colors.textPrimary }]} value={ex.video_url} onChangeText={v => updateExercise(i, 'video_url', v)} placeholder="URL de YouTube o Drive (opcional)" placeholderTextColor={colors.textSecondary} autoCapitalize="none" />
+                    <TextInput style={[styles.urlInput, { color: colors.textPrimary }]} value={ex.video_url} onChangeText={v => updateExercise(i, 'video_url', v)} placeholder="URL de YouTube o Drive (opcional)" placeholderTextColor="rgba(150, 150, 150, 0.5)" autoCapitalize="none" />
                   </View>
                   <View style={[styles.notesContainer, { borderTopColor: colors.border }]}>
-                    <TextInput style={[styles.notesInput, { color: colors.textPrimary }]} value={ex.exercise_notes} onChangeText={v => updateExercise(i, 'exercise_notes', v)} placeholder="Añadir observaciones técnicas..." placeholderTextColor={colors.textSecondary} />
+                    <TextInput style={[styles.notesInput, { color: colors.textPrimary }]} value={ex.exercise_notes} onChangeText={v => updateExercise(i, 'exercise_notes', v)} placeholder="Añadir observaciones técnicas..." placeholderTextColor="rgba(150, 150, 150, 0.5)" />
                   </View>
                 </View>
               ))}
@@ -350,17 +358,33 @@ export default function EditWorkoutScreen() {
               {hiitBlocks.map((block, bIndex) => (
                 <View key={block._key} style={[styles.hiitBlock, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                   <View style={[styles.hiitHeader, { borderBottomColor: colors.border }]}>
-                    <TextInput style={[styles.hiitNameInput, { color: colors.textPrimary }]} value={block.name} onChangeText={v => updateHiitBlock(bIndex, 'name', v)} placeholder="Nombre del Bloque" placeholderTextColor={colors.textSecondary} />
+                    <TextInput style={[styles.hiitNameInput, { color: colors.textPrimary }]} value={block.name} onChangeText={v => updateHiitBlock(bIndex, 'name', v)} placeholder="Nombre del Bloque" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
                     {hiitBlocks.length > 1 && <TouchableOpacity onPress={() => removeHiitBlock(bIndex)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>}
                   </View>
                   <View style={styles.hiitConfigGrid}>
                     <View style={styles.hiitConfigRow}>
-                      <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Vueltas</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.sets} onChangeText={v => updateHiitBlock(bIndex, 'sets', v)} keyboardType="numeric" placeholder="Ej: 3" /></View>
-                      <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Desc. Ej.</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_exercise} onChangeText={v => updateHiitBlock(bIndex, 'rest_exercise', v)} placeholder="Ej: 15s" /></View>
+                      <View style={styles.hiitConfigItem}>
+                        <Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}><Ionicons name="refresh" size={12}/> Vueltas</Text>
+                        <TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.sets} onChangeText={v => updateHiitBlock(bIndex, 'sets', v)} keyboardType="numeric" placeholder="Ej: 3" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+                        <Text style={styles.helpText}>Repeticiones del circuito</Text>
+                      </View>
+                      <View style={styles.hiitConfigItem}>
+                        <Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}><Ionicons name="timer-outline" size={12}/> Entre Ejercicios</Text>
+                        <TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_exercise} onChangeText={v => updateHiitBlock(bIndex, 'rest_exercise', v)} placeholder="Ej: 15s" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+                        <Text style={styles.helpText}>Pausa corta al cambiar de ej.</Text>
+                      </View>
                     </View>
                     <View style={styles.hiitConfigRow}>
-                      <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Desc. Vuelta</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_block} onChangeText={v => updateHiitBlock(bIndex, 'rest_block', v)} placeholder="Ej: 1m" /></View>
-                      <View style={styles.hiitConfigItem}><Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}>Sig. Bloque</Text><TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_between_blocks} onChangeText={v => updateHiitBlock(bIndex, 'rest_between_blocks', v)} placeholder="Ej: 2m" /></View>
+                      <View style={styles.hiitConfigItem}>
+                        <Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}><Ionicons name="timer-outline" size={12}/> Entre Vueltas</Text>
+                        <TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_block} onChangeText={v => updateHiitBlock(bIndex, 'rest_block', v)} placeholder="Ej: 1m" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+                        <Text style={styles.helpText}>Pausa al acabar 1 vuelta entera</Text>
+                      </View>
+                      <View style={styles.hiitConfigItem}>
+                        <Text style={[styles.hiitConfigLabel, { color: colors.textSecondary }]}><Ionicons name="timer-outline" size={12}/> Cambio Bloque</Text>
+                        <TextInput style={[styles.hiitConfigInput, { color: colors.textPrimary, borderColor: colors.border }]} value={block.rest_between_blocks} onChangeText={v => updateHiitBlock(bIndex, 'rest_between_blocks', v)} placeholder="Ej: 2m" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+                        <Text style={styles.helpText}>Pausa antes del Bloque {bIndex + 2}</Text>
+                      </View>
                     </View>
                   </View>
                   <View style={styles.hiitExList}>
@@ -368,7 +392,7 @@ export default function EditWorkoutScreen() {
                       <View key={ex._key} style={styles.hiitExContainer}>
                         <View style={styles.hiitExRow}>
                           <View style={styles.hiitExNum}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>{eIndex + 1}</Text></View>
-                          <TextInput style={[styles.hiitExInput, { flex: 2, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'name', v)} placeholder="Ej: Burpees" placeholderTextColor={colors.textSecondary} />
+                          <TextInput style={[styles.hiitExInput, { flex: 2, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'name', v)} placeholder="Ej: Burpees" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: 60 }}>
                              {eIndex > 0 && <TouchableOpacity onPress={() => moveHiitExerciseUp(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="arrow-up" size={16} color={colors.textSecondary} /></TouchableOpacity>}
                              {eIndex < block.exercises.length - 1 && <TouchableOpacity onPress={() => moveHiitExerciseDown(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="arrow-down" size={16} color={colors.textSecondary} /></TouchableOpacity>}
@@ -376,11 +400,11 @@ export default function EditWorkoutScreen() {
                           </View>
                         </View>
                         <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, paddingLeft: 28 }}>
-                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="Aviso (Ej: 15r)" placeholderTextColor={colors.textSecondary} />
-                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration', v)} placeholder="Ej: 45s" placeholderTextColor={colors.textSecondary} />
+                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="Aviso (Ej: 15 reps)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration', v)} placeholder="Tiempo (Ej: 45s)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
                         </View>
-                        <TextInput style={[styles.hiitNotesInput, { color: colors.textPrimary, borderColor: colors.border }]} value={ex.video_url} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'video_url', v)} placeholder="URL de vídeo (opcional)" placeholderTextColor={colors.textSecondary} />
-                        <TextInput style={[styles.hiitNotesInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 4 }]} value={ex.exercise_notes} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'exercise_notes', v)} placeholder="Observaciones técnicas (opcional)" placeholderTextColor={colors.textSecondary} />
+                        <TextInput style={[styles.hiitNotesInput, { color: colors.textPrimary, borderColor: colors.border }]} value={ex.video_url} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'video_url', v)} placeholder="URL de vídeo (opcional)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+                        <TextInput style={[styles.hiitNotesInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 4 }]} value={ex.exercise_notes} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'exercise_notes', v)} placeholder="Observaciones técnicas (opcional)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
                       </View>
                     ))}
                     <TouchableOpacity onPress={() => addHiitExercise(bIndex)} style={styles.addHiitExBtn}><Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>+ Añadir ejercicio al bloque</Text></TouchableOpacity>
@@ -491,7 +515,7 @@ const styles = StyleSheet.create({
   hiitNotesInput: { borderWidth: 1, borderRadius: 8, padding: 8, fontSize: 12, fontStyle: 'italic', marginTop: 5, marginLeft: 28, minWidth: 0 }, 
   addHiitExBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, marginLeft: 20 }, 
   errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 },
-
+  helpText: { fontSize: 9, color: '#888', marginTop: 4, textAlign: 'center', paddingHorizontal: 2 }, // ESTILO NUEVO
   // Estilos Modal Mapa de Músculos
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
