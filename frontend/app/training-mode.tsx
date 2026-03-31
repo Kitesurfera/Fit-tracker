@@ -159,7 +159,16 @@ export default function TrainingModeScreen() {
   useEffect(() => {
     async function initAudio() {
       try {
-        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: true });
+        await Audio.setAudioModeAsync({ 
+          playsInSilentModeIOS: true, 
+          staysActiveInBackground: true,
+          // --- AQUÍ ESTÁ LA MAGIA PARA NO PAUSAR SPOTIFY ---
+          interruptionModeIOS: Audio.InterruptionModeIOS.DuckOthers,
+          interruptionModeAndroid: Audio.InterruptionModeAndroid.DuckOthers,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false
+          // ------------------------------------------------
+        });
         const { sound: beep } = await Audio.Sound.createAsync(require('../assets/beep.mp3'));
         const { sound: finish } = await Audio.Sound.createAsync(require('../assets/finish.mp3'));
         beepSoundRef.current = beep;
@@ -175,6 +184,7 @@ export default function TrainingModeScreen() {
       try { Speech.stop(); } catch(e) {} 
     };
   }, []);
+
 
   const playSound = async (type: 'beep' | 'finish') => {
     try {
