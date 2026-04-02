@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  Platform, Alert, ScrollView, Linking, ActivityIndicator, KeyboardAvoidingView, Switch
+  Platform, Alert, ScrollView, Linking, ActivityIndicator, KeyboardAvoidingView, Switch, Share
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,7 +30,7 @@ export default function SettingsScreen() {
   });
   const [savingMeasures, setSavingMeasures] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [soundsEnabled, setSoundsEnabled] = useState(true); // NUEVO ESTADO
+  const [soundsEnabled, setSoundsEnabled] = useState(true);
 
   // Cargar preferencias al entrar
   useEffect(() => {
@@ -113,9 +113,16 @@ export default function SettingsScreen() {
     }
   };
 
-  const handleSubscribeCalendar = () => {
-    const backendIcsUrl = `webcal://fit-tracker-backend-rtx2.onrender.com/api/calendar/${user?.id}/entrenamientos.ics`;
-    Linking.openURL(backendIcsUrl);
+  const handleShareApp = async () => {
+    try {
+      await Share.share({
+        message: '¡Únete a Fit Tracker y entrena conmigo! Regístrate aquí: https://fit-tracker-azure-iota.vercel.app/',
+        url: 'https://fit-tracker-azure-iota.vercel.app/', // Específico para iOS
+        title: 'Fit Tracker App' // Específico para Android
+      });
+    } catch (error: any) {
+      console.error('Error al compartir:', error.message);
+    }
   };
 
   const handleLogout = async () => {
@@ -193,7 +200,6 @@ export default function SettingsScreen() {
 
             <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
-            {/* NUEVO TOGGLE DE SONIDOS (BEEP/FINISH) */}
             <View style={styles.settingRowAction}>
               <View style={styles.settingIconText}>
                 <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}><Ionicons name="musical-notes-outline" size={22} color={colors.primary} /></View>
@@ -203,7 +209,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          {isAthlete && (
+          {isAthlete ? (
             <>
               <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ACTUALIZAR MEDICIONES</Text>
               <View style={[styles.card, { backgroundColor: colors.surface }]}>
@@ -217,6 +223,22 @@ export default function SettingsScreen() {
                 </View>
                 <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary, marginTop: 15 }]} onPress={handleSaveMeasurements} disabled={savingMeasures}>
                   {savingMeasures ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Guardar Mediciones</Text>}
+                </TouchableOpacity>
+              </View>
+            </>
+          ) : (
+            <>
+              <Text style={[styles.sectionTitle, { marginTop: 25 }]}>COMPARTIR APP</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface }]}>
+                <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 14, lineHeight: 20 }}>
+                  Comparte este enlace con tus deportistas para que se registren fácilmente en tu equipo.
+                </Text>
+                <TouchableOpacity 
+                  style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 10 }]} 
+                  onPress={handleShareApp}
+                >
+                  <Ionicons name="share-social-outline" size={20} color="#FFF" />
+                  <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Compartir Enlace</Text>
                 </TouchableOpacity>
               </View>
             </>
