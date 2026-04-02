@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
-  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView
+  KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
+  Alert, Linking
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,6 +24,19 @@ export default function AddAthleteScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  const notifyAthlete = (method: 'whatsapp' | 'email') => {
+    const loginUrl = "https://fit-tracker-azure-iota.vercel.app/";
+    const text = `¡Hola ${name}! He creado tu perfil de entrenamiento en Fit Tracker. Puedes iniciar sesión aquí: ${loginUrl}\n\nTu Email: ${email}\nTu Contraseña: ${password}`;
+
+    if (method === 'whatsapp' && phone) {
+      const cleanPhone = phone.replace(/\D/g, '');
+      Linking.openURL(`https://wa.me/${cleanPhone}?text=${encodeURIComponent(text)}`);
+    } else if (method === 'email') {
+      Linking.openURL(`mailto:${email}?subject=${encodeURIComponent("Tu acceso a Fit Tracker")}&body=${encodeURIComponent(text)}`);
+    }
+    router.back();
+  };
+
   const handleCreate = async () => {
     setError('');
     if (!name || !email || !password) {
@@ -32,7 +46,31 @@ export default function AddAthleteScreen() {
     setSubmitting(true);
     try {
       await api.createAthlete({ name, email, password, sport, phone, gender });
-      router.back();
+      
+      if (Platform.OS === 'web') {
+        const wantsToNotify = window.confirm("Deportista creado con éxito. ¿Quieres avisarle por email/WhatsApp con sus claves?");
+        if (wantsToNotify) {
+          if (phone) notifyAthlete('whatsapp');
+          else notifyAthlete('email');
+        } else {
+          router.back();
+        }
+      } else {
+        const buttons: any[] = [
+          { text: "No, volver", style: "cancel", onPress: () => router.back() },
+          { text: "Por Email", onPress: () => notifyAthlete('email') }
+        ];
+
+        if (phone) {
+          buttons.push({ text: "Por WhatsApp", onPress: () => notifyAthlete('whatsapp') });
+        }
+
+        Alert.alert(
+          "¡Deportista Creado!",
+          "¿Quieres enviarle un mensaje automático con el enlace de la app y sus claves de acceso?",
+          buttons
+        );
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
