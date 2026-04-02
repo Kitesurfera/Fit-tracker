@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { router } from 'expo-router'; // <-- AÑADIDO PARA REDIRIGIR
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -15,8 +16,36 @@ const getAuthHeaders = async () => {
   }
 };
 
+// --- NUEVO WRAPPER PARA INTERCEPTAR 401 ---
+const authFetch = async (url: string, options?: RequestInit) => {
+  const res = await fetch(url, options);
+  
+  if (res.status === 401) {
+    // 1. Limpiamos la memoria del dispositivo
+    await AsyncStorage.removeItem('auth_token');
+    await AsyncStorage.removeItem('user_data');
+    
+    // 2. Echamos al usuario a la pantalla de Login
+    if (Platform.OS === 'web') {
+      window.location.href = '/';
+    } else {
+      try {
+        router.replace('/');
+      } catch (e) {
+        console.log("No se pudo redirigir automáticamente:", e);
+      }
+    }
+    
+    // 3. Lanzamos error para detener la ejecución de lo que estuviera haciendo
+    throw new Error('Sesión expirada. Por favor, vuelve a iniciar sesión.');
+  }
+  
+  return res;
+};
+
 export const api = {
   // --- AUTENTICACIÓN ---
+  // IMPORTANTE: Aquí usamos fetch normal porque 401 = credenciales incorrectas
   login: async (email, password) => {
     const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST',
@@ -46,9 +75,10 @@ export const api = {
   },
 
   // --- NOTIFICACIONES PUSH ---
+  // A partir de aquí, todo usa authFetch
   subscribeWebPush: async (subscriptionData: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/notifications/subscribe`, {
+    const res = await authFetch(`${BACKEND_URL}/api/notifications/subscribe`, {
       method: 'POST',
       headers,
       body: JSON.stringify(subscriptionData),
@@ -58,7 +88,7 @@ export const api = {
 
   testWebPush: async () => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/notifications/test`, {
+    const res = await authFetch(`${BACKEND_URL}/api/notifications/test`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ title: "¡Prueba!", message: "El sistema Web Push funciona." }),
@@ -69,7 +99,7 @@ export const api = {
   // --- WELLNESS ---
   postWellness: async (data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/wellness`, {
+    const res = await authFetch(`${BACKEND_URL}/api/wellness`, {
       method: 'POST', headers, body: JSON.stringify(data),
     });
     if (!res.ok) {
@@ -81,7 +111,7 @@ export const api = {
 
   getWellnessHistory: async (athleteId: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/wellness/history/${athleteId}`, { headers });
+    const res = await authFetch(`${BACKEND_URL}/api/wellness/history/${athleteId}`, { headers });
     if (!res.ok) throw new Error('No se pudo obtener el historial');
     return res.json();
   },
@@ -89,26 +119,26 @@ export const api = {
   getSummary: async (athleteId?: string) => {
     const headers = await getAuthHeaders();
     const url = athleteId ? `${BACKEND_URL}/api/analytics/summary?athlete_id=${athleteId}` : `${BACKEND_URL}/api/analytics/summary`;
-    const res = await fetch(url, { headers });
+    const res = await authFetch(url, { headers });
     return res.json();
   },
 
   // --- ATLETAS ---
   getAthletes: async () => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/athletes`, { headers });
+    const res = await authFetch(`${BACKEND_URL}/api/athletes`, { headers });
     return res.json();
   },
 
   getAthlete: async (id: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/athletes/${id}`, { headers });
+    const res = await authFetch(`${BACKEND_URL}/api/athletes/${id}`, { headers });
     return res.json();
   },
 
   createAthlete: async (data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/athletes`, {
+    const res = await authFetch(`${BACKEND_URL}/api/athletes`, {
       method: 'POST', headers, body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Error al crear deportista');
@@ -117,7 +147,7 @@ export const api = {
 
   updateAthlete: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/athletes/${id}`, {
+    const res = await authFetch(`${BACKEND_URL}/api/athletes/${id}`, {
       method: 'PUT', headers, body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('Error al actualizar deportista');
@@ -126,7 +156,7 @@ export const api = {
 
   deleteAthlete: async (id: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/athletes/${id}`, {
+    const res = await authFetch(`${BACKEND_URL}/api/athletes/${id}`, {
       method: 'DELETE', headers,
     });
     if (!res.ok) throw new Error('Error al eliminar deportista');
@@ -135,7 +165,7 @@ export const api = {
 
   updateProfile: async (data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/profile`, {
+    const res = await authFetch(`${BACKEND_URL}/api/profile`, {
       method: 'PUT', headers, body: JSON.stringify(data),
     });
     return res.json();
@@ -149,13 +179,13 @@ export const api = {
       const query = new URLSearchParams(params as any).toString();
       url += `?${query}`;
     }
-    const res = await fetch(url, { headers });
+    const res = await authFetch(url, { headers });
     return res.json();
   },
 
   createWorkout: async (data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/workouts`, {
+    const res = await authFetch(`${BACKEND_URL}/api/workouts`, {
       method: 'POST', headers, body: JSON.stringify(data),
     });
     return res.json();
@@ -163,7 +193,7 @@ export const api = {
 
   createWorkoutsBulk: async (data: { workouts: any[] }) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/workouts/bulk`, {
+    const res = await authFetch(`${BACKEND_URL}/api/workouts/bulk`, {
       method: 'POST', headers, body: JSON.stringify(data),
     });
     return res.json();
@@ -171,7 +201,7 @@ export const api = {
 
   updateWorkout: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/workouts/${id}`, {
+    const res = await authFetch(`${BACKEND_URL}/api/workouts/${id}`, {
       method: 'PUT', headers, body: JSON.stringify(data),
     });
     if (!res.ok) throw new Error('No se pudo actualizar el entrenamiento');
@@ -180,7 +210,7 @@ export const api = {
 
   deleteWorkout: async (id: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/workouts/${id}`, { method: 'DELETE', headers });
+    const res = await authFetch(`${BACKEND_URL}/api/workouts/${id}`, { method: 'DELETE', headers });
     return res.json();
   },
 
@@ -188,7 +218,7 @@ export const api = {
   getPeriodizationTree: async (athleteId: string) => {
     try {
       const headers = await getAuthHeaders();
-      const res = await fetch(`${BACKEND_URL}/api/periodization/tree/${athleteId}`, { headers });
+      const res = await authFetch(`${BACKEND_URL}/api/periodization/tree/${athleteId}`, { headers });
       
       if (!res.ok) {
         console.warn(`Error API Tree (Status: ${res.status})`);
@@ -214,7 +244,7 @@ export const api = {
 
   createMacrociclo: async (data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/macrociclos`, {
+    const res = await authFetch(`${BACKEND_URL}/api/macrociclos`, {
       method: 'POST', headers, body: JSON.stringify(data),
     });
     return res.json();
@@ -222,7 +252,7 @@ export const api = {
 
   updateMacrociclo: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/macrociclos/${id}`, {
+    const res = await authFetch(`${BACKEND_URL}/api/macrociclos/${id}`, {
       method: 'PUT', headers, body: JSON.stringify(data),
     });
     return res.json();
@@ -230,13 +260,13 @@ export const api = {
 
   deleteMacrociclo: async (id: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/macrociclos/${id}`, { method: 'DELETE', headers });
+    const res = await authFetch(`${BACKEND_URL}/api/macrociclos/${id}`, { method: 'DELETE', headers });
     return res.json();
   },
 
   createMicrociclo: async (data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/microciclos`, {
+    const res = await authFetch(`${BACKEND_URL}/api/microciclos`, {
       method: 'POST', headers, body: JSON.stringify(data),
     });
     return res.json();
@@ -244,7 +274,7 @@ export const api = {
 
   updateMicrociclo: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/microciclos/${id}`, {
+    const res = await authFetch(`${BACKEND_URL}/api/microciclos/${id}`, {
       method: 'PUT', headers, body: JSON.stringify(data),
     });
     return res.json();
@@ -252,7 +282,7 @@ export const api = {
 
   deleteMicrociclo: async (id: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/microciclos/${id}`, { method: 'DELETE', headers });
+    const res = await authFetch(`${BACKEND_URL}/api/microciclos/${id}`, { method: 'DELETE', headers });
     return res.json();
   },
 
@@ -264,14 +294,14 @@ export const api = {
       const query = new URLSearchParams(params as any).toString();
       url += `?${query}`;
     }
-    const res = await fetch(url, { headers });
+    const res = await authFetch(url, { headers });
     if (!res.ok) throw new Error('Error al obtener los tests');
     return res.json();
   },
 
   createTest: async (data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/tests`, {
+    const res = await authFetch(`${BACKEND_URL}/api/tests`, {
       method: 'POST', headers, body: JSON.stringify(data),
     });
     if (!res.ok) {
@@ -283,7 +313,7 @@ export const api = {
 
   updateTest: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/tests/${id}`, {
+    const res = await authFetch(`${BACKEND_URL}/api/tests/${id}`, {
       method: 'PUT', headers, body: JSON.stringify(data),
     });
     if (!res.ok) {
@@ -295,7 +325,7 @@ export const api = {
 
   deleteTest: async (id: string) => {
     const headers = await getAuthHeaders();
-    const res = await fetch(`${BACKEND_URL}/api/tests/${id}`, { method: 'DELETE', headers });
+    const res = await authFetch(`${BACKEND_URL}/api/tests/${id}`, { method: 'DELETE', headers });
     if (!res.ok) throw new Error('Error al eliminar el test');
     return res.json();
   },
@@ -323,7 +353,7 @@ export const api = {
       } as any);
     }
 
-    const res = await fetch(`${BACKEND_URL}/api/upload`, { 
+    const res = await authFetch(`${BACKEND_URL}/api/upload`, { 
       method: 'POST',
       headers,
       body: formData,
