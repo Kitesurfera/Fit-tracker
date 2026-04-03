@@ -193,7 +193,7 @@ export default function TrainingModeScreen() {
   }, []);
 
   const playSound = async (type: 'beep' | 'finish') => {
-    if (!soundsEnabled) return;
+    if (!soundsEnabled || finished) return;
     try {
       if (type === 'beep') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } 
       else { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }
@@ -290,18 +290,33 @@ export default function TrainingModeScreen() {
               setSleepHours(currentWorkout.completion_data.sleep_hours || ''); if (currentWorkout.completion_data.sore_joints) setSoreJoints(currentWorkout.completion_data.sore_joints);
               const savedVideos: Record<string, string> = {}; 
               if (!isWorkoutHiit) {
-                const logs: Record<number, any> = {};
+                const loadedLogs: Record<number, any> = {};
+                const loadedSets: Record<number, SetStatus[]> = {};
                 currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
-                  logs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '' };
+                  loadedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '' };
                   if (res.recorded_video_url) savedVideos[idx.toString()] = res.recorded_video_url;
+                  // Recuperamos los estados de las series para el resumen visual
+                  if (res.set_details) {
+                    loadedSets[idx] = res.set_details.map((sd: any) => sd.status);
+                  } else {
+                    loadedSets[idx] = Array(res.total_sets).fill('completed');
+                  }
                 });
-                setLogs(logs);
+                setLogs(loadedLogs);
+                setSetsStatus(loadedSets);
               } else {
                 const hLogs: Record<string, any> = {};
+                const hSkipped: Record<string, number> = {};
                 currentWorkout.completion_data.hiit_results?.forEach((block: any, bIdx: number) => {
-                  block.hiit_exercises?.forEach((ex: any, eIdx: number) => { const key = `${bIdx}-${eIdx}`; if (ex.recorded_video_url) savedVideos[key] = ex.recorded_video_url; if (ex.athlete_note) hLogs[key] = { note: ex.athlete_note }; });
+                  block.hiit_exercises?.forEach((ex: any, eIdx: number) => { 
+                    const key = `${bIdx}-${eIdx}`; 
+                    if (ex.recorded_video_url) savedVideos[key] = ex.recorded_video_url; 
+                    if (ex.athlete_note) hLogs[key] = { note: ex.athlete_note }; 
+                    if (ex.skipped_rounds) hSkipped[key] = ex.skipped_rounds;
+                  });
                 });
                 setHiitLogs(hLogs);
+                setHiitSkipped(hSkipped);
               }
               setRecordedVideos(savedVideos);
             }
@@ -520,6 +535,63 @@ export default function TrainingModeScreen() {
     }
   };
 
+  const renderSessionSummary = () => {
+    if (!workout?.exercises) return null;
+    
+    if (isHiit) {
+      return workout.exercises.map((block: any, bIdx: number) => (
+        <View key={bIdx} style={[styles.summaryCard, { backgroundColor: colors.surfaceHighlight }]}>
+          <Text style={{ fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>{block.name}</Text>
+          {block.hiit_exercises?.map((ex: any, eIdx: number) => {
+            const key = `${bIdx}-${eIdx}`;
+            const note = hiitLogs[key]?.note;
+            const vid = recordedVideos[key];
+            const skipped = hiitSkipped[key] || 0;
+            return (
+              <View key={eIdx} style={{ marginTop: 8, paddingLeft: 12, borderLeftWidth: 3, borderLeftColor: colors.primary }}>
+                <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{ex.name}</Text>
+                {skipped > 0 && <Text style={{ color: colors.error, fontSize: 13, marginTop: 2 }}>⏭ Rondas saltadas: {skipped}</Text>}
+                {note ? <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 2 }}>📝 Nota: {note}</Text> : null}
+                {vid ? <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '700', marginTop: 2 }}>📹 Video técnico guardado</Text> : null}
+              </View>
+            );
+          })}
+        </View>
+      ));
+    } else {
+      return workout.exercises.map((ex: any, i: number) => {
+        const s = setsStatus[i] || [];
+        const comp = s.filter(x => x === 'completed').length;
+        const skip = s.filter(x => x === 'skipped').length;
+        const tot = parseInt(ex.sets) || 1;
+        const log = logs[i];
+        const vid = recordedVideos[i.toString()];
+
+        return (
+          <View key={i} style={[styles.summaryCard, { backgroundColor: colors.surfaceHighlight }]}>
+            <Text style={{ fontWeight: '900', color: colors.textPrimary, fontSize: 15 }}>{i + 1}. {ex.name}</Text>
+            <View style={{ flexDirection: 'row', gap: 15, marginTop: 8, flexWrap: 'wrap' }}>
+              <Text style={{ color: colors.success, fontSize: 14, fontWeight: '700' }}>✓ {comp} series</Text>
+              {skip > 0 && <Text style={{ color: colors.error, fontSize: 14, fontWeight: '700' }}>⏭ {skip} saltadas</Text>}
+              <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '700' }}>/ {tot} total</Text>
+            </View>
+            {(log?.weight || log?.reps) && (
+              <Text style={{ color: colors.textPrimary, fontSize: 14, marginTop: 6, fontWeight: '600' }}>
+                Registro: {log.weight ? `${log.weight}kg ` : ''}{log.reps ? `x ${log.reps} reps` : ''}
+              </Text>
+            )}
+            {log?.note && (
+              <Text style={{ color: colors.textSecondary, fontSize: 14, fontStyle: 'italic', marginTop: 6 }}>📝 Nota: {log.note}</Text>
+            )}
+            {vid && (
+              <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '700', marginTop: 6 }}>📹 Video técnico guardado</Text>
+            )}
+          </View>
+        );
+      });
+    }
+  };
+
   const renderIndicationsModal = () => (
     <Modal visible={showIndicationsModal} transparent animationType="slide">
       <View style={styles.modalOverlay}>
@@ -579,7 +651,8 @@ export default function TrainingModeScreen() {
               <Text style={{ fontSize: 11, fontWeight: '900', color: '#888' }}>DORSAL</Text>
             </View>
 
-            <View style={{ alignItems: 'center', justifyContent: 'center', height: 350 }}>
+            {/* CORRECCIÓN: Contenedor con altura explícita mayor para evitar que los toques queden fuera del área del componente al escalarse */}
+            <View style={{ width: '100%', height: 420, alignItems: 'center', justifyContent: 'center' }}>
                 <Body 
                   data={data} 
                   gender="female" 
@@ -613,6 +686,7 @@ export default function TrainingModeScreen() {
           <View style={styles.finishedIconContainer}><Ionicons name="trophy" size={80} color={colors.warning || '#F59E0B'} /></View>
           <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
           <Text style={[styles.finishedSubtitle, { color: colors.textSecondary }]}>¿Cómo te has sentido hoy?</Text>
+          
           {!workout.completed && (
             <View style={{ width: '100%', gap: 24, marginTop: 20 }}>
               <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>NIVEL DE ESFUERZO (RPE)</Text>
@@ -623,9 +697,16 @@ export default function TrainingModeScreen() {
               <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12 }]}>OBSERVACIONES</Text><TextInput style={[styles.obsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} multiline placeholder="¿Algo a destacar?..." placeholderTextColor={colors.textSecondary} value={observations} onChangeText={setObservations} /></View>
             </View>
           )}
+
+          {/* NUEVA SECCIÓN: Resumen del entrenamiento antes o después de guardar */}
+          <View style={{ width: '100%', marginTop: 30 }}>
+            <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 15, textAlign: 'center' }]}>RESUMEN DE EJERCICIOS</Text>
+            {renderSessionSummary()}
+          </View>
+
           {workout.completed && workout.completion_data && (
             <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
-              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Resumen guardado:</Text>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Feedback General:</Text>
               <Text style={{ color: colors.textPrimary }}>RPE: {workout.completion_data.rpe}/10</Text>
               {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5 }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
               {workout.observations && <Text style={{ color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
@@ -697,6 +778,7 @@ const styles = StyleSheet.create({
   activeLogContainer: { width: '100%' }, logInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 },
   finishedIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.1)' }, finishedTitle: { fontSize: 26, fontWeight: '900', textAlign: 'center' }, finishedSubtitle: { fontSize: 15, textAlign: 'center', marginBottom: 20 }, finishWorkoutBtn: { padding: 18, borderRadius: 16, alignItems: 'center', width: '100%', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
   label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }, rpeCircle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 13, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, fontSize: 15, textAlignVertical: 'top' },
+  summaryCard: { padding: 16, borderRadius: 16, marginBottom: 12, width: '100%' },
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 }, bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 24, maxHeight: '90%' },
   floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 }
