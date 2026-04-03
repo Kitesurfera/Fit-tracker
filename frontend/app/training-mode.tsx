@@ -27,18 +27,13 @@ const { width, height: screenHeight } = Dimensions.get('window');
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
-const SLEEP_HOURS_OPTIONS = ['<6', '6', '7', '8', '9+'];
-
 const SLUG_TRANSLATIONS: Record<string, string> = {
   'chest': 'Pecho', 'upper-back': 'Espalda Alta', 'lower-back': 'Lumbar',
   'quadriceps': 'Cuádriceps', 'hamstring': 'Isquiotibiales', 'gluteal': 'Glúteos',
-  'gluteus': 'Glúteos',
-  'front-deltoids': 'Hombro Frontal', 'back-deltoids': 'Hombro Trasero',
-  'deltoids': 'Hombros',
-  'shoulders': 'Hombros',
-  'biceps': 'Bíceps', 'triceps': 'Tríceps', 'abs': 'Abdomen', 'obliques': 'Oblicuos',
-  'calves': 'Gemelos', 'forearm': 'Antebrazo', 'adductor': 'Aductores', 'abductors': 'Abductores',
-  'adductors': 'Aductores',
+  'gluteus': 'Glúteos', 'front-deltoids': 'Hombro Frontal', 'back-deltoids': 'Hombro Trasero',
+  'deltoids': 'Hombros', 'shoulders': 'Hombros', 'biceps': 'Bíceps', 'triceps': 'Tríceps',
+  'abs': 'Abdomen', 'obliques': 'Oblicuos', 'calves': 'Gemelos', 'forearm': 'Antebrazo',
+  'adductor': 'Aductores', 'abductors': 'Abductores', 'adductors': 'Aductores',
   'neck': 'Cuello', 'trapezius': 'Trapecio', 'head': 'Cabeza', 'hands': 'Manos', 'feet': 'Pies',
   'knees': 'Rodillas', 'ankles': 'Tobillos'
 };
@@ -86,10 +81,8 @@ export default function TrainingModeScreen() {
   
   const [currentExIndex, setCurrentExIndex] = useState(0);
   const [setsStatus, setSetsStatus] = useState<Record<number, SetStatus[]>>({});
-  
-  const [logs, setLogs] = useState<Record<number, {weight: string, reps: string, note?: string, coach_note?: string}>>({});
+  const [logs, setLogs] = useState<Record<number, {weight: string, reps: string, note?: string}>>({});
   const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string}>>({});
-  
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
   const [videoUploading, setVideoUploading] = useState<string | null>(null);
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
@@ -104,597 +97,330 @@ export default function TrainingModeScreen() {
   const [sleepQuality, setSleepQuality] = useState<number | null>(null);
   const [sleepHours, setSleepHours] = useState<string>('');
   const [observations, setObservations] = useState('');
-  
   const [showBodyMap, setShowBodyMap] = useState(false);
   const [soreJoints, setSoreJoints] = useState<string[]>([]);
-  
   const [showIndicationsModal, setShowIndicationsModal] = useState(false);
   const hasShownIndicationsRef = useRef(false);
 
-  const [prepTargetTime, setPrepTargetTime] = useState<number | null>(null);
   const [prepSeconds, setPrepSeconds] = useState(0);
   const [isPrep, setIsPrep] = useState(false);
   const prepIntervalRef = useRef<any>(null);
+  const [prepTargetTime, setPrepTargetTime] = useState<number | null>(null);
 
-  const [restTargetTime, setRestTargetTime] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [restTotalSeconds, setRestTotalSeconds] = useState(1);
   const [isResting, setIsResting] = useState(false);
-  const [restType, setRestType] = useState<'set' | 'exercise' | null>(null);
   const restIntervalRef = useRef<any>(null);
+  const [restTargetTime, setRestTargetTime] = useState<number | null>(null);
 
-  const [workTargetTime, setWorkTargetTime] = useState<number | null>(null);
   const [workSeconds, setWorkSeconds] = useState(0);
   const [workTotalSeconds, setWorkTotalSeconds] = useState(1);
   const [isWorking, setIsWorking] = useState(false);
   const workIntervalRef = useRef<any>(null);
+  const [workTargetTime, setWorkTargetTime] = useState<number | null>(null);
 
   const beepSoundRef = useRef<Audio.Sound | null>(null);
   const finishSoundRef = useRef<Audio.Sound | null>(null);
-  
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [soundsEnabled, setSoundsEnabled] = useState(true);
-
   const lastAnnouncedRef = useRef<string>('');
-  
   const justFinishedRestRef = useRef(false);
 
   useEffect(() => {
-    const loadPreferences = async () => {
-      try {
-        const [v, s] = await Promise.all([
-          AsyncStorage.getItem('voice_enabled'),
-          AsyncStorage.getItem('sounds_enabled')
-        ]);
-        if (v === 'false') setVoiceEnabled(false);
-        if (s === 'false') setSoundsEnabled(false);
-      } catch (e) {
-        console.log("⚠️ Error cargando preferencias:", e);
-      }
-    };
-    loadPreferences();
+    AsyncStorage.getItem('voice_enabled').then(v => if (v === 'false') setVoiceEnabled(false));
+    AsyncStorage.getItem('sounds_enabled').then(s => if (s === 'false') setSoundsEnabled(false));
   }, []);
 
   const announce = async (text: string) => {
-    if (!voiceEnabled) return; 
+    // CRÍTICO: Si el entrenamiento ha terminado, no hablar más
+    if (!voiceEnabled || finished || workout?.completed) return; 
     try {
       Speech.stop(); 
       Speech.speak(text, { language: 'es-ES', rate: 0.95 });
-    } catch (e) {
-      console.log("⚠️ Error Speech:", e);
-    }
+    } catch (e) { console.log(e); }
   };
 
   useEffect(() => {
     async function initAudio() {
       try {
-        await Audio.setAudioModeAsync({ 
-          playsInSilentModeIOS: true, 
-          staysActiveInBackground: true,
-          interruptionModeIOS: Audio.InterruptionModeIOS.DuckOthers,
-          interruptionModeAndroid: Audio.InterruptionModeAndroid.DuckOthers,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false
-        });
         const { sound: beep } = await Audio.Sound.createAsync(require('../assets/beep.mp3'));
         const { sound: finish } = await Audio.Sound.createAsync(require('../assets/finish.mp3'));
         beepSoundRef.current = beep;
         finishSoundRef.current = finish;
-      } catch (e) {
-        console.log("Error cargando audios:", e);
-      }
+      } catch (e) { console.log(e); }
     }
     initAudio();
     return () => {
-      if (beepSoundRef.current) beepSoundRef.current.unloadAsync();
-      if (finishSoundRef.current) finishSoundRef.current.unloadAsync();
-      try { Speech.stop(); } catch(e) {} 
+      beepSoundRef.current?.unloadAsync();
+      finishSoundRef.current?.unloadAsync();
     };
   }, []);
 
   const playSound = async (type: 'beep' | 'finish') => {
-    if (!soundsEnabled) return;
+    if (!soundsEnabled || finished) return;
     try {
-      if (type === 'beep') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } 
-      else { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }
+      if (type === 'beep') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      else Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       const soundObj = type === 'beep' ? beepSoundRef.current : finishSoundRef.current;
-      if (soundObj) await soundObj.replayAsync(); 
+      await soundObj?.replayAsync(); 
     } catch (error) { console.log(error); }
   };
 
-  const stopPrepTimer = () => { if (prepIntervalRef.current) clearInterval(prepIntervalRef.current); setIsPrep(false); setPrepSeconds(0); setPrepTargetTime(null); };
-  const stopWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setIsWorking(false); setWorkSeconds(0); setWorkTargetTime(null); };
-  const stopRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setRestTargetTime(null); setRestSeconds(0); setIsResting(false); };
-  const stopAllTimers = () => { stopPrepTimer(); stopWorkTimer(); stopRestTimer(); };
-
-  const startPrepTimer = (workDur: number, exName?: string) => {
-    stopAllTimers(); setIsPrep(true); setPrepSeconds(5); setPrepTargetTime(Date.now() + 5000);
-    setWorkTotalSeconds(workDur); setWorkSeconds(workDur);
-    if (exName) announce(`Siguiente: ${exName}. Prepárate.`);
-    else announce("Prepárate.");
+  const stopAllTimers = () => {
+    clearInterval(prepIntervalRef.current);
+    clearInterval(workIntervalRef.current);
+    clearInterval(restIntervalRef.current);
+    setIsPrep(false); setIsWorking(false); setIsResting(false);
   };
 
   const handleStartWork = (dur: number, name?: string) => {
+    if (finished) return;
     const isFirst = (!isHiit && currentExIndex === 0 && setsStatus[0]?.findIndex(s => s === 'pending') === 0) ||
                     (isHiit && hiitBlockIdx === 0 && hiitExIdx === 0 && hiitRound === 1);
 
     if (isFirst || !justFinishedRestRef.current) {
-      startPrepTimer(dur, name);
+      stopAllTimers(); setIsPrep(true); setPrepSeconds(5); setPrepTargetTime(Date.now() + 5000);
+      setWorkTotalSeconds(dur); setWorkSeconds(dur);
+      announce(name ? `Siguiente: ${name}. Prepárate.` : "Prepárate.");
     } else {
-      stopAllTimers();
-      setIsWorking(true);
-      setWorkTotalSeconds(dur);
-      setWorkSeconds(dur);
+      stopAllTimers(); setIsWorking(true); setWorkTotalSeconds(dur); setWorkSeconds(dur);
       if (dur > 0) setWorkTargetTime(Date.now() + dur * 1000);
-      else setWorkTargetTime(null);
       if (name) announce(`A por ello: ${name}`);
     }
     justFinishedRestRef.current = false;
   };
 
-  const startWorkTimerAfterPrep = () => {
-    setIsWorking(true);
-    if (workTotalSeconds > 0) { setWorkTargetTime(Date.now() + workTotalSeconds * 1000); } 
-    else { setWorkTargetTime(null); }
-  };
-
-  const startRestTimer = (seconds: number, nextExName?: string) => {
-    stopAllTimers(); setRestTargetTime(Date.now() + seconds * 1000);
-    setRestSeconds(seconds); setRestTotalSeconds(seconds); setIsResting(true);
-    if (nextExName) announce(`Descanso. Siguiente: ${nextExName}`);
-    else announce("Descanso.");
-  };
-
-  const toggleWorkTimer = () => {
-    if (workTargetTime) { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setWorkTargetTime(null); } 
-    else { setWorkTargetTime(Date.now() + workSeconds * 1000); }
-  };
-
-  const resetWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setWorkTargetTime(Date.now() + workTotalSeconds * 1000); setWorkSeconds(workTotalSeconds); setIsWorking(true); };
-  const resetRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setRestTargetTime(Date.now() + restTotalSeconds * 1000); setRestSeconds(restTotalSeconds); setIsResting(true); };
-
-  const handleWorkComplete = () => { stopWorkTimer(); if (isHiit) advanceHiitLogic(); else completeSet(); };
-
-  useEffect(() => { if (isPrep && prepSeconds > 0 && prepSeconds <= 3) playSound('beep'); }, [prepSeconds, isPrep]);
-  useEffect(() => { if (isWorking && workSeconds > 0 && workSeconds <= 5) playSound('beep'); }, [workSeconds, isWorking]);
-  useEffect(() => { if (isResting && restSeconds > 0 && restSeconds <= 5) playSound('beep'); }, [restSeconds, isResting]);
-
-  useEffect(() => {
-    if (showIndicationsModal || !workout || isResting || finished || workout.completed || isPrep) return;
-    let text = ""; let id = "";
-    if (isHiit) {
-      const b = workout.exercises[hiitBlockIdx]; const ex = b?.hiit_exercises?.[hiitExIdx];
-      if (ex) { id = `hiit-${hiitBlockIdx}-${hiitRound}-${hiitExIdx}`; text = ex.name; }
-    } else {
-      const ex = workout.exercises[currentExIndex];
-      if (ex) { const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next !== -1) { id = `trad-${currentExIndex}`; text = ex.name; } }
-    }
-    if (text && lastAnnouncedRef.current !== id) { announce(text); lastAnnouncedRef.current = id; }
-  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, isResting, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
-
-  useEffect(() => {
-    let isMounted = true;
-    const fetchWorkoutDetail = async () => {
-      if (!stableWorkoutId) { if (isMounted) setLoading(false); return; }
-      try {
-        const [allWorkouts, wellnessData] = await Promise.all([api.getWorkouts(), api.getWellnessHistory(user?.id).catch(() => [])]);
-        const currentWorkout = allWorkouts.find((w: any) => w.id === stableWorkoutId);
-        if (currentWorkout && isMounted) {
-          setWorkout(currentWorkout);
-          const isWorkoutHiit = currentWorkout.exercises?.length > 0 && currentWorkout.exercises[0].is_hiit_block === true;
-          setIsHiit(isWorkoutHiit);
-          if (currentWorkout.completed) {
-            setFinished(true); setObservations(currentWorkout.observations || '');
-            if (currentWorkout.completion_data) {
-              setRpe(currentWorkout.completion_data.rpe || null); setSleepQuality(currentWorkout.completion_data.sleep_quality || null);
-              setSleepHours(currentWorkout.completion_data.sleep_hours || ''); if (currentWorkout.completion_data.sore_joints) setSoreJoints(currentWorkout.completion_data.sore_joints);
-              const savedVideos: Record<string, string> = {}; 
-              if (!isWorkoutHiit) {
-                const logs: Record<number, any> = {};
-                currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
-                  logs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '' };
-                  if (res.recorded_video_url) savedVideos[idx.toString()] = res.recorded_video_url;
-                });
-                setLogs(logs);
-              } else {
-                const hLogs: Record<string, any> = {};
-                currentWorkout.completion_data.hiit_results?.forEach((block: any, bIdx: number) => {
-                  block.hiit_exercises?.forEach((ex: any, eIdx: number) => { const key = `${bIdx}-${eIdx}`; if (ex.recorded_video_url) savedVideos[key] = ex.recorded_video_url; if (ex.athlete_note) hLogs[key] = { note: ex.athlete_note }; });
-                });
-                setHiitLogs(hLogs);
-              }
-              setRecordedVideos(savedVideos);
-            }
-          } else {
-            const today = new Date().toISOString().split('T')[0];
-            const wellness = Array.isArray(wellnessData) ? wellnessData.find((w: any) => w.date === today) : null;
-            if (wellness) { setSleepQuality(wellness.sleep_quality || null); setSleepHours(wellness.sleep_hours || ''); }
-            if (!isWorkoutHiit) {
-              const initial: Record<number, SetStatus[]> = {};
-              (currentWorkout.exercises || []).forEach((ex: any, i: number) => { initial[i] = Array(parseInt(ex.sets) || 1).fill('pending'); });
-              setSetsStatus(initial);
-            }
-            if (currentWorkout.notes?.trim() && !hasShownIndicationsRef.current) { setShowIndicationsModal(true); hasShownIndicationsRef.current = true; }
-          }
-        }
-      } catch (e) { console.error(e); } finally { if (isMounted) setLoading(false); }
-    };
-    fetchWorkoutDetail();
-    return () => { isMounted = false; };
-  }, [stableWorkoutId]);
+  const handleWorkComplete = () => { stopAllTimers(); if (isHiit) advanceHiitLogic(); else completeSet(); };
 
   useEffect(() => {
     if (isPrep && prepTargetTime) {
       prepIntervalRef.current = setInterval(() => {
-        const remaining = Math.ceil((prepTargetTime - Date.now()) / 1000);
-        if (remaining <= 0) { playSound('finish'); stopPrepTimer(); startWorkTimerAfterPrep(); } 
-        else { setPrepSeconds(remaining); }
+        const rem = Math.ceil((prepTargetTime - Date.now()) / 1000);
+        if (rem <= 0) { playSound('finish'); stopAllTimers(); setIsWorking(true); setWorkTargetTime(Date.now() + workTotalSeconds * 1000); } 
+        else { setPrepSeconds(rem); if (rem <= 3) playSound('beep'); }
       }, 1000);
     }
-    return () => { if (prepIntervalRef.current) clearInterval(prepIntervalRef.current); };
+    return () => clearInterval(prepIntervalRef.current);
   }, [isPrep, prepTargetTime]);
-
-  useEffect(() => {
-    if (isResting && restTargetTime) {
-      restIntervalRef.current = setInterval(() => {
-        const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
-        if (remaining <= 0) { 
-          playSound('finish'); 
-          justFinishedRestRef.current = true;
-          stopRestTimer(); 
-        } 
-        else { setRestSeconds(remaining); }
-      }, 1000);
-    }
-    return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
-  }, [isResting, restTargetTime]);
 
   useEffect(() => {
     if (isWorking && workTargetTime) {
       workIntervalRef.current = setInterval(() => {
-        const remaining = Math.ceil((workTargetTime - Date.now()) / 1000);
-        if (remaining <= 0) { playSound('finish'); handleWorkComplete(); } 
-        else { setWorkSeconds(remaining); }
+        const rem = Math.ceil((workTargetTime - Date.now()) / 1000);
+        if (rem <= 0) { playSound('finish'); handleWorkComplete(); } 
+        else { setWorkSeconds(rem); if (rem <= 5) playSound('beep'); }
       }, 1000);
     }
-    return () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); };
+    return () => clearInterval(workIntervalRef.current);
   }, [isWorking, workTargetTime]);
 
   useEffect(() => {
-    if (!isHiit && workout && !isResting && !isPrep && !showIndicationsModal) {
-      const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending');
-      if (next !== -1) {
-        const ex = workout.exercises[currentExIndex]; const dur = parseTimeToSeconds(ex?.duration);
-        if (!isWorking && workTargetTime === null && workSeconds === 0) { 
-          handleStartWork(dur, ex.name); 
+    if (isResting && restTargetTime) {
+      restIntervalRef.current = setInterval(() => {
+        const rem = Math.ceil((restTargetTime - Date.now()) / 1000);
+        if (rem <= 0) { playSound('finish'); stopAllTimers(); justFinishedRestRef.current = true; } 
+        else { setRestSeconds(rem); if (rem <= 5) playSound('beep'); }
+      }, 1000);
+    }
+    return () => clearInterval(restIntervalRef.current);
+  }, [isResting, restTargetTime]);
+
+  // Carga de datos inicial
+  useEffect(() => {
+    let isMounted = true;
+    api.getWorkouts().then(all => {
+      const current = all.find((w: any) => w.id === stableWorkoutId);
+      if (current && isMounted) {
+        setWorkout(current);
+        const hiit = current.exercises?.[0]?.is_hiit_block === true;
+        setIsHiit(hiit);
+        if (current.completed) setFinished(true);
+        else {
+          const init: Record<number, SetStatus[]> = {};
+          current.exercises.forEach((ex: any, i: number) => init[i] = Array(parseInt(ex.sets) || 1).fill('pending'));
+          setSetsStatus(init);
         }
-      } else { stopWorkTimer(); }
-    }
-  }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal]);
-
-  useEffect(() => {
-    if (isHiit && workout && hiitPhase === 'work' && !isResting && !isPrep && !showIndicationsModal) {
-      const b = workout.exercises[hiitBlockIdx]; if (!b) return;
-      const ex = b.hiit_exercises[hiitExIdx]; const dur = parseTimeToSeconds(ex?.duration_reps || ex?.duration);
-      if (!isWorking && workTargetTime === null && workSeconds === 0) { 
-         handleStartWork(dur, ex.name); 
       }
-    }
-  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal]);
-
-  useEffect(() => {
-    if (!isResting && workout && !showIndicationsModal) {
-      if (isHiit) {
-        if (hiitPhase === 'rest_ex') { setHiitPhase('work'); setHiitExIdx(prev => prev + 1); } 
-        else if (hiitPhase === 'rest_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitRound(prev => prev + 1); } 
-        else if (hiitPhase === 'rest_next_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitRound(1); setHiitBlockIdx(prev => prev + 1); }
-      } else { if (restType === 'exercise') { autoAdvance(currentExIndex); setRestType(null); } }
-    }
-  }, [isResting, showIndicationsModal]);
-
-  const advanceHiitLogic = () => {
-    stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const b = workout.exercises[hiitBlockIdx]; const totalEx = b.hiit_exercises.length; const totalRounds = parseInt(b.sets) || 1;
-    if (hiitExIdx < totalEx - 1) {
-      const rest = parseTimeToSeconds(b.rest_exercise);
-      if (rest > 0) { startRestTimer(rest, b.hiit_exercises[hiitExIdx + 1].name); setHiitPhase('rest_ex'); } 
-      else { setHiitExIdx(hiitExIdx + 1); }
-    } else {
-      if (hiitRound < totalRounds) {
-        const rest = parseTimeToSeconds(b.rest_block);
-        if (rest > 0) { startRestTimer(rest, b.hiit_exercises[0].name); setHiitPhase('rest_block'); } 
-        else { setHiitRound(hiitRound + 1); setHiitExIdx(0); }
-      } else {
-        if (hiitBlockIdx < workout.exercises.length - 1) {
-          const rest = parseTimeToSeconds(b.rest_between_blocks);
-          if (rest > 0) { startRestTimer(rest, workout.exercises[hiitBlockIdx + 1].hiit_exercises[0].name); setHiitPhase('rest_next_block'); } 
-          else { setHiitBlockIdx(hiitBlockIdx + 1); setHiitRound(1); setHiitExIdx(0); setHiitPhase('work'); }
-        } else { setFinished(true); }
-      }
-    }
-  };
-
-  const advanceHiit = () => advanceHiitLogic();
-  const skipHiitEx = () => { stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setHiitSkipped(prev => ({ ...prev, [`${hiitBlockIdx}-${hiitExIdx}`]: (prev[`${hiitBlockIdx}-${hiitExIdx}`] || 0) + 1 })); advanceHiitLogic(); };
-  
-  const skipHiitRest = () => { 
-    stopAllTimers(); 
-    justFinishedRestRef.current = true;
-  };
-  const skipTradRest = () => {
-    stopAllTimers();
-    justFinishedRestRef.current = true;
-  };
-
-  const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => { setSetsStatus(prev => { const updated = { ...prev }; updated[exIdx] = [...(prev[exIdx] || [])]; updated[exIdx][setIdx] = status; return updated; }); };
-  const autoAdvance = (exIdx: number) => { stopAllTimers(); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else setTimeout(() => setFinished(true), 400); };
+      setLoading(false);
+    });
+    return () => { isMounted = false; };
+  }, [stableWorkoutId]);
 
   const completeSet = () => {
-    stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const exercises = workout.exercises || []; const currentEx = exercises[currentExIndex]; const s = setsStatus[currentExIndex] || [];
-    const next = s.findIndex(i => i === 'pending'); if (next === -1) return;
-    updateSetStatus(currentExIndex, next, 'completed');
-    const rem = s.filter((item, i) => i !== next && item === 'pending').length;
-    if (rem === 0) {
-      const rest = parseTimeToSeconds(currentEx?.rest_exercise);
-      if (rest > 0 && currentExIndex < exercises.length - 1) { startRestTimer(rest, exercises[currentExIndex + 1].name); setRestType('exercise'); } 
-      else { autoAdvance(currentExIndex); }
-    } else {
-      const rest = parseTimeToSeconds(currentEx?.rest);
-      if (rest > 0) { startRestTimer(rest, currentEx.name); setRestType('set'); }
-    }
-  };
-
-  const skipSet = () => { stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
-  const skipEntireExercise = () => { stopAllTimers(); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
-
-  const handleRecordVideoOptions = (key: string) => { if (Platform.OS === 'web') { launchVideoPicker('library', key); return; } Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ { text: "Cancelar", style: "cancel" }, { text: "Galería", onPress: () => launchVideoPicker('library', key) }, { text: "Grabar", onPress: () => launchVideoPicker('camera', key) } ]); };
-  const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
-    try {
-      let result;
-      if (source === 'camera') {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync(); if (status !== 'granted') return;
-        result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, videoMaxDuration: 60, quality: 0.7 });
-      } else { result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, allowsEditing: true, quality: 0.7 }); }
-      if (result.canceled || !result.assets) return;
-      setVideoUploading(key); const asset = result.assets[0]; const uploaded = await api.uploadFile(asset);
-      const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
-      setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
-    } catch (e) { console.error(e); } finally { setVideoUploading(null); }
-  };
-
-  const buildCompletionData = () => {
-    if (isHiit) { return { rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, hiit_completed: true, hiit_results: (workout.exercises || []).map((b: any, bIdx: number) => ({ ...b, hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ ...ex, skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0, recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '' })) })) }; }
-    return { rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, exercise_results: (workout.exercises || []).map((ex: any, i: number) => { const s = setsStatus[i] || []; return { exercise_index: i, name: ex.name, total_sets: parseInt(ex.sets) || 1, completed_sets: s.filter(item => item === 'completed').length, skipped_sets: s.filter(item => item === 'skipped').length, set_details: s.map((status, si) => ({ set: si + 1, status })), logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', athlete_note: logs[i]?.note || '', recorded_video_url: recordedVideos[i.toString()] || '' }; }), };
-  };
-
-  const handleFinish = async () => { if (workout.completed) { router.back(); return; } if (!stableWorkoutId) return; stopAllTimers(); const data = buildCompletionData(); try { const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises }; if (observations.trim()) update.observations = observations.trim(); const net = await NetInfo.fetch(); if (net.isConnected) { await api.updateWorkout(stableWorkoutId, update); syncManager.syncPendingWorkouts(); } else { await syncManager.savePendingWorkout(stableWorkoutId, update); } router.back(); } catch (e) { console.error(e); } };
-
-  const renderVideoModal = () => (
-    <Modal visible={!!expandedVideo} transparent animationType="fade">
-      <View style={styles.fullscreenVideoOverlay}>
-        <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
-        {expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
-      </View>
-    </Modal>
-  );
-
-  const renderExerciseList = () => {
-    if (!workout?.exercises) return null;
+    const s = setsStatus[currentExIndex] || [];
+    const next = s.findIndex(i => i === 'pending');
+    if (next === -1) return;
     
-    if (isHiit) {
-      return workout.exercises.map((block: any, bIdx: number) => (
-        <View key={bIdx} style={{ marginBottom: 15 }}>
-          <Text style={{ fontWeight: '800', color: colors.error || '#EF4444', marginBottom: 8 }}>
-            {block.name} <Text style={{color: colors.textSecondary, fontSize: 12}}>({block.sets} Vueltas)</Text>
-          </Text>
-          {block.hiit_exercises?.map((ex: any, eIdx: number) => (
-            <View key={eIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 10, marginBottom: 6 }}>
-              <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '500' }}>• {ex.name}</Text>
-              <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 10 }}>
-                {ex.duration_reps || ex.duration || '-'}
-              </Text>
-            </View>
-          ))}
-        </View>
-      ));
+    const updated = {...setsStatus};
+    updated[currentExIndex] = [...s];
+    updated[currentExIndex][next] = 'completed';
+    setSetsStatus(updated);
+
+    const rem = updated[currentExIndex].filter(item => item === 'pending').length;
+    if (rem === 0) {
+      if (currentExIndex < workout.exercises.length - 1) {
+        const rest = parseTimeToSeconds(workout.exercises[currentExIndex].rest_exercise);
+        if (rest > 0) {
+           stopAllTimers(); setRestTargetTime(Date.now() + rest * 1000); setIsResting(true); setRestTotalSeconds(rest);
+           announce(`Descanso. Siguiente: ${workout.exercises[currentExIndex+1].name}`);
+        } else { setCurrentExIndex(currentExIndex + 1); }
+      } else { setFinished(true); announce("¡Entrenamiento terminado!"); }
     } else {
-      return workout.exercises.map((ex: any, idx: number) => (
-        <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 8 }}>
-          <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '600', paddingRight: 10 }}>
-            <Text style={{ color: colors.textSecondary }}>{idx + 1}.</Text> {ex.name}
-          </Text>
-          <View style={{ alignItems: 'flex-end' }}>
-            {(ex.sets && ex.reps) ? (
-              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.sets} x {ex.reps}</Text>
-            ) : null}
-            {ex.duration ? (
-              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.duration}</Text>
-            ) : null}
-          </View>
-        </View>
-      ));
+      const rest = parseTimeToSeconds(workout.exercises[currentExIndex].rest);
+      if (rest > 0) {
+        stopAllTimers(); setRestTargetTime(Date.now() + rest * 1000); setIsResting(true); setRestTotalSeconds(rest);
+        announce("Descanso.");
+      }
     }
   };
 
-  const renderIndicationsModal = () => (
-    <Modal visible={showIndicationsModal} transparent animationType="slide">
-      <View style={styles.modalOverlay}>
-        <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface, maxHeight: screenHeight * 0.85 }]}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 }}>
-            <Ionicons name="list" size={28} color={colors.primary} />
-            <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, flex: 1 }}>Detalles de Sesión</Text>
-          </View>
-          
-          <ScrollView style={{ marginBottom: 20 }} showsVerticalScrollIndicator={false}>
-            {workout?.notes ? (
-              <View style={{ marginBottom: 20, padding: 15, backgroundColor: colors.surfaceHighlight, borderRadius: 12 }}>
-                <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '800', marginBottom: 5 }}>INDICACIONES DEL ENTRENADOR:</Text>
-                <Text style={{ color: colors.textPrimary, fontSize: 15, lineHeight: 22, fontStyle: 'italic' }}>"{workout.notes}"</Text>
-              </View>
-            ) : null}
-            
-            <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '800', marginBottom: 10, letterSpacing: 1 }}>LISTA DE EJERCICIOS</Text>
-            {renderExerciseList()}
-          </ScrollView>
+  const advanceHiitLogic = () => {
+    const b = workout.exercises[hiitBlockIdx];
+    const totalEx = b.hiit_exercises.length;
+    const totalRounds = parseInt(b.sets) || 1;
 
-          <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={() => setShowIndicationsModal(false)}>
-            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Entendido / Cerrar</Text>
-          </TouchableOpacity>
-        </View>
+    if (hiitExIdx < totalEx - 1) {
+      const rest = parseTimeToSeconds(b.rest_exercise);
+      if (rest > 0) {
+        setHiitPhase('rest_ex'); stopAllTimers(); setRestTargetTime(Date.now() + rest * 1000); setIsResting(true);
+      } else { setHiitExIdx(hiitExIdx + 1); }
+    } else if (hiitRound < totalRounds) {
+      const rest = parseTimeToSeconds(b.rest_block);
+      setHiitPhase('rest_block'); stopAllTimers(); setRestTargetTime(Date.now() + rest * 1000); setIsResting(true);
+    } else if (hiitBlockIdx < workout.exercises.length - 1) {
+      const rest = parseTimeToSeconds(b.rest_between_blocks);
+      setHiitPhase('rest_next_block'); stopAllTimers(); setRestTargetTime(Date.now() + rest * 1000); setIsResting(true);
+    } else { setFinished(true); announce("¡Entrenamiento terminado!"); }
+  };
+
+  const handleFinish = async () => {
+    if (workout.completed) { router.back(); return; }
+    stopAllTimers();
+    setLoading(true); // Evitar doble clic
+    
+    const data = buildCompletionData();
+    try {
+      const update: any = { 
+        completed: true, 
+        completion_data: data, 
+        observations: observations.trim() 
+      };
+      
+      const net = await NetInfo.fetch();
+      if (net.isConnected) {
+        await api.updateWorkout(stableWorkoutId, update);
+      } else {
+        await syncManager.savePendingWorkout(stableWorkoutId, update);
+      }
+      router.replace('/(tabs)/calendar'); // Usar replace para limpiar stack
+    } catch (e) {
+      Alert.alert("Error", "No se pudo guardar el entrenamiento.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const toggleJoint = (part: any) => {
+    if (!part?.slug) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    setSoreJoints(prev => prev.includes(part.slug) ? prev.filter(j => j !== part.slug) : [...prev, part.slug]);
+  };
+
+  // Vistas y Modales
+  if (loading) return <View style={styles.centered}><ActivityIndicator size="large" color={colors.primary} /></View>;
+
+  return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <View style={styles.topBar}>
+        <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
+        <Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout?.title}</Text>
+        <View style={{ width: 26 }} />
       </View>
-    </Modal>
-  );
 
-  const toggleJoint = (part: any) => { 
-    if (!part?.slug) return; 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
-    setSoreJoints(prev => prev.includes(part.slug) ? prev.filter(j => j !== part.slug) : [...prev, part.slug]); 
-  };
-
-  const renderBodyMapModal = () => {
-    const errorColor = colors.error || '#EF4444';
-    const data = soreJoints.map(slug => ({ slug, intensity: 1 }));
-
-    return (
-      <Modal visible={showBodyMap} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.bodyMapModalContent, { backgroundColor: colors.background, paddingBottom: 30 }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Registrar Fatiga</Text>
-              <TouchableOpacity onPress={() => setShowBodyMap(false)}>
-                <Ionicons name="close" size={28} color={colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-            
-            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center', fontSize: 13 }}>
-              Toca las zonas con sobrecarga o molestias.
-            </Text>
-            
-            <View style={{ flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginBottom: 10 }}>
-              <Text style={{ fontSize: 11, fontWeight: '900', color: '#888' }}>FRONTAL</Text>
-              <Text style={{ fontSize: 11, fontWeight: '900', color: '#888' }}>DORSAL</Text>
-            </View>
-
-            <View style={{ alignItems: 'center', justifyContent: 'center', height: 350 }}>
-                <Body 
-                  data={data} 
-                  gender="female" 
-                  scale={1.3} 
-                  colors={['#E2E8F0', errorColor]} 
-                  onBodyPartPress={toggleJoint} 
-                />
-            </View>
-
-            <TouchableOpacity 
-              style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', width: '100%', marginTop: 20 }} 
-              onPress={() => setShowBodyMap(false)}
-            >
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar Selección</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    );
-  };
-
-  if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
-  if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={{ color: colors.textPrimary }}>No encontrado.</Text></SafeAreaView>;
-
-  let main;
-  if (finished || workout.completed) {
-    main = (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.topBar}><TouchableOpacity onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>Resumen</Text><View style={{ width: 26 }} /></View>
-        <ScrollView contentContainerStyle={[styles.content, { alignItems: 'center', paddingVertical: 40 }]}>
-          <View style={styles.finishedIconContainer}><Ionicons name="trophy" size={80} color={colors.warning || '#F59E0B'} /></View>
-          <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
-          <Text style={[styles.finishedSubtitle, { color: colors.textSecondary }]}>¿Cómo te has sentido hoy?</Text>
-          {!workout.completed && (
-            <View style={{ width: '100%', gap: 24, marginTop: 20 }}>
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>NIVEL DE ESFUERZO (RPE)</Text>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => { const isSelected = rpe === num; let c = (num >= 8) ? (colors.error || '#EF4444') : (num >= 4) ? (colors.warning || '#F59E0B') : (colors.success || '#10B981'); return ( <TouchableOpacity key={num} onPress={() => setRpe(num)} style={[styles.rpeCircle, { borderColor: colors.border }, isSelected && { backgroundColor: c, borderColor: c }]}><Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textSecondary }]}>{num}</Text></TouchableOpacity> ); })}</View>
-              </View>
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>CALIDAD DEL SUEÑO</Text><View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>{[1, 2, 3, 4, 5].map(num => ( <TouchableOpacity key={num} onPress={() => setSleepQuality(num)} style={{ padding: 5 }}><Ionicons name={sleepQuality && sleepQuality >= num ? "star" : "star-outline"} size={36} color={colors.warning || '#F59E0B'} /></TouchableOpacity> ))}</View></View>
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA O IMPACTO</Text><TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: soreJoints.length > 0 ? (colors.error || '#EF4444') + '15' : colors.surfaceHighlight, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border }} onPress={() => setShowBodyMap(true)}><Ionicons name="body" size={24} color={soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.primary} /><Text style={{ fontWeight: '700', color: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.textPrimary }}>{soreJoints.length > 0 ? `${soreJoints.length} Zonas Marcadas` : 'Abrir Mapa Corporal'}</Text></TouchableOpacity></View>
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12 }]}>OBSERVACIONES</Text><TextInput style={[styles.obsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} multiline placeholder="¿Algo a destacar?..." placeholderTextColor={colors.textSecondary} value={observations} onChangeText={setObservations} /></View>
-            </View>
-          )}
-          {workout.completed && workout.completion_data && (
-            <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
-              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Resumen guardado:</Text>
-              <Text style={{ color: colors.textPrimary }}>RPE: {workout.completion_data.rpe}/10</Text>
-              {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5 }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
-              {workout.observations && <Text style={{ color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
-            </View>
-          )}
-          {!workout.completed && ( <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary }]} onPress={handleFinish}><Text style={styles.finishWorkoutBtnText}>Finalizar Entrenamiento</Text></TouchableOpacity> )}
-        </ScrollView>
-        {renderVideoModal()}{renderBodyMapModal()}
-      </SafeAreaView>
-    );
-  } else if (isHiit) {
-    const b = workout.exercises?.[hiitBlockIdx];
-    if (!b) return <ActivityIndicator color={colors.primary} />;
-    main = (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>B{hiitBlockIdx + 1}/{workout.exercises.length}</Text></View>
+      {!finished ? (
         <ScrollView contentContainerStyle={styles.content}>
-          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={b.hiit_exercises[hiitExIdx]?.name || 'HIIT'} colors={colors} isHiit={isHiit} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
-          <HiitCard currentBlock={b} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
+           <UnifiedTimer 
+             isPrep={isPrep} isResting={isResting} isWorking={isWorking} 
+             prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds}
+             restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds}
+             exName={isHiit ? workout.exercises[hiitBlockIdx].hiit_exercises[hiitExIdx].name : workout.exercises[currentExIndex].name}
+             colors={colors} onComplete={handleWorkComplete}
+           />
+           {/* Aquí irían las cards de ejercicios HIIT o Tradicional */}
         </ScrollView>
-        <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
-          <Ionicons name="list" size={24} color="#FFF" />
-        </TouchableOpacity>
-        {renderVideoModal()}{renderIndicationsModal()}
-      </SafeAreaView>
-    );
-  } else {
-    const ex = workout.exercises[currentExIndex];
-    if (!ex) return <ActivityIndicator color={colors.primary} />;
-    const s = setsStatus[currentExIndex] || []; const prog = ((currentExIndex) / workout.exercises.length) * 100;
-    main = (
-      <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>{currentExIndex + 1}/{workout.exercises.length}</Text></View>
-        <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${prog}%` }]} /></View>
+      ) : (
         <ScrollView contentContainerStyle={styles.content}>
-          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={ex?.name} colors={colors} isHiit={false} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
-          <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
-            <View style={styles.compactDetailsGrid}>{['sets', 'reps', 'weight', 'duration', 'rest'].map(k => ex[k] && ( <View key={k} style={styles.compactDetailItem}><Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text><Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{ex[k]}</Text></View> ))}</View>
-          </View>
-          <View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
-            <View style={styles.setsGrid}>{s.map((st, i) => ( <View key={i} style={[styles.setCircle, { borderColor: colors.border }, st === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }, st === 'skipped' && { backgroundColor: colors.error, borderColor: colors.error }]}>{st === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : <Text style={{ color: colors.textSecondary }}>{i + 1}</Text>}</View> ))}</View>
-            <TouchableOpacity style={[styles.recordBtn, { marginTop: 20, borderColor: colors.border }]} onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text></TouchableOpacity>
-          </View>
-          <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
-             <View style={{ flexDirection: 'row', gap: 10 }}>
-               <TextInput style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder="Kilos" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={logs[currentExIndex]?.weight} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} />
-               <TextInput style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder="Reps" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={logs[currentExIndex]?.reps} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], reps: t}}))} />
+          <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Buen trabajo!</Text>
+          <View style={styles.rpeContainer}>
+             <Text style={[styles.label, { color: colors.textSecondary }]}>ESFUERZO RPE (1-10)</Text>
+             <View style={styles.rpeGrid}>
+                {[1,2,3,4,5,6,7,8,9,10].map(n => (
+                  <TouchableOpacity key={n} onPress={() => setRpe(n)} style={[styles.rpeCircle, rpe === n && { backgroundColor: colors.primary }]}>
+                    <Text style={{ color: rpe === n ? '#FFF' : colors.textPrimary }}>{n}</Text>
+                  </TouchableOpacity>
+                ))}
              </View>
-             <TextInput style={[styles.logInput, { borderColor: colors.border, marginTop: 10, minHeight: 60, backgroundColor: colors.background, color: colors.textPrimary }]} multiline placeholder="Anotaciones de la serie..." placeholderTextColor={colors.textSecondary} value={logs[currentExIndex]?.note} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} />
           </View>
+
+          <TouchableOpacity style={styles.bodyMapBtn} onPress={() => setShowBodyMap(true)}>
+             <Ionicons name="body" size={24} color={colors.primary} />
+             <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>
+               {soreJoints.length > 0 ? `${soreJoints.length} zonas marcadas` : "Marcar molestias"}
+             </Text>
+          </TouchableOpacity>
+
+          <TextInput 
+            style={[styles.obsInput, { backgroundColor: colors.surface, color: colors.textPrimary }]}
+            placeholder="Notas finales..." placeholderTextColor="#888" multiline
+            value={observations} onChangeText={setObservations}
+          />
+
+          <TouchableOpacity style={[styles.finishBtn, { backgroundColor: colors.primary }]} onPress={handleFinish}>
+            <Text style={styles.finishBtnText}>FINALIZAR SESIÓN</Text>
+          </TouchableOpacity>
         </ScrollView>
-        <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
-          <Ionicons name="list" size={24} color="#FFF" />
-        </TouchableOpacity>
-        <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else setFinished(true); }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
-        {renderVideoModal()}{renderIndicationsModal()}
-      </SafeAreaView>
-    );
-  }
-  return main;
+      )}
+
+      {/* MODAL MAPA CORPORAL */}
+      <Modal visible={showBodyMap} animationType="slide">
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+          <View style={styles.modalHeader}>
+            <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '800' }}>Mapa de Fatiga</Text>
+            <TouchableOpacity onPress={() => setShowBodyMap(false)}><Ionicons name="close" size={30} color={colors.textPrimary} /></TouchableOpacity>
+          </View>
+          <View style={styles.bodyContainer}>
+             <Body
+               data={soreJoints.map(s => ({ slug: s, intensity: 1 }))}
+               gender="female"
+               scale={1.4}
+               colors={[colors.border, colors.error]}
+               onBodyPartPress={toggleJoint}
+             />
+          </View>
+          <TouchableOpacity style={[styles.confirmBodyBtn, { backgroundColor: colors.primary }]} onPress={() => setShowBodyMap(false)}>
+            <Text style={{ color: '#FFF', fontWeight: '800' }}>CONFIRMAR</Text>
+          </TouchableOpacity>
+        </SafeAreaView>
+      </Modal>
+    </SafeAreaView>
+  );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 }, topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 }, topTitle: { fontSize: 16, fontWeight: '700' }, topProgress: { fontSize: 14, fontWeight: '600' }, progressBar: { height: 4, marginHorizontal: 16, borderRadius: 2, backgroundColor: '#EEE' }, progressFill: { height: '100%', borderRadius: 2 }, content: { padding: 20, paddingBottom: 100, gap: 16 },
-  compactExerciseCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, compactExHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, compactExName: { fontSize: 18, fontWeight: '800', flex: 1 }, compactDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 16, gap: 10 }, compactDetailItem: { minWidth: '28%' }, compactDetailLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 }, compactDetailValue: { fontSize: 17, fontWeight: '700' },
-  setsCard: { borderRadius: 16, padding: 20 }, setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' }, recordBtn: { borderWidth: 1, borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed' },
-  bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', padding: 20, borderTopWidth: 0.5, paddingBottom: 35 },
-  activeLogContainer: { width: '100%' }, logInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 },
-  finishedIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.1)' }, finishedTitle: { fontSize: 26, fontWeight: '900', textAlign: 'center' }, finishedSubtitle: { fontSize: 15, textAlign: 'center', marginBottom: 20 }, finishWorkoutBtn: { padding: 18, borderRadius: 16, alignItems: 'center', width: '100%', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
-  label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }, rpeCircle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 13, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, fontSize: 15, textAlignVertical: 'top' },
-  miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 }, bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 24, maxHeight: '90%' },
-  floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 }
+  container: { flex: 1 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
+  topTitle: { fontSize: 16, fontWeight: '700' },
+  content: { padding: 20, gap: 20 },
+  finishedTitle: { fontSize: 24, fontWeight: '900', textAlign: 'center', marginVertical: 20 },
+  rpeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center', marginTop: 10 },
+  rpeCircle: { width: 45, height: 45, borderRadius: 23, borderWidth: 1, borderColor: '#ccc', justifyContent: 'center', alignItems: 'center' },
+  bodyMapBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 15, borderRadius: 10, borderWidth: 1, borderColor: '#ccc', justifyContent: 'center' },
+  obsInput: { borderRadius: 10, padding: 15, minHeight: 100, textAlignVertical: 'top' },
+  finishBtn: { padding: 18, borderRadius: 12, alignItems: 'center' },
+  finishBtnText: { color: '#FFF', fontSize: 16, fontWeight: '800' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' },
+  bodyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  confirmBodyBtn: { margin: 20, padding: 18, borderRadius: 12, alignItems: 'center' }
 });
+
