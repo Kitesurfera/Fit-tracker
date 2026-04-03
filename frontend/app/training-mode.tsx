@@ -32,10 +32,15 @@ const SLEEP_HOURS_OPTIONS = ['<6', '6', '7', '8', '9+'];
 const SLUG_TRANSLATIONS: Record<string, string> = {
   'chest': 'Pecho', 'upper-back': 'Espalda Alta', 'lower-back': 'Lumbar',
   'quadriceps': 'Cuádriceps', 'hamstring': 'Isquiotibiales', 'gluteal': 'Glúteos',
+  'gluteus': 'Glúteos',
   'front-deltoids': 'Hombro Frontal', 'back-deltoids': 'Hombro Trasero',
+  'deltoids': 'Hombros',
+  'shoulders': 'Hombros',
   'biceps': 'Bíceps', 'triceps': 'Tríceps', 'abs': 'Abdomen', 'obliques': 'Oblicuos',
   'calves': 'Gemelos', 'forearm': 'Antebrazo', 'adductor': 'Aductores', 'abductors': 'Abductores',
-  'neck': 'Cuello', 'trapezius': 'Trapecio', 'head': 'Cabeza', 'hands': 'Manos', 'feet': 'Pies'
+  'adductors': 'Aductores',
+  'neck': 'Cuello', 'trapezius': 'Trapecio', 'head': 'Cabeza', 'hands': 'Manos', 'feet': 'Pies',
+  'knees': 'Rodillas', 'ankles': 'Tobillos'
 };
 
 const parseTimeToSeconds = (timeStr: string | number | undefined | null): number => {
@@ -562,32 +567,23 @@ export default function TrainingModeScreen() {
               </TouchableOpacity>
             </View>
             
-            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center', fontSize: 13 }}>Toca las zonas con sobrecarga o molestias.</Text>
+            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center', fontSize: 13 }}>
+              Toca las zonas con sobrecarga o molestias.
+            </Text>
             
-            <View style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', height: 350 }}>
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 8 }}>FRONTAL</Text>
-                  <Body 
-                    data={data} 
-                    gender="female" 
-                    side="front" 
-                    scale={0.75} 
-                    colors={['#E2E8F0', errorColor]} 
-                    onBodyPartPress={toggleJoint} 
-                  />
-              </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginBottom: 10 }}>
+              <Text style={{ fontSize: 11, fontWeight: '900', color: '#888' }}>FRONTAL</Text>
+              <Text style={{ fontSize: 11, fontWeight: '900', color: '#888' }}>DORSAL</Text>
+            </View>
 
-              <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <Text style={{ fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 8 }}>DORSAL</Text>
-                  <Body 
-                    data={data} 
-                    gender="female" 
-                    side="back" 
-                    scale={0.75} 
-                    colors={['#E2E8F0', errorColor]} 
-                    onBodyPartPress={toggleJoint} 
-                  />
-              </View>
+            <View style={{ alignItems: 'center', justifyContent: 'center', height: 350 }}>
+                <Body 
+                  data={data} 
+                  gender="female" 
+                  scale={1.3} 
+                  colors={['#E2E8F0', errorColor]} 
+                  onBodyPartPress={toggleJoint} 
+                />
             </View>
 
             <TouchableOpacity 
