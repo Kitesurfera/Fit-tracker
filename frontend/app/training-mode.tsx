@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Linking, TextInput, Alert, Platform, Modal, Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
@@ -142,21 +142,24 @@ export default function TrainingModeScreen() {
   
   const justFinishedRestRef = useRef(false);
 
-  useEffect(() => {
-    const loadPreferences = async () => {
-      try {
-        const [v, s] = await Promise.all([
-          AsyncStorage.getItem('voice_enabled'),
-          AsyncStorage.getItem('sounds_enabled')
-        ]);
-        if (v === 'false') setVoiceEnabled(false);
-        if (s === 'false') setSoundsEnabled(false);
-      } catch (e) {
-        console.log("⚠️ Error cargando preferencias:", e);
-      }
-    };
-    loadPreferences();
-  }, []);
+  // NUEVO: useFocusEffect para que los ajustes se refresquen siempre al entrar a la pantalla
+  useFocusEffect(
+    useCallback(() => {
+      const loadPreferences = async () => {
+        try {
+          const [v, s] = await Promise.all([
+            AsyncStorage.getItem('voice_enabled'),
+            AsyncStorage.getItem('sounds_enabled')
+          ]);
+          setVoiceEnabled(v !== 'false'); // Por defecto true si es null
+          setSoundsEnabled(s !== 'false'); // Por defecto true si es null
+        } catch (e) {
+          console.log("⚠️ Error cargando preferencias:", e);
+        }
+      };
+      loadPreferences();
+    }, [])
+  );
 
   const announce = async (text: string) => {
     if (!voiceEnabled || finished || workout?.completed) return; 
@@ -168,41 +171,57 @@ export default function TrainingModeScreen() {
     }
   };
 
+  // NUEVO: Manejo más seguro de la inicialización de Expo Audio y unmount de StrictMode
   useEffect(() => {
+    let beepSound: Audio.Sound | null = null;
+    let finishSound: Audio.Sound | null = null;
+
     async function initAudio() {
       try {
         await Audio.setAudioModeAsync({ 
           playsInSilentModeIOS: true, 
           staysActiveInBackground: true,
-          interruptionModeIOS: Audio.InterruptionModeIOS.DuckOthers,
-          interruptionModeAndroid: Audio.InterruptionModeAndroid.DuckOthers,
           shouldDuckAndroid: true,
           playThroughEarpieceAndroid: false
         });
         const { sound: beep } = await Audio.Sound.createAsync(require('../assets/beep.mp3'));
         const { sound: finish } = await Audio.Sound.createAsync(require('../assets/finish.mp3'));
+        
         beepSoundRef.current = beep;
         finishSoundRef.current = finish;
+        beepSound = beep;
+        finishSound = finish;
       } catch (e) {
         console.log("Error cargando audios:", e);
       }
     }
     initAudio();
+
     return () => {
-      if (beepSoundRef.current) beepSoundRef.current.unloadAsync();
-      if (finishSoundRef.current) finishSoundRef.current.unloadAsync();
+      if (beepSound) beepSound.unloadAsync();
+      if (finishSound) finishSound.unloadAsync();
       try { Speech.stop(); } catch(e) {} 
     };
   }, []);
 
+  // NUEVO: Función mejorada con setPositionAsync(0)
   const playSound = async (type: 'beep' | 'finish') => {
     if (!soundsEnabled || finished) return;
     try {
-      if (type === 'beep') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } 
-      else { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); }
+      if (Platform.OS !== 'web') {
+        if (type === 'beep') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } 
+        else { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); }
+      }
+      
       const soundObj = type === 'beep' ? beepSoundRef.current : finishSoundRef.current;
-      if (soundObj) await soundObj.replayAsync(); 
-    } catch (error) { console.log(error); }
+      if (soundObj) {
+        // En lugar de replayAsync, retrocedemos manualmente al principio y le damos a play
+        await soundObj.setPositionAsync(0);
+        await soundObj.playAsync(); 
+      }
+    } catch (error) { 
+      console.log("Error al reproducir audio:", error); 
+    }
   };
 
   const stopPrepTimer = () => { if (prepIntervalRef.current) clearInterval(prepIntervalRef.current); setIsPrep(false); setPrepSeconds(0); setPrepTargetTime(null); };
@@ -625,7 +644,9 @@ export default function TrainingModeScreen() {
 
   const toggleJoint = (slug: string) => { 
     if (!slug) return; 
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
+    if (Platform.OS !== 'web') {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(()=>{}); 
+    }
     setSoreJoints(prev => prev.includes(slug) ? prev.filter(j => j !== slug) : [...prev, slug]); 
   };
 
