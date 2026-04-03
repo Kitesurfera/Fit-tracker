@@ -302,13 +302,18 @@ export default function HomeScreen() {
       discomfortsText = '\n🤕 *Molestias (Diarias):*\n' + discomfortsEntries.map(([k, v]) => `   - ${k}: ${String(v).toUpperCase()}`).join('\n'); 
     }
 
-    // NUEVO: Molestias (sore_joints) registradas tras la ÚLTIMA sesión completada
+    // Molestias (sore_joints) registradas tras la ÚLTIMA sesión completada
     const lastCompletedWorkout = workouts.find(w => w.completed);
     const sessionSoreJoints = lastCompletedWorkout?.completion_data?.sore_joints || [];
     let sessionDiscomfortsText = '';
+    
+    // ESTA ES LA LÓGICA ACTUALIZADA PARA EL DOLOR
     if (sessionSoreJoints.length > 0) {
       const translatedJoints = sessionSoreJoints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ');
       sessionDiscomfortsText = `\n⚠️ *Sobrecarga (Último Entreno):*\n   - Zonas: ${translatedJoints}`;
+    } else if (lastCompletedWorkout) {
+      // Si completó un entreno y no marcó nada, lo indicamos explícitamente.
+      sessionDiscomfortsText = `\n✅ *Sobrecarga (Último Entreno):*\n   - Ninguna, sin dolor tras la sesión.`;
     }
 
     const message = `🏄‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Físico:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` + 
