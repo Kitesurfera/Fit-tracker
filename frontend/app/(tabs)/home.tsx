@@ -299,7 +299,7 @@ export default function HomeScreen() {
     const discomfortsEntries = Object.entries(discomfortsObj);
     let discomfortsText = '';
     if (discomfortsEntries.length > 0) { 
-      discomfortsText = '\n🤕 *Molestias (Diarias):*\n' + discomfortsEntries.map(([k, v]) => `   - ${k}: ${String(v).toUpperCase()}`).join('\n'); 
+      discomfortsText = '\n\n   🤕 *Molestias Diarias:*\n' + discomfortsEntries.map(([k, v]) => `      - ${k}: ${String(v).toUpperCase()}`).join('\n'); 
     }
 
     // Molestias (sore_joints) registradas tras la ÚLTIMA sesión completada
@@ -307,20 +307,21 @@ export default function HomeScreen() {
     const sessionSoreJoints = lastCompletedWorkout?.completion_data?.sore_joints || [];
     let sessionDiscomfortsText = '';
     
-    // ESTA ES LA LÓGICA ACTUALIZADA PARA EL DOLOR
     if (sessionSoreJoints.length > 0) {
       const translatedJoints = sessionSoreJoints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ');
-      sessionDiscomfortsText = `\n⚠️ *Sobrecarga (Último Entreno):*\n   - Zonas: ${translatedJoints}`;
+      sessionDiscomfortsText = `\n\n   ⚠️ *Sobrecarga de Sesión:*\n      - Zonas: ${translatedJoints}`;
     } else if (lastCompletedWorkout) {
       // Si completó un entreno y no marcó nada, lo indicamos explícitamente.
-      sessionDiscomfortsText = `\n✅ *Sobrecarga (Último Entreno):*\n   - Ninguna, sin dolor tras la sesión.`;
+      sessionDiscomfortsText = `\n\n   ✅ *Sobrecarga de Sesión:*\n      - Ninguna, sin dolor tras el entreno.`;
     }
 
+    // Ahora las molestias se concatenan AL FINAL del bloque de entrenamiento
     const message = `🏄‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Físico:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` + 
                     (isFemale ? `   - Fase ciclo: ${phaseText}\n` : '') + 
+                    `\n🏋️‍♀️ *Entrenamiento:*\n   - Fase: ${activeMicroText}\n   - Hoy: ${trained}${workoutName}` + 
+                    rpeText +
                     discomfortsText + 
-                    sessionDiscomfortsText + 
-                    `\n\n🏋️‍♀️ *Entrenamiento:*\n   - Fase: ${activeMicroText}\n   - Hoy: ${trained}${workoutName}` + rpeText;
+                    sessionDiscomfortsText;
                     
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
