@@ -69,31 +69,29 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
   );
 };
 
-const BODY_MAP_ASSET = { uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Human_body_silhouette.svg/512px-Human_body_silhouette.svg.png' };
-// Definimos las coordenadas (porcentajes de arriba/izquierda) para los botones invisibles en image_6.png.
-const BODY_PARTS_MAPPING = [
-  // VISTA FRONTAL (Izquierda)
-  { slug: 'hombros', top: '18%', left: '16.5%', width: 35, height: 35, side: 'front' }, // Deltoide anterior L
-  { slug: 'chest', top: '23%', left: '20%', width: 45, height: 35, side: 'front' }, // Pectoral L
-  { slug: 'biceps', top: '30%', left: '14%', width: 30, height: 40, side: 'front' }, // Bíceps L
-  { slug: 'forearm', top: '40%', left: '10.5%', width: 30, height: 45, side: 'front' }, // Antebrazo L
-  { slug: 'abs', top: '33%', left: '24.5%', width: 40, height: 50, side: 'front' }, // Abdomen
-  { slug: 'obliques', top: '35%', left: '19.5%', width: 30, height: 45, side: 'front' }, // Oblicuo L
-  { slug: 'quadriceps', top: '55%', left: '20%', width: 45, height: 70, side: 'front' }, // Cuádriceps L
-  { slug: 'knees', top: '69%', left: '19.5%', width: 40, height: 40, side: 'front' }, // Rodilla L
-  { slug: 'calves', top: '78%', left: '18%', width: 35, height: 60, side: 'front' }, // Gemelo L
+// 1. Cargamos tu imagen real
+const BODY_MAP_ASSET = require('../assets/images/human_body.png');
 
-  // VISTA DORSAL (Derecha)
-  { slug: 'trapezius', top: '16%', left: '72%', width: 45, height: 30, side: 'back' }, // Trapecio
-  { slug: 'hombros', top: '18%', left: '62.5%', width: 35, height: 35, side: 'back' }, // Deltoide posterior R
-  { slug: 'upper-back', top: '23%', left: '71%', width: 55, height: 40, side: 'back' }, // Espalda alta (Dorsal ancho R)
-  { slug: 'lower-back', top: '36%', left: '72%', width: 45, height: 40, side: 'back' }, // Lumbar
-  { slug: 'triceps', top: '30%', left: '61%', width: 30, height: 40, side: 'back' }, // Tríceps R
-  { slug: 'forearm', top: '40%', left: '57.5%', width: 30, height: 45, side: 'back' }, // Antebrazo R
-  { slug: 'gluteal', top: '48%', left: '70.5%', width: 55, height: 55, side: 'back' }, // Glúteo R
-  { slug: 'hamstring', top: '61%', left: '70.5%', width: 45, height: 65, side: 'back' }, // Isquios R
-  { slug: 'knees', top: '74%', left: '70.5%', width: 40, height: 40, side: 'back' }, // Rodilla posterior R
-  { slug: 'calves', top: '83%', left: '72.5%', width: 35, height: 60, side: 'back' } // Gemelo R
+// 2. Coordenadas calibradas para tu imagen doble (Frontal Izquierda / Dorsal Derecha)
+const BODY_PARTS_MAPPING = [
+  // --- VISTA FRONTAL (Mitad Izquierda de la imagen) ---
+  { slug: 'shoulders', top: '16%', left: '12%', width: '26%', height: '10%' }, // Hombros (abarca ambos)
+  { slug: 'chest', top: '23%', left: '15%', width: '20%', height: '10%' }, // Pecho
+  { slug: 'biceps', top: '28%', left: '10%', width: '30%', height: '12%' }, // Bíceps (abarca ambos brazos)
+  { slug: 'abs', top: '35%', left: '18%', width: '14%', height: '12%' }, // Abdomen
+  { slug: 'quadriceps', top: '52%', left: '15%', width: '20%', height: '16%' }, // Cuádriceps
+  { slug: 'knees', top: '70%', left: '16%', width: '18%', height: '8%' }, // Rodillas
+  { slug: 'calves', top: '80%', left: '16%', width: '18%', height: '12%' }, // Gemelos / Tibial frontal
+  { slug: 'ankles', top: '92%', left: '16%', width: '18%', height: '6%' }, // Tobillos frontales
+
+  // --- VISTA DORSAL (Mitad Derecha de la imagen) ---
+  { slug: 'neck', top: '10%', left: '68%', width: '14%', height: '6%' }, // Cuello / Trapecio alto
+  { slug: 'upper-back', top: '20%', left: '62%', width: '26%', height: '14%' }, // Espalda Alta / Dorsales
+  { slug: 'lower-back', top: '36%', left: '65%', width: '20%', height: '10%' }, // Lumbar (Crítico para kitesurf)
+  { slug: 'gluteal', top: '47%', left: '64%', width: '22%', height: '11%' }, // Glúteos
+  { slug: 'hamstring', top: '58%', left: '64%', width: '22%', height: '14%' }, // Isquios
+  { slug: 'calves', top: '78%', left: '65%', width: '20%', height: '14%' }, // Gemelos (Posterior)
+  { slug: 'feet', top: '93%', left: '65%', width: '20%', height: '6%' }, // Pies / Talones
 ];
 
 export default function TrainingModeScreen() {
@@ -825,7 +823,6 @@ const styles = StyleSheet.create({
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 }, bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 24, maxHeight: '90%' },
   floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 },
-  // Estilos para el PLAN B del Mapa Corporal
-  touchTarget: { position: 'absolute', backgroundColor: 'transparent', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+  touchTarget: { position: 'absolute', backgroundColor: 'rgba(255, 0, 0, 0.3)', justifyContent: 'center', alignItems: 'center', zIndex: 10, borderRadius: 8 },
   selectedIndicator: { borderWidth: 2, borderColor: '#FFF', position: 'absolute' }
 });
