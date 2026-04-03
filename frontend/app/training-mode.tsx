@@ -156,7 +156,7 @@ export default function TrainingModeScreen() {
   }, []);
 
   const announce = async (text: string) => {
-    if (!voiceEnabled) return; 
+    if (!voiceEnabled || finished || workout?.completed) return; 
     try {
       Speech.stop(); 
       Speech.speak(text, { language: 'es-ES', rate: 0.95 });
@@ -361,6 +361,7 @@ export default function TrainingModeScreen() {
   }, [isWorking, workTargetTime]);
 
   useEffect(() => {
+    if (finished || workout?.completed) return;
     if (!isHiit && workout && !isResting && !isPrep && !showIndicationsModal) {
       const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending');
       if (next !== -1) {
@@ -370,9 +371,10 @@ export default function TrainingModeScreen() {
         }
       } else { stopWorkTimer(); }
     }
-  }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal]);
+  }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished]);
 
   useEffect(() => {
+    if (finished || workout?.completed) return;
     if (isHiit && workout && hiitPhase === 'work' && !isResting && !isPrep && !showIndicationsModal) {
       const b = workout.exercises[hiitBlockIdx]; if (!b) return;
       const ex = b.hiit_exercises[hiitExIdx]; const dur = parseTimeToSeconds(ex?.duration_reps || ex?.duration);
@@ -380,9 +382,10 @@ export default function TrainingModeScreen() {
          handleStartWork(dur, ex.name); 
       }
     }
-  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal]);
+  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished]);
 
   useEffect(() => {
+    if (finished || workout?.completed) return;
     if (!isResting && workout && !showIndicationsModal) {
       if (isHiit) {
         if (hiitPhase === 'rest_ex') { setHiitPhase('work'); setHiitExIdx(prev => prev + 1); } 
@@ -390,7 +393,7 @@ export default function TrainingModeScreen() {
         else if (hiitPhase === 'rest_next_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitRound(1); setHiitBlockIdx(prev => prev + 1); }
       } else { if (restType === 'exercise') { autoAdvance(currentExIndex); setRestType(null); } }
     }
-  }, [isResting, showIndicationsModal]);
+  }, [isResting, showIndicationsModal, finished, workout]);
 
   const advanceHiitLogic = () => {
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -409,7 +412,7 @@ export default function TrainingModeScreen() {
           const rest = parseTimeToSeconds(b.rest_between_blocks);
           if (rest > 0) { startRestTimer(rest, workout.exercises[hiitBlockIdx + 1].hiit_exercises[0].name); setHiitPhase('rest_next_block'); } 
           else { setHiitBlockIdx(hiitBlockIdx + 1); setHiitRound(1); setHiitExIdx(0); setHiitPhase('work'); }
-        } else { setFinished(true); }
+        } else { Speech.stop(); setFinished(true); }
       }
     }
   };
@@ -427,7 +430,7 @@ export default function TrainingModeScreen() {
   };
 
   const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => { setSetsStatus(prev => { const updated = { ...prev }; updated[exIdx] = [...(prev[exIdx] || [])]; updated[exIdx][setIdx] = status; return updated; }); };
-  const autoAdvance = (exIdx: number) => { stopAllTimers(); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else setTimeout(() => setFinished(true), 400); };
+  const autoAdvance = (exIdx: number) => { stopAllTimers(); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else { Speech.stop(); setTimeout(() => setFinished(true), 400); } };
 
   const completeSet = () => {
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -678,7 +681,7 @@ export default function TrainingModeScreen() {
         <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
           <Ionicons name="list" size={24} color="#FFF" />
         </TouchableOpacity>
-        <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else setFinished(true); }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
+        <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else { Speech.stop(); setFinished(true); } }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
         {renderVideoModal()}{renderIndicationsModal()}
       </SafeAreaView>
     );
