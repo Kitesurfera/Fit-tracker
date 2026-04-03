@@ -69,10 +69,7 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
   );
 };
 
-// PLAN B: Imagen estática profesional con zonas táctiles definidas por coordenadas.
-// Generado profesionalmente: image_6.png (Anterior/Posterior femenino muscular diagram).
-const BODY_MAP_ASSET = require('../assets/images/image_6.png');
-
+const BODY_MAP_ASSET = { uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d2/Human_body_silhouette.svg/512px-Human_body_silhouette.svg.png' };
 // Definimos las coordenadas (porcentajes de arriba/izquierda) para los botones invisibles en image_6.png.
 const BODY_PARTS_MAPPING = [
   // VISTA FRONTAL (Izquierda)
