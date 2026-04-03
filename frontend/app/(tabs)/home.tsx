@@ -82,6 +82,25 @@ export default function HomeScreen() {
 
   const isFemale = ['female', 'mujer', 'femenino'].includes(user?.gender?.toLowerCase() || '');
 
+  // Truncado para brevedad visual, pero el mapping es crucial para WhatsApp
+  const SLUG_TRANSLATIONS: Record<string, string> = {
+    'chest-left': 'Pecho Izquierdo', 'chest-right': 'Pecho Derecho',
+    'upper-back-left': 'Espalda Alta Izq.', 'upper-back-right': 'Espalda Alta Der.',
+    'lower-back-left': 'Lumbar Izquierdo', 'lower-back-right': 'Lumbar Derecho',
+    'quadriceps-left': 'Cuádriceps Izq.', 'quadriceps-right': 'Cuádriceps Der.',
+    'hamstring-left': 'Isquio Izquierdo', 'hamstring-right': 'Isquio Derecho',
+    'gluteal-left': 'Glúteo Izquierdo', 'gluteal-right': 'Glúteo Derecho',
+    'shoulders-left': 'Hombro Izquierdo', 'shoulders-right': 'Hombro Derecho',
+    'biceps-left': 'Bíceps Izquierdo', 'biceps-right': 'Bíceps Derecho',
+    'triceps-left': 'Tríceps Izquierdo', 'triceps-right': 'Tríceps Derecho',
+    'forearm-left': 'Antebrazo Izquierdo', 'forearm-right': 'Antebrazo Derecho',
+    'calves-left': 'Gemelo Izquierdo', 'calves-right': 'Gemelo Derecho',
+    'knees-left': 'Rodilla Izquierda', 'knees-right': 'Rodilla Derecha',
+    'ankles-left': 'Tobillo Izquierdo', 'ankles-right': 'Tobillo Derecho',
+    'feet-left': 'Pie Izquierdo', 'feet-right': 'Pie Derecho',
+    'abs': 'Abdomen Central', 'neck': 'Cuello / Trapecio'
+  };
+
   const getActualDayOneStr = useCallback(() => {
     try {
       if (!wellnessHistory || !Array.isArray(wellnessHistory) || wellnessHistory.length === 0) return '';
@@ -255,6 +274,9 @@ export default function HomeScreen() {
   const handleFeedbackClick = async () => { if (user) await AsyncStorage.setItem(`feedback_read_${user.id}`, feedbackSignature); setHasUnreadFeedback(false); router.push(`/analytics?tab=feedback`); };
   const handleSkipSubmit = async () => { if (!skipReason.trim()) return Alert.alert("Aviso", "Indica un motivo."); setUpdating(true); try { const workout = workouts.find(w => w.id === skipWorkoutId); if(workout) { await api.updateWorkout(skipWorkoutId!, { ...workout, completed: true, observations: `[NO COMPLETADA] Motivo: ${skipReason}` }); } setShowSkipModal(false); setSkipReason(''); loadData(); } catch(e) {} finally { setUpdating(false); } };
 
+  // ----------------------------------------------------------------------
+  // COMPARTIR STATUS CON ENTRENADOR POR WHATSAPP ACTUALIZADO
+  // ----------------------------------------------------------------------
   const handleShareStatus = () => {
     const latestWellness = summary?.latest_wellness || {};
     const fatigue = latestWellness.fatigue || '?';
@@ -263,15 +285,38 @@ export default function HomeScreen() {
     const todayWorkout = workouts.find(w => w.date === todayStr);
     const trained = todayWorkout ? (todayWorkout.completed ? '✅ Completada' : '❌ Pendiente') : 'Libre / Descanso';
     const workoutName = todayWorkout ? ` (${todayWorkout.title})` : '';
+    
     let rpeText = '';
-    if (todayWorkout?.completed && todayWorkout.completion_data?.rpe) { rpeText = `\n   - RPE: ${todayWorkout.completion_data.rpe}/10`; }
+    if (todayWorkout?.completed && todayWorkout.completion_data?.rpe) { 
+      rpeText = `\n   - RPE: ${todayWorkout.completion_data.rpe}/10`; 
+    }
+    
     const activeMicroText = activeMicro ? `${activeMicro.nombre} [${activeMicro.tipo}]` : 'Planificación Libre';
     const phaseText = phaseInfo ? phaseInfo.name : 'Sin registro';
+    
+    // Molestias registradas en el check-in diario (wellness)
     const discomfortsObj = latestWellness.discomforts || {};
     const discomfortsEntries = Object.entries(discomfortsObj);
     let discomfortsText = '';
-    if (discomfortsEntries.length > 0) { discomfortsText = '\n🤕 *Molestias:*\n' + discomfortsEntries.map(([k, v]) => `   - ${k}: ${String(v).toUpperCase()}`).join('\n'); }
-    const message = `🏄‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Físico:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` + (isFemale ? `   - Fase ciclo: ${phaseText}\n` : '') + discomfortsText + `\n\n🏋️‍♀️ *Entrenamiento:*\n   - Fase: ${activeMicroText}\n   - Hoy: ${trained}${workoutName}` + rpeText;
+    if (discomfortsEntries.length > 0) { 
+      discomfortsText = '\n🤕 *Molestias (Diarias):*\n' + discomfortsEntries.map(([k, v]) => `   - ${k}: ${String(v).toUpperCase()}`).join('\n'); 
+    }
+
+    // NUEVO: Molestias (sore_joints) registradas tras la ÚLTIMA sesión completada
+    const lastCompletedWorkout = workouts.find(w => w.completed);
+    const sessionSoreJoints = lastCompletedWorkout?.completion_data?.sore_joints || [];
+    let sessionDiscomfortsText = '';
+    if (sessionSoreJoints.length > 0) {
+      const translatedJoints = sessionSoreJoints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ');
+      sessionDiscomfortsText = `\n⚠️ *Sobrecarga (Último Entreno):*\n   - Zonas: ${translatedJoints}`;
+    }
+
+    const message = `🏄‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Físico:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` + 
+                    (isFemale ? `   - Fase ciclo: ${phaseText}\n` : '') + 
+                    discomfortsText + 
+                    sessionDiscomfortsText + 
+                    `\n\n🏋️‍♀️ *Entrenamiento:*\n   - Fase: ${activeMicroText}\n   - Hoy: ${trained}${workoutName}` + rpeText;
+                    
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
 
@@ -335,7 +380,7 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* --- CONTENIDO DESPLEGABLE DETALLADO (IGUAL PARA FUTURAS E HISTORIAL) --- */}
+        {/* --- CONTENIDO DESPLEGABLE DETALLADO --- */}
         {isExpanded && (
           <View style={{ marginTop: 15, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
             <Text style={{fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, letterSpacing: 1}}>DETALLES DEL ENTRENAMIENTO</Text>
