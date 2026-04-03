@@ -37,13 +37,14 @@ const SLUG_TRANSLATIONS: Record<string, string> = {
   'gluteal-left': 'Glúteo Izquierdo', 'gluteal-right': 'Glúteo Derecho',
   'shoulders-left': 'Hombro Izquierdo', 'shoulders-right': 'Hombro Derecho',
   'biceps-left': 'Bíceps Izquierdo', 'biceps-right': 'Bíceps Derecho',
+  'triceps-left': 'Tríceps Izquierdo', 'triceps-right': 'Tríceps Derecho',
+  'forearm-left': 'Antebrazo Izquierdo', 'forearm-right': 'Antebrazo Derecho',
   'calves-left': 'Gemelo Izquierdo', 'calves-right': 'Gemelo Derecho',
   'knees-left': 'Rodilla Izquierda', 'knees-right': 'Rodilla Derecha',
   'ankles-left': 'Tobillo Izquierdo', 'ankles-right': 'Tobillo Derecho',
   'feet-left': 'Pie Izquierdo', 'feet-right': 'Pie Derecho',
   'abs': 'Abdomen Central', 'neck': 'Cuello / Trapecio'
 };
-
 const parseTimeToSeconds = (timeStr: string | number | undefined | null): number => {
   if (!timeStr) return 0;
   const str = String(timeStr).toLowerCase().trim();
@@ -74,55 +75,61 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
 // 1. Cargamos tu imagen real
 const BODY_MAP_ASSET = require('../assets/images/human_body.png');
 
-// 2. Coordenadas calibradas para tu imagen doble (Frontal Izquierda / Dorsal Derecha)
 const BODY_PARTS_MAPPING = [
-  // --- VISTA FRONTAL (Mitad Izquierda de la imagen) ---
+  // --- VISTA FRONTAL (Mitad Izquierda de la imagen) -> Todo con left -2% ---
   // Hombros
-  { slug: 'shoulders-left', top: '16%', left: '12%', width: '13%', height: '10%' },
-  { slug: 'shoulders-right', top: '16%', left: '25%', width: '13%', height: '10%' },
+  { slug: 'shoulders-left', top: '16%', left: '10%', width: '13%', height: '10%' },
+  { slug: 'shoulders-right', top: '16%', left: '23%', width: '13%', height: '10%' },
   // Pecho
-  { slug: 'chest-left', top: '23%', left: '15%', width: '10%', height: '10%' },
-  { slug: 'chest-right', top: '23%', left: '25%', width: '10%', height: '10%' },
-  // Bíceps / Brazos (Separados del torso)
-  { slug: 'biceps-left', top: '28%', left: '10%', width: '10%', height: '12%' },
-  { slug: 'biceps-right', top: '28%', left: '30%', width: '10%', height: '12%' },
-  // Abdomen (Mantenido central)
-  { slug: 'abs', top: '35%', left: '18%', width: '14%', height: '12%' },
+  { slug: 'chest-left', top: '23%', left: '13%', width: '10%', height: '10%' },
+  { slug: 'chest-right', top: '23%', left: '23%', width: '10%', height: '10%' },
+  // Bíceps
+  { slug: 'biceps-left', top: '28%', left: '8%', width: '10%', height: '12%' },
+  { slug: 'biceps-right', top: '28%', left: '28%', width: '10%', height: '12%' },
+  // Tríceps (Vista frontal exterior)
+  { slug: 'triceps-left', top: '28%', left: '4%', width: '4%', height: '12%' },
+  { slug: 'triceps-right', top: '28%', left: '38%', width: '4%', height: '12%' },
+  // Antebrazos
+  { slug: 'forearm-left', top: '40%', left: '6%', width: '8%', height: '12%' },
+  { slug: 'forearm-right', top: '40%', left: '30%', width: '8%', height: '12%' },
+  // Abdomen
+  { slug: 'abs', top: '35%', left: '16%', width: '14%', height: '12%' },
   // Cuádriceps
-  { slug: 'quadriceps-left', top: '52%', left: '15%', width: '10%', height: '16%' },
-  { slug: 'quadriceps-right', top: '52%', left: '25%', width: '10%', height: '16%' },
+  { slug: 'quadriceps-left', top: '52%', left: '13%', width: '10%', height: '16%' },
+  { slug: 'quadriceps-right', top: '52%', left: '23%', width: '10%', height: '16%' },
   // Rodillas
-  { slug: 'knees-left', top: '70%', left: '16%', width: '9%', height: '8%' },
-  { slug: 'knees-right', top: '70%', left: '25%', width: '9%', height: '8%' },
-  // Gemelos frontales / Tibiales
-  { slug: 'calves-left', top: '80%', left: '16%', width: '9%', height: '12%' },
-  { slug: 'calves-right', top: '80%', left: '25%', width: '9%', height: '12%' },
-  // Tobillos
-  { slug: 'ankles-left', top: '92%', left: '16%', width: '9%', height: '6%' },
-  { slug: 'ankles-right', top: '92%', left: '25%', width: '9%', height: '6%' },
+  { slug: 'knees-left', top: '70%', left: '14%', width: '9%', height: '8%' },
+  { slug: 'knees-right', top: '70%', left: '23%', width: '9%', height: '8%' },
+  // Gemelos frontales / Tibiales (top -2%)
+  { slug: 'calves-left', top: '78%', left: '14%', width: '9%', height: '12%' },
+  { slug: 'calves-right', top: '78%', left: '23%', width: '9%', height: '12%' },
+  // Tobillos (top -2%)
+  { slug: 'ankles-left', top: '90%', left: '14%', width: '9%', height: '6%' },
+  { slug: 'ankles-right', top: '90%', left: '23%', width: '9%', height: '6%' },
 
-  // --- VISTA DORSAL (Mitad Derecha de la imagen) ---
-  // Cuello (Central)
-  { slug: 'neck', top: '10%', left: '68%', width: '14%', height: '6%' },
+  // --- VISTA DORSAL (Mitad Derecha de la imagen) -> Todo con left +2% ---
+  // Cuello
+  { slug: 'neck', top: '10%', left: '70%', width: '14%', height: '6%' },
   // Espalda Alta / Dorsales
-  { slug: 'upper-back-left', top: '20%', left: '62%', width: '13%', height: '14%' },
-  { slug: 'upper-back-right', top: '20%', left: '75%', width: '13%', height: '14%' },
-  // Lumbar (Dividido por si hay sobrecarga asimétrica al ceñir con la cometa)
-  { slug: 'lower-back-left', top: '36%', left: '65%', width: '10%', height: '10%' },
-  { slug: 'lower-back-right', top: '36%', left: '75%', width: '10%', height: '10%' },
+  { slug: 'upper-back-left', top: '20%', left: '64%', width: '13%', height: '14%' },
+  { slug: 'upper-back-right', top: '20%', left: '77%', width: '13%', height: '14%' },
+  // Lumbar
+  { slug: 'lower-back-left', top: '36%', left: '67%', width: '10%', height: '10%' },
+  { slug: 'lower-back-right', top: '36%', left: '77%', width: '10%', height: '10%' },
   // Glúteos
-  { slug: 'gluteal-left', top: '47%', left: '64%', width: '11%', height: '11%' },
-  { slug: 'gluteal-right', top: '47%', left: '75%', width: '11%', height: '11%' },
+  { slug: 'gluteal-left', top: '47%', left: '66%', width: '11%', height: '11%' },
+  { slug: 'gluteal-right', top: '47%', left: '77%', width: '11%', height: '11%' },
   // Isquios
-  { slug: 'hamstring-left', top: '58%', left: '64%', width: '11%', height: '14%' },
-  { slug: 'hamstring-right', top: '58%', left: '75%', width: '11%', height: '14%' },
-  // Gemelos posteriores
-  { slug: 'calves-left', top: '78%', left: '65%', width: '10%', height: '14%' },
-  { slug: 'calves-right', top: '78%', left: '75%', width: '10%', height: '14%' },
+  { slug: 'hamstring-left', top: '58%', left: '66%', width: '11%', height: '14%' },
+  { slug: 'hamstring-right', top: '58%', left: '77%', width: '11%', height: '14%' },
+  // Gemelos posteriores (top -2%)
+  { slug: 'calves-left', top: '76%', left: '67%', width: '10%', height: '14%' },
+  { slug: 'calves-right', top: '76%', left: '77%', width: '10%', height: '14%' },
   // Pies / Talones
-  { slug: 'feet-left', top: '93%', left: '65%', width: '10%', height: '6%' },
-  { slug: 'feet-right', top: '93%', left: '75%', width: '10%', height: '6%' },
+  { slug: 'feet-left', top: '93%', left: '67%', width: '10%', height: '6%' },
+  { slug: 'feet-right', top: '93%', left: '77%', width: '10%', height: '6%' },
 ];
+
 export default function TrainingModeScreen() {
   useKeepAwake();
   const { colors } = useTheme();
