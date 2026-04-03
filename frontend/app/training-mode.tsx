@@ -127,12 +127,16 @@ export default function TrainingModeScreen() {
   const justFinishedRestRef = useRef(false);
 
   useEffect(() => {
-    AsyncStorage.getItem('voice_enabled').then(v => if (v === 'false') setVoiceEnabled(false));
-    AsyncStorage.getItem('sounds_enabled').then(s => if (s === 'false') setSoundsEnabled(false));
+    AsyncStorage.getItem('voice_enabled').then(v => {
+      if (v === 'false') setVoiceEnabled(false);
+    });
+    AsyncStorage.getItem('sounds_enabled').then(s => {
+      if (s === 'false') setSoundsEnabled(false);
+    });
   }, []);
 
   const announce = async (text: string) => {
-    // CRÍTICO: Si el entrenamiento ha terminado, no hablar más
+    // Si el entrenamiento ha terminado, no hablar más para evitar el bug de "siguiente ejercicio"
     if (!voiceEnabled || finished || workout?.completed) return; 
     try {
       Speech.stop(); 
@@ -293,10 +297,52 @@ export default function TrainingModeScreen() {
     } else { setFinished(true); announce("¡Entrenamiento terminado!"); }
   };
 
+  const buildCompletionData = () => {
+    if (isHiit) {
+      return {
+        rpe,
+        sleep_quality: sleepQuality,
+        sleep_hours: sleepHours,
+        sore_joints: soreJoints,
+        hiit_completed: true,
+        hiit_results: (workout.exercises || []).map((b: any, bIdx: number) => ({
+          ...b,
+          hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({
+            ...ex,
+            skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0,
+            recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '',
+            athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || ''
+          }))
+        }))
+      };
+    }
+    return {
+      rpe,
+      sleep_quality: sleepQuality,
+      sleep_hours: sleepHours,
+      sore_joints: soreJoints,
+      exercise_results: (workout.exercises || []).map((ex: any, i: number) => {
+        const s = setsStatus[i] || [];
+        return {
+          exercise_index: i,
+          name: ex.name,
+          total_sets: parseInt(ex.sets) || 1,
+          completed_sets: s.filter(item => item === 'completed').length,
+          skipped_sets: s.filter(item => item === 'skipped').length,
+          set_details: s.map((status, si) => ({ set: si + 1, status })),
+          logged_weight: logs[i]?.weight || '',
+          logged_reps: logs[i]?.reps || '',
+          athlete_note: logs[i]?.note || '',
+          recorded_video_url: recordedVideos[i.toString()] || ''
+        };
+      }),
+    };
+  };
+
   const handleFinish = async () => {
     if (workout.completed) { router.back(); return; }
     stopAllTimers();
-    setLoading(true); // Evitar doble clic
+    setLoading(true); 
     
     const data = buildCompletionData();
     try {
@@ -312,7 +358,7 @@ export default function TrainingModeScreen() {
       } else {
         await syncManager.savePendingWorkout(stableWorkoutId, update);
       }
-      router.replace('/(tabs)/calendar'); // Usar replace para limpiar stack
+      router.replace('/(tabs)/calendar'); 
     } catch (e) {
       Alert.alert("Error", "No se pudo guardar el entrenamiento.");
     } finally {
@@ -346,7 +392,6 @@ export default function TrainingModeScreen() {
              exName={isHiit ? workout.exercises[hiitBlockIdx].hiit_exercises[hiitExIdx].name : workout.exercises[currentExIndex].name}
              colors={colors} onComplete={handleWorkComplete}
            />
-           {/* Aquí irían las cards de ejercicios HIIT o Tradicional */}
         </ScrollView>
       ) : (
         <ScrollView contentContainerStyle={styles.content}>
@@ -423,4 +468,3 @@ const styles = StyleSheet.create({
   bodyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   confirmBodyBtn: { margin: 20, padding: 18, borderRadius: 12, alignItems: 'center' }
 });
-
