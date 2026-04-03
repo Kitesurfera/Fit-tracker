@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, TextInput, Alert, Platform, Modal, Dimensions
+  ActivityIndicator, Linking, TextInput, Alert, Platform, Modal, Dimensions, Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -13,7 +13,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
 import NetInfo from '@react-native-community/netinfo';
-import Body from 'react-native-body-highlighter';
 
 // IMPORTACIONES
 import { useTheme } from '../src/hooks/useTheme';
@@ -69,6 +68,36 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
     </View>
   );
 };
+
+// PLAN B: Imagen estática profesional con zonas táctiles definidas por coordenadas.
+// Generado profesionalmente: image_6.png (Anterior/Posterior femenino muscular diagram).
+const BODY_MAP_ASSET = require('../assets/images/image_6.png');
+
+// Definimos las coordenadas (porcentajes de arriba/izquierda) para los botones invisibles en image_6.png.
+const BODY_PARTS_MAPPING = [
+  // VISTA FRONTAL (Izquierda)
+  { slug: 'hombros', top: '18%', left: '16.5%', width: 35, height: 35, side: 'front' }, // Deltoide anterior L
+  { slug: 'chest', top: '23%', left: '20%', width: 45, height: 35, side: 'front' }, // Pectoral L
+  { slug: 'biceps', top: '30%', left: '14%', width: 30, height: 40, side: 'front' }, // Bíceps L
+  { slug: 'forearm', top: '40%', left: '10.5%', width: 30, height: 45, side: 'front' }, // Antebrazo L
+  { slug: 'abs', top: '33%', left: '24.5%', width: 40, height: 50, side: 'front' }, // Abdomen
+  { slug: 'obliques', top: '35%', left: '19.5%', width: 30, height: 45, side: 'front' }, // Oblicuo L
+  { slug: 'quadriceps', top: '55%', left: '20%', width: 45, height: 70, side: 'front' }, // Cuádriceps L
+  { slug: 'knees', top: '69%', left: '19.5%', width: 40, height: 40, side: 'front' }, // Rodilla L
+  { slug: 'calves', top: '78%', left: '18%', width: 35, height: 60, side: 'front' }, // Gemelo L
+
+  // VISTA DORSAL (Derecha)
+  { slug: 'trapezius', top: '16%', left: '72%', width: 45, height: 30, side: 'back' }, // Trapecio
+  { slug: 'hombros', top: '18%', left: '62.5%', width: 35, height: 35, side: 'back' }, // Deltoide posterior R
+  { slug: 'upper-back', top: '23%', left: '71%', width: 55, height: 40, side: 'back' }, // Espalda alta (Dorsal ancho R)
+  { slug: 'lower-back', top: '36%', left: '72%', width: 45, height: 40, side: 'back' }, // Lumbar
+  { slug: 'triceps', top: '30%', left: '61%', width: 30, height: 40, side: 'back' }, // Tríceps R
+  { slug: 'forearm', top: '40%', left: '57.5%', width: 30, height: 45, side: 'back' }, // Antebrazo R
+  { slug: 'gluteal', top: '48%', left: '70.5%', width: 55, height: 55, side: 'back' }, // Glúteo R
+  { slug: 'hamstring', top: '61%', left: '70.5%', width: 45, height: 65, side: 'back' }, // Isquios R
+  { slug: 'knees', top: '74%', left: '70.5%', width: 40, height: 40, side: 'back' }, // Rodilla posterior R
+  { slug: 'calves', top: '83%', left: '72.5%', width: 35, height: 60, side: 'back' } // Gemelo R
+];
 
 export default function TrainingModeScreen() {
   useKeepAwake();
@@ -535,6 +564,7 @@ export default function TrainingModeScreen() {
     }
   };
 
+  // NUEVO: Renderiza un resumen visual detallado de la sesión al terminar
   const renderSessionSummary = () => {
     if (!workout?.exercises) return null;
     
@@ -621,16 +651,13 @@ export default function TrainingModeScreen() {
     </Modal>
   );
 
-  const toggleJoint = (part: any) => { 
-    if (!part?.slug) return; 
+  const toggleJoint = (slug: string) => { 
+    if (!slug) return; 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
-    setSoreJoints(prev => prev.includes(part.slug) ? prev.filter(j => j !== part.slug) : [...prev, part.slug]); 
+    setSoreJoints(prev => prev.includes(slug) ? prev.filter(j => j !== slug) : [...prev, slug]); 
   };
 
   const renderBodyMapModal = () => {
-    const errorColor = colors.error || '#EF4444';
-    const data = soreJoints.map(slug => ({ slug, intensity: 1 }));
-
     return (
       <Modal visible={showBodyMap} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -651,15 +678,34 @@ export default function TrainingModeScreen() {
               <Text style={{ fontSize: 11, fontWeight: '900', color: '#888' }}>DORSAL</Text>
             </View>
 
-            {/* CORRECCIÓN: Contenedor con altura explícita mayor para evitar que los toques queden fuera del área del componente al escalarse */}
+            {/* PLAN B: Contenedor con imagen profesional y zonas táctiles superpuestas */}
             <View style={{ width: '100%', height: 420, alignItems: 'center', justifyContent: 'center' }}>
-                <Body 
-                  data={data} 
-                  gender="female" 
-                  scale={1.3} 
-                  colors={['#E2E8F0', errorColor]} 
-                  onBodyPartPress={toggleJoint} 
-                />
+                <Image source={BODY_MAP_ASSET} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
+                {BODY_PARTS_MAPPING.map((part, index) => {
+                  const isSelected = soreJoints.includes(part.slug);
+                  return (
+                    <TouchableOpacity
+                      key={index}
+                      style={[styles.touchTarget, { 
+                        top: part.top, 
+                        left: part.left, 
+                        width: part.width, 
+                        height: part.height 
+                      }]}
+                      onPress={() => toggleJoint(part.slug)}
+                    >
+                      {/* Indicador visual de zona seleccionada (un círculo semi-transparente) */}
+                      {isSelected && (
+                        <View style={[styles.selectedIndicator, { 
+                          backgroundColor: (colors.error || '#EF4444') + '70',
+                          width: part.width * 0.9, 
+                          height: part.width * 0.9,
+                          borderRadius: part.width * 0.45,
+                        }]} />
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
             </View>
 
             <TouchableOpacity 
@@ -781,5 +827,8 @@ const styles = StyleSheet.create({
   summaryCard: { padding: 16, borderRadius: 16, marginBottom: 12, width: '100%' },
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 }, bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 24, maxHeight: '90%' },
-  floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 }
+  floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 },
+  // Estilos para el PLAN B del Mapa Corporal
+  touchTarget: { position: 'absolute', backgroundColor: 'transparent', justifyContent: 'center', alignItems: 'center', zIndex: 10 },
+  selectedIndicator: { borderWidth: 2, borderColor: '#FFF', position: 'absolute' }
 });
