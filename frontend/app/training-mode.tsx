@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, TextInput, Alert, Platform, Modal, Dimensions, Image
+  ActivityIndicator, Linking, TextInput, Alert, Platform, Modal, Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -45,6 +45,7 @@ const SLUG_TRANSLATIONS: Record<string, string> = {
   'feet-left': 'Pie Izquierdo', 'feet-right': 'Pie Derecho',
   'abs': 'Abdomen Central', 'neck': 'Cuello / Trapecio'
 };
+
 const parseTimeToSeconds = (timeStr: string | number | undefined | null): number => {
   if (!timeStr) return 0;
   const str = String(timeStr).toLowerCase().trim();
@@ -71,64 +72,6 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
     </View>
   );
 };
-
-// 1. Cargamos tu imagen real
-const BODY_MAP_ASSET = require('../assets/images/human_body.png');
-
-const BODY_PARTS_MAPPING = [
-  // --- VISTA FRONTAL (Mitad Izquierda de la imagen) -> Todo con left -2% ---
-  // Hombros
-  { slug: 'shoulders-left', top: '16%', left: '10%', width: '13%', height: '10%' },
-  { slug: 'shoulders-right', top: '16%', left: '23%', width: '13%', height: '10%' },
-  // Pecho
-  { slug: 'chest-left', top: '23%', left: '13%', width: '10%', height: '10%' },
-  { slug: 'chest-right', top: '23%', left: '23%', width: '10%', height: '10%' },
-  // Bíceps
-  { slug: 'biceps-left', top: '28%', left: '8%', width: '10%', height: '12%' },
-  { slug: 'biceps-right', top: '28%', left: '28%', width: '10%', height: '12%' },
-  // Tríceps (Vista frontal exterior)
-  { slug: 'triceps-left', top: '28%', left: '4%', width: '4%', height: '12%' },
-  { slug: 'triceps-right', top: '28%', left: '38%', width: '4%', height: '12%' },
-  // Antebrazos
-  { slug: 'forearm-left', top: '40%', left: '6%', width: '8%', height: '12%' },
-  { slug: 'forearm-right', top: '40%', left: '30%', width: '8%', height: '12%' },
-  // Abdomen
-  { slug: 'abs', top: '35%', left: '16%', width: '14%', height: '12%' },
-  // Cuádriceps
-  { slug: 'quadriceps-left', top: '52%', left: '13%', width: '10%', height: '16%' },
-  { slug: 'quadriceps-right', top: '52%', left: '23%', width: '10%', height: '16%' },
-  // Rodillas
-  { slug: 'knees-left', top: '70%', left: '14%', width: '9%', height: '8%' },
-  { slug: 'knees-right', top: '70%', left: '23%', width: '9%', height: '8%' },
-  // Gemelos frontales / Tibiales (top -2%)
-  { slug: 'calves-left', top: '78%', left: '14%', width: '9%', height: '12%' },
-  { slug: 'calves-right', top: '78%', left: '23%', width: '9%', height: '12%' },
-  // Tobillos (top -2%)
-  { slug: 'ankles-left', top: '90%', left: '14%', width: '9%', height: '6%' },
-  { slug: 'ankles-right', top: '90%', left: '23%', width: '9%', height: '6%' },
-
-  // --- VISTA DORSAL (Mitad Derecha de la imagen) -> Todo con left +2% ---
-  // Cuello
-  { slug: 'neck', top: '10%', left: '70%', width: '14%', height: '6%' },
-  // Espalda Alta / Dorsales
-  { slug: 'upper-back-left', top: '20%', left: '64%', width: '13%', height: '14%' },
-  { slug: 'upper-back-right', top: '20%', left: '77%', width: '13%', height: '14%' },
-  // Lumbar
-  { slug: 'lower-back-left', top: '36%', left: '67%', width: '10%', height: '10%' },
-  { slug: 'lower-back-right', top: '36%', left: '77%', width: '10%', height: '10%' },
-  // Glúteos
-  { slug: 'gluteal-left', top: '47%', left: '66%', width: '11%', height: '11%' },
-  { slug: 'gluteal-right', top: '47%', left: '77%', width: '11%', height: '11%' },
-  // Isquios
-  { slug: 'hamstring-left', top: '58%', left: '66%', width: '11%', height: '14%' },
-  { slug: 'hamstring-right', top: '58%', left: '77%', width: '11%', height: '14%' },
-  // Gemelos posteriores (top -2%)
-  { slug: 'calves-left', top: '76%', left: '67%', width: '10%', height: '14%' },
-  { slug: 'calves-right', top: '76%', left: '77%', width: '10%', height: '14%' },
-  // Pies / Talones
-  { slug: 'feet-left', top: '93%', left: '67%', width: '10%', height: '6%' },
-  { slug: 'feet-right', top: '93%', left: '77%', width: '10%', height: '6%' },
-];
 
 export default function TrainingModeScreen() {
   useKeepAwake();
@@ -165,7 +108,7 @@ export default function TrainingModeScreen() {
   const [sleepHours, setSleepHours] = useState<string>('');
   const [observations, setObservations] = useState('');
   
-  const [showBodyMap, setShowBodyMap] = useState(false);
+  const [isPainSelectorOpen, setIsPainSelectorOpen] = useState(false);
   const [soreJoints, setSoreJoints] = useState<string[]>([]);
   
   const [showIndicationsModal, setShowIndicationsModal] = useState(false);
@@ -355,7 +298,6 @@ export default function TrainingModeScreen() {
                 currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
                   loadedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '' };
                   if (res.recorded_video_url) savedVideos[idx.toString()] = res.recorded_video_url;
-                  // Recuperamos los estados de las series para el resumen visual
                   if (res.set_details) {
                     loadedSets[idx] = res.set_details.map((sd: any) => sd.status);
                   } else {
@@ -595,7 +537,6 @@ export default function TrainingModeScreen() {
     }
   };
 
-  // NUEVO: Renderiza un resumen visual detallado de la sesión al terminar
   const renderSessionSummary = () => {
     if (!workout?.exercises) return null;
     
@@ -688,69 +629,6 @@ export default function TrainingModeScreen() {
     setSoreJoints(prev => prev.includes(slug) ? prev.filter(j => j !== slug) : [...prev, slug]); 
   };
 
-  const renderBodyMapModal = () => {
-    return (
-      <Modal visible={showBodyMap} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.bodyMapModalContent, { backgroundColor: colors.background, paddingBottom: 30 }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Registrar Fatiga</Text>
-              <TouchableOpacity onPress={() => setShowBodyMap(false)}>
-                <Ionicons name="close" size={28} color={colors.textPrimary} />
-              </TouchableOpacity>
-            </View>
-            
-            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center', fontSize: 13 }}>
-              Toca las zonas con sobrecarga o molestias.
-            </Text>
-            
-            <View style={{ flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginBottom: 10 }}>
-              <Text style={{ fontSize: 11, fontWeight: '900', color: '#888' }}>FRONTAL</Text>
-              <Text style={{ fontSize: 11, fontWeight: '900', color: '#888' }}>DORSAL</Text>
-            </View>
-
-            {/* PLAN B: Contenedor con imagen profesional y zonas táctiles superpuestas */}
-            <View style={{ width: '100%', height: 420, alignItems: 'center', justifyContent: 'center' }}>
-                <Image source={BODY_MAP_ASSET} style={{ width: '100%', height: '100%' }} resizeMode="contain" />
-                {BODY_PARTS_MAPPING.map((part, index) => {
-                  const isSelected = soreJoints.includes(part.slug);
-                  return (
-                    <TouchableOpacity
-                      key={index}
-                      style={[styles.touchTarget, { 
-                        top: part.top, 
-                        left: part.left, 
-                        width: part.width, 
-                        height: part.height 
-                      }]}
-                      onPress={() => toggleJoint(part.slug)}
-                    >
-                      {/* Indicador visual de zona seleccionada (un círculo semi-transparente) */}
-                      {isSelected && (
-                        <View style={[styles.selectedIndicator, { 
-                          backgroundColor: (colors.error || '#EF4444') + '70',
-                          width: part.width * 0.9, 
-                          height: part.width * 0.9,
-                          borderRadius: part.width * 0.45,
-                        }]} />
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-            </View>
-
-            <TouchableOpacity 
-              style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', width: '100%', marginTop: 20 }} 
-              onPress={() => setShowBodyMap(false)}
-            >
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar Selección</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-    );
-  };
-
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={{ color: colors.textPrimary }}>No encontrado.</Text></SafeAreaView>;
 
@@ -770,12 +648,60 @@ export default function TrainingModeScreen() {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => { const isSelected = rpe === num; let c = (num >= 8) ? (colors.error || '#EF4444') : (num >= 4) ? (colors.warning || '#F59E0B') : (colors.success || '#10B981'); return ( <TouchableOpacity key={num} onPress={() => setRpe(num)} style={[styles.rpeCircle, { borderColor: colors.border }, isSelected && { backgroundColor: c, borderColor: c }]}><Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textSecondary }]}>{num}</Text></TouchableOpacity> ); })}</View>
               </View>
               <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>CALIDAD DEL SUEÑO</Text><View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>{[1, 2, 3, 4, 5].map(num => ( <TouchableOpacity key={num} onPress={() => setSleepQuality(num)} style={{ padding: 5 }}><Ionicons name={sleepQuality && sleepQuality >= num ? "star" : "star-outline"} size={36} color={colors.warning || '#F59E0B'} /></TouchableOpacity> ))}</View></View>
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA O IMPACTO</Text><TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: soreJoints.length > 0 ? (colors.error || '#EF4444') + '15' : colors.surfaceHighlight, padding: 16, borderRadius: 12, borderWidth: 1, borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border }} onPress={() => setShowBodyMap(true)}><Ionicons name="body" size={24} color={soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.primary} /><Text style={{ fontWeight: '700', color: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.textPrimary }}>{soreJoints.length > 0 ? `${soreJoints.length} Zonas Marcadas` : 'Abrir Mapa Corporal'}</Text></TouchableOpacity></View>
+              
+              {/* NUEVO: Selector de Dolor Acordeón */}
+              <View>
+                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA O IMPACTO</Text>
+                <View style={{ width: '100%', backgroundColor: colors.surfaceHighlight, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border }}>
+                  <TouchableOpacity
+                    style={{ padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                    onPress={() => setIsPainSelectorOpen(!isPainSelectorOpen)}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Ionicons name="body" size={24} color={soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.primary} />
+                      <Text style={{ fontWeight: '700', color: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.textPrimary }}>
+                        {soreJoints.length > 0 ? `${soreJoints.length} Zonas Marcadas` : 'Registrar Molestias / Fatiga'}
+                      </Text>
+                    </View>
+                    <Ionicons name={isPainSelectorOpen ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+                  </TouchableOpacity>
+
+                  {isPainSelectorOpen && (
+                    <View style={{ padding: 16, paddingTop: 0, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 10 }}>
+                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                        {Object.entries(SLUG_TRANSLATIONS).map(([slug, name]) => {
+                          const isSelected = soreJoints.includes(slug);
+                          const activeColor = colors.error || '#EF4444';
+                          return (
+                            <TouchableOpacity
+                              key={slug}
+                              style={[
+                                styles.painButton, 
+                                { borderColor: colors.border, backgroundColor: colors.background },
+                                isSelected && { backgroundColor: activeColor, borderColor: activeColor }
+                              ]}
+                              onPress={() => toggleJoint(slug)}
+                            >
+                              <Text style={[
+                                styles.painButtonText, 
+                                { color: colors.textSecondary },
+                                isSelected && { color: '#FFF', fontWeight: '800' }
+                              ]}>
+                                {name}
+                              </Text>
+                            </TouchableOpacity>
+                          )
+                        })}
+                      </View>
+                    </View>
+                  )}
+                </View>
+              </View>
+
               <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12 }]}>OBSERVACIONES</Text><TextInput style={[styles.obsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} multiline placeholder="¿Algo a destacar?..." placeholderTextColor={colors.textSecondary} value={observations} onChangeText={setObservations} /></View>
             </View>
           )}
 
-          {/* NUEVA SECCIÓN: Resumen del entrenamiento antes o después de guardar */}
           <View style={{ width: '100%', marginTop: 30 }}>
             <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 15, textAlign: 'center' }]}>RESUMEN DE EJERCICIOS</Text>
             {renderSessionSummary()}
@@ -785,13 +711,13 @@ export default function TrainingModeScreen() {
             <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
               <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Feedback General:</Text>
               <Text style={{ color: colors.textPrimary }}>RPE: {workout.completion_data.rpe}/10</Text>
-              {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5 }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
+              {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5, fontWeight: '600' }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
               {workout.observations && <Text style={{ color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
             </View>
           )}
           {!workout.completed && ( <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary }]} onPress={handleFinish}><Text style={styles.finishWorkoutBtnText}>Finalizar Entrenamiento</Text></TouchableOpacity> )}
         </ScrollView>
-        {renderVideoModal()}{renderBodyMapModal()}
+        {renderVideoModal()}
       </SafeAreaView>
     );
   } else if (isHiit) {
@@ -857,8 +783,10 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }, rpeCircle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 13, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, fontSize: 15, textAlignVertical: 'top' },
   summaryCard: { padding: 16, borderRadius: 16, marginBottom: 12, width: '100%' },
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 }, bodyMapModalContent: { width: '95%', padding: 20, borderRadius: 24, maxHeight: '90%' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 },
   floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 },
-  touchTarget: { position: 'absolute', backgroundColor: 'rgba(255, 0, 0, 0.3)', justifyContent: 'center', alignItems: 'center', zIndex: 10, borderRadius: 8 },
-  selectedIndicator: { borderWidth: 2, borderColor: '#FFF', position: 'absolute' }
+  
+  // NUEVOS ESTILOS PARA LOS BOTONES DE DOLOR
+  painButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 },
+  painButtonText: { fontSize: 13, fontWeight: '600' }
 });
