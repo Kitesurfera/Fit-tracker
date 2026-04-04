@@ -32,7 +32,7 @@ db = client[os.environ['DB_NAME']]
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'fitness-tracker-secret-key-2026')
 JWT_ALGORITHM = 'HS256'
-JWT_EXPIRATION_HOURS = 72
+JWT_EXPIRATION_HOURS = 876000
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com')
 
