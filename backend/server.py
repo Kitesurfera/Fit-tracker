@@ -492,37 +492,44 @@ async def get_monthly_summary(athlete_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer':
         raise HTTPException(status_code=403, detail="Solo Andre puede generar informes")
     
-    # Definir rango del último mes
+    # 1. Definir rango del último mes (YYYY-MM-DD)
     now = datetime.now(timezone.utc)
     start_date = (now - timedelta(days=30)).isoformat().split('T')[0]
 
-    # 1. Datos de Entrenamientos
+    # 2. Buscar Atleta en la DB
+    athlete = await db.users.find_one({"id": athlete_id})
+    if not athlete:
+        raise HTTPException(status_code=404, detail="Atleta no encontrado")
+
+    # 3. Datos de Entrenamientos
     workouts = await db.workouts.find({
         "athlete_id": athlete_id,
         "date": {"$gte": start_date},
         "completed": True
     }).to_list(100)
 
-    # 2. Datos de Wellness (Medias)
+    # 4. Datos de Wellness (Medias)
     wellness_logs = await db.wellness.find({
         "athlete_id": athlete_id,
         "date": {"$gte": start_date}
     }).to_list(100)
 
-    avg_fatigue = sum(w['fatigue'] for w in wellness_logs) / len(wellness_logs) if wellness_logs else 0
+    avg_fatigue = sum(w.get('fatigue', 0) for w in wellness_logs) / len(wellness_logs) if wellness_logs else 0
     
-    # 3. Datos de Tests
+    # 5. Datos de Tests
     tests = await db.tests.find({"athlete_id": athlete_id}).sort("date", -1).to_list(3)
 
-    athlete = await db.users.find_one({"id": athlete_id})
+    # 6. Nombre del mes (Forma correcta en Python)
+    meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
+    nombre_mes = meses[now.month - 1]
 
     return {
-        "athlete_name": athlete.get("name"),
-        "phone": athlete.get("phone"),
+        "athlete_name": athlete.get("name", "Atleta"),
+        "phone": athlete.get("phone", ""),
         "total_completed": len(workouts),
         "avg_fatigue": round(avg_fatigue, 1),
-        "recent_tests": [{"name": t['test_name'], "val": t['value'], "unit": t['unit']} for t in tests],
-        "month_name": now.toLocaleString('es-ES', { month: 'long' })
+        "recent_tests": [{"name": t.get('test_name'), "val": t.get('value'), "unit": t.get('unit')} for t in tests],
+        "month_name": nombre_mes
     }
 
 # --- SUBIDA DE ARCHIVOS ---
