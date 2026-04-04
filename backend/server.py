@@ -487,6 +487,44 @@ async def delete_test(test_id: str, user=Depends(get_current_user)):
     await db.tests.delete_one({"id": test_id})
     return {"status": "success"}
 
+@api_router.get("/analytics/monthly-summary/{athlete_id}")
+async def get_monthly_summary(athlete_id: str, user=Depends(get_current_user)):
+    if user['role'] != 'trainer':
+        raise HTTPException(status_code=403, detail="Solo Andre puede generar informes")
+    
+    # Definir rango del último mes
+    now = datetime.now(timezone.utc)
+    start_date = (now - timedelta(days=30)).isoformat().split('T')[0]
+
+    # 1. Datos de Entrenamientos
+    workouts = await db.workouts.find({
+        "athlete_id": athlete_id,
+        "date": {"$gte": start_date},
+        "completed": True
+    }).to_list(100)
+
+    # 2. Datos de Wellness (Medias)
+    wellness_logs = await db.wellness.find({
+        "athlete_id": athlete_id,
+        "date": {"$gte": start_date}
+    }).to_list(100)
+
+    avg_fatigue = sum(w['fatigue'] for w in wellness_logs) / len(wellness_logs) if wellness_logs else 0
+    
+    # 3. Datos de Tests
+    tests = await db.tests.find({"athlete_id": athlete_id}).sort("date", -1).to_list(3)
+
+    athlete = await db.users.find_one({"id": athlete_id})
+
+    return {
+        "athlete_name": athlete.get("name"),
+        "phone": athlete.get("phone"),
+        "total_completed": len(workouts),
+        "avg_fatigue": round(avg_fatigue, 1),
+        "recent_tests": [{"name": t['test_name'], "val": t['value'], "unit": t['unit']} for t in tests],
+        "month_name": now.toLocaleString('es-ES', { month: 'long' })
+    }
+
 # --- SUBIDA DE ARCHIVOS ---
 @api_router.post("/upload")
 async def upload_file(request: Request, file: UploadFile = File(...), user=Depends(get_current_user)):
@@ -505,3 +543,4 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+
