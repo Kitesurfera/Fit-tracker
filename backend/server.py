@@ -127,6 +127,10 @@ class ProfileUpdate(BaseModel):
     period_length: Optional[int] = None     
     is_bleeding: Optional[bool] = None      
 
+class CycleUpdate(BaseModel):
+    macro_ciclo: str
+    micro_ciclo: str
+
 class WorkoutUpdate(BaseModel):
     title: Optional[str] = None
     date: Optional[str] = None        
@@ -357,6 +361,15 @@ async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_
     await db.users.update_one({"id": athlete_id}, {"$set": update_data})
     return {"status": "success"}
 
+@api_router.patch("/athletes/{athlete_id}/cycles")
+async def update_athlete_cycles(athlete_id: str, cycles: CycleUpdate, user=Depends(get_current_user)):
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    await db.users.update_one(
+        {"id": athlete_id}, 
+        {"$set": {"macro_ciclo": cycles.macro_ciclo, "micro_ciclo": cycles.micro_ciclo}}
+    )
+    return {"message": "Ciclos actualizados correctamente", "macro": cycles.macro_ciclo, "micro": cycles.micro_ciclo}
+
 @api_router.delete("/athletes/{athlete_id}")
 async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
@@ -550,4 +563,3 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
-
