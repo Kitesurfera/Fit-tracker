@@ -121,7 +121,7 @@ class ProfileUpdate(BaseModel):
     is_injured: Optional[bool] = None
     injury_notes: Optional[str] = None
     equipment: Optional[str] = None
-    web_push_subscription: Optional[dict] = None  # <-- Cambiado a dict para web push
+    web_push_subscription: Optional[dict] = None
     last_period_date: Optional[str] = None  
     cycle_length: Optional[int] = None      
     period_length: Optional[int] = None     
@@ -141,6 +141,7 @@ class WorkoutUpdate(BaseModel):
     completion_data: Optional[dict] = None
     observations: Optional[str] = None
     microciclo_id: Optional[str] = None
+    is_ai: Optional[bool] = False # <-- ETIQUETA PARA EL MACHINE LEARNING
 
 class WorkoutCreate(BaseModel):
     title: str
@@ -149,6 +150,7 @@ class WorkoutCreate(BaseModel):
     notes: Optional[str] = ""
     athlete_id: str
     microciclo_id: Optional[str] = None
+    is_ai: Optional[bool] = False # <-- ETIQUETA PARA EL MACHINE LEARNING
     
 class WorkoutBulkCreate(BaseModel):
     workouts: List[WorkoutCreate]
@@ -240,6 +242,15 @@ def send_web_push(subscription_info: dict, title: str, message: str):
         logger.error(f"Fallo enviando web push: {str(e)}")
         return False
 
+# --- RUTAS DE MACHINE LEARNING (CEREBRO IA) ---
+@api_router.get("/brain/memory")
+async def get_brain_memory(user=Depends(get_current_user)):
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    # Cuenta cuántas rutinas manuales ha analizado y guardado el sistema
+    count = await db.brain_memory.count_documents({})
+    return {"status": "success", "total_learned": count}
+
+
 # --- RUTAS DE WELLNESS ---
 @api_router.get("/wellness/history/{athlete_id}")
 async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
@@ -263,7 +274,6 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
         wellness_data.update({"id": str(uuid.uuid4()), "athlete_id": user['id'], "date": today, "created_at": wellness_data["updated_at"]})
         await db.wellness.insert_one(wellness_data)
 
-    # Notificación al entrenador
     if user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
         if trainer and trainer.get('web_push_subscription'):
@@ -379,15 +389,27 @@ async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
     await db.macrociclos.delete_many({"athlete_id": athlete_id})
     return {"status": "success"}
 
-# --- ENTRENAMIENTOS ---
+# --- ENTRENAMIENTOS E INTERCEPTOR ML ---
 @api_router.post("/workouts")
 async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     workout = data.dict()
+    is_ai = workout.pop("is_ai", False) # Separamos la etiqueta
     workout.update({"id": str(uuid.uuid4()), "completed": False, "completion_data": None})
+    
     await db.workouts.insert_one(workout)
+    
+    # 🔥 MACHINE LEARNING: Si NO lo hizo la IA y lo hizo Andre, lo guardamos como patrón de aprendizaje
+    if not is_ai and user['role'] == 'trainer':
+        await db.brain_memory.insert_one({
+            "id": str(uuid.uuid4()),
+            "title": data.title,
+            "exercises": data.exercises,
+            "notes": data.notes,
+            "learned_at": datetime.now(timezone.utc).isoformat()
+        })
+    
     workout.pop('_id', None)
     
-    # Notificación al deportista
     if user['role'] == 'trainer':
         athlete = await db.users.find_one({"id": data.athlete_id})
         if athlete and athlete.get('web_push_subscription'):
@@ -397,14 +419,30 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
 
 @api_router.post("/workouts/bulk")
 async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
-    new_workouts, athlete_ids = [], set()
+    new_workouts, athlete_ids, brain_memories = [], set(), []
+    
     for w in data.workouts:
         workout = w.dict()
+        is_ai = workout.pop("is_ai", False)
         workout.update({"id": str(uuid.uuid4()), "completed": False, "completion_data": None})
         new_workouts.append(workout)
         athlete_ids.add(w.athlete_id)
+        
+        # 🔥 MACHINE LEARNING BULK
+        if not is_ai and user['role'] == 'trainer':
+            brain_memories.append({
+                "id": str(uuid.uuid4()),
+                "title": w.title,
+                "exercises": w.exercises,
+                "notes": w.notes,
+                "learned_at": datetime.now(timezone.utc).isoformat()
+            })
+
     if new_workouts:
         await db.workouts.insert_many(new_workouts)
+        if brain_memories:
+            await db.brain_memory.insert_many(brain_memories) # Inyección en la red neuronal
+            
         if user['role'] == 'trainer':
             trainer_name = user.get('name', 'Tu entrenador')
             for a_id in athlete_ids:
@@ -425,9 +463,9 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks:
     existing = await db.workouts.find_one({"id": workout_id})
     if not existing: raise HTTPException(status_code=404, detail="Sesión no encontrada")
     update_data = data.dict(exclude_unset=True)
+    update_data.pop("is_ai", None) # No necesitamos actualizar la etiqueta
     await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
     
-    # Notificación al entrenador si se completa
     if data.completed is True and not existing.get('completed') and user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
         if trainer and trainer.get('web_push_subscription'):
@@ -481,7 +519,6 @@ async def create_test(data: TestCreate, background_tasks: BackgroundTasks, user=
     await db.tests.insert_one(test_doc)
     test_doc.pop('_id', None)
     
-    # Notificación al entrenador
     if user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
         if trainer and trainer.get('web_push_subscription'):
@@ -505,23 +542,19 @@ async def get_monthly_summary(athlete_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer':
         raise HTTPException(status_code=403, detail="Solo Andre puede generar informes")
     
-    # 1. Definir rango del último mes (YYYY-MM-DD)
     now = datetime.now(timezone.utc)
     start_date = (now - timedelta(days=30)).isoformat().split('T')[0]
 
-    # 2. Buscar Atleta en la DB
     athlete = await db.users.find_one({"id": athlete_id})
     if not athlete:
         raise HTTPException(status_code=404, detail="Atleta no encontrado")
 
-    # 3. Datos de Entrenamientos
     workouts = await db.workouts.find({
         "athlete_id": athlete_id,
         "date": {"$gte": start_date},
         "completed": True
     }).to_list(100)
 
-    # 4. Datos de Wellness (Medias)
     wellness_logs = await db.wellness.find({
         "athlete_id": athlete_id,
         "date": {"$gte": start_date}
@@ -529,10 +562,8 @@ async def get_monthly_summary(athlete_id: str, user=Depends(get_current_user)):
 
     avg_fatigue = sum(w.get('fatigue', 0) for w in wellness_logs) / len(wellness_logs) if wellness_logs else 0
     
-    # 5. Datos de Tests
     tests = await db.tests.find({"athlete_id": athlete_id}).sort("date", -1).to_list(3)
 
-    # 6. Nombre del mes (Forma correcta en Python)
     meses = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"]
     nombre_mes = meses[now.month - 1]
 
