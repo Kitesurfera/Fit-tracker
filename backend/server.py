@@ -250,6 +250,13 @@ async def get_brain_memory(user=Depends(get_current_user)):
     count = await db.brain_memory.count_documents({})
     return {"status": "success", "total_learned": count}
 
+@api_router.get("/brain/memory/examples")
+async def get_brain_examples(user=Depends(get_current_user)):
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    # Sacamos las últimas 5 rutinas manuales (para no saturar la memoria de la IA)
+    examples = await db.brain_memory.find({}, {"_id": 0, "learned_at": 0, "id": 0}).sort("learned_at", -1).limit(5).to_list(5)
+    return {"status": "success", "examples": examples}
+
 
 # --- RUTAS DE WELLNESS ---
 @api_router.get("/wellness/history/{athlete_id}")
