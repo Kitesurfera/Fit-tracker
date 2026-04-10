@@ -14,7 +14,6 @@ import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
 import NetInfo from '@react-native-community/netinfo';
 
-// IMPORTACIONES
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
@@ -22,7 +21,7 @@ import { syncManager } from '../src/offline';
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
 import HiitCard from '../src/components/training/HiitCard';
 
-const { width, height: screenHeight } = Dimensions.get('window');
+const { height: screenHeight } = Dimensions.get('window');
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
@@ -97,10 +96,13 @@ export default function TrainingModeScreen() {
   const [videoUploading, setVideoUploading] = useState<string | null>(null);
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
   
+  // NUEVO ESTADO: hiitExSet para las series dentro del ejercicio en HIIT
   const [hiitBlockIdx, setHiitBlockIdx] = useState(0);
   const [hiitRound, setHiitRound] = useState(1);
   const [hiitExIdx, setHiitExIdx] = useState(0);
-  const [hiitPhase, setHiitPhase] = useState<'work' | 'rest_ex' | 'rest_block' | 'rest_next_block'>('work');
+  const [hiitExSet, setHiitExSet] = useState(1);
+  // NUEVA FASE: 'rest_set'
+  const [hiitPhase, setHiitPhase] = useState<'work' | 'rest_set' | 'rest_ex' | 'rest_block' | 'rest_next_block'>('work');
   const [hiitSkipped, setHiitSkipped] = useState<Record<string, number>>({}); 
 
   const [rpe, setRpe] = useState<number | null>(null);
@@ -139,23 +141,16 @@ export default function TrainingModeScreen() {
   const [soundsEnabled, setSoundsEnabled] = useState(true);
 
   const lastAnnouncedRef = useRef<string>('');
-  
   const justFinishedRestRef = useRef(false);
 
-  // NUEVO: useFocusEffect para que los ajustes se refresquen siempre al entrar a la pantalla
   useFocusEffect(
     useCallback(() => {
       const loadPreferences = async () => {
         try {
-          const [v, s] = await Promise.all([
-            AsyncStorage.getItem('voice_enabled'),
-            AsyncStorage.getItem('sounds_enabled')
-          ]);
-          setVoiceEnabled(v !== 'false'); // Por defecto true si es null
-          setSoundsEnabled(s !== 'false'); // Por defecto true si es null
-        } catch (e) {
-          console.log("⚠️ Error cargando preferencias:", e);
-        }
+          const [v, s] = await Promise.all([ AsyncStorage.getItem('voice_enabled'), AsyncStorage.getItem('sounds_enabled') ]);
+          setVoiceEnabled(v !== 'false'); 
+          setSoundsEnabled(s !== 'false'); 
+        } catch (e) { console.log("⚠️ Error cargando preferencias:", e); }
       };
       loadPreferences();
     }, [])
@@ -166,34 +161,21 @@ export default function TrainingModeScreen() {
     try {
       Speech.stop(); 
       Speech.speak(text, { language: 'es-ES', rate: 0.95 });
-    } catch (e) {
-      console.log("⚠️ Error Speech:", e);
-    }
+    } catch (e) { console.log("⚠️ Error Speech:", e); }
   };
 
-  // NUEVO: Manejo más seguro de la inicialización de Expo Audio y unmount de StrictMode
   useEffect(() => {
     let beepSound: Audio.Sound | null = null;
     let finishSound: Audio.Sound | null = null;
 
     async function initAudio() {
       try {
-        await Audio.setAudioModeAsync({ 
-          playsInSilentModeIOS: true, 
-          staysActiveInBackground: true,
-          shouldDuckAndroid: true,
-          playThroughEarpieceAndroid: false
-        });
+        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: true, shouldDuckAndroid: true, playThroughEarpieceAndroid: false });
         const { sound: beep } = await Audio.Sound.createAsync(require('../assets/beep.mp3'));
         const { sound: finish } = await Audio.Sound.createAsync(require('../assets/finish.mp3'));
-        
-        beepSoundRef.current = beep;
-        finishSoundRef.current = finish;
-        beepSound = beep;
-        finishSound = finish;
-      } catch (e) {
-        console.log("Error cargando audios:", e);
-      }
+        beepSoundRef.current = beep; finishSoundRef.current = finish;
+        beepSound = beep; finishSound = finish;
+      } catch (e) { console.log("Error cargando audios:", e); }
     }
     initAudio();
 
@@ -204,7 +186,6 @@ export default function TrainingModeScreen() {
     };
   }, []);
 
-  // NUEVO: Función mejorada con setPositionAsync(0)
   const playSound = async (type: 'beep' | 'finish') => {
     if (!soundsEnabled || finished) return;
     try {
@@ -212,16 +193,12 @@ export default function TrainingModeScreen() {
         if (type === 'beep') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } 
         else { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); }
       }
-      
       const soundObj = type === 'beep' ? beepSoundRef.current : finishSoundRef.current;
       if (soundObj) {
-        // En lugar de replayAsync, retrocedemos manualmente al principio y le damos a play
         await soundObj.setPositionAsync(0);
         await soundObj.playAsync(); 
       }
-    } catch (error) { 
-      console.log("Error al reproducir audio:", error); 
-    }
+    } catch (error) { console.log("Error al reproducir audio:", error); }
   };
 
   const stopPrepTimer = () => { if (prepIntervalRef.current) clearInterval(prepIntervalRef.current); setIsPrep(false); setPrepSeconds(0); setPrepTargetTime(null); };
@@ -238,7 +215,7 @@ export default function TrainingModeScreen() {
 
   const handleStartWork = (dur: number, name?: string) => {
     const isFirst = (!isHiit && currentExIndex === 0 && setsStatus[0]?.findIndex(s => s === 'pending') === 0) ||
-                    (isHiit && hiitBlockIdx === 0 && hiitExIdx === 0 && hiitRound === 1);
+                    (isHiit && hiitBlockIdx === 0 && hiitExIdx === 0 && hiitRound === 1 && hiitExSet === 1);
 
     if (isFirst || !justFinishedRestRef.current) {
       startPrepTimer(dur, name);
@@ -286,13 +263,16 @@ export default function TrainingModeScreen() {
     let text = ""; let id = "";
     if (isHiit) {
       const b = workout.exercises[hiitBlockIdx]; const ex = b?.hiit_exercises?.[hiitExIdx];
-      if (ex) { id = `hiit-${hiitBlockIdx}-${hiitRound}-${hiitExIdx}`; text = ex.name; }
+      if (ex) { 
+        id = `hiit-${hiitBlockIdx}-${hiitRound}-${hiitExIdx}-${hiitExSet}`; 
+        text = ex.name + (parseInt(ex.sets) > 1 ? ` serie ${hiitExSet}` : ''); 
+      }
     } else {
       const ex = workout.exercises[currentExIndex];
       if (ex) { const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next !== -1) { id = `trad-${currentExIndex}`; text = ex.name; } }
     }
     if (text && lastAnnouncedRef.current !== id) { announce(text); lastAnnouncedRef.current = id; }
-  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, isResting, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
+  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, hiitExSet, isResting, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
 
   useEffect(() => {
     let isMounted = true;
@@ -418,52 +398,61 @@ export default function TrainingModeScreen() {
          handleStartWork(dur, ex.name); 
       }
     }
-  }, [hiitBlockIdx, hiitExIdx, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished]);
+  }, [hiitBlockIdx, hiitExIdx, hiitExSet, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished]);
 
   useEffect(() => {
     if (finished || workout?.completed) return;
     if (!isResting && workout && !showIndicationsModal) {
       if (isHiit) {
-        if (hiitPhase === 'rest_ex') { setHiitPhase('work'); setHiitExIdx(prev => prev + 1); } 
-        else if (hiitPhase === 'rest_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitRound(prev => prev + 1); } 
-        else if (hiitPhase === 'rest_next_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitRound(1); setHiitBlockIdx(prev => prev + 1); }
+        if (hiitPhase === 'rest_set') { setHiitPhase('work'); setHiitExSet(prev => prev + 1); }
+        else if (hiitPhase === 'rest_ex') { setHiitPhase('work'); setHiitExIdx(prev => prev + 1); setHiitExSet(1); } 
+        else if (hiitPhase === 'rest_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitExSet(1); setHiitRound(prev => prev + 1); } 
+        else if (hiitPhase === 'rest_next_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitExSet(1); setHiitRound(1); setHiitBlockIdx(prev => prev + 1); }
       } else { if (restType === 'exercise') { autoAdvance(currentExIndex); setRestType(null); } }
     }
   }, [isResting, showIndicationsModal, finished, workout]);
 
-  const advanceHiitLogic = () => {
+  // Lógica mejorada que tiene en cuenta las series por ejercicio (hiitExSet)
+  const advanceHiitLogic = (skipEx = false) => {
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    const b = workout.exercises[hiitBlockIdx]; const totalEx = b.hiit_exercises.length; const totalRounds = parseInt(b.sets) || 1;
-    if (hiitExIdx < totalEx - 1) {
+    const b = workout.exercises[hiitBlockIdx]; 
+    const ex = b.hiit_exercises[hiitExIdx];
+    const totalEx = b.hiit_exercises.length; 
+    const totalRounds = parseInt(b.sets) || 1;
+    const totalExSets = parseInt(ex?.sets) || 1;
+
+    if (!skipEx && hiitExSet < totalExSets) {
+      const rest = parseTimeToSeconds(b.rest_exercise);
+      if (rest > 0) { startRestTimer(rest, `${ex.name} (Serie ${hiitExSet + 1})`); setHiitPhase('rest_set'); }
+      else { setHiitExSet(hiitExSet + 1); setHiitPhase('work'); }
+    } else if (hiitExIdx < totalEx - 1) {
       const rest = parseTimeToSeconds(b.rest_exercise);
       if (rest > 0) { startRestTimer(rest, b.hiit_exercises[hiitExIdx + 1].name); setHiitPhase('rest_ex'); } 
-      else { setHiitExIdx(hiitExIdx + 1); }
+      else { setHiitExIdx(hiitExIdx + 1); setHiitExSet(1); setHiitPhase('work'); }
     } else {
       if (hiitRound < totalRounds) {
         const rest = parseTimeToSeconds(b.rest_block);
         if (rest > 0) { startRestTimer(rest, b.hiit_exercises[0].name); setHiitPhase('rest_block'); } 
-        else { setHiitRound(hiitRound + 1); setHiitExIdx(0); }
+        else { setHiitRound(hiitRound + 1); setHiitExIdx(0); setHiitExSet(1); setHiitPhase('work'); }
       } else {
         if (hiitBlockIdx < workout.exercises.length - 1) {
           const rest = parseTimeToSeconds(b.rest_between_blocks);
           if (rest > 0) { startRestTimer(rest, workout.exercises[hiitBlockIdx + 1].hiit_exercises[0].name); setHiitPhase('rest_next_block'); } 
-          else { setHiitBlockIdx(hiitBlockIdx + 1); setHiitRound(1); setHiitExIdx(0); setHiitPhase('work'); }
+          else { setHiitBlockIdx(hiitBlockIdx + 1); setHiitRound(1); setHiitExIdx(0); setHiitExSet(1); setHiitPhase('work'); }
         } else { Speech.stop(); setFinished(true); }
       }
     }
   };
 
-  const advanceHiit = () => advanceHiitLogic();
-  const skipHiitEx = () => { stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); setHiitSkipped(prev => ({ ...prev, [`${hiitBlockIdx}-${hiitExIdx}`]: (prev[`${hiitBlockIdx}-${hiitExIdx}`] || 0) + 1 })); advanceHiitLogic(); };
+  const advanceHiit = () => advanceHiitLogic(false);
+  const skipHiitEx = () => { 
+    stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); 
+    setHiitSkipped(prev => ({ ...prev, [`${hiitBlockIdx}-${hiitExIdx}`]: (prev[`${hiitBlockIdx}-${hiitExIdx}`] || 0) + 1 })); 
+    advanceHiitLogic(true); 
+  };
   
-  const skipHiitRest = () => { 
-    stopAllTimers(); 
-    justFinishedRestRef.current = true;
-  };
-  const skipTradRest = () => {
-    stopAllTimers();
-    justFinishedRestRef.current = true;
-  };
+  const skipHiitRest = () => { stopAllTimers(); justFinishedRestRef.current = true; };
+  const skipTradRest = () => { stopAllTimers(); justFinishedRestRef.current = true; };
 
   const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => { setSetsStatus(prev => { const updated = { ...prev }; updated[exIdx] = [...(prev[exIdx] || [])]; updated[exIdx][setIdx] = status; return updated; }); };
   const autoAdvance = (exIdx: number) => { stopAllTimers(); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else { Speech.stop(); setTimeout(() => setFinished(true), 400); } };
@@ -527,14 +516,17 @@ export default function TrainingModeScreen() {
           <Text style={{ fontWeight: '800', color: colors.error || '#EF4444', marginBottom: 8 }}>
             {block.name} <Text style={{color: colors.textSecondary, fontSize: 12}}>({block.sets} Vueltas)</Text>
           </Text>
-          {block.hiit_exercises?.map((ex: any, eIdx: number) => (
-            <View key={eIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 10, marginBottom: 6 }}>
-              <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '500' }}>• {ex.name}</Text>
-              <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 10 }}>
-                {ex.duration_reps || ex.duration || '-'}
-              </Text>
-            </View>
-          ))}
+          {block.hiit_exercises?.map((ex: any, eIdx: number) => {
+            const hasSets = ex.sets && parseInt(ex.sets) > 1;
+            return (
+              <View key={eIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 10, marginBottom: 6 }}>
+                <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '500' }}>• {ex.name}</Text>
+                <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 10 }}>
+                  {hasSets ? `${ex.sets}x ` : ''}{ex.duration_reps || ex.duration || '-'}
+                </Text>
+              </View>
+            )
+          })}
         </View>
       ));
     } else {
@@ -670,7 +662,6 @@ export default function TrainingModeScreen() {
               </View>
               <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>CALIDAD DEL SUEÑO</Text><View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>{[1, 2, 3, 4, 5].map(num => ( <TouchableOpacity key={num} onPress={() => setSleepQuality(num)} style={{ padding: 5 }}><Ionicons name={sleepQuality && sleepQuality >= num ? "star" : "star-outline"} size={36} color={colors.warning || '#F59E0B'} /></TouchableOpacity> ))}</View></View>
               
-              {/* NUEVO: Selector de Dolor Acordeón */}
               <View>
                 <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA O IMPACTO</Text>
                 <View style={{ width: '100%', backgroundColor: colors.surfaceHighlight, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border }}>
@@ -744,12 +735,19 @@ export default function TrainingModeScreen() {
   } else if (isHiit) {
     const b = workout.exercises?.[hiitBlockIdx];
     if (!b) return <ActivityIndicator color={colors.primary} />;
+    
+    // Configuramos el nombre del ejercicio para que el temporizador lo muestre bonito
+    const currentEx = b.hiit_exercises[hiitExIdx];
+    const hasMultipleSets = parseInt(currentEx?.sets) > 1;
+    const timerExName = hasMultipleSets ? `${currentEx?.name} (Serie ${hiitExSet}/${currentEx?.sets})` : currentEx?.name || 'HIIT';
+
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>B{hiitBlockIdx + 1}/{workout.exercises.length}</Text></View>
         <ScrollView contentContainerStyle={styles.content}>
-          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={b.hiit_exercises[hiitExIdx]?.name || 'HIIT'} colors={colors} isHiit={isHiit} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
-          <HiitCard currentBlock={b} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
+          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={timerExName} colors={colors} isHiit={isHiit} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
+          
+          <HiitCard currentBlock={b} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
         </ScrollView>
         <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
           <Ionicons name="list" size={24} color="#FFF" />
@@ -807,7 +805,6 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 },
   floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 },
   
-  // NUEVOS ESTILOS PARA LOS BOTONES DE DOLOR
   painButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 },
   painButtonText: { fontSize: 13, fontWeight: '600' }
 });
