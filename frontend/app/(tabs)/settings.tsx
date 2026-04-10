@@ -135,43 +135,74 @@ export default function SettingsScreen() {
 
   const renderInputBox = (label: string, iconName: any, value: string, onChange: (t: string) => void, placeholder: string) => (
     <View style={styles.measureCol}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 6 }}>
-        <Ionicons name={iconName} size={14} color={colors.textSecondary} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 }}>
+        <Ionicons name={iconName} size={16} color={colors.primary} />
         <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
       </View>
-      <TextInput style={[styles.input, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} keyboardType="numeric" value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={colors.border} />
+      <TextInput 
+        style={[styles.measureInput, { color: colors.textPrimary, backgroundColor: colors.background, borderColor: colors.border }]} 
+        keyboardType="numeric" 
+        value={value} 
+        onChangeText={onChange} 
+        placeholder={placeholder} 
+        placeholderTextColor={colors.textSecondary} 
+      />
     </View>
   );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        
+        {/* HEADER */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={26} color={colors.textPrimary} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
+          </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Ajustes</Text>
           <View style={{ width: 40 }} />
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          
+          {/* PERFIL */}
           <View style={styles.profileHeader}>
-            <View style={[styles.avatarCircle, { backgroundColor: colors.primary + '20' }]}><Ionicons name="person" size={48} color={colors.primary} /></View>
-            <Text style={[styles.roleText, { color: colors.textSecondary }]}>{isAthlete ? 'PERFIL DE DEPORTISTA' : 'PERFIL DE ENTRENADOR'}</Text>
+            <View style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
+              <Text style={styles.avatarText}>{name.charAt(0).toUpperCase() || 'U'}</Text>
+            </View>
+            <View style={styles.profileTextWrapper}>
+              <Text style={[styles.profileName, { color: colors.textPrimary }]}>{name || 'Usuario'}</Text>
+              <Text style={[styles.roleText, { color: colors.textSecondary }]}>
+                {isAthlete ? 'DEPORTISTA' : 'ENTRENADOR'}
+              </Text>
+            </View>
           </View>
 
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.inputLabel, { color: colors.textSecondary, marginBottom: 8 }]}>Nombre Completo</Text>
-            <TextInput style={[styles.input, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={name} onChangeText={setName} placeholder="Tu nombre" />
-            <TouchableOpacity style={[styles.saveBtn, { backgroundColor: name.trim() !== user?.name ? colors.primary : colors.surfaceHighlight }]} onPress={handleSaveProfile} disabled={savingProfile || name.trim() === user?.name}>
-              {savingProfile ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.saveBtnText, { color: name.trim() !== user?.name ? '#FFF' : colors.textSecondary }]}>Actualizar Perfil</Text>}
-            </TouchableOpacity>
+            <View style={styles.inputRow}>
+              <Ionicons name="person-outline" size={20} color={colors.textSecondary} style={{ marginRight: 10 }} />
+              <TextInput 
+                style={[styles.input, { color: colors.textPrimary }]} 
+                value={name} 
+                onChangeText={setName} 
+                placeholder="Tu nombre completo" 
+                placeholderTextColor={colors.textSecondary}
+              />
+            </View>
+            
+            {name.trim() !== user?.name && (
+              <TouchableOpacity style={[styles.saveProfileBtn, { backgroundColor: colors.primary }]} onPress={handleSaveProfile} disabled={savingProfile}>
+                {savingProfile ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.saveProfileBtnText}>Guardar Nombre</Text>}
+              </TouchableOpacity>
+            )}
           </View>
 
           <Text style={[styles.sectionTitle, { marginTop: 25 }]}>APARIENCIA</Text>
-          <View style={[styles.listCard, { backgroundColor: colors.surface, padding: 10 }]}>
+          <View style={[styles.card, { backgroundColor: colors.surface, paddingVertical: 12 }]}>
             <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'space-between' }}>
               {['light', 'dark', 'system'].map((m: any) => (
-                <TouchableOpacity key={m} style={[styles.themeBtn, themeMode === m && { borderColor: colors.primary, backgroundColor: colors.primary + '10' }]} onPress={() => changeTheme?.(m)}>
-                  <Ionicons name={m === 'light' ? 'sunny-outline' : m === 'dark' ? 'moon-outline' : 'phone-portrait-outline'} size={24} color={themeMode === m ? colors.primary : colors.textSecondary} />
+                <TouchableOpacity key={m} style={[styles.themeBtn, themeMode === m && { backgroundColor: colors.primary + '15' }]} onPress={() => changeTheme?.(m)}>
+                  <Ionicons name={m === 'light' ? 'sunny' : m === 'dark' ? 'moon' : 'phone-portrait'} size={24} color={themeMode === m ? colors.primary : colors.textSecondary} />
                   <Text style={[styles.themeBtnText, { color: themeMode === m ? colors.primary : colors.textSecondary }]}>{m === 'light' ? 'Claro' : m === 'dark' ? 'Oscuro' : 'Auto'}</Text>
                 </TouchableOpacity>
               ))}
@@ -179,10 +210,10 @@ export default function SettingsScreen() {
           </View>
 
           <Text style={[styles.sectionTitle, { marginTop: 25 }]}>NOTIFICACIONES Y AUDIO</Text>
-          <View style={[styles.listCard, { backgroundColor: colors.surface }]}>
+          <View style={[styles.cardList, { backgroundColor: colors.surface }]}>
             <View style={styles.settingRowAction}>
               <View style={styles.settingIconText}>
-                <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}><Ionicons name="notifications-outline" size={22} color={colors.primary} /></View>
+                <View style={[styles.iconBox, { backgroundColor: '#3B82F615' }]}><Ionicons name="notifications" size={20} color="#3B82F6" /></View>
                 <View style={{ flex: 1 }}><Text style={[styles.settingText, { color: colors.textPrimary }]}>Avisos de la App</Text></View>
               </View>
               <Switch value={pushEnabled} onValueChange={togglePush} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
@@ -192,7 +223,7 @@ export default function SettingsScreen() {
 
             <View style={styles.settingRowAction}>
               <View style={styles.settingIconText}>
-                <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}><Ionicons name="volume-high-outline" size={22} color={colors.primary} /></View>
+                <View style={[styles.iconBox, { backgroundColor: '#10B98115' }]}><Ionicons name="volume-high" size={20} color="#10B981" /></View>
                 <View style={{ flex: 1 }}><Text style={[styles.settingText, { color: colors.textPrimary }]}>Asistente de Voz</Text></View>
               </View>
               <Switch value={voiceEnabled} onValueChange={toggleVoice} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
@@ -202,8 +233,11 @@ export default function SettingsScreen() {
 
             <View style={styles.settingRowAction}>
               <View style={styles.settingIconText}>
-                <View style={[styles.iconBox, { backgroundColor: colors.primary + '15' }]}><Ionicons name="musical-notes-outline" size={22} color={colors.primary} /></View>
-                <View style={{ flex: 1 }}><Text style={[styles.settingText, { color: colors.textPrimary }]}>Sonidos de Entrenamiento</Text><Text style={{ color: colors.textSecondary, fontSize: 12 }}>Pitidos de timer y descanso</Text></View>
+                <View style={[styles.iconBox, { backgroundColor: '#F59E0B15' }]}><Ionicons name="musical-notes" size={20} color="#F59E0B" /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Sonidos de Entreno</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Pitidos de timer y descanso</Text>
+                </View>
               </View>
               <Switch value={soundsEnabled} onValueChange={toggleSounds} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
             </View>
@@ -214,14 +248,14 @@ export default function SettingsScreen() {
               <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ACTUALIZAR MEDICIONES</Text>
               <View style={[styles.card, { backgroundColor: colors.surface }]}>
                 <View style={styles.measureRow}>
-                  {renderInputBox("Peso (kg)", "scale-outline", measurements.weight, (t) => setMeasurements({...measurements, weight: t}), "Ej: 75")}
-                  {renderInputBox("Hombros (cm)", "resize-outline", measurements.shoulders, (t) => setMeasurements({...measurements, shoulders: t}), "Ej: 110")}
+                  {renderInputBox("Peso (kg)", "scale", measurements.weight, (t) => setMeasurements({...measurements, weight: t}), "Ej: 75")}
+                  {renderInputBox("Hombros (cm)", "resize", measurements.shoulders, (t) => setMeasurements({...measurements, shoulders: t}), "Ej: 110")}
                 </View>
                 <View style={styles.measureRow}>
-                  {renderInputBox("Pecho (cm)", "shirt-outline", measurements.chest, (t) => setMeasurements({...measurements, chest: t}), "Ej: 98")}
-                  {renderInputBox("Brazo (cm)", "fitness-outline", measurements.arm, (t) => setMeasurements({...measurements, arm: t}), "Ej: 35")}
+                  {renderInputBox("Pecho (cm)", "shirt", measurements.chest, (t) => setMeasurements({...measurements, chest: t}), "Ej: 98")}
+                  {renderInputBox("Brazo (cm)", "fitness", measurements.arm, (t) => setMeasurements({...measurements, arm: t}), "Ej: 35")}
                 </View>
-                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary, marginTop: 15 }]} onPress={handleSaveMeasurements} disabled={savingMeasures}>
+                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary, marginTop: 10 }]} onPress={handleSaveMeasurements} disabled={savingMeasures}>
                   {savingMeasures ? <ActivityIndicator color="#FFF" /> : <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Guardar Mediciones</Text>}
                 </TouchableOpacity>
               </View>
@@ -230,25 +264,28 @@ export default function SettingsScreen() {
             <>
               <Text style={[styles.sectionTitle, { marginTop: 25 }]}>COMPARTIR APP</Text>
               <View style={[styles.card, { backgroundColor: colors.surface }]}>
-                <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 14, lineHeight: 20 }}>
+                <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 14, lineHeight: 22 }}>
                   Comparte este enlace con tus deportistas para que se registren fácilmente en tu equipo.
                 </Text>
                 <TouchableOpacity 
                   style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 10 }]} 
                   onPress={handleShareApp}
                 >
-                  <Ionicons name="share-social-outline" size={20} color="#FFF" />
+                  <Ionicons name="share-social" size={20} color="#FFF" />
                   <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Compartir Enlace</Text>
                 </TouchableOpacity>
               </View>
             </>
           )}
 
-          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>CUENTA</Text>
-          <View style={[styles.listCard, { backgroundColor: colors.surface }]}>
-            <TouchableOpacity style={styles.settingRowAction} onPress={handleLogout}><Ionicons name="log-out-outline" size={22} color={colors.error} /><Text style={[styles.settingText, { color: colors.error, marginLeft: 16 }]}>Cerrar Sesión</Text></TouchableOpacity>
+          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ZONA DE PELIGRO</Text>
+          <View style={[styles.cardList, { backgroundColor: colors.surface, marginBottom: 40 }]}>
+            <TouchableOpacity style={styles.settingRowAction} onPress={handleLogout}>
+              <View style={[styles.iconBox, { backgroundColor: '#EF444415' }]}><Ionicons name="log-out" size={20} color="#EF4444" /></View>
+              <Text style={[styles.settingText, { color: '#EF4444', marginLeft: 16, flex: 1 }]}>Cerrar Sesión</Text>
+            </TouchableOpacity>
           </View>
-          <View style={{ height: 60 }} />
+
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -257,27 +294,40 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
+  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 15 },
   backBtn: { width: 40, height: 40, justifyContent: 'center' },
-  headerTitle: { fontSize: 24, fontWeight: '900' },
+  headerTitle: { fontSize: 22, fontWeight: '900' },
   content: { paddingHorizontal: 20, paddingTop: 10 },
-  profileHeader: { alignItems: 'center', marginBottom: 25 },
-  avatarCircle: { width: 90, height: 90, borderRadius: 45, justifyContent: 'center', alignItems: 'center', marginBottom: 12 },
-  roleText: { fontSize: 11, fontWeight: '800', letterSpacing: 1.5 },
-  sectionTitle: { fontSize: 12, fontWeight: '800', color: '#888', marginBottom: 12, letterSpacing: 1, marginLeft: 8 },
-  card: { borderRadius: 24, padding: 20 },
-  listCard: { borderRadius: 20, overflow: 'hidden' },
-  divider: { height: 1, marginHorizontal: 20, opacity: 0.5 },
-  inputLabel: { fontSize: 13, fontWeight: '700' },
-  input: { borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 15 },
+  
+  profileHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 25, paddingHorizontal: 10 },
+  avatarCircle: { width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
+  avatarText: { fontSize: 28, fontWeight: '900', color: '#FFF' },
+  profileTextWrapper: { marginLeft: 20, flex: 1 },
+  profileName: { fontSize: 22, fontWeight: '800', marginBottom: 4 },
+  roleText: { fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
+  
+  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 12, letterSpacing: 1.5, marginLeft: 12 },
+  card: { borderRadius: 20, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  cardList: { borderRadius: 20, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  divider: { height: 1, marginLeft: 65, opacity: 0.3 },
+  
+  inputRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10 },
+  input: { flex: 1, fontSize: 16, fontWeight: '600', paddingVertical: 12 },
+  saveProfileBtn: { marginTop: 15, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
+  saveProfileBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
+  
+  inputLabel: { fontSize: 12, fontWeight: '800' },
+  measureInput: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15, fontWeight: '600', marginBottom: 15 },
   saveBtn: { paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
   saveBtnText: { fontWeight: '800', fontSize: 15 },
   measureRow: { flexDirection: 'row', gap: 15 },
   measureCol: { flex: 1 },
-  settingRowAction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20 },
+  
+  settingRowAction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
   settingIconText: { flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 },
-  iconBox: { width: 46, height: 46, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  settingText: { fontSize: 16, fontWeight: '700' },
-  themeBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 14, borderWidth: 2, borderColor: 'transparent' },
-  themeBtnText: { fontSize: 12, fontWeight: '800', marginTop: 6, textTransform: 'uppercase' }
+  iconBox: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  settingText: { fontSize: 15, fontWeight: '700' },
+  
+  themeBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 14 },
+  themeBtnText: { fontSize: 11, fontWeight: '800', marginTop: 6, textTransform: 'uppercase' }
 });
