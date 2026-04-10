@@ -87,7 +87,11 @@ export default function EditWorkoutScreen() {
 
           if (w.exercises && w.exercises.length > 0 && w.exercises[0].is_hiit_block) {
             setWorkoutType('hiit');
-            setHiitBlocks(w.exercises.map((b: any) => ({ ...b, _key: Math.random().toString(), exercises: b.hiit_exercises.map((e: any) => ({...e, _key: Math.random().toString()})) })));
+            setHiitBlocks(w.exercises.map((b: any) => ({ 
+              ...b, 
+              _key: Math.random().toString(), 
+              exercises: b.hiit_exercises.map((e: any) => ({...e, _key: Math.random().toString(), sets: e.sets || '1'})) // Inicializa sets si no existía
+            })));
           } else {
             setWorkoutType('traditional');
             setExercises((w.exercises || []).map((e: any) => ({ ...e, _key: Math.random().toString() })));
@@ -118,11 +122,11 @@ export default function EditWorkoutScreen() {
     const newExs = [...exercises]; [newExs[index + 1], newExs[index]] = [newExs[index], newExs[index + 1]]; setExercises(newExs);
   };
 
-  const addHiitBlock = () => setHiitBlocks([...hiitBlocks, { _key: Math.random().toString(), name: `Bloque ${hiitBlocks.length + 1}`, sets: '3', rest_exercise: '15', rest_block: '60', rest_between_blocks: '120', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', exercise_notes: '', video_url: '' }] }]);
+  const addHiitBlock = () => setHiitBlocks([...hiitBlocks, { _key: Math.random().toString(), name: `Bloque ${hiitBlocks.length + 1}`, sets: '3', rest_exercise: '15', rest_block: '60', rest_between_blocks: '120', exercises: [{ _key: Math.random().toString(), name: '', sets: '1', duration_reps: '', duration: '', exercise_notes: '', video_url: '' }] }]);
   const removeHiitBlock = (bIndex: number) => setHiitBlocks(hiitBlocks.filter((_, i) => i !== bIndex));
   const updateHiitBlock = (bIndex: number, field: string, value: string) => { const updated = [...hiitBlocks]; updated[bIndex] = { ...updated[bIndex], [field]: value }; setHiitBlocks(updated); };
   
-  const addHiitExercise = (bIndex: number) => { const updated = [...hiitBlocks]; updated[bIndex].exercises.push({ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', exercise_notes: '', video_url: '' }); setHiitBlocks(updated); };
+  const addHiitExercise = (bIndex: number) => { const updated = [...hiitBlocks]; updated[bIndex].exercises.push({ _key: Math.random().toString(), name: '', sets: '1', duration_reps: '', duration: '', exercise_notes: '', video_url: '' }); setHiitBlocks(updated); };
   const removeHiitExercise = (bIndex: number, eIndex: number) => { const updated = [...hiitBlocks]; updated[bIndex].exercises = updated[bIndex].exercises.filter((_: any, i: number) => i !== eIndex); setHiitBlocks(updated); };
   const updateHiitExercise = (bIndex: number, eIndex: number, field: string, value: string) => { const updated = [...hiitBlocks]; updated[bIndex].exercises[eIndex] = { ...updated[bIndex].exercises[eIndex], [field]: value }; setHiitBlocks(updated); };
   
@@ -229,7 +233,7 @@ export default function EditWorkoutScreen() {
         is_hiit_block: true, name: block.name, sets: block.sets, rest_exercise: block.rest_exercise,
         rest_block: block.rest_block, rest_between_blocks: block.rest_between_blocks, 
         hiit_exercises: block.exercises.filter((e: any) => e.name.trim()).map((e: any) => ({ 
-          name: e.name, duration_reps: e.duration_reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url 
+          name: e.name, sets: e.sets, duration_reps: e.duration_reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url 
         }))
       })).filter(b => b.hiit_exercises.length > 0);
     }
@@ -399,9 +403,11 @@ export default function EditWorkoutScreen() {
                              <TouchableOpacity onPress={() => removeHiitExercise(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="close-circle" size={20} color={colors.textSecondary} /></TouchableOpacity>
                           </View>
                         </View>
-                        <View style={{ flexDirection: 'row', gap: 8, marginTop: 8, paddingLeft: 28 }}>
-                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="Aviso (Ej: 15 reps)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
-                          <TextInput style={[styles.hiitExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration', v)} placeholder="Tiempo (Ej: 45s)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+                        {/* AQUI ESTÁN LOS 3 CAMPOS DEL HIIT */}
+                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, paddingLeft: 28 }}>
+                          <TextInput style={[styles.hiitExInput, { flex: 0.8, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.sets} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'sets', v)} placeholder="Series (Ej: 3)" placeholderTextColor="rgba(150, 150, 150, 0.5)" keyboardType="numeric" />
+                          <TextInput style={[styles.hiitExInput, { flex: 1.1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="Reps (Ej: 15)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+                          <TextInput style={[styles.hiitExInput, { flex: 1.1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration', v)} placeholder="Tiempo (Ej: 45s)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
                         </View>
                         <TextInput style={[styles.hiitNotesInput, { color: colors.textPrimary, borderColor: colors.border }]} value={ex.video_url} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'video_url', v)} placeholder="URL de vídeo (opcional)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
                         <TextInput style={[styles.hiitNotesInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 4 }]} value={ex.exercise_notes} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'exercise_notes', v)} placeholder="Observaciones técnicas (opcional)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
@@ -515,8 +521,7 @@ const styles = StyleSheet.create({
   hiitNotesInput: { borderWidth: 1, borderRadius: 8, padding: 8, fontSize: 12, fontStyle: 'italic', marginTop: 5, marginLeft: 28, minWidth: 0 }, 
   addHiitExBtn: { alignSelf: 'flex-start', paddingVertical: 8, paddingHorizontal: 12, marginLeft: 20 }, 
   errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 },
-  helpText: { fontSize: 9, color: '#888', marginTop: 4, textAlign: 'center', paddingHorizontal: 2 }, // ESTILO NUEVO
-  // Estilos Modal Mapa de Músculos
+  helpText: { fontSize: 9, color: '#888', marginTop: 4, textAlign: 'center', paddingHorizontal: 2 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
   musclePill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
