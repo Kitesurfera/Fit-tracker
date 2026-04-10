@@ -7,7 +7,7 @@ interface HiitCardProps {
   hiitRound: number;
   hiitPhase: string;
   hiitExIdx: number;
-  hiitExSet: number; // NUEVO PROP PARA LAS SERIES
+  hiitExSet: number;
   hiitBlockIdx: number;
   colors: any;
   hiitLogs: Record<string, any>;
