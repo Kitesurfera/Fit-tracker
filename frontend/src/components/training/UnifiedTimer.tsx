@@ -45,14 +45,14 @@ export default function UnifiedTimer({
               />
             </Svg>
 
-            <View style={{ alignItems: 'center', justifyContent: 'center', width: size - 50 }}>
+            <View style={{ alignItems: 'center', justifyContent: 'center', width: size - 30 }}>
               <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '900', letterSpacing: 2, marginBottom: 2 }}>
                 {currentTitle}
               </Text>
               <Text style={{ color: isPaused ? (colors.warning || '#F59E0B') : activeColor, fontSize: 72, fontWeight: '900', letterSpacing: -3 }}>
                 {currentSeconds}
               </Text>
-              <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800', textAlign: 'center', marginTop: 2 }} numberOfLines={2} adjustsFontSizeToFit>
+              <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800', textAlign: 'center', marginTop: 2, paddingHorizontal: 10 }} numberOfLines={3} adjustsFontSizeToFit>
                 {exName}
               </Text>
             </View>
@@ -63,7 +63,7 @@ export default function UnifiedTimer({
             <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '900', letterSpacing: 2, marginBottom: 6 }}>
               A TU RITMO
             </Text>
-            <Text style={{ color: colors.textPrimary, fontSize: 20, fontWeight: '900', textAlign: 'center' }} numberOfLines={3}>
+            <Text style={{ color: colors.textPrimary, fontSize: 20, fontWeight: '900', textAlign: 'center', paddingHorizontal: 10 }} numberOfLines={3}>
               {exName}
             </Text>
           </View>
@@ -76,21 +76,18 @@ export default function UnifiedTimer({
         {/* Controles Secundarios: Reset, Pausa y Saltar */}
         <View style={{ flexDirection: 'row', gap: 12, justifyContent: 'center' }}>
           
-          {/* Botón de Resetear (Solo en descanso o trabajo con tiempo) */}
           {(isResting || (isWorking && workTotalSeconds > 0)) && (
             <TouchableOpacity style={[styles.roundBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={isResting ? onResetRest : onResetWork}>
               <Ionicons name="refresh" size={26} color={colors.textPrimary} />
             </TouchableOpacity>
           )}
 
-          {/* Botón de Pausa/Play Universal (Prep, Descanso, Trabajo) */}
           {hasTime && (
             <TouchableOpacity style={[styles.roundBtn, { backgroundColor: isPaused ? (colors.warning || '#F59E0B') + '20' : colors.primary + '20' }]} onPress={onTogglePause}>
               <Ionicons name={isPaused ? "play" : "pause"} size={26} color={isPaused ? (colors.warning || '#F59E0B') : colors.primary} />
             </TouchableOpacity>
           )}
 
-          {/* Botones de Salto Contextuales */}
           {isPrep || isResting ? (
             <TouchableOpacity style={[styles.actionBtn, { backgroundColor: activeColor, flex: 1 }]} onPress={isPrep ? onStopPrep : onSkipRest}>
               <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Saltar {isPrep ? 'Prep.' : 'Descanso'}</Text>
