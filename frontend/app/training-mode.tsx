@@ -114,7 +114,6 @@ export default function TrainingModeScreen() {
   const [showIndicationsModal, setShowIndicationsModal] = useState(false);
   const hasShownIndicationsRef = useRef(false);
 
-  // NUEVO: Estado Global de Pausa
   const [isPaused, setIsPaused] = useState(false);
 
   const [prepTargetTime, setPrepTargetTime] = useState<number | null>(null);
@@ -202,17 +201,14 @@ export default function TrainingModeScreen() {
     } catch (error) { console.log("Error al reproducir audio:", error); }
   };
 
-  // NUEVA LÓGICA DE PAUSA UNIVERSAL
   const togglePause = () => {
     if (isPaused) {
       setIsPaused(false);
-      // Retomamos el target time calculándolo desde ahora + segundos restantes
       if (isPrep && prepSeconds > 0) setPrepTargetTime(Date.now() + prepSeconds * 1000);
       if (isResting && restSeconds > 0) setRestTargetTime(Date.now() + restSeconds * 1000);
       if (isWorking && workTotalSeconds > 0 && workSeconds > 0) setWorkTargetTime(Date.now() + workSeconds * 1000);
     } else {
       setIsPaused(true);
-      // Al poner el targetTime a null, los useEffects limpian los intervalos automáticamente
       setPrepTargetTime(null);
       setRestTargetTime(null);
       setWorkTargetTime(null);
@@ -750,7 +746,24 @@ export default function TrainingModeScreen() {
     
     const currentEx = b.hiit_exercises[hiitExIdx];
     const hasMultipleSets = parseInt(currentEx?.sets) > 1;
-    const timerExName = hasMultipleSets ? `${currentEx?.name} (Serie ${hiitExSet}/${currentEx?.sets})` : currentEx?.name || 'HIIT';
+    
+    // LÓGICA DE NOMBRE DINÁMICO PARA EL TEMPORIZADOR EN HIIT
+    let timerExName = hasMultipleSets ? `${currentEx?.name} (Serie ${hiitExSet}/${currentEx?.sets})` : currentEx?.name || 'HIIT';
+    
+    if (isResting) {
+      if (hiitPhase === 'rest_set') {
+        timerExName = `Siguiente: ${currentEx?.name} (Serie ${hiitExSet + 1})`;
+      } else if (hiitPhase === 'rest_ex') {
+        timerExName = `Siguiente: ${b.hiit_exercises[hiitExIdx + 1]?.name}`;
+      } else if (hiitPhase === 'rest_block') {
+        timerExName = `Siguiente: ${b.hiit_exercises[0]?.name} (Vuelta ${hiitRound + 1})`;
+      } else if (hiitPhase === 'rest_next_block') {
+        const nextBlock = workout.exercises[hiitBlockIdx + 1];
+        timerExName = `Siguiente: ${nextBlock?.name}`;
+      }
+    } else if (isPrep) {
+      timerExName = `Prep: ${currentEx?.name}`;
+    }
 
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -770,12 +783,26 @@ export default function TrainingModeScreen() {
     const ex = workout.exercises[currentExIndex];
     if (!ex) return <ActivityIndicator color={colors.primary} />;
     const s = setsStatus[currentExIndex] || []; const prog = ((currentExIndex) / workout.exercises.length) * 100;
+
+    // LÓGICA DE NOMBRE DINÁMICO PARA EL TEMPORIZADOR EN TRADICIONAL
+    let displayExName = ex?.name;
+    if (isResting) {
+      if (restType === 'exercise' && currentExIndex < workout.exercises.length - 1) {
+        displayExName = `Siguiente: ${workout.exercises[currentExIndex + 1]?.name}`;
+      } else {
+        const comp = s.filter(x => x === 'completed').length;
+        displayExName = `Siguiente: ${ex?.name} (Serie ${comp + 1})`;
+      }
+    } else if (isPrep) {
+      displayExName = `Prep: ${ex?.name}`;
+    }
+
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>{currentExIndex + 1}/{workout.exercises.length}</Text></View>
         <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${prog}%` }]} /></View>
         <ScrollView contentContainerStyle={styles.content}>
-          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={ex?.name} colors={colors} isHiit={false} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
+          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={displayExName} colors={colors} isHiit={false} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
           <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
             <View style={styles.compactDetailsGrid}>{['sets', 'reps', 'weight', 'duration', 'rest'].map(k => ex[k] && ( <View key={k} style={styles.compactDetailItem}><Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text><Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{ex[k]}</Text></View> ))}</View>
