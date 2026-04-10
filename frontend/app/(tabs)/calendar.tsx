@@ -18,7 +18,6 @@ const getLocalDateStr = (date: Date) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-// UTILIDAD PARA BLINDAR CUALQUIER FECHA QUE VENGA DE LA API
 const extractDateString = (dateVal: any) => {
   if (!dateVal) return null;
   if (typeof dateVal === 'string') return dateVal.split('T')[0]; 
@@ -76,7 +75,7 @@ export default function CalendarScreen() {
   useFocusEffect(
     useCallback(() => {
       if (selectedAthlete) {
-        setUpdating(true);
+        if (workouts.length === 0) setUpdating(true); 
         refreshAthleteData(selectedAthlete);
       }
     }, [selectedAthlete])
@@ -110,11 +109,10 @@ export default function CalendarScreen() {
       
       const macroList = Array.isArray(resTree) ? resTree : (resTree?.macros || []);
       
-      // --- ORDENAR MACROS Y MICROS PARA QUE LOS MÁS RECIENTES TENGAN PRIORIDAD VISUAL ---
       macroList.sort((a: any, b: any) => {
         const dA = extractDateString(a.fecha_inicio || a.start_date) || '';
         const dB = extractDateString(b.fecha_inicio || b.start_date) || '';
-        return dB.localeCompare(dA); // Orden descendente
+        return dB.localeCompare(dA);
       });
 
       macroList.forEach((macro: any) => {
@@ -122,10 +120,9 @@ export default function CalendarScreen() {
         micros.sort((a: any, b: any) => {
           const dA = extractDateString(a.fecha_inicio || a.start_date) || '';
           const dB = extractDateString(b.fecha_inicio || b.start_date) || '';
-          return dB.localeCompare(dA); // Orden descendente
+          return dB.localeCompare(dA);
         });
       });
-      // -----------------------------------------------------------------------------------
 
       const extractedWorkouts = Array.isArray(resWorkouts) ? resWorkouts : (resWorkouts?.data || []);
       const extractedWellness = Array.isArray(resWellness) ? resWellness : (resWellness?.data || []);
@@ -342,7 +339,6 @@ export default function CalendarScreen() {
             const start = extractDateString(m.fecha_inicio || m.start_date);
             const end = extractDateString(m.fecha_fin || m.end_date);
             if (start && end) {
-              // --- CAMBIO: Uso de comparación lexicográfica de Strings para evitar errores de fecha ---
               if (start <= lastDayStr && end >= firstDayStr) {
                 microsResult.push({ 
                   ...m, 
@@ -453,37 +449,51 @@ export default function CalendarScreen() {
     }
   };
 
-  const getDayStatus = (day: number | null) => {
-    if (!day) return null;
-    try {
-      const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-      let status: any = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriod: false, periodType: null };
-      
-      const workoutsForDay = workouts?.filter(w => extractDateString(w.date) === dateStr) || [];
-      if (workoutsForDay.length > 0) { status.hasWorkout = true; status.isCompleted = workoutsForDay.every(w => w.completed); }
-      if (periodDays[dateStr]) { status.isPeriod = true; status.periodType = periodDays[dateStr].type; }
+  const monthStatusMap = useMemo(() => {
+    const map: Record<string, any> = {};
+    
+    Object.keys(periodDays).forEach(dateStr => {
+      if (!map[dateStr]) map[dateStr] = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriod: false, periodType: null };
+      map[dateStr].isPeriod = true;
+      map[dateStr].periodType = periodDays[dateStr].type;
+    });
 
-      if (Array.isArray(macros)) {
-        for (const macro of macros) {
-          const listaMicros = macro.microciclos || macro.microcycles || [];
-          const micro = listaMicros.find((m: any) => {
-            const start = extractDateString(m.fecha_inicio || m.start_date);
-            const end = extractDateString(m.fecha_fin || m.end_date);
-            if(!start || !end) return false;
-            // --- CAMBIO: Uso de comparación lexicográfica de Strings para blindar contra Tiempos locales ---
-            return dateStr >= start && dateStr <= end;
-          });
-          if (micro) { 
-            status.phaseColor = micro.color || macro.color || colors.primary; 
-            break; 
-          }
-        }
+    workouts?.forEach(w => {
+      const dateStr = extractDateString(w.date);
+      if (dateStr) {
+        if (!map[dateStr]) map[dateStr] = { hasWorkout: false, isCompleted: true, phaseColor: null, isPeriod: false, periodType: null };
+        map[dateStr].hasWorkout = true;
+        map[dateStr].isCompleted = map[dateStr].isCompleted && w.completed; 
       }
-      return status;
-    } catch (e) {
-      return null;
+    });
+
+    if (Array.isArray(macros)) {
+      macros.forEach(macro => {
+        const listaMicros = macro.microciclos || macro.microcycles || [];
+        listaMicros.forEach((m: any) => {
+          const start = extractDateString(m.fecha_inicio || m.start_date);
+          const end = extractDateString(m.fecha_fin || m.end_date);
+          if (start && end) {
+            let curr = new Date(start);
+            const endDate = new Date(end);
+            while (curr <= endDate) {
+              const dStr = getLocalDateStr(curr);
+              if (!map[dStr]) map[dStr] = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriod: false, periodType: null };
+              map[dStr].phaseColor = m.color || macro.color || colors.primary;
+              curr.setDate(curr.getDate() + 1);
+            }
+          }
+        });
+      });
     }
-  };
+    return map;
+  }, [workouts, macros, periodDays, colors.primary]);
+
+  const getDayStatus = useCallback((day: number | null) => {
+    if (!day) return null;
+    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    return monthStatusMap[dateStr] || null;
+  }, [currentYear, currentMonth, monthStatusMap]);
 
   const activeDetail = { workouts: workouts?.filter(w => extractDateString(w.date) === selectedDate) || [] };
   const phaseInfo = getPhaseForDate(selectedDate);
@@ -557,7 +567,6 @@ export default function CalendarScreen() {
 
         <ScrollView style={[styles.footer, isDesktop && styles.rightColumnDesktop]} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
           
-          {/* TARJETA DE INTELIGENCIA BIOLÓGICA */}
           {isFemale && phaseInfo && (
             <View style={{ marginBottom: 25 }}>
               <Text style={styles.footerLabel}>BIOLOGÍA Y RENDIMIENTO (DÍA {phaseInfo.day})</Text>
@@ -619,7 +628,6 @@ export default function CalendarScreen() {
         </ScrollView>
       </View>
 
-      {/* MODAL SALTAR SESIÓN */}
       <Modal visible={showSkipModal} transparent animationType="fade">
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
