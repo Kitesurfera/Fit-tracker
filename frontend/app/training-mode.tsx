@@ -96,12 +96,10 @@ export default function TrainingModeScreen() {
   const [videoUploading, setVideoUploading] = useState<string | null>(null);
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
   
-  // NUEVO ESTADO: hiitExSet para las series dentro del ejercicio en HIIT
   const [hiitBlockIdx, setHiitBlockIdx] = useState(0);
   const [hiitRound, setHiitRound] = useState(1);
   const [hiitExIdx, setHiitExIdx] = useState(0);
   const [hiitExSet, setHiitExSet] = useState(1);
-  // NUEVA FASE: 'rest_set'
   const [hiitPhase, setHiitPhase] = useState<'work' | 'rest_set' | 'rest_ex' | 'rest_block' | 'rest_next_block'>('work');
   const [hiitSkipped, setHiitSkipped] = useState<Record<string, number>>({}); 
 
@@ -115,6 +113,9 @@ export default function TrainingModeScreen() {
   
   const [showIndicationsModal, setShowIndicationsModal] = useState(false);
   const hasShownIndicationsRef = useRef(false);
+
+  // NUEVO: Estado Global de Pausa
+  const [isPaused, setIsPaused] = useState(false);
 
   const [prepTargetTime, setPrepTargetTime] = useState<number | null>(null);
   const [prepSeconds, setPrepSeconds] = useState(0);
@@ -201,10 +202,27 @@ export default function TrainingModeScreen() {
     } catch (error) { console.log("Error al reproducir audio:", error); }
   };
 
-  const stopPrepTimer = () => { if (prepIntervalRef.current) clearInterval(prepIntervalRef.current); setIsPrep(false); setPrepSeconds(0); setPrepTargetTime(null); };
-  const stopWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setIsWorking(false); setWorkSeconds(0); setWorkTargetTime(null); };
-  const stopRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setRestTargetTime(null); setRestSeconds(0); setIsResting(false); };
-  const stopAllTimers = () => { stopPrepTimer(); stopWorkTimer(); stopRestTimer(); };
+  // NUEVA LÓGICA DE PAUSA UNIVERSAL
+  const togglePause = () => {
+    if (isPaused) {
+      setIsPaused(false);
+      // Retomamos el target time calculándolo desde ahora + segundos restantes
+      if (isPrep && prepSeconds > 0) setPrepTargetTime(Date.now() + prepSeconds * 1000);
+      if (isResting && restSeconds > 0) setRestTargetTime(Date.now() + restSeconds * 1000);
+      if (isWorking && workTotalSeconds > 0 && workSeconds > 0) setWorkTargetTime(Date.now() + workSeconds * 1000);
+    } else {
+      setIsPaused(true);
+      // Al poner el targetTime a null, los useEffects limpian los intervalos automáticamente
+      setPrepTargetTime(null);
+      setRestTargetTime(null);
+      setWorkTargetTime(null);
+    }
+  };
+
+  const stopPrepTimer = () => { if (prepIntervalRef.current) clearInterval(prepIntervalRef.current); setIsPrep(false); setPrepSeconds(0); setPrepTargetTime(null); setIsPaused(false); };
+  const stopWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setIsWorking(false); setWorkSeconds(0); setWorkTargetTime(null); setIsPaused(false); };
+  const stopRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setRestTargetTime(null); setRestSeconds(0); setIsResting(false); setIsPaused(false); };
+  const stopAllTimers = () => { stopPrepTimer(); stopWorkTimer(); stopRestTimer(); setIsPaused(false); };
 
   const startPrepTimer = (workDur: number, exName?: string) => {
     stopAllTimers(); setIsPrep(true); setPrepSeconds(5); setPrepTargetTime(Date.now() + 5000);
@@ -232,7 +250,7 @@ export default function TrainingModeScreen() {
   };
 
   const startWorkTimerAfterPrep = () => {
-    setIsWorking(true);
+    setIsWorking(true); setIsPaused(false);
     if (workTotalSeconds > 0) { setWorkTargetTime(Date.now() + workTotalSeconds * 1000); } 
     else { setWorkTargetTime(null); }
   };
@@ -244,19 +262,14 @@ export default function TrainingModeScreen() {
     else announce("Descanso.");
   };
 
-  const toggleWorkTimer = () => {
-    if (workTargetTime) { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setWorkTargetTime(null); } 
-    else { setWorkTargetTime(Date.now() + workSeconds * 1000); }
-  };
-
-  const resetWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setWorkTargetTime(Date.now() + workTotalSeconds * 1000); setWorkSeconds(workTotalSeconds); setIsWorking(true); };
-  const resetRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setRestTargetTime(Date.now() + restTotalSeconds * 1000); setRestSeconds(restTotalSeconds); setIsResting(true); };
+  const resetWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setIsPaused(false); setWorkTargetTime(Date.now() + workTotalSeconds * 1000); setWorkSeconds(workTotalSeconds); setIsWorking(true); };
+  const resetRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setIsPaused(false); setRestTargetTime(Date.now() + restTotalSeconds * 1000); setRestSeconds(restTotalSeconds); setIsResting(true); };
 
   const handleWorkComplete = () => { stopWorkTimer(); if (isHiit) advanceHiitLogic(); else completeSet(); };
 
-  useEffect(() => { if (isPrep && prepSeconds > 0 && prepSeconds <= 3) playSound('beep'); }, [prepSeconds, isPrep]);
-  useEffect(() => { if (isWorking && workSeconds > 0 && workSeconds <= 5) playSound('beep'); }, [workSeconds, isWorking]);
-  useEffect(() => { if (isResting && restSeconds > 0 && restSeconds <= 5) playSound('beep'); }, [restSeconds, isResting]);
+  useEffect(() => { if (isPrep && prepSeconds > 0 && prepSeconds <= 3 && !isPaused) playSound('beep'); }, [prepSeconds, isPrep, isPaused]);
+  useEffect(() => { if (isWorking && workSeconds > 0 && workSeconds <= 5 && !isPaused) playSound('beep'); }, [workSeconds, isWorking, isPaused]);
+  useEffect(() => { if (isResting && restSeconds > 0 && restSeconds <= 5 && !isPaused) playSound('beep'); }, [restSeconds, isResting, isPaused]);
 
   useEffect(() => {
     if (showIndicationsModal || !workout || isResting || finished || workout.completed || isPrep) return;
@@ -402,7 +415,7 @@ export default function TrainingModeScreen() {
 
   useEffect(() => {
     if (finished || workout?.completed) return;
-    if (!isResting && workout && !showIndicationsModal) {
+    if (!isResting && workout && !showIndicationsModal && !isPaused) {
       if (isHiit) {
         if (hiitPhase === 'rest_set') { setHiitPhase('work'); setHiitExSet(prev => prev + 1); }
         else if (hiitPhase === 'rest_ex') { setHiitPhase('work'); setHiitExIdx(prev => prev + 1); setHiitExSet(1); } 
@@ -410,9 +423,8 @@ export default function TrainingModeScreen() {
         else if (hiitPhase === 'rest_next_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitExSet(1); setHiitRound(1); setHiitBlockIdx(prev => prev + 1); }
       } else { if (restType === 'exercise') { autoAdvance(currentExIndex); setRestType(null); } }
     }
-  }, [isResting, showIndicationsModal, finished, workout]);
+  }, [isResting, showIndicationsModal, finished, workout, isPaused]);
 
-  // Lógica mejorada que tiene en cuenta las series por ejercicio (hiitExSet)
   const advanceHiitLogic = (skipEx = false) => {
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const b = workout.exercises[hiitBlockIdx]; 
@@ -736,7 +748,6 @@ export default function TrainingModeScreen() {
     const b = workout.exercises?.[hiitBlockIdx];
     if (!b) return <ActivityIndicator color={colors.primary} />;
     
-    // Configuramos el nombre del ejercicio para que el temporizador lo muestre bonito
     const currentEx = b.hiit_exercises[hiitExIdx];
     const hasMultipleSets = parseInt(currentEx?.sets) > 1;
     const timerExName = hasMultipleSets ? `${currentEx?.name} (Serie ${hiitExSet}/${currentEx?.sets})` : currentEx?.name || 'HIIT';
@@ -745,7 +756,7 @@ export default function TrainingModeScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>B{hiitBlockIdx + 1}/{workout.exercises.length}</Text></View>
         <ScrollView contentContainerStyle={styles.content}>
-          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={timerExName} colors={colors} isHiit={isHiit} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
+          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={timerExName} colors={colors} isHiit={isHiit} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
           
           <HiitCard currentBlock={b} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
         </ScrollView>
@@ -764,7 +775,7 @@ export default function TrainingModeScreen() {
         <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>{currentExIndex + 1}/{workout.exercises.length}</Text></View>
         <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${prog}%` }]} /></View>
         <ScrollView contentContainerStyle={styles.content}>
-          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={ex?.name} colors={colors} isHiit={false} onToggleWork={toggleWorkTimer} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
+          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={ex?.name} colors={colors} isHiit={false} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
           <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
             <View style={styles.compactDetailsGrid}>{['sets', 'reps', 'weight', 'duration', 'rest'].map(k => ex[k] && ( <View key={k} style={styles.compactDetailItem}><Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text><Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{ex[k]}</Text></View> ))}</View>
