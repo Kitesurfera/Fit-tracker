@@ -25,7 +25,31 @@ const extractDateString = (dateVal: any) => {
   return null;
 };
 
-const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
+// COMPONENTE EXTRAÍDO: Para evitar re-renders de toda la pantalla al teclear
+const FeedbackInputRow = React.memo(({ initialNote, onSave, colors, isDesktop }: any) => {
+  const [note, setNote] = useState(initialNote || '');
+  const isSaved = note === initialNote && !!initialNote;
+
+  return (
+    <View style={styles.feedbackRow}>
+      <TextInput 
+        style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }, isDesktop && { fontSize: 15 }]} 
+        placeholder="Añadir feedback..." 
+        placeholderTextColor={colors.textSecondary} 
+        value={note} 
+        onChangeText={setNote} 
+      />
+      <TouchableOpacity 
+        style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} 
+        onPress={() => onSave(note)}
+      >
+        <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
+      </TouchableOpacity>
+    </View>
+  );
+});
+
+const MiniVideoPlayer = React.memo(({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
   return (
     <View style={styles.miniVideoContainer}>
@@ -35,7 +59,7 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
       </TouchableOpacity>
     </View>
   );
-};
+});
 
 export default function AthleteDetailScreen() {
   const { colors } = useTheme();
@@ -43,7 +67,6 @@ export default function AthleteDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string; name: string }>();
   
-  // Detectar ancho de pantalla para diseño responsive (Ordenador vs Móvil) y tamaños de letra
   const { width } = useWindowDimensions();
   const isDesktop = width >= 860;
   
@@ -63,9 +86,10 @@ export default function AthleteDetailScreen() {
   const [showFuture, setShowFuture] = useState(false); 
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [workoutToDuplicate, setWorkoutToDuplicate] = useState<any>(null);
-  const [duplicateDate, setDuplicateDate] = useState(new Date().toISOString().split('T')[0]);
+  const [duplicateDate, setDuplicateDate] = useState(getLocalDateStr(new Date()));
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
-  const [draftNotes, setDraftNotes] = useState<Record<string, string>>({});
+
+  const todayStr = useMemo(() => getLocalDateStr(new Date()), []);
 
   useEffect(() => { loadData(); }, []);
 
@@ -88,8 +112,13 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  const toggleWorkout = (id: string) => setExpandedWorkouts(prev => ({ ...prev, [id]: !prev[id] }));
-  const toggleBlock = (key: string) => setExpandedBlocks(prev => ({ ...prev, [key]: !prev[key] }));
+  const toggleWorkout = useCallback((id: string) => {
+    setExpandedWorkouts(prev => ({ ...prev, [id]: !prev[id] }));
+  }, []);
+
+  const toggleBlock = useCallback((key: string) => {
+    setExpandedBlocks(prev => ({ ...prev, [key]: !prev[key] }));
+  }, []);
 
   const executeDeleteWorkout = async (id: string) => {
     try { await api.deleteWorkout(id); loadData(); } 
@@ -137,7 +166,7 @@ export default function AthleteDetailScreen() {
 
       const payload = { title: workoutToDuplicate.title, date: duplicateDate, notes: workoutToDuplicate.notes || '', athlete_id: params.id!, microciclo_id: workoutToDuplicate.microciclo_id || null, exercises: cleanExercises };
       await api.createWorkout(payload);
-      if (Platform.OS !== 'web') Alert.alert("Éxito", `Sesión duplicada para el ${duplicateDate}`);
+      if (Platform.OS !== 'web') Alert.alert("Éxito", `Sesión duplicada para el ${duplicateDate.split('-').reverse().join('/')}`);
       loadData();
     } catch (e) {
       if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo duplicar la sesión.");
@@ -145,11 +174,10 @@ export default function AthleteDetailScreen() {
     }
   };
 
-  const saveCoachNote = async (workout: any, exerciseIndex: number, noteText: string) => {
+  const saveCoachNote = useCallback(async (workout: any, exerciseIndex: number, noteText: string) => {
     try {
       const payload = {
-        title: workout.title, date: workout.date, notes: workout.notes, athlete_id: workout.athlete_id, microciclo_id: workout.microciclo_id,
-        exercises: workout.exercises, completed: workout.completed, observations: workout.observations,
+        ...workout,
         completion_data: {
           ...workout.completion_data,
           exercise_results: workout.completion_data.exercise_results.map((ex: any, i: number) => i === exerciseIndex ? { ...ex, coach_note: noteText } : ex)
@@ -157,11 +185,10 @@ export default function AthleteDetailScreen() {
       };
       await api.updateWorkout(workout.id, payload);
       setWorkouts(prev => prev.map(w => w.id === workout.id ? payload : w));
-      if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
     } catch (e) { console.log("Error guardando la nota del coach:", e); }
-  };
+  }, []);
 
-  const saveHiitCoachNote = async (workout: any, blockIndex: number, exIndex: number, noteText: string) => {
+  const saveHiitCoachNote = useCallback(async (workout: any, blockIndex: number, exIndex: number, noteText: string) => {
     try {
       const updatedHiitResults = (workout.completion_data?.hiit_results || []).map((block: any, bIdx: number) => {
         if (bIdx !== blockIndex) return block;
@@ -179,9 +206,8 @@ export default function AthleteDetailScreen() {
       };
       await api.updateWorkout(workout.id, payload);
       setWorkouts(prev => prev.map(w => w.id === workout.id ? payload : w));
-      if (Platform.OS !== 'web') Alert.alert("¡Enviado!", "Feedback guardado correctamente.");
     } catch (e) { console.log("Error guardando nota HIIT:", e); }
-  };
+  }, []);
 
   const getLevelColor = (val: number, inverse = false) => {
     if (!val) return colors.border + '50'; 
@@ -191,11 +217,10 @@ export default function AthleteDetailScreen() {
 
   const isTrainer = user?.role === 'trainer';
   const isFemale = ['female', 'mujer', 'femenino'].includes(athlete?.gender?.toLowerCase() || '');
-  const todayStr = getLocalDateStr(new Date());
 
   const getActualDayOneStr = useCallback(() => {
     try {
-      if (!history || !Array.isArray(history) || history.length === 0) return '';
+      if (!history || history.length === 0) return '';
       const menstrualLogs = history
         .filter(w => w && w.date && (w.cycle_phase === 'menstrual' || w.cycle_phase?.startsWith('menstruacion')))
         .sort((a, b) => String(b.date).localeCompare(String(a.date)));
@@ -208,10 +233,8 @@ export default function AthleteDetailScreen() {
         const d2 = extractDateString(menstrualLogs[i+1].date);
         if (!d1 || !d2) continue;
 
-        const p1 = d1.split('-');
-        const p2 = d2.split('-');
-        const date1 = new Date(Number(p1[0]), Number(p1[1]) - 1, Number(p1[2]));
-        const date2 = new Date(Number(p2[0]), Number(p2[1]) - 1, Number(p2[2]));
+        const date1 = new Date(d1);
+        const date2 = new Date(d2);
         
         const diffDays = (date1.getTime() - date2.getTime()) / (1000 * 3600 * 24);
         if (diffDays <= 2) actualDayOneStr = d2;
@@ -233,14 +256,7 @@ export default function AthleteDetailScreen() {
       }
       if (!actualDayOneStr) return null;
 
-      const parts = actualDayOneStr.split('-');
-      const startY = Number(parts[0]);
-      const startM = Number(parts[1]);
-      const startD = Number(parts[2]);
-
-      if (isNaN(startY) || isNaN(startM) || isNaN(startD)) return null;
-
-      const actualDayOne = new Date(startY, startM - 1, startD);
+      const actualDayOne = new Date(actualDayOneStr);
       const cycleLength = Number(athlete?.cycle_length) || 28;
       const periodLength = Number(athlete?.period_length) || 5;
 
@@ -254,13 +270,7 @@ export default function AthleteDetailScreen() {
     try {
       if (!cycleData || !cycleData.actualDayOne || isNaN(cycleData.actualDayOne.getTime())) return null;
       
-      const parts = todayStr.split('-');
-      const tY = Number(parts[0]);
-      const tM = Number(parts[1]);
-      const tD = Number(parts[2]);
-      if (isNaN(tY) || isNaN(tM) || isNaN(tD)) return null;
-
-      const targetTime = new Date(tY, tM - 1, tD).getTime();
+      const targetTime = new Date(todayStr).getTime();
       const startTime = cycleData.actualDayOne.getTime();
       const diffDays = Math.floor((targetTime - startTime) / (1000 * 3600 * 24));
 
@@ -288,7 +298,7 @@ export default function AthleteDetailScreen() {
     for (let i = days - 1; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
+      const dateStr = getLocalDateStr(d);
       const record = history.find(w => w.date === dateStr);
       data.push({
         dateStr,
@@ -318,6 +328,25 @@ export default function AthleteDetailScreen() {
     
     return { startStr: getLocalDateStr(start), endStr: getLocalDateStr(end) };
   }, [todayStr]);
+
+  // OPTIMIZACIÓN: Memoizar listas de entrenamientos para no ordenarlas en cada render
+  const { activeWeekWorkouts, historyWorkouts, futureWorkouts } = useMemo(() => {
+    const active: any[] = [];
+    const hist: any[] = [];
+    const future: any[] = [];
+
+    workouts.forEach(w => {
+      if (w.date < activeWindow.startStr) hist.push(w);
+      else if (w.date > activeWindow.endStr) future.push(w);
+      else active.push(w);
+    });
+
+    return {
+      activeWeekWorkouts: active.sort((a,b) => String(a.date).localeCompare(String(b.date))),
+      historyWorkouts: hist.sort((a,b) => String(b.date).localeCompare(String(a.date))), // Historial: más reciente arriba
+      futureWorkouts: future.sort((a,b) => String(a.date).localeCompare(String(b.date)))
+    };
+  }, [workouts, activeWindow]);
 
   const nextWorkout = useMemo(() => {
     const pendingToday = workouts.find(w => w.date === todayStr && !w.completed);
@@ -600,10 +629,6 @@ export default function AthleteDetailScreen() {
                     {isBlockExpanded && (
                       <View style={{ marginTop: 12 }}>
                         {blockOrEx.hiit_exercises?.map((ex: any, eIdx: number) => {
-                          const noteKey = `${wk.id}-hiit-${idx}-${eIdx}`;
-                          const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (ex.coach_note || '');
-                          const isSaved = currentNote === ex.coach_note && !!ex.coach_note;
-
                           return (
                             <View key={eIdx} style={{ marginBottom: 15, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.primary + '50' }}>
                                 <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontWeight: '700' }}>{ex.name} <Text style={{ color: colors.primary, fontWeight: '800' }}>({ex.duration_reps})</Text></Text>
@@ -618,12 +643,12 @@ export default function AthleteDetailScreen() {
                                 )}
 
                                 {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
-                                    <View style={styles.feedbackRow}>
-                                        <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }, isDesktop && { fontSize: 15 }]} placeholder="Feedback para este ejercicio..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
-                                        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} onPress={() => saveHiitCoachNote(wk, idx, eIdx, currentNote)}>
-                                            <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
-                                        </TouchableOpacity>
-                                    </View>
+                                    <FeedbackInputRow 
+                                      initialNote={ex.coach_note} 
+                                      onSave={(note: string) => saveHiitCoachNote(wk, idx, eIdx, note)} 
+                                      colors={colors} 
+                                      isDesktop={isDesktop}
+                                    />
                                 )}
                             </View>
                           );
@@ -633,10 +658,6 @@ export default function AthleteDetailScreen() {
                   </View>
                 );
               } else {
-                const noteKey = `${wk.id}-force-${idx}`;
-                const currentNote = draftNotes[noteKey] !== undefined ? draftNotes[noteKey] : (blockOrEx.coach_note || '');
-                const isSaved = currentNote === blockOrEx.coach_note && !!blockOrEx.coach_note;
-                
                 return (
                   <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
                     <View style={styles.exerciseHeader}>
@@ -659,12 +680,12 @@ export default function AthleteDetailScreen() {
                     )}
                     
                     {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
-                      <View style={styles.feedbackRow}>
-                        <TextInput style={[styles.feedbackInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }, isDesktop && { fontSize: 15 }]} placeholder="Añadir feedback..." placeholderTextColor={colors.textSecondary} value={currentNote} onChangeText={(t) => setDraftNotes(prev => ({...prev, [noteKey]: t}))} />
-                        <TouchableOpacity style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} onPress={() => saveCoachNote(wk, idx, currentNote)}>
-                          <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
-                        </TouchableOpacity>
-                      </View>
+                      <FeedbackInputRow 
+                        initialNote={blockOrEx.coach_note} 
+                        onSave={(note: string) => saveCoachNote(wk, idx, note)} 
+                        colors={colors} 
+                        isDesktop={isDesktop}
+                      />
                     )}
                   </View>
                 );
@@ -677,10 +698,6 @@ export default function AthleteDetailScreen() {
   };
 
   const renderWorkouts = () => {
-    const activeWeekWorkouts = workouts.filter(w => w.date >= activeWindow.startStr && w.date <= activeWindow.endStr).sort((a,b) => String(a.date).localeCompare(String(b.date)));
-    const historyWorkouts = workouts.filter(w => w.date < activeWindow.startStr).sort((a,b) => String(a.date).localeCompare(String(a.date)));
-    const futureWorkouts = workouts.filter(w => w.date > activeWindow.endStr).sort((a,b) => String(a.date).localeCompare(String(b.date)));
-
     return (
       <View style={[styles.tabContainer, isDesktop && { paddingBottom: 40 }]}>
         
@@ -791,9 +808,55 @@ export default function AthleteDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 }, header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, headerTitle: { fontSize: 22, fontWeight: '900' }, tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, tabContainer: { padding: 20, paddingBottom: 100 }, alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, cycleCard: { padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, mainCard: { padding: 20, borderRadius: 25, elevation: 2 }, wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, wellBox: { alignItems: 'center' }, wellVal: { fontSize: 26, fontWeight: '900' }, wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }, sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, elevation: 1 }, iconHitbox: { padding: 8 }, completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 }, avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, cardTitle: { fontSize: 15, fontWeight: '800' }, barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, bar: { width: 16, borderRadius: 8, minHeight: 5 }, barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }, modalContent: { padding: 24, borderRadius: 20, width: '90%', maxWidth: 400 }, modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }, fullVideo: { width: '100%', height: '80%' }, exerciseCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 }, exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, exerciseName: { fontSize: 14, fontWeight: '800' }, feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 5 }, feedbackInput: { flex: 1, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 10, borderWidth: 1, fontSize: 13 }, sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }, chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', elevation: 2 },
-  whatsappFab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center', elevation: 5, zIndex: 100 },
+  container: { flex: 1 }, 
+  header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, 
+  headerTitle: { fontSize: 22, fontWeight: '900' }, 
+  tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, 
+  tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, 
+  tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, 
+  tabContainer: { padding: 20, paddingBottom: 100 }, 
+  alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, 
+  cycleCard: { padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1 }, 
+  sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, 
+  mainCard: { padding: 20, borderRadius: 25, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }, 
+  wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, 
+  wellBox: { alignItems: 'center' }, 
+  wellVal: { fontSize: 26, fontWeight: '900' }, 
+  wellLabel: { fontSize: 9, fontWeight: '800', color: '#888', marginTop: 4 }, 
+  noteBox: { flexDirection: 'row', padding: 15, borderRadius: 15, gap: 10, marginTop: 10 }, 
+  noteText: { fontSize: 13, fontStyle: 'italic', flex: 1, lineHeight: 18 }, 
+  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, gap: 12 }, 
+  actionBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14, letterSpacing: 0.5 }, 
+  sessionCardExpanded: { padding: 18, borderRadius: 20, marginBottom: 15, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 }, 
+  iconHitbox: { padding: 8 }, 
+  completionDetails: { marginTop: 15, padding: 15, borderRadius: 12, borderWidth: 1 }, 
+  avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, 
+  cardTitle: { fontSize: 15, fontWeight: '800' }, 
+  barsContainer: { flexDirection: 'row', justifyContent: 'space-around', alignItems: 'flex-end', height: '100%' }, 
+  barWrapper: { alignItems: 'center', flex: 1, height: '100%' }, 
+  bar: { width: 16, borderRadius: 8, minHeight: 5 }, 
+  barDate: { fontSize: 9, color: '#999', marginTop: 8, fontWeight: '700' }, 
+  barValue: { fontSize: 9, fontWeight: '800', marginBottom: 4 }, 
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 20 }, 
+  modalContent: { padding: 24, borderRadius: 20, width: '90%', maxWidth: 400 }, 
+  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 10 }, 
+  modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' }, 
+  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 }, 
+  miniVideoContainer: { width: 120, height: 80, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', position: 'relative' }, 
+  miniVideo: { width: '100%', height: '100%' }, 
+  expandBtn: { position: 'absolute', right: 5, bottom: 5, backgroundColor: 'rgba(0,0,0,0.6)', padding: 6, borderRadius: 8 }, 
+  fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center' }, 
+  closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }, 
+  fullVideo: { width: '100%', height: '80%' }, 
+  exerciseCard: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10 }, 
+  exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }, 
+  exerciseName: { fontSize: 14, fontWeight: '800' }, 
+  feedbackRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 }, 
+  feedbackInput: { flex: 1, paddingHorizontal: 15, paddingVertical: 10, borderRadius: 10, borderWidth: 1, fontSize: 13 }, 
+  sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }, 
+  chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
+  whatsappFab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 100 },
   toggleSectionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, borderRadius: 12, marginBottom: 15 },
-  nextWorkoutCard: { padding: 16, borderRadius: 20, marginBottom: 25, elevation: 1 },
+  nextWorkoutCard: { padding: 16, borderRadius: 20, marginBottom: 25, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
   nextWorkoutIcon: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 15 }
 });
