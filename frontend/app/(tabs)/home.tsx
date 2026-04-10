@@ -251,15 +251,24 @@ export default function HomeScreen() {
       if (authLoading || (!user && !isTrainer)) return; 
       const init = async () => { 
         try { await syncManager.syncPendingWorkouts(); } catch (e) {} 
-        if (workouts.length === 0 && athletes.length === 0) {
-          setLoading(true);
-        }
+        
         if (isTrainer) { 
           await loadData(true); 
           return; 
         } 
+        
         const sData = await loadData(true); 
-        if (sData?.latest_wellness?.date !== todayStr) setShowWellness(true); 
+        
+        // Lógica corregida del Modal de Wellness para que solo salte 1 vez al día
+        if (sData?.latest_wellness?.date !== todayStr) {
+          const promptedKey = `wellness_prompted_${user.id}_${todayStr}`;
+          const alreadyPrompted = await AsyncStorage.getItem(promptedKey);
+          if (!alreadyPrompted) {
+            setShowWellness(true);
+            await AsyncStorage.setItem(promptedKey, 'true');
+          }
+        }
+        
         scheduleDailyWellnessReminder().catch(() => {}); 
       }; 
       init(); 
@@ -504,6 +513,14 @@ export default function HomeScreen() {
     const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
     const completedWorkouts = workouts.filter(w => w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
     
+    if (loading && workouts.length === 0) {
+      return (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      );
+    }
+
     return (
       <FlatList
         style={{ flex: 1 }}
