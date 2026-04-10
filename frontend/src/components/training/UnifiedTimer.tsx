@@ -6,7 +6,7 @@ import Svg, { Circle } from 'react-native-svg';
 export default function UnifiedTimer({ 
   isPrep, isResting, isWorking, isPaused, prepSeconds, restSeconds, workSeconds, 
   restTotalSeconds, workTotalSeconds, exName, colors, isHiit,
-  onToggleWork, onStopPrep, onSkipRest, onResetWork, onResetRest,
+  onTogglePause, onStopPrep, onSkipRest, onResetWork, onResetRest,
   onComplete, onSkip
 }: any) {
   
@@ -20,7 +20,7 @@ export default function UnifiedTimer({
   const inactiveColor = colors.surfaceHighlight || '#E5E7EB';
   const hasTime = isPrep || isResting || (isWorking && workTotalSeconds > 0);
 
-  const size = 240; // Rueda un poquito más grande
+  const size = 240; 
   const strokeWidth = 14; 
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
@@ -36,9 +36,7 @@ export default function UnifiedTimer({
         {hasTime ? (
           <>
             <Svg width={size} height={size} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
-              {/* Sombra sutil para la barra base */}
               <Circle stroke="rgba(0,0,0,0.03)" fill="none" cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth + 4} />
-              
               <Circle stroke={inactiveColor} fill="none" cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} />
               <Circle
                 stroke={isPaused ? colors.warning || '#F59E0B' : activeColor} fill="none" cx={size / 2} cy={size / 2} r={radius}
@@ -54,11 +52,7 @@ export default function UnifiedTimer({
               <Text style={{ color: isPaused ? (colors.warning || '#F59E0B') : activeColor, fontSize: 72, fontWeight: '900', letterSpacing: -3 }}>
                 {currentSeconds}
               </Text>
-              <Text 
-                style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800', textAlign: 'center', marginTop: 2 }} 
-                numberOfLines={2} 
-                adjustsFontSizeToFit
-              >
+              <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800', textAlign: 'center', marginTop: 2 }} numberOfLines={2} adjustsFontSizeToFit>
                 {exName}
               </Text>
             </View>
@@ -79,46 +73,45 @@ export default function UnifiedTimer({
       {/* BOTONES DE CONTROL UNIFICADOS */}
       <View style={{ width: '100%', marginTop: 30, gap: 12 }}>
         
-        {/* Controles Secundarios */}
+        {/* Controles Secundarios: Reset, Pausa y Saltar */}
         <View style={{ flexDirection: 'row', gap: 12, justifyContent: 'center' }}>
           
-          {(isResting || isPrep) && (
-            <>
-              {isResting && (
-                <TouchableOpacity style={[styles.roundBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={onResetRest}>
-                  <Ionicons name="refresh" size={26} color={colors.textPrimary} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: activeColor, flex: 1 }]} onPress={isPrep ? onStopPrep : onSkipRest}>
-                <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Saltar {isPrep ? 'Prep.' : 'Descanso'}</Text>
-                <Ionicons name="play-forward" size={20} color="#FFF" />
-              </TouchableOpacity>
-            </>
+          {/* Botón de Resetear (Solo en descanso o trabajo con tiempo) */}
+          {(isResting || (isWorking && workTotalSeconds > 0)) && (
+            <TouchableOpacity style={[styles.roundBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={isResting ? onResetRest : onResetWork}>
+              <Ionicons name="refresh" size={26} color={colors.textPrimary} />
+            </TouchableOpacity>
           )}
 
-          {isWorking && workTotalSeconds > 0 && (
-            <>
-              <TouchableOpacity style={[styles.roundBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={onResetWork}>
-                <Ionicons name="refresh" size={26} color={colors.textPrimary} />
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.roundBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={onToggleWork}>
-                <Ionicons name={isPaused ? "play" : "pause"} size={26} color={colors.textPrimary} />
-              </TouchableOpacity>
+          {/* Botón de Pausa/Play Universal (Prep, Descanso, Trabajo) */}
+          {hasTime && (
+            <TouchableOpacity style={[styles.roundBtn, { backgroundColor: isPaused ? (colors.warning || '#F59E0B') + '20' : colors.primary + '20' }]} onPress={onTogglePause}>
+              <Ionicons name={isPaused ? "play" : "pause"} size={26} color={isPaused ? (colors.warning || '#F59E0B') : colors.primary} />
+            </TouchableOpacity>
+          )}
+
+          {/* Botones de Salto Contextuales */}
+          {isPrep || isResting ? (
+            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: activeColor, flex: 1 }]} onPress={isPrep ? onStopPrep : onSkipRest}>
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Saltar {isPrep ? 'Prep.' : 'Descanso'}</Text>
+              <Ionicons name="play-forward" size={20} color="#FFF" />
+            </TouchableOpacity>
+          ) : (
+            isWorking && workTotalSeconds > 0 ? (
               <TouchableOpacity style={[styles.actionBtn, { backgroundColor: (colors.error || '#EF4444') + '15', flex: 1, paddingVertical: 0 }]} onPress={onSkip}>
                 <Ionicons name="play-skip-forward" size={20} color={colors.error || '#EF4444'} />
                 <Text style={{ color: colors.error || '#EF4444', fontWeight: '800', fontSize: 15 }}>Saltar</Text>
               </TouchableOpacity>
-            </>
-          )}
-
-          {isWorking && workTotalSeconds === 0 && (
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: (colors.error || '#EF4444') + '15', flex: 1 }]} onPress={onSkip}>
-              <Ionicons name="play-skip-forward" size={20} color={colors.error || '#EF4444'} />
-              <Text style={{ color: colors.error || '#EF4444', fontWeight: '800', fontSize: 16 }}>Saltar Ejercicio</Text>
-            </TouchableOpacity>
+            ) : (
+              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: (colors.error || '#EF4444') + '15', flex: 1 }]} onPress={onSkip}>
+                <Ionicons name="play-skip-forward" size={20} color={colors.error || '#EF4444'} />
+                <Text style={{ color: colors.error || '#EF4444', fontWeight: '800', fontSize: 16 }}>Saltar Ejercicio</Text>
+              </TouchableOpacity>
+            )
           )}
         </View>
 
+        {/* Botón Principal (Completar) */}
         {isWorking && onComplete && (
           <TouchableOpacity style={[styles.actionBtn, { backgroundColor: activeColor, width: '100%', paddingVertical: 18 }]} onPress={onComplete}>
             <Ionicons name="checkmark-circle" size={24} color="#FFF" />
