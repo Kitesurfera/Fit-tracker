@@ -67,7 +67,7 @@ export default function HomeScreen() {
   const [viewMicroInfo, setViewMicroInfo] = useState<any>(null);
   const [expandedWorkoutId, setExpandedWorkoutId] = useState<string | null>(null);
   const [expandedPreviewId, setExpandedPreviewId] = useState<string | null>(null);
-  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null); // Nuevo estado para bloques
+  const [expandedExerciseId, setExpandedExerciseId] = useState<string | null>(null);
   
   const [showHistory, setShowHistory] = useState(false);
 
@@ -82,7 +82,6 @@ export default function HomeScreen() {
 
   const isFemale = ['female', 'mujer', 'femenino'].includes(user?.gender?.toLowerCase() || '');
 
-  // Truncado para brevedad visual, pero el mapping es crucial para WhatsApp
   const SLUG_TRANSLATIONS: Record<string, string> = {
     'chest-left': 'Pecho Izquierdo', 'chest-right': 'Pecho Derecho',
     'upper-back-left': 'Espalda Alta Izq.', 'upper-back-right': 'Espalda Alta Der.',
@@ -238,10 +237,34 @@ export default function HomeScreen() {
         setActiveMicro(foundMicro);
         return sData;
       }
-    } catch (e) { console.log(e); } finally { setLoading(false); setRefreshing(false); setUpdating(false); }
+    } catch (e) { 
+      console.log(e); 
+    } finally { 
+      if (loading) setLoading(false); 
+      setRefreshing(false); 
+      setUpdating(false); 
+    }
   };
 
-  useFocusEffect(useCallback(() => { if (authLoading || (!user && !isTrainer)) return; const init = async () => { try { await syncManager.syncPendingWorkouts(); } catch (e) {} if (isTrainer) { await loadData(true); return; } const sData = await loadData(true); if (sData?.latest_wellness?.date !== todayStr) setShowWellness(true); scheduleDailyWellnessReminder().catch(() => {}); }; init(); }, [isTrainer, user, authLoading, todayStr]));
+  useFocusEffect(
+    useCallback(() => { 
+      if (authLoading || (!user && !isTrainer)) return; 
+      const init = async () => { 
+        try { await syncManager.syncPendingWorkouts(); } catch (e) {} 
+        if (workouts.length === 0 && athletes.length === 0) {
+          setLoading(true);
+        }
+        if (isTrainer) { 
+          await loadData(true); 
+          return; 
+        } 
+        const sData = await loadData(true); 
+        if (sData?.latest_wellness?.date !== todayStr) setShowWellness(true); 
+        scheduleDailyWellnessReminder().catch(() => {}); 
+      }; 
+      init(); 
+    }, [isTrainer, user, authLoading, todayStr])
+  );
 
   useEffect(() => {
     const checkFeedbackStatus = async () => {
@@ -274,9 +297,6 @@ export default function HomeScreen() {
   const handleFeedbackClick = async () => { if (user) await AsyncStorage.setItem(`feedback_read_${user.id}`, feedbackSignature); setHasUnreadFeedback(false); router.push(`/analytics?tab=feedback`); };
   const handleSkipSubmit = async () => { if (!skipReason.trim()) return Alert.alert("Aviso", "Indica un motivo."); setUpdating(true); try { const workout = workouts.find(w => w.id === skipWorkoutId); if(workout) { await api.updateWorkout(skipWorkoutId!, { ...workout, completed: true, observations: `[NO COMPLETADA] Motivo: ${skipReason}` }); } setShowSkipModal(false); setSkipReason(''); loadData(); } catch(e) {} finally { setUpdating(false); } };
 
-  // ----------------------------------------------------------------------
-  // COMPARTIR STATUS CON ENTRENADOR POR WHATSAPP ACTUALIZADO
-  // ----------------------------------------------------------------------
   const handleShareStatus = () => {
     const latestWellness = summary?.latest_wellness || {};
     const fatigue = latestWellness.fatigue || '?';
@@ -294,7 +314,6 @@ export default function HomeScreen() {
     const activeMicroText = activeMicro ? `${activeMicro.nombre} [${activeMicro.tipo}]` : 'Planificación Libre';
     const phaseText = phaseInfo ? phaseInfo.name : 'Sin registro';
     
-    // Molestias registradas en el check-in diario (wellness)
     const discomfortsObj = latestWellness.discomforts || {};
     const discomfortsEntries = Object.entries(discomfortsObj);
     let discomfortsText = '';
@@ -302,7 +321,6 @@ export default function HomeScreen() {
       discomfortsText = '\n\n   🤕 *Molestias Diarias:*\n' + discomfortsEntries.map(([k, v]) => `      - ${k}: ${String(v).toUpperCase()}`).join('\n'); 
     }
 
-    // Molestias (sore_joints) registradas tras la ÚLTIMA sesión completada
     const lastCompletedWorkout = workouts.find(w => w.completed);
     const sessionSoreJoints = lastCompletedWorkout?.completion_data?.sore_joints || [];
     let sessionDiscomfortsText = '';
@@ -311,11 +329,9 @@ export default function HomeScreen() {
       const translatedJoints = sessionSoreJoints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ');
       sessionDiscomfortsText = `\n\n   ⚠️ *Sobrecarga de Sesión:*\n      - Zonas: ${translatedJoints}`;
     } else if (lastCompletedWorkout) {
-      // Si completó un entreno y no marcó nada, lo indicamos explícitamente.
       sessionDiscomfortsText = `\n\n   ✅ *Sobrecarga de Sesión:*\n      - Ninguna, sin dolor tras el entreno.`;
     }
 
-    // Ahora las molestias se concatenan AL FINAL del bloque de entrenamiento
     const message = `🏄‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Físico:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` + 
                     (isFemale ? `   - Fase ciclo: ${phaseText}\n` : '') + 
                     `\n🏋️‍♀️ *Entrenamiento:*\n   - Fase: ${activeMicroText}\n   - Hoy: ${trained}${workoutName}` + 
@@ -329,7 +345,6 @@ export default function HomeScreen() {
   const handleCloseMicroInfo = () => { setViewMicroInfo(null); setExpandedWorkoutId(null); };
   const microWorkouts = useMemo(() => { if (!viewMicroInfo) return []; return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))); }, [workouts, viewMicroInfo]);
 
-  // --- RENDERIZADO MEJORADO CON DESPLEGABLE POR BLOQUE ---
   const renderWorkoutCard = (item: any) => {
     let hasSessionFeedback = false;
     if (item.completed && item.completion_data) {
@@ -386,7 +401,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* --- CONTENIDO DESPLEGABLE DETALLADO --- */}
         {isExpanded && (
           <View style={{ marginTop: 15, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
             <Text style={{fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, letterSpacing: 1}}>DETALLES DEL ENTRENAMIENTO</Text>
