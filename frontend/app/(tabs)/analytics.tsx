@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Dimensions, Modal, TextInput, Platform
@@ -56,7 +56,6 @@ const normalizeName = (name: string) => {
   return n;
 };
 
-// HELPER: Fuerza a leer la fecha en tu franja horaria local sin bugs UTC
 const getLocalDateStr = (date: Date) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
@@ -124,7 +123,8 @@ export default function AnalyticsScreen() {
         api.getTests({ athlete_id: athleteId }).catch(() => []),
         api.getWorkouts({ athlete_id: athleteId }).catch(() => [])
       ]);
-      setTestHistory(Array.isArray(ts) ? ts.sort((a,b) => b.date.localeCompare(a.date)) : []);
+      // CORRECCIÓN: Copiar array antes de ordenar para evitar mutaciones reactivas
+      setTestHistory(Array.isArray(ts) ? [...ts].sort((a,b) => b.date.localeCompare(a.date)) : []);
       setWorkoutHistory(Array.isArray(wk) ? wk : []);
     } finally {
       setLoading(false);
@@ -142,7 +142,7 @@ export default function AnalyticsScreen() {
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
 
-  const getMusclesForExercise = (exerciseName: string) => {
+  const getMusclesForExercise = useCallback((exerciseName: string) => {
     const normName = normalizeName(exerciseName);
     if (customExerciseMuscles[normName]) return customExerciseMuscles[normName];
     const musclesFound: string[] = [];
@@ -150,7 +150,7 @@ export default function AnalyticsScreen() {
       if (keywords.some(k => normName.includes(k))) musclesFound.push(muscle);
     }
     return musclesFound;
-  };
+  }, [customExerciseMuscles]);
 
   const openDictModal = (exerciseName: string) => {
     setDictTargetExercise(exerciseName);
@@ -184,8 +184,8 @@ export default function AnalyticsScreen() {
     });
   };
 
-  // MOTOR DEL MAPA DE CALOR CRUZADO CON CALENDARIO ESTRICTO
-  const getMuscleHeat = () => {
+  // OPTIMIZACIÓN: Memoizamos para que no calcule el mapa de calor con cada render
+  const heatMap = useMemo(() => {
     const heat: Record<string, number> = {};
     ALL_MUSCLES.forEach(m => heat[m] = 0);
 
@@ -200,7 +200,6 @@ export default function AnalyticsScreen() {
     }
 
     workoutHistory.forEach(w => {
-      // Bloqueamos cualquier entrenamiento futuro para que no ensucie la gráfica
       const isDateValid = bodyTimeFilter === 1 
         ? w.date === localTodayStr 
         : (w.date >= limitDateStr && w.date <= localTodayStr);
@@ -211,12 +210,10 @@ export default function AnalyticsScreen() {
             : (w.exercises || w.routine || w.completion_data?.exercise_results || []);
 
         exercisesList.forEach((r: any) => {
-          // Lectura profunda: ¿Es un bloque de HIIT con ejercicios dentro?
           if (r.is_hiit_block && r.hiit_exercises) {
             r.hiit_exercises.forEach((he: any) => {
               const exName = he.name || he.exercise_name || he.exercise;
               if (exName) {
-                // Si el HIIT no está hecho, lee los sets programados a nivel de bloque o ejercicio
                 const sets = parseInt(r.sets) || parseInt(he.sets) || 1; 
                 getMusclesForExercise(exName).forEach(m => {
                   if (heat[m] !== undefined) heat[m] += sets;
@@ -224,7 +221,6 @@ export default function AnalyticsScreen() {
               }
             });
           } else {
-            // Lectura normal
             const exName = r.name || r.exercise_name || r.exercise;
             if (exName) {
               let sets = 0;
@@ -245,9 +241,9 @@ export default function AnalyticsScreen() {
       }
     });
     return heat;
-  };
+  }, [workoutHistory, bodyTimeFilter, getMusclesForExercise]);
 
-  const getLatestMeasurements = () => {
+  const latestMeasurements = useMemo(() => {
     const measures: Record<string, any> = {};
     testHistory.forEach(test => {
       if (test.test_type === 'medicion') {
@@ -257,9 +253,10 @@ export default function AnalyticsScreen() {
       }
     });
     return measures;
-  };
+  }, [testHistory]);
 
-  const getRawItems = () => {
+  // OPTIMIZACIÓN: Solo recalcula cuando cambia el historial real
+  const rawItems = useMemo(() => {
     const items: Record<string, any> = {};
 
     workoutHistory.forEach(w => {
@@ -313,10 +310,11 @@ export default function AnalyticsScreen() {
     });
 
     return items;
-  };
+  }, [workoutHistory, testHistory]);
 
-  const getCleanProgression = () => {
-    const itemsRecord = getRawItems();
+  const cleanProgression = useMemo(() => {
+    // Clonación profunda de rawItems para no mutar estado
+    const itemsRecord = JSON.parse(JSON.stringify(rawItems));
     
     Object.entries(mergeMap).forEach(([sourceId, targetId]) => {
       let finalTarget = targetId;
@@ -335,7 +333,12 @@ export default function AnalyticsScreen() {
     });
     
     return Object.values(itemsRecord).sort((a: any, b: any) => a.name.localeCompare(b.name));
-  };
+  }, [rawItems, mergeMap]);
+
+  const filteredProgression = useMemo(() => {
+    if (!searchQuery) return cleanProgression;
+    return cleanProgression.filter((ex: any) => ex.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  }, [cleanProgression, searchQuery]);
 
   const renderChart = (history: any[], unit: string) => {
     const data = [...history].sort((a, b) => a.date.localeCompare(b.date));
@@ -461,15 +464,14 @@ export default function AnalyticsScreen() {
   };
 
   const renderMeasurementsCard = () => { 
-    const measures = getLatestMeasurements();
-    if (Object.keys(measures).length === 0) return null;
+    if (Object.keys(latestMeasurements).length === 0) return null;
     const displayNames: Record<string, string> = { weight: 'Peso', shoulders: 'Hombros', chest: 'Pecho', arm: 'Brazo', thigh: 'Muslo' };
     return (
       <View style={[styles.measurementsContainer, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 20 }]}>
         <Text style={[styles.cardTitle, { color: colors.textPrimary, textAlign: isDesktop ? 'left' : 'center', marginBottom: 15 }]}>Últimas Mediciones</Text>
         <View style={styles.measurementsGrid}>
           {Object.entries(displayNames).map(([key, label]) => {
-            const m = measures[key]; if (!m) return null;
+            const m = latestMeasurements[key]; if (!m) return null;
             return (
               <View key={key} style={[styles.measureBadge, { backgroundColor: colors.background, borderColor: colors.border }]}>
                 <Text style={{ fontSize: 10, color: colors.textSecondary, fontWeight: '800', textTransform: 'uppercase' }}>{label}</Text>
@@ -484,12 +486,11 @@ export default function AnalyticsScreen() {
   };
 
   const renderBodyMap = () => { 
-    const heat = getMuscleHeat();
-    const totalSets = Object.values(heat).reduce((sum, val) => sum + val, 0);
-    const sortedMuscles = Object.entries(heat).sort((a, b) => b[1] - a[1]);
+    const totalSets = Object.values(heatMap).reduce((sum, val) => sum + val, 0);
+    const sortedMuscles = Object.entries(heatMap).sort((a, b) => b[1] - a[1]);
     const bodyData: { slug: string; intensity: number }[] = [];
     const mapIntensity = (p: number) => { if (p === 0) return 0; if (p <= 20) return 1; if (p <= 40) return 2; if (p <= 50) return 3; return 4; };
-    const addToBody = (muscle: string, slugs: string[]) => { const s = heat[muscle] || 0; if (s > 0) { const p = (s / totalSets) * 100; slugs.forEach(slug => bodyData.push({ slug, intensity: mapIntensity(p) })); } };
+    const addToBody = (muscle: string, slugs: string[]) => { const s = heatMap[muscle] || 0; if (s > 0) { const p = (s / totalSets) * 100; slugs.forEach(slug => bodyData.push({ slug, intensity: mapIntensity(p) })); } };
 
     addToBody('Pecho', ['chest']); addToBody('Espalda', ['trapezius', 'upper-back', 'lower-back']); addToBody('Cuádriceps', ['quadriceps']); addToBody('Isquiotibiales', ['hamstring']); addToBody('Glúteo', ['gluteal']); addToBody('Hombro', ['front-deltoids', 'back-deltoids']); addToBody('Bíceps', ['biceps']); addToBody('Tríceps', ['triceps']); addToBody('Core', ['abs', 'obliques']); addToBody('Gemelos', ['calves']); addToBody('Antebrazos', ['forearm']); addToBody('Aductores', ['adductor']); addToBody('Abductores', ['abductors']);
 
@@ -609,7 +610,7 @@ export default function AnalyticsScreen() {
                </TouchableOpacity>
 
                <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>
-                 {getCleanProgression().filter(item => item.type === 'test').map((item, i) => renderTestCard(item, i))}
+                 {cleanProgression.filter((item: any) => item.type === 'test').map((item: any, i: number) => renderTestCard(item, i))}
                </View>
              </View>
            ) : 
@@ -622,7 +623,7 @@ export default function AnalyticsScreen() {
                   value={searchQuery} 
                   onChangeText={setSearchQuery} 
                 />
-                {getCleanProgression().filter(ex => ex.name.toLowerCase().includes(searchQuery.toLowerCase())).map((item, i) => {
+                {filteredProgression.map((item: any, i: number) => {
                   return (
                     <View key={item.id} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                       <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.id ? null : item.id)} style={styles.progHeader}>
@@ -681,7 +682,7 @@ export default function AnalyticsScreen() {
                 <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 20 }}>Selecciona el test o ejercicio de <Text style={{fontWeight: 'bold', color: colors.primary}}>destino</Text>:</Text>
                 
                 <ScrollView showsVerticalScrollIndicator={false}>
-                  {Object.values(getRawItems())
+                  {Object.values(rawItems)
                     .sort((a: any, b: any) => a.name.localeCompare(b.name))
                     .map((item: any) => (
                       <TouchableOpacity 
@@ -711,8 +712,8 @@ export default function AnalyticsScreen() {
                 </Text>
                 
                 <ScrollView showsVerticalScrollIndicator={false}>
-                  {Object.values(getRawItems())
-                    .filter(rawItem => rawItem.id !== mergeTargetItem.id)
+                  {Object.values(rawItems)
+                    .filter((rawItem: any) => rawItem.id !== mergeTargetItem.id)
                     .sort((a: any, b: any) => a.name.localeCompare(b.name))
                     .map((rawItem: any) => {
                       const isMergedIntoCurrent = mergeMap[rawItem.id] === mergeTargetItem.id;
