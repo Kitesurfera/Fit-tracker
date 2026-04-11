@@ -546,12 +546,24 @@ export default function AthleteDetailScreen() {
     
     let isWorkoutHiit = false;
     let itemsToRender = [];
+    let hasVideos = false; // Lógica nueva de validación de videos
 
     if (wk.exercises && wk.exercises.length > 0 && wk.exercises[0].is_hiit_block) {
         isWorkoutHiit = true;
         itemsToRender = (wk.completed && wk.completion_data?.hiit_results) ? wk.completion_data.hiit_results : wk.exercises;
     } else {
         itemsToRender = (wk.completed && wk.completion_data?.exercise_results) ? wk.completion_data.exercise_results : (wk.exercises || []);
+    }
+
+    if (wk.completed && wk.completion_data) {
+        wk.completion_data.exercise_results?.forEach((ex: any) => {
+            if (ex.recorded_video_url) hasVideos = true;
+        });
+        wk.completion_data.hiit_results?.forEach((block: any) => {
+            block.hiit_exercises?.forEach((ex: any) => {
+                if (ex.recorded_video_url) hasVideos = true;
+            });
+        });
     }
 
     return (
@@ -592,6 +604,16 @@ export default function AthleteDetailScreen() {
         {isExpanded && (
           <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
             
+            {/* NUEVO AVISO DE VÍDEO PARA EL COACH */}
+            {(isTrainer && hasVideos) && (
+              <View style={{ backgroundColor: colors.primary + '15', padding: 12, borderRadius: 10, marginBottom: 15, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.primary }}>
+                  <Ionicons name="videocam" size={22} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 10, flex: 1, fontSize: isDesktop ? 14 : 12 }}>
+                      El atleta ha subido vídeos de técnica en esta sesión.
+                  </Text>
+              </View>
+            )}
+
             {wk.observations?.includes('[NO COMPLETADA]') && (
               <View style={{ backgroundColor: '#EF444420', padding: 12, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#EF4444' }}>
                  <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: isDesktop ? 13 : 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
