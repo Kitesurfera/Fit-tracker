@@ -56,7 +56,7 @@
         }
       }
     },
-    "plugins": [
+"plugins": [
       "expo-router",
       [
         "expo-splash-screen",
@@ -70,6 +70,11 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c3d7138d-2af2-443e-be34-054053e8ac03"
+      }
     }
   }
 }
