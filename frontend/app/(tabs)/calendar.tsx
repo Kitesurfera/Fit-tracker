@@ -603,27 +603,39 @@ export default function CalendarScreen() {
           <Text style={styles.footerLabel}>DETALLE DEL {selectedDate.split('-').reverse().join('/')}</Text>
           
           {activeDetail.workouts.length > 0 ? (
-            activeDetail.workouts.map((wk: any) => (
-              <View key={wk.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
-                <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => handleWorkoutPress(wk)}>
-                  <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}><Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} /></View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.workoutTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>{wk.title}</Text>
-                    <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.completed ? 'Completado' : isTrainer ? 'Sesión asignada' : 'Sesión pendiente'}</Text>
-                    {wk.observations?.includes('[NO COMPLETADA]') && <Text style={{color: colors.error || '#EF4444', fontSize: 10, fontWeight: '800', marginTop: 4}}>SESIÓN SALTADA</Text>}
-                  </View>
-                </TouchableOpacity>
-                <View style={styles.workoutActions}>
-                  {!isTrainer && !wk.completed && (
-                    <TouchableOpacity onPress={() => { setSkipWorkoutId(wk.id); setShowSkipModal(true); }} style={styles.actionIconBtn}>
-                      <Ionicons name="close-circle-outline" size={24} color={colors.error || '#EF4444'} />
+            activeDetail.workouts.map((wk: any) => {
+                // AVISO VISUAL DE VÍDEOS EN EL CALENDARIO PARA EL COACH
+                let hasVid = false;
+                if (wk.completed && wk.completion_data) {
+                    wk.completion_data.exercise_results?.forEach((ex: any) => { if (ex.recorded_video_url) hasVid = true; });
+                    wk.completion_data.hiit_results?.forEach((b: any) => b.hiit_exercises?.forEach((ex: any) => { if (ex.recorded_video_url) hasVid = true; }));
+                }
+
+                return (
+                  <View key={wk.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
+                    <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => handleWorkoutPress(wk)}>
+                      <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}><Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} /></View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.workoutTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>{wk.title}</Text>
+                        <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.completed ? 'Completado' : isTrainer ? 'Sesión asignada' : 'Sesión pendiente'}</Text>
+                            {(isTrainer && hasVid) && <Ionicons name="videocam" size={14} color={colors.primary} />}
+                        </View>
+                        {wk.observations?.includes('[NO COMPLETADA]') && <Text style={{color: colors.error || '#EF4444', fontSize: 10, fontWeight: '800', marginTop: 4}}>SESIÓN SALTADA</Text>}
+                      </View>
                     </TouchableOpacity>
-                  )}
-                  {isTrainer && <><TouchableOpacity onPress={() => handleDeleteWorkout(wk)} style={styles.actionIconBtn}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity><TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}><Ionicons name="copy-outline" size={20} color={colors.primary} /></TouchableOpacity></>}
-                  <TouchableOpacity onPress={() => handleWorkoutPress(wk)} style={styles.actionIconBtn}><Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} /></TouchableOpacity>
-                </View>
-              </View>
-            ))
+                    <View style={styles.workoutActions}>
+                      {!isTrainer && !wk.completed && (
+                        <TouchableOpacity onPress={() => { setSkipWorkoutId(wk.id); setShowSkipModal(true); }} style={styles.actionIconBtn}>
+                          <Ionicons name="close-circle-outline" size={24} color={colors.error || '#EF4444'} />
+                        </TouchableOpacity>
+                      )}
+                      {isTrainer && <><TouchableOpacity onPress={() => handleDeleteWorkout(wk)} style={styles.actionIconBtn}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity><TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}><Ionicons name="copy-outline" size={20} color={colors.primary} /></TouchableOpacity></>}
+                      <TouchableOpacity onPress={() => handleWorkoutPress(wk)} style={styles.actionIconBtn}><Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} /></TouchableOpacity>
+                    </View>
+                  </View>
+                );
+            })
           ) : <View style={styles.emptyCard}><Ionicons name="calendar-clear-outline" size={32} color={colors.border} /><Text style={{ color: colors.textSecondary, marginTop: 10 }}>Día sin sesiones programadas.</Text></View>}
         </ScrollView>
       </View>
