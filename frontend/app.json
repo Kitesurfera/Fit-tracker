@@ -10,7 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.elite.training",
+      "bundleIdentifier": "com.am.coaching",
       "icon": "./assets/images/icon.png"
     },
     "android": {
