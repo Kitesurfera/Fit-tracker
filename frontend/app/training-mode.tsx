@@ -121,7 +121,7 @@ export default function TrainingModeScreen() {
   const [isPrep, setIsPrep] = useState(false);
   const prepIntervalRef = useRef<any>(null);
 
-  const [restTargetTime, setRestTargetTime] = useState<number | null>(null);
+  const [restTargetTime, setTargetTime] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [restTotalSeconds, setRestTotalSeconds] = useState(1);
   const [isResting, setIsResting] = useState(false);
@@ -205,19 +205,19 @@ export default function TrainingModeScreen() {
     if (isPaused) {
       setIsPaused(false);
       if (isPrep && prepSeconds > 0) setPrepTargetTime(Date.now() + prepSeconds * 1000);
-      if (isResting && restSeconds > 0) setRestTargetTime(Date.now() + restSeconds * 1000);
+      if (isResting && restSeconds > 0) setTargetTime(Date.now() + restSeconds * 1000);
       if (isWorking && workTotalSeconds > 0 && workSeconds > 0) setWorkTargetTime(Date.now() + workSeconds * 1000);
     } else {
       setIsPaused(true);
       setPrepTargetTime(null);
-      setRestTargetTime(null);
+      setTargetTime(null);
       setWorkTargetTime(null);
     }
   };
 
   const stopPrepTimer = () => { if (prepIntervalRef.current) clearInterval(prepIntervalRef.current); setIsPrep(false); setPrepSeconds(0); setPrepTargetTime(null); setIsPaused(false); };
   const stopWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setIsWorking(false); setWorkSeconds(0); setWorkTargetTime(null); setIsPaused(false); };
-  const stopRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setRestTargetTime(null); setRestSeconds(0); setIsResting(false); setIsPaused(false); };
+  const stopRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setTargetTime(null); setRestSeconds(0); setIsResting(false); setIsPaused(false); };
   const stopAllTimers = () => { stopPrepTimer(); stopWorkTimer(); stopRestTimer(); setIsPaused(false); };
 
   const startPrepTimer = (workDur: number, exName?: string) => {
@@ -252,14 +252,14 @@ export default function TrainingModeScreen() {
   };
 
   const startRestTimer = (seconds: number, nextExName?: string) => {
-    stopAllTimers(); setRestTargetTime(Date.now() + seconds * 1000);
+    stopAllTimers(); setTargetTime(Date.now() + seconds * 1000);
     setRestSeconds(seconds); setRestTotalSeconds(seconds); setIsResting(true);
     if (nextExName) announce(`Descanso. Siguiente: ${nextExName}`);
     else announce("Descanso.");
   };
 
   const resetWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setIsPaused(false); setWorkTargetTime(Date.now() + workTotalSeconds * 1000); setWorkSeconds(workTotalSeconds); setIsWorking(true); };
-  const resetRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setIsPaused(false); setRestTargetTime(Date.now() + restTotalSeconds * 1000); setRestSeconds(restTotalSeconds); setIsResting(true); };
+  const resetRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setIsPaused(false); setTargetTime(Date.now() + restTotalSeconds * 1000); setRestSeconds(restTotalSeconds); setIsResting(true); };
 
   const handleWorkComplete = () => { stopWorkTimer(); if (isHiit) advanceHiitLogic(); else completeSet(); };
 
@@ -339,7 +339,11 @@ export default function TrainingModeScreen() {
               (currentWorkout.exercises || []).forEach((ex: any, i: number) => { initial[i] = Array(parseInt(ex.sets) || 1).fill('pending'); });
               setSetsStatus(initial);
             }
-            if (currentWorkout.notes?.trim() && !hasShownIndicationsRef.current) { setShowIndicationsModal(true); hasShownIndicationsRef.current = true; }
+            // AHORA SIEMPRE APARECE EL MODAL INICIAL (Tanto si hay notas como si no)
+            if (!hasShownIndicationsRef.current) { 
+                setShowIndicationsModal(true); 
+                hasShownIndicationsRef.current = true; 
+            }
           }
         }
       } catch (e) { console.error(e); } finally { if (isMounted) setLoading(false); }
@@ -539,18 +543,22 @@ export default function TrainingModeScreen() {
       ));
     } else {
       return workout.exercises.map((ex: any, idx: number) => (
-        <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 8 }}>
-          <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '600', paddingRight: 10 }}>
-            <Text style={{ color: colors.textSecondary }}>{idx + 1}.</Text> {ex.name}
-          </Text>
-          <View style={{ alignItems: 'flex-end' }}>
-            {(ex.sets && ex.reps) ? (
-              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.sets} x {ex.reps}</Text>
-            ) : null}
-            {ex.duration ? (
-              <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.duration}</Text>
-            ) : null}
+        <View key={idx} style={{ marginBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 8 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '600', paddingRight: 10 }}>
+              <Text style={{ color: colors.textSecondary }}>{idx + 1}.</Text> {ex.name}
+            </Text>
+            <View style={{ alignItems: 'flex-end' }}>
+              {(ex.sets && ex.reps) ? (
+                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.sets} x {ex.reps}</Text>
+              ) : null}
+              {ex.duration ? (
+                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.duration}</Text>
+              ) : null}
+            </View>
           </View>
+          {/* NUEVO: Indicaciones del ejercicio visibles en la lista inicial */}
+          {ex.exercise_notes && <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>Nota: {ex.exercise_notes}</Text>}
         </View>
       ));
     }
@@ -803,10 +811,22 @@ export default function TrainingModeScreen() {
         <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${prog}%` }]} /></View>
         <ScrollView contentContainerStyle={styles.content}>
           <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={displayExName} colors={colors} isHiit={false} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
+          
           <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
             <View style={styles.compactDetailsGrid}>{['sets', 'reps', 'weight', 'duration', 'rest'].map(k => ex[k] && ( <View key={k} style={styles.compactDetailItem}><Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text><Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{ex[k]}</Text></View> ))}</View>
+            
+            {/* NUEVO: Indicaciones por ejercicio integradas dentro de la tarjeta */}
+            {ex.exercise_notes && (
+               <View style={{ padding: 16, paddingTop: 0, backgroundColor: colors.surface }}>
+                  <View style={{ flexDirection: 'row', backgroundColor: colors.background, padding: 10, borderRadius: 8 }}>
+                     <Ionicons name="information-circle" size={18} color={colors.textSecondary} />
+                     <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginLeft: 8, flex: 1 }}>{ex.exercise_notes}</Text>
+                  </View>
+               </View>
+            )}
           </View>
+          
           <View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
             <View style={styles.setsGrid}>{s.map((st, i) => ( <View key={i} style={[styles.setCircle, { borderColor: colors.border }, st === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }, st === 'skipped' && { backgroundColor: colors.error, borderColor: colors.error }]}>{st === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : <Text style={{ color: colors.textSecondary }}>{i + 1}</Text>}</View> ))}</View>
             <TouchableOpacity style={[styles.recordBtn, { marginTop: 20, borderColor: colors.border }]} onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text></TouchableOpacity>
