@@ -62,6 +62,15 @@ const parseTimeToSeconds = (timeStr: string | number | undefined | null): number
   return totalSeconds;
 };
 
+// NUEVO: Función para formatear el tiempo global
+const formatGlobalTime = (totalSeconds: number): string => {
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  if (h > 0) return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
 const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
   return (
@@ -115,6 +124,10 @@ export default function TrainingModeScreen() {
   const hasShownIndicationsRef = useRef(false);
 
   const [isPaused, setIsPaused] = useState(false);
+  
+  // NUEVO: Estados y Ref para el tiempo total del entrenamiento
+  const [globalSeconds, setGlobalSeconds] = useState(0);
+  const globalTimerRef = useRef<any>(null);
 
   const [prepTargetTime, setPrepTargetTime] = useState<number | null>(null);
   const [prepSeconds, setPrepSeconds] = useState(0);
@@ -299,6 +312,12 @@ export default function TrainingModeScreen() {
             if (currentWorkout.completion_data) {
               setRpe(currentWorkout.completion_data.rpe || null); setSleepQuality(currentWorkout.completion_data.sleep_quality || null);
               setSleepHours(currentWorkout.completion_data.sleep_hours || ''); if (currentWorkout.completion_data.sore_joints) setSoreJoints(currentWorkout.completion_data.sore_joints);
+              
+              // NUEVO: Cargar el tiempo guardado si el entrenamiento ya estaba completado
+              if (currentWorkout.completion_data.duration_seconds) {
+                setGlobalSeconds(currentWorkout.completion_data.duration_seconds);
+              }
+
               const savedVideos: Record<string, string> = {}; 
               if (!isWorkoutHiit) {
                 const loadedLogs: Record<number, any> = {};
@@ -350,6 +369,20 @@ export default function TrainingModeScreen() {
     fetchWorkoutDetail();
     return () => { isMounted = false; };
   }, [stableWorkoutId]);
+
+  // NUEVO: Efecto para el Temporizador Global
+  useEffect(() => {
+    if (workout && !workout.completed && !finished && !isPaused) {
+      globalTimerRef.current = setInterval(() => {
+        setGlobalSeconds(prev => prev + 1);
+      }, 1000);
+    } else {
+      if (globalTimerRef.current) clearInterval(globalTimerRef.current);
+    }
+    return () => {
+      if (globalTimerRef.current) clearInterval(globalTimerRef.current);
+    };
+  }, [workout, finished, isPaused]);
 
   useEffect(() => {
     if (isPrep && prepTargetTime) {
@@ -503,8 +536,9 @@ export default function TrainingModeScreen() {
   };
 
   const buildCompletionData = () => {
-    if (isHiit) { return { rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, hiit_completed: true, hiit_results: (workout.exercises || []).map((b: any, bIdx: number) => ({ ...b, hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ ...ex, skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0, recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '' })) })) }; }
-    return { rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, exercise_results: (workout.exercises || []).map((ex: any, i: number) => { const s = setsStatus[i] || []; return { exercise_index: i, name: ex.name, total_sets: parseInt(ex.sets) || 1, completed_sets: s.filter(item => item === 'completed').length, skipped_sets: s.filter(item => item === 'skipped').length, set_details: s.map((status, si) => ({ set: si + 1, status })), logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', athlete_note: logs[i]?.note || '', recorded_video_url: recordedVideos[i.toString()] || '' }; }), };
+    // NUEVO: Se añade duration_seconds
+    if (isHiit) { return { duration_seconds: globalSeconds, rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, hiit_completed: true, hiit_results: (workout.exercises || []).map((b: any, bIdx: number) => ({ ...b, hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ ...ex, skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0, recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '' })) })) }; }
+    return { duration_seconds: globalSeconds, rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, exercise_results: (workout.exercises || []).map((ex: any, i: number) => { const s = setsStatus[i] || []; return { exercise_index: i, name: ex.name, total_sets: parseInt(ex.sets) || 1, completed_sets: s.filter(item => item === 'completed').length, skipped_sets: s.filter(item => item === 'skipped').length, set_details: s.map((status, si) => ({ set: si + 1, status })), logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', athlete_note: logs[i]?.note || '', recorded_video_url: recordedVideos[i.toString()] || '' }; }), };
   };
 
   const handleFinish = async () => { if (workout.completed) { router.back(); return; } if (!stableWorkoutId) return; stopAllTimers(); const data = buildCompletionData(); try { const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises }; if (observations.trim()) update.observations = observations.trim(); const net = await NetInfo.fetch(); if (net.isConnected) { await api.updateWorkout(stableWorkoutId, update); syncManager.syncPendingWorkouts(); } else { await syncManager.savePendingWorkout(stableWorkoutId, update); } router.back(); } catch (e) { console.error(e); } };
@@ -537,7 +571,6 @@ export default function TrainingModeScreen() {
                     {hasSets ? `${ex.sets}x ` : ''}{ex.duration_reps || ex.duration || '-'}
                   </Text>
                 </View>
-                {/* NOTAS AÑADIDAS AQUÍ PARA LOS EJERCICIOS DE HIIT */}
                 {ex.exercise_notes ? (
                   <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 2, marginLeft: 10 }}>
                     Nota: {ex.exercise_notes}
@@ -675,10 +708,16 @@ export default function TrainingModeScreen() {
         <ScrollView contentContainerStyle={[styles.content, { alignItems: 'center', paddingVertical: 40 }]}>
           <View style={styles.finishedIconContainer}><Ionicons name="trophy" size={80} color={colors.warning || '#F59E0B'} /></View>
           <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
+          
+          {/* NUEVO: Contador en la pantalla de completado */}
+          <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '900', marginTop: 10, marginBottom: 20 }}>
+            ⏱ Tiempo Total: {formatGlobalTime(globalSeconds)}
+          </Text>
+
           <Text style={[styles.finishedSubtitle, { color: colors.textSecondary }]}>¿Cómo te has sentido hoy?</Text>
           
           {!workout.completed && (
-            <View style={{ width: '100%', gap: 24, marginTop: 20 }}>
+            <View style={{ width: '100%', gap: 24, marginTop: 10 }}>
               <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>NIVEL DE ESFUERZO (RPE)</Text>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => { const isSelected = rpe === num; let c = (num >= 8) ? (colors.error || '#EF4444') : (num >= 4) ? (colors.warning || '#F59E0B') : (colors.success || '#10B981'); return ( <TouchableOpacity key={num} onPress={() => setRpe(num)} style={[styles.rpeCircle, { borderColor: colors.border }, isSelected && { backgroundColor: c, borderColor: c }]}><Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textSecondary }]}>{num}</Text></TouchableOpacity> ); })}</View>
               </View>
@@ -744,6 +783,12 @@ export default function TrainingModeScreen() {
           {workout.completed && workout.completion_data && (
             <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
               <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Feedback General:</Text>
+              
+              {/* NUEVO: Mostrar en los detalles guardados */}
+              {workout.completion_data.duration_seconds && (
+                <Text style={{ color: colors.textPrimary, marginBottom: 4 }}>⏱ Tiempo Activo: {formatGlobalTime(workout.completion_data.duration_seconds)}</Text>
+              )}
+              
               <Text style={{ color: colors.textPrimary }}>RPE: {workout.completion_data.rpe}/10</Text>
               {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5, fontWeight: '600' }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
               {workout.observations && <Text style={{ color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
@@ -761,7 +806,6 @@ export default function TrainingModeScreen() {
     const currentEx = b.hiit_exercises[hiitExIdx];
     const hasMultipleSets = parseInt(currentEx?.sets) > 1;
     
-    // LÓGICA DE NOMBRE DINÁMICO PARA EL TEMPORIZADOR EN HIIT
     let timerExName = hasMultipleSets ? `${currentEx?.name} (Serie ${hiitExSet}/${currentEx?.sets})` : currentEx?.name || 'HIIT';
     
     if (isResting) {
@@ -781,7 +825,24 @@ export default function TrainingModeScreen() {
 
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>B{hiitBlockIdx + 1}/{workout.exercises.length}</Text></View>
+        
+        {/* NUEVO: TopBar actualizada para HIIT */}
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}>
+            <Ionicons name="close" size={26} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 10 }}>
+            <Text style={[styles.topTitle, { color: colors.textPrimary }]} numberOfLines={1}>{workout.title}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 }}>
+              <Ionicons name="time-outline" size={14} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] }}>
+                {formatGlobalTime(globalSeconds)}
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.topProgress, { color: colors.textSecondary }]}>B{hiitBlockIdx + 1}/{workout.exercises.length}</Text>
+        </View>
+
         <ScrollView contentContainerStyle={styles.content}>
           <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={timerExName} colors={colors} isHiit={isHiit} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
           
@@ -798,7 +859,6 @@ export default function TrainingModeScreen() {
     if (!ex) return <ActivityIndicator color={colors.primary} />;
     const s = setsStatus[currentExIndex] || []; const prog = ((currentExIndex) / workout.exercises.length) * 100;
 
-    // LÓGICA DE NOMBRE DINÁMICO PARA EL TEMPORIZADOR EN TRADICIONAL
     let displayExName = ex?.name;
     if (isResting) {
       if (restType === 'exercise' && currentExIndex < workout.exercises.length - 1) {
@@ -813,7 +873,24 @@ export default function TrainingModeScreen() {
 
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.topBar}><TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>{workout.title}</Text><Text style={[styles.topProgress, { color: colors.textSecondary }]}>{currentExIndex + 1}/{workout.exercises.length}</Text></View>
+        
+        {/* NUEVO: TopBar actualizada para TRADICIONAL */}
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}>
+            <Ionicons name="close" size={26} color={colors.textPrimary} />
+          </TouchableOpacity>
+          <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 10 }}>
+            <Text style={[styles.topTitle, { color: colors.textPrimary }]} numberOfLines={1}>{workout.title}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 }}>
+              <Ionicons name="time-outline" size={14} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] }}>
+                {formatGlobalTime(globalSeconds)}
+              </Text>
+            </View>
+          </View>
+          <Text style={[styles.topProgress, { color: colors.textSecondary }]}>{currentExIndex + 1}/{workout.exercises.length}</Text>
+        </View>
+
         <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${prog}%` }]} /></View>
         <ScrollView contentContainerStyle={styles.content}>
           <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={displayExName} colors={colors} isHiit={false} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
@@ -822,7 +899,6 @@ export default function TrainingModeScreen() {
             <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
             <View style={styles.compactDetailsGrid}>{['sets', 'reps', 'weight', 'duration', 'rest'].map(k => ex[k] && ( <View key={k} style={styles.compactDetailItem}><Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text><Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{ex[k]}</Text></View> ))}</View>
             
-            {/* NUEVO: Indicaciones por ejercicio integradas dentro de la tarjeta */}
             {ex.exercise_notes && (
                <View style={{ padding: 16, paddingTop: 0, backgroundColor: colors.surface }}>
                   <View style={{ flexDirection: 'row', backgroundColor: colors.background, padding: 10, borderRadius: 8 }}>
