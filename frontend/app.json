@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Elite Training",
-    "slug": "elite-training-app",
+    "name": "AM Coaching",
+    "slug": "am-coaching-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "elite-training",
+    "scheme": "am-coaching",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -14,6 +14,7 @@
       "icon": "./assets/images/icon.png"
     },
     "android": {
+      "package": "com.am.coaching",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
@@ -31,9 +32,9 @@
       "config": {
         "pwa": {
           "manifest": {
-            "name": "Elite Training",
-            "short_name": "EliteApp",
-            "description": "Seguimiento de deportistas de élite",
+            "name": "AM Coaching",
+            "short_name": "AMCoachingApp",
+            "description": "Programacion y seguimiento de deportistas",
             "start_url": "/",
             "display": "standalone",
             "orientation": "portrait",
