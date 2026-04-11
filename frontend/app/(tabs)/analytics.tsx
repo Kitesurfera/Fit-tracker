@@ -11,22 +11,17 @@ import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Body from 'react-native-body-highlighter';
+import { LineChart } from 'react-native-chart-kit'; // Añadido: Librería de gráficos
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isDesktop = SCREEN_WIDTH > 768;
 const MAX_CONTENT_WIDTH = 1200;
 
+// (Mantenemos tus mapas y constantes originales intactos)
 const TEST_TRANSLATIONS: Record<string, string> = {
-  squat_rm: 'Sentadilla RM',
-  bench_rm: 'Press Banca RM',
-  deadlift_rm: 'Peso Muerto RM',
-  cmj: 'Salto CMJ',
-  sj: 'Salto SJ',
-  dj: 'Drop Jump (DJ)',
-  hamstring: 'Isquiotibiales',
-  calf: 'Gemelos',
-  quadriceps: 'Cuádriceps',
-  tibialis: 'Tibial'
+  squat_rm: 'Sentadilla RM', bench_rm: 'Press Banca RM', deadlift_rm: 'Peso Muerto RM',
+  cmj: 'Salto CMJ', sj: 'Salto SJ', dj: 'Drop Jump (DJ)', hamstring: 'Isquiotibiales',
+  calf: 'Gemelos', quadriceps: 'Cuádriceps', tibialis: 'Tibial'
 };
 
 const DEFAULT_MUSCLE_MAP: Record<string, string[]> = {
@@ -68,9 +63,7 @@ export default function AnalyticsScreen() {
 
   const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
   const [customExerciseMuscles, setCustomExerciseMuscles] = useState<Record<string, string[]>>({});
-  
   const [mergeMap, setMergeMap] = useState<Record<string, string>>({});
-  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [testHistory, setTestHistory] = useState<any[]>([]);
@@ -80,25 +73,20 @@ export default function AnalyticsScreen() {
   
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null); 
-  
   const [searchQuery, setSearchQuery] = useState('');
   const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(1);
   
   const [showDictModal, setShowDictModal] = useState(false);
   const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
   const [dictSelectedMuscles, setDictSelectedMuscles] = useState<string[]>([]);
-
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeTargetItem, setMergeTargetItem] = useState<any>(null);
 
+  // --- Carga de datos inicial (Mantenido de tu código) ---
   useFocusEffect(
     useCallback(() => {
-      AsyncStorage.getItem('custom_exercise_muscles').then(res => {
-        if (res) setCustomExerciseMuscles(JSON.parse(res));
-      });
-      AsyncStorage.getItem('custom_merge_map').then(res => {
-        if (res) setMergeMap(JSON.parse(res));
-      });
+      AsyncStorage.getItem('custom_exercise_muscles').then(res => { if (res) setCustomExerciseMuscles(JSON.parse(res)); });
+      AsyncStorage.getItem('custom_merge_map').then(res => { if (res) setMergeMap(JSON.parse(res)); });
     }, [])
   );
 
@@ -123,7 +111,6 @@ export default function AnalyticsScreen() {
         api.getTests({ athlete_id: athleteId }).catch(() => []),
         api.getWorkouts({ athlete_id: athleteId }).catch(() => [])
       ]);
-      // CORRECCIÓN: Copiar array antes de ordenar para evitar mutaciones reactivas
       setTestHistory(Array.isArray(ts) ? [...ts].sort((a,b) => b.date.localeCompare(a.date)) : []);
       setWorkoutHistory(Array.isArray(wk) ? wk : []);
     } finally {
@@ -142,6 +129,7 @@ export default function AnalyticsScreen() {
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
 
+  // --- Lógica de Diccionario y Fusión (Mantenida) ---
   const getMusclesForExercise = useCallback((exerciseName: string) => {
     const normName = normalizeName(exerciseName);
     if (customExerciseMuscles[normName]) return customExerciseMuscles[normName];
@@ -152,116 +140,68 @@ export default function AnalyticsScreen() {
     return musclesFound;
   }, [customExerciseMuscles]);
 
-  const openDictModal = (exerciseName: string) => {
-    setDictTargetExercise(exerciseName);
-    setDictSelectedMuscles(getMusclesForExercise(exerciseName));
-    setShowDictModal(true);
-  };
-
-  const saveDictMuscles = async () => {
-    const normKey = normalizeName(dictTargetExercise);
-    const updatedMap = { ...customExerciseMuscles, [normKey]: dictSelectedMuscles };
-    setCustomExerciseMuscles(updatedMap);
-    await AsyncStorage.setItem('custom_exercise_muscles', JSON.stringify(updatedMap));
-    setShowDictModal(false);
-  };
-
-  const toggleDictMuscle = (muscle: string) => {
-    setDictSelectedMuscles(prev => prev.includes(muscle) ? prev.filter(m => m !== muscle) : [...prev, muscle]);
-  };
-
+  const openDictModal = (exerciseName: string) => { setDictTargetExercise(exerciseName); setDictSelectedMuscles(getMusclesForExercise(exerciseName)); setShowDictModal(true); };
+  const saveDictMuscles = async () => { const normKey = normalizeName(dictTargetExercise); const updatedMap = { ...customExerciseMuscles, [normKey]: dictSelectedMuscles }; setCustomExerciseMuscles(updatedMap); await AsyncStorage.setItem('custom_exercise_muscles', JSON.stringify(updatedMap)); setShowDictModal(false); };
+  const toggleDictMuscle = (muscle: string) => { setDictSelectedMuscles(prev => prev.includes(muscle) ? prev.filter(m => m !== muscle) : [...prev, muscle]); };
+  
   const toggleMerge = async (sourceId: string) => {
     if (!mergeTargetItem) return;
     setMergeMap(prevMap => {
       const newMap = { ...prevMap };
-      if (newMap[sourceId] === mergeTargetItem.id) {
-          delete newMap[sourceId];
-      } else {
-          newMap[sourceId] = mergeTargetItem.id;
-      }
+      if (newMap[sourceId] === mergeTargetItem.id) delete newMap[sourceId];
+      else newMap[sourceId] = mergeTargetItem.id;
       AsyncStorage.setItem('custom_merge_map', JSON.stringify(newMap)).catch(console.error);
       return newMap;
     });
   };
 
-  // OPTIMIZACIÓN: Memoizamos para que no calcule el mapa de calor con cada render
+  // --- Cálculos de Datos (Mantenido) ---
   const heatMap = useMemo(() => {
-    const heat: Record<string, number> = {};
-    ALL_MUSCLES.forEach(m => heat[m] = 0);
-
-    const now = new Date();
-    const localTodayStr = getLocalDateStr(now);
-    
-    let limitDateStr = localTodayStr;
-    if (bodyTimeFilter !== 1) {
-      const limitDate = new Date();
-      limitDate.setDate(now.getDate() - bodyTimeFilter + 1);
-      limitDateStr = getLocalDateStr(limitDate);
-    }
-
-    workoutHistory.forEach(w => {
-      const isDateValid = bodyTimeFilter === 1 
-        ? w.date === localTodayStr 
-        : (w.date >= limitDateStr && w.date <= localTodayStr);
-
-      if (isDateValid) {
-        const exercisesList = w.completed 
-            ? (w.completion_data?.exercise_results || []) 
-            : (w.exercises || w.routine || w.completion_data?.exercise_results || []);
-
-        exercisesList.forEach((r: any) => {
-          if (r.is_hiit_block && r.hiit_exercises) {
-            r.hiit_exercises.forEach((he: any) => {
-              const exName = he.name || he.exercise_name || he.exercise;
-              if (exName) {
-                const sets = parseInt(r.sets) || parseInt(he.sets) || 1; 
-                getMusclesForExercise(exName).forEach(m => {
-                  if (heat[m] !== undefined) heat[m] += sets;
-                });
-              }
-            });
-          } else {
-            const exName = r.name || r.exercise_name || r.exercise;
-            if (exName) {
-              let sets = 0;
-              if (w.completed) {
-                  sets = parseInt(r.completed_sets) || 1;
-              } else {
-                  sets = parseInt(r.target_sets) || parseInt(r.sets) || parseInt(r.series) || 1;
-              }
-
-              if (sets > 0) {
-                getMusclesForExercise(exName).forEach(m => { 
-                  if (heat[m] !== undefined) heat[m] += sets; 
-                });
-              }
-            }
-          }
-        });
-      }
-    });
-    return heat;
+     // ... (Tu lógica original del heatMap se mantiene intacta para no romper la app) ...
+     const heat: Record<string, number> = {};
+     ALL_MUSCLES.forEach(m => heat[m] = 0);
+     const now = new Date();
+     const localTodayStr = getLocalDateStr(now);
+     let limitDateStr = localTodayStr;
+     if (bodyTimeFilter !== 1) {
+       const limitDate = new Date(); limitDate.setDate(now.getDate() - bodyTimeFilter + 1); limitDateStr = getLocalDateStr(limitDate);
+     }
+     workoutHistory.forEach(w => {
+       const isDateValid = bodyTimeFilter === 1 ? w.date === localTodayStr : (w.date >= limitDateStr && w.date <= localTodayStr);
+       if (isDateValid) {
+         const exercisesList = w.completed ? (w.completion_data?.exercise_results || []) : (w.exercises || w.routine || w.completion_data?.exercise_results || []);
+         exercisesList.forEach((r: any) => {
+           if (r.is_hiit_block && r.hiit_exercises) {
+             r.hiit_exercises.forEach((he: any) => {
+               const exName = he.name || he.exercise_name || he.exercise;
+               if (exName) { const sets = parseInt(r.sets) || parseInt(he.sets) || 1; getMusclesForExercise(exName).forEach(m => { if (heat[m] !== undefined) heat[m] += sets; }); }
+             });
+           } else {
+             const exName = r.name || r.exercise_name || r.exercise;
+             if (exName) {
+               let sets = 0;
+               if (w.completed) sets = parseInt(r.completed_sets) || 1;
+               else sets = parseInt(r.target_sets) || parseInt(r.sets) || parseInt(r.series) || 1;
+               if (sets > 0) getMusclesForExercise(exName).forEach(m => { if (heat[m] !== undefined) heat[m] += sets; });
+             }
+           }
+         });
+       }
+     });
+     return heat;
   }, [workoutHistory, bodyTimeFilter, getMusclesForExercise]);
 
   const latestMeasurements = useMemo(() => {
     const measures: Record<string, any> = {};
-    testHistory.forEach(test => {
-      if (test.test_type === 'medicion') {
-        if (!measures[test.test_name] || test.date >= measures[test.test_name].date) {
-          measures[test.test_name] = test;
-        }
-      }
-    });
+    testHistory.forEach(test => { if (test.test_type === 'medicion') { if (!measures[test.test_name] || test.date >= measures[test.test_name].date) { measures[test.test_name] = test; } } });
     return measures;
   }, [testHistory]);
 
-  // OPTIMIZACIÓN: Solo recalcula cuando cambia el historial real
   const rawItems = useMemo(() => {
+     // ... (Tu lógica original de rawItems) ...
     const items: Record<string, any> = {};
-
     workoutHistory.forEach(w => {
       if (!w.completed) return; 
-      
       w.completion_data?.exercise_results?.forEach((r: any) => {
         if (r.completed_sets > 0 && r.name) {
           const normKey = `ex_${normalizeName(r.name)}`;
@@ -272,58 +212,26 @@ export default function AnalyticsScreen() {
         }
       });
     });
-
     testHistory.forEach(t => {
       if (t.test_type === 'medicion') return;
       const rawName = t.custom_name || TEST_TRANSLATIONS[t.test_name] || t.test_name;
       if (!rawName) return;
-      
       const normKey = `test_${normalizeName(rawName)}`;
-      const valL = parseFloat(t.value_left);
-      const valR = parseFloat(t.value_right);
-      const val = parseFloat(t.value);
-      
+      const valL = parseFloat(t.value_left); const valR = parseFloat(t.value_right); const val = parseFloat(t.value);
       const hasSides = !isNaN(valL) && !isNaN(valR);
       const maxVal = hasSides ? Math.max(valL || 0, valR || 0) : (val || 0);
-
-      if (!items[normKey]) {
-        items[normKey] = { 
-            id: normKey, 
-            name: rawName, 
-            history: [], 
-            maxW: 0, 
-            type: 'test', 
-            unit: t.unit || 'kg',
-            testDoc: t
-        };
-      }
-      
+      if (!items[normKey]) { items[normKey] = { id: normKey, name: rawName, history: [], maxW: 0, type: 'test', unit: t.unit || 'kg', testDoc: t }; }
       if (maxVal > items[normKey].maxW) items[normKey].maxW = maxVal;
-      
-      items[normKey].history.push({ 
-        date: t.date, 
-        val: maxVal,
-        valL: hasSides ? (valL || 0) : null,
-        valR: hasSides ? (valR || 0) : null,
-        isBilateral: hasSides
-      });
+      items[normKey].history.push({ date: t.date, val: maxVal, valL: hasSides ? (valL || 0) : null, valR: hasSides ? (valR || 0) : null, isBilateral: hasSides });
     });
-
     return items;
   }, [workoutHistory, testHistory]);
 
   const cleanProgression = useMemo(() => {
-    // Clonación profunda de rawItems para no mutar estado
     const itemsRecord = JSON.parse(JSON.stringify(rawItems));
-    
     Object.entries(mergeMap).forEach(([sourceId, targetId]) => {
-      let finalTarget = targetId;
-      let iterations = 0;
-      while (mergeMap[finalTarget] && iterations < 10) {
-          finalTarget = mergeMap[finalTarget];
-          iterations++;
-      }
-
+      let finalTarget = targetId; let iterations = 0;
+      while (mergeMap[finalTarget] && iterations < 10) { finalTarget = mergeMap[finalTarget]; iterations++; }
       if (itemsRecord[sourceId] && itemsRecord[finalTarget] && sourceId !== finalTarget) {
         itemsRecord[finalTarget].history = [...itemsRecord[finalTarget].history, ...itemsRecord[sourceId].history];
         itemsRecord[finalTarget].maxW = Math.max(itemsRecord[finalTarget].maxW, itemsRecord[sourceId].maxW);
@@ -331,7 +239,6 @@ export default function AnalyticsScreen() {
         delete itemsRecord[sourceId];
       }
     });
-    
     return Object.values(itemsRecord).sort((a: any, b: any) => a.name.localeCompare(b.name));
   }, [rawItems, mergeMap]);
 
@@ -340,64 +247,90 @@ export default function AnalyticsScreen() {
     return cleanProgression.filter((ex: any) => ex.name.toLowerCase().includes(searchQuery.toLowerCase()));
   }, [cleanProgression, searchQuery]);
 
+  // --- NUEVO: Resumen de Rendimiento (Coach/Client View) ---
+  const renderPerformanceSummary = () => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const limitDateStr = getLocalDateStr(thirtyDaysAgo);
+    
+    const recentWorkouts = workoutHistory.filter(w => w.completed && w.date >= limitDateStr);
+    
+    return (
+      <View style={[styles.summaryBoard, { backgroundColor: colors.surfaceHighlight }]}>
+        <View style={styles.summaryItem}>
+          <Ionicons name="calendar-outline" size={24} color={colors.primary} />
+          <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{recentWorkouts.length}</Text>
+          <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Entrenos (30d)</Text>
+        </View>
+        <View style={styles.summaryDivider} />
+        <View style={styles.summaryItem}>
+          <Ionicons name="flame-outline" size={24} color="#EF4444" />
+          <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{Object.keys(rawItems).length}</Text>
+          <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Ejercicios Trackeados</Text>
+        </View>
+      </View>
+    );
+  };
+
+  // --- NUEVO: Gráficas con react-native-chart-kit ---
   const renderChart = (history: any[], unit: string) => {
     const data = [...history].sort((a, b) => a.date.localeCompare(b.date));
     if (data.length === 0) return null;
     
-    let maxV = 0;
-    let minV = Infinity;
+    // Mostramos máximo los últimos 8 registros para no saturar el móvil
+    const slicedData = data.slice(-8); 
+    
+    const labels = slicedData.map(d => d.date.split('-').slice(1).join('/'));
+    const isBilateral = slicedData.some(d => d.isBilateral);
+    
+    let datasets = [];
+    if (isBilateral) {
+      datasets = [
+        { data: slicedData.map(d => d.valL || 0), color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`, strokeWidth: 3 }, // Azul (Izquierda)
+        { data: slicedData.map(d => d.valR || 0), color: (opacity = 1) => `rgba(239, 68, 68, ${opacity})`, strokeWidth: 3 }   // Rojo (Derecha)
+      ];
+    } else {
+      datasets = [
+        { data: slicedData.map(d => d.val || 0), color: (opacity = 1) => colors.primary, strokeWidth: 3 }
+      ];
+    }
 
-    data.forEach(d => {
-      if (d.isBilateral) {
-         if (d.valL > maxV) maxV = d.valL;
-         if (d.valR > maxV) maxV = d.valR;
-         if (d.valL < minV) minV = d.valL;
-         if (d.valR < minV) minV = d.valR;
-      } else {
-         if (d.val > maxV) maxV = d.val;
-         if (d.val < minV) minV = d.val;
-      }
-    });
+    // Cálculo responsivo del ancho para que funcione perfecto en App Web
+    const chartWidth = isDesktop ? (MAX_CONTENT_WIDTH / 2) - 80 : SCREEN_WIDTH - 80;
 
-    if (minV === Infinity) minV = 0;
-    const range = maxV - minV === 0 ? 10 : maxV - minV;
+    const chartConfig = {
+      backgroundGradientFrom: colors.surface,
+      backgroundGradientTo: colors.surface,
+      color: (opacity = 1) => colors.textSecondary,
+      labelColor: (opacity = 1) => colors.textSecondary,
+      strokeWidth: 2,
+      barPercentage: 0.5,
+      useShadowColorFromDataset: false,
+      decimalPlaces: 1,
+    };
 
     return (
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 15, alignItems: 'flex-end', height: 120, paddingHorizontal: 10 }}>
-        {data.map((h, i) => {
-          if (h.isBilateral) {
-             const heightPctL = Math.max(((h.valL - minV) / range) * 60 + 15, 10);
-             const heightPctR = Math.max(((h.valR - minV) / range) * 60 + 15, 10);
-             return (
-              <View key={i} style={{ alignItems: 'center', height: '100%', justifyContent: 'flex-end', marginHorizontal: 5 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 2 }}>
-                  <View style={{ alignItems: 'center' }}>
-                     <View style={{ height: heightPctL, width: 12, backgroundColor: '#3B82F6', borderTopLeftRadius: 4, borderTopRightRadius: 4 }} />
-                     <Text style={{ fontSize: 9, color: colors.textPrimary, marginTop: 4, fontWeight: '800' }}>{h.valL}</Text>
-                  </View>
-                  <View style={{ alignItems: 'center' }}>
-                     <View style={{ height: heightPctR, width: 12, backgroundColor: '#EF4444', borderTopLeftRadius: 4, borderTopRightRadius: 4 }} />
-                     <Text style={{ fontSize: 9, color: colors.textPrimary, marginTop: 4, fontWeight: '800' }}>{h.valR}</Text>
-                  </View>
-                </View>
-                <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 4 }}>{h.date.split('-').slice(1).join('/')}</Text>
-              </View>
-             );
-          } else {
-             const barHeight = Math.max(((h.val - minV) / range) * 60 + 15, 10);
-             return (
-              <View key={i} style={{ alignItems: 'center', width: 45, height: '100%', justifyContent: 'flex-end' }}>
-                <View style={{ height: barHeight, width: 14, backgroundColor: colors.primary, borderRadius: 6 }} />
-                <Text style={{ fontSize: 10, color: colors.textPrimary, marginTop: 6, fontWeight: '800' }}>{h.val}</Text>
-                <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 2 }}>{h.date.split('-').slice(1).join('/')}</Text>
-              </View>
-             );
-          }
-        })}
-      </ScrollView>
+      <View style={{ alignItems: 'center', marginTop: 10 }}>
+        {isBilateral && (
+          <View style={{ flexDirection: 'row', gap: 15, marginBottom: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#3B82F6' }}/><Text style={{ fontSize: 12, color: colors.textSecondary }}>Izquierda</Text></View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' }}/><Text style={{ fontSize: 12, color: colors.textSecondary }}>Derecha</Text></View>
+          </View>
+        )}
+        <LineChart
+          data={{ labels, datasets }}
+          width={chartWidth}
+          height={220}
+          chartConfig={chartConfig}
+          bezier
+          style={{ borderRadius: 16 }}
+          yAxisSuffix={` ${unit}`}
+        />
+      </View>
     );
   };
 
+  // ... (El resto de funciones render de tu código se mantienen igual: renderTestCard, renderFeedbackTab, renderMeasurementsCard, renderBodyMap) ...
   const renderTestCard = (mergedItem: any, index: number) => { 
     const test = mergedItem.testDoc;
     const valL = test ? parseFloat(test.value_left) : NaN; 
@@ -458,7 +391,7 @@ export default function AnalyticsScreen() {
           <View key={i} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: colors.warning + '40' }]}>
             <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{fb.date}</Text><Text style={{ color: colors.textPrimary, fontWeight: '800' }}>{fb.exercise}</Text><Text style={{ color: colors.textPrimary, fontStyle: 'italic' }}>"{fb.note}"</Text>
           </View>
-        )) : <Text style={{color: colors.textSecondary, textAlign: 'center'}}>No hay correcciones.</Text>}
+        )) : <Text style={{color: colors.textSecondary, textAlign: 'center'}}>No hay correcciones del Coach.</Text>}
       </View>
     );
   };
@@ -497,7 +430,6 @@ export default function AnalyticsScreen() {
     if (isDesktop) {
       return (
         <View style={styles.bodyTabWrapper}>
-          {renderMeasurementsCard()}
           <View style={styles.timeFilterContainer}>
             {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
               <TouchableOpacity key={f.v} style={[styles.timeBtn, bodyTimeFilter === f.v && {backgroundColor: colors.primary}]} onPress={() => setBodyTimeFilter(f.v as any)}>
@@ -540,7 +472,6 @@ export default function AnalyticsScreen() {
 
     return (
       <View style={{ paddingBottom: 100 }}>
-        {renderMeasurementsCard()}
         <View style={styles.timeFilterContainerMobile}>
           {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
             <TouchableOpacity key={f.v} style={[styles.timeBtnMobile, bodyTimeFilter === f.v && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.v as any)}>
@@ -579,7 +510,12 @@ export default function AnalyticsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={[styles.mainWrapper, isDesktop && styles.desktopWrapper]}>
         <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Analíticas'}</Text>
+          <View>
+            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
+              {isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Tus Analíticas'}
+            </Text>
+            {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>Vista Entrenador</Text>}
+          </View>
           <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
             {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}
           </TouchableOpacity>
@@ -601,13 +537,17 @@ export default function AnalyticsScreen() {
           {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
            activeTab === 'summary' ? (
              <View>
-               <TouchableOpacity 
-                 style={[styles.mergeGlobalBtn, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]} 
-                 onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}
-               >
-                 <Ionicons name="git-merge" size={20} color={colors.primary} />
-                 <Text style={{ color: colors.textPrimary, fontWeight: '700', marginLeft: 8 }}>Vincular Datos y Tests</Text>
-               </TouchableOpacity>
+               {renderPerformanceSummary()}
+               {renderMeasurementsCard()}
+
+               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, marginTop: 10 }}>
+                 <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Histórico de Tests</Text>
+                 {isTrainer && (
+                   <TouchableOpacity onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}>
+                     <Ionicons name="git-merge" size={22} color={colors.primary} />
+                   </TouchableOpacity>
+                 )}
+               </View>
 
                <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>
                  {cleanProgression.filter((item: any) => item.type === 'test').map((item: any, i: number) => renderTestCard(item, i))}
@@ -645,7 +585,7 @@ export default function AnalyticsScreen() {
                         </View>
                         
                         <View style={{ flexDirection: 'row', gap: 10 }}>
-                          {item.type === 'ejercicio' && (
+                          {item.type === 'ejercicio' && isTrainer && (
                             <TouchableOpacity style={{ padding: 5 }} onPress={(e) => { e.stopPropagation(); openDictModal(item.name); }}>
                               <Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/>
                             </TouchableOpacity>
@@ -673,6 +613,7 @@ export default function AnalyticsScreen() {
 
       {/* MODAL FUSIÓN DE DATOS EN DOS PASOS */}
       <Modal visible={showMergeModal} transparent animationType="slide">
+        {/* ... (El Modal original de fusión se mantiene intacto) ... */}
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
             
@@ -762,6 +703,7 @@ export default function AnalyticsScreen() {
 
       {/* MODAL DICCIONARIO */}
       <Modal visible={showDictModal} transparent animationType="slide">
+        {/* ... (El Modal original de diccionario se mantiene intacto) ... */}
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 15 }}>Editar Diccionario: {dictTargetExercise}</Text>
@@ -782,6 +724,14 @@ export default function AnalyticsScreen() {
 }
 
 const styles = StyleSheet.create({
+  // Añadidos nuevos estilos para el resumen de rendimiento
+  summaryBoard: { flexDirection: 'row', borderRadius: 20, padding: 20, marginBottom: 20, alignItems: 'center', justifyContent: 'space-around' },
+  summaryItem: { alignItems: 'center' },
+  summaryValue: { fontSize: 24, fontWeight: '900', marginTop: 5 },
+  summaryLabel: { fontSize: 12, fontWeight: '600', marginTop: 2 },
+  summaryDivider: { width: 1, height: '80%', backgroundColor: 'rgba(0,0,0,0.1)' },
+  
+  // (Mantenemos los estilos originales para no romper tu diseño base)
   container: { flex: 1 },
   mainWrapper: { flex: 1, width: '100%' },
   desktopWrapper: { maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
@@ -792,9 +742,7 @@ const styles = StyleSheet.create({
   tabsContainerMobile: { gap: 8, paddingRight: 20 },
   tabButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)', justifyContent: 'center' },
   tabButtonText: { fontSize: 11, fontWeight: '800' },
-  
   mergeGlobalBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 15, borderRadius: 16, borderWidth: 1, marginBottom: 20, borderStyle: 'dashed' },
-  
   bodyTabWrapper: { flex: 1 },
   timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 30 },
   timeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
