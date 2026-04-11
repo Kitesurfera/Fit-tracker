@@ -11,13 +11,12 @@ import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Body from 'react-native-body-highlighter';
-import { LineChart } from 'react-native-chart-kit'; // Añadido: Librería de gráficos
+import { LineChart } from 'react-native-chart-kit';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isDesktop = SCREEN_WIDTH > 768;
 const MAX_CONTENT_WIDTH = 1200;
 
-// (Mantenemos tus mapas y constantes originales intactos)
 const TEST_TRANSLATIONS: Record<string, string> = {
   squat_rm: 'Sentadilla RM', bench_rm: 'Press Banca RM', deadlift_rm: 'Peso Muerto RM',
   cmj: 'Salto CMJ', sj: 'Salto SJ', dj: 'Drop Jump (DJ)', hamstring: 'Isquiotibiales',
@@ -74,6 +73,11 @@ export default function AnalyticsScreen() {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null); 
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // NUEVO: Estados para los filtros avanzados
+  const [hideEmpty, setHideEmpty] = useState(true);
+  const [filterCategory, setFilterCategory] = useState<'all' | 'ejercicio' | 'test'>('all');
+  
   const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(1);
   
   const [showDictModal, setShowDictModal] = useState(false);
@@ -82,7 +86,6 @@ export default function AnalyticsScreen() {
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeTargetItem, setMergeTargetItem] = useState<any>(null);
 
-  // --- Carga de datos inicial (Mantenido de tu código) ---
   useFocusEffect(
     useCallback(() => {
       AsyncStorage.getItem('custom_exercise_muscles').then(res => { if (res) setCustomExerciseMuscles(JSON.parse(res)); });
@@ -129,7 +132,6 @@ export default function AnalyticsScreen() {
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
 
-  // --- Lógica de Diccionario y Fusión (Mantenida) ---
   const getMusclesForExercise = useCallback((exerciseName: string) => {
     const normName = normalizeName(exerciseName);
     if (customExerciseMuscles[normName]) return customExerciseMuscles[normName];
@@ -155,9 +157,7 @@ export default function AnalyticsScreen() {
     });
   };
 
-  // --- Cálculos de Datos (Mantenido) ---
   const heatMap = useMemo(() => {
-     // ... (Tu lógica original del heatMap se mantiene intacta para no romper la app) ...
      const heat: Record<string, number> = {};
      ALL_MUSCLES.forEach(m => heat[m] = 0);
      const now = new Date();
@@ -198,7 +198,6 @@ export default function AnalyticsScreen() {
   }, [testHistory]);
 
   const rawItems = useMemo(() => {
-     // ... (Tu lógica original de rawItems) ...
     const items: Record<string, any> = {};
     workoutHistory.forEach(w => {
       if (!w.completed) return; 
@@ -242,12 +241,28 @@ export default function AnalyticsScreen() {
     return Object.values(itemsRecord).sort((a: any, b: any) => a.name.localeCompare(b.name));
   }, [rawItems, mergeMap]);
 
+  // NUEVA LÓGICA DE FILTRADO MULTIPLE
   const filteredProgression = useMemo(() => {
-    if (!searchQuery) return cleanProgression;
-    return cleanProgression.filter((ex: any) => ex.name.toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [cleanProgression, searchQuery]);
+    let result = cleanProgression;
+    
+    // 1. Filtro de vacíos
+    if (hideEmpty) {
+      result = result.filter((item: any) => item.maxW > 0);
+    }
 
-  // --- NUEVO: Resumen de Rendimiento (Coach/Client View) ---
+    // 2. Filtro de Categoría (Fuerza vs Test)
+    if (filterCategory !== 'all') {
+      result = result.filter((item: any) => item.type === filterCategory);
+    }
+    
+    // 3. Búsqueda de texto
+    if (searchQuery) {
+      result = result.filter((ex: any) => ex.name.toLowerCase().includes(searchQuery.toLowerCase()));
+    }
+    
+    return result;
+  }, [cleanProgression, searchQuery, hideEmpty, filterCategory]);
+
   const renderPerformanceSummary = () => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -272,22 +287,19 @@ export default function AnalyticsScreen() {
     );
   };
 
-  // --- NUEVO: Gráficas con react-native-chart-kit ---
   const renderChart = (history: any[], unit: string) => {
     const data = [...history].sort((a, b) => a.date.localeCompare(b.date));
     if (data.length === 0) return null;
     
-    // Mostramos máximo los últimos 8 registros para no saturar el móvil
     const slicedData = data.slice(-8); 
-    
     const labels = slicedData.map(d => d.date.split('-').slice(1).join('/'));
     const isBilateral = slicedData.some(d => d.isBilateral);
     
     let datasets = [];
     if (isBilateral) {
       datasets = [
-        { data: slicedData.map(d => d.valL || 0), color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`, strokeWidth: 3 }, // Azul (Izquierda)
-        { data: slicedData.map(d => d.valR || 0), color: (opacity = 1) => `rgba(239, 68, 68, ${opacity})`, strokeWidth: 3 }   // Rojo (Derecha)
+        { data: slicedData.map(d => d.valL || 0), color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`, strokeWidth: 3 },
+        { data: slicedData.map(d => d.valR || 0), color: (opacity = 1) => `rgba(239, 68, 68, ${opacity})`, strokeWidth: 3 }
       ];
     } else {
       datasets = [
@@ -295,7 +307,6 @@ export default function AnalyticsScreen() {
       ];
     }
 
-    // Cálculo responsivo del ancho para que funcione perfecto en App Web
     const chartWidth = isDesktop ? (MAX_CONTENT_WIDTH / 2) - 80 : SCREEN_WIDTH - 80;
 
     const chartConfig = {
@@ -330,7 +341,6 @@ export default function AnalyticsScreen() {
     );
   };
 
-  // ... (El resto de funciones render de tu código se mantienen igual: renderTestCard, renderFeedbackTab, renderMeasurementsCard, renderBodyMap) ...
   const renderTestCard = (mergedItem: any, index: number) => { 
     const test = mergedItem.testDoc;
     const valL = test ? parseFloat(test.value_left) : NaN; 
@@ -556,67 +566,123 @@ export default function AnalyticsScreen() {
            ) : 
            activeTab === 'progress' ? (
               <View>
-                <TextInput 
-                  style={[styles.searchBar, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                  placeholder="Buscar ejercicio o test..." 
-                  placeholderTextColor={colors.textSecondary} 
-                  value={searchQuery} 
-                  onChangeText={setSearchQuery} 
-                />
-                {filteredProgression.map((item: any, i: number) => {
-                  return (
-                    <View key={item.id} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                      <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.id ? null : item.id)} style={styles.progHeader}>
-                        <View style={{flex:1}}>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                            <Text style={[styles.progName, {color: colors.textPrimary}]}>{item.name}</Text>
-                            <View style={{ backgroundColor: item.type === 'test' ? colors.primary + '20' : '#E2E8F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                              <Text style={{ fontSize: 9, fontWeight: '800', color: item.type === 'test' ? colors.primary : '#64748B' }}>
-                                {item.type.toUpperCase()}
-                              </Text>
-                            </View>
-                            {item.mergedSources && item.mergedSources.length > 0 && (
-                              <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                <Text style={{ fontSize: 9, fontWeight: '800', color: colors.warning }}>FUSIONADO</Text>
+                {/* BARRA DE BÚSQUEDA */}
+                <View style={{ marginBottom: 15 }}>
+                  <TextInput 
+                    style={[styles.searchBar, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
+                    placeholder="Buscar ejercicio o test..." 
+                    placeholderTextColor={colors.textSecondary} 
+                    value={searchQuery} 
+                    onChangeText={setSearchQuery} 
+                  />
+                </View>
+
+                {/* NUEVO: FILA DE CHIPS/FILTROS */}
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsContainer}>
+                  {/* Chip de Ocultar Vacíos */}
+                  <TouchableOpacity
+                    style={[
+                      styles.filterChip,
+                      { borderColor: colors.border, backgroundColor: hideEmpty ? colors.primary + '20' : colors.surface }
+                    ]}
+                    onPress={() => setHideEmpty(!hideEmpty)}
+                  >
+                    <Ionicons name={hideEmpty ? "eye-off" : "eye"} size={14} color={hideEmpty ? colors.primary : colors.textSecondary} />
+                    <Text style={[styles.filterChipText, { color: hideEmpty ? colors.primary : colors.textSecondary }]}>
+                      {hideEmpty ? 'Ocultando 0kg' : 'Mostrando Todo'}
+                    </Text>
+                  </TouchableOpacity>
+                  
+                  {/* Divisor Visual */}
+                  <View style={{ width: 1, backgroundColor: colors.border, marginHorizontal: 4, marginVertical: 6 }} />
+
+                  {/* Chips de Categoría */}
+                  {['all', 'ejercicio', 'test'].map((cat) => {
+                    const isActive = filterCategory === cat;
+                    let label = 'Todos';
+                    if (cat === 'ejercicio') label = 'Fuerza';
+                    if (cat === 'test') label = 'Tests';
+
+                    return (
+                      <TouchableOpacity
+                        key={cat}
+                        style={[
+                          styles.filterChip,
+                          { 
+                            borderColor: isActive ? colors.primary : colors.border, 
+                            backgroundColor: isActive ? colors.primary : colors.surface 
+                          }
+                        ]}
+                        onPress={() => setFilterCategory(cat as any)}
+                      >
+                        <Text style={[
+                          styles.filterChipText, 
+                          { color: isActive ? '#FFF' : colors.textSecondary, fontWeight: isActive ? '800' : '600' }
+                        ]}>
+                          {label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+
+                {filteredProgression.length === 0 ? (
+                  <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40, paddingHorizontal: 20 }}>
+                    No hay datos que coincidan con tus filtros actuales.
+                  </Text>
+                ) : (
+                  filteredProgression.map((item: any, i: number) => {
+                    return (
+                      <View key={item.id} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.id ? null : item.id)} style={styles.progHeader}>
+                          <View style={{flex:1}}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                              <Text style={[styles.progName, {color: colors.textPrimary}]}>{item.name}</Text>
+                              <View style={{ backgroundColor: item.type === 'test' ? colors.primary + '20' : '#E2E8F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                <Text style={{ fontSize: 9, fontWeight: '800', color: item.type === 'test' ? colors.primary : '#64748B' }}>
+                                  {item.type.toUpperCase()}
+                                </Text>
                               </View>
+                              {item.mergedSources && item.mergedSources.length > 0 && (
+                                <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                  <Text style={{ fontSize: 9, fontWeight: '800', color: colors.warning }}>FUSIONADO</Text>
+                                </View>
+                              )}
+                            </View>
+                            <Text style={{color: colors.primary, fontWeight:'700'}}>PR: {item.maxW} {item.unit}</Text>
+                          </View>
+                          
+                          <View style={{ flexDirection: 'row', gap: 10 }}>
+                            {item.type === 'ejercicio' && isTrainer && (
+                              <TouchableOpacity style={{ padding: 5 }} onPress={(e) => { e.stopPropagation(); openDictModal(item.name); }}>
+                                <Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/>
+                              </TouchableOpacity>
                             )}
                           </View>
-                          <Text style={{color: colors.primary, fontWeight:'700'}}>PR: {item.maxW} {item.unit}</Text>
-                        </View>
-                        
-                        <View style={{ flexDirection: 'row', gap: 10 }}>
-                          {item.type === 'ejercicio' && isTrainer && (
-                            <TouchableOpacity style={{ padding: 5 }} onPress={(e) => { e.stopPropagation(); openDictModal(item.name); }}>
-                              <Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/>
-                            </TouchableOpacity>
-                          )}
-                        </View>
 
-                      </TouchableOpacity>
-                      {selectedExercise === item.id && (
-                        <View style={{padding: 15, borderTopWidth: 1, borderTopColor: colors.border}}>
-                          {renderChart(item.history, item.unit)}
-                          {item.mergedSources && item.mergedSources.length > 0 && (
-                            <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>
-                              Incluye datos absorbidos de: {item.mergedSources.join(', ')}
-                            </Text>
-                          )}
-                        </View>
-                      )}
-                    </View>
-                  );
-                })}
+                        </TouchableOpacity>
+                        {selectedExercise === item.id && (
+                          <View style={{padding: 15, borderTopWidth: 1, borderTopColor: colors.border}}>
+                            {renderChart(item.history, item.unit)}
+                            {item.mergedSources && item.mergedSources.length > 0 && (
+                              <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>
+                                Incluye datos absorbidos de: {item.mergedSources.join(', ')}
+                              </Text>
+                            )}
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })
+                )}
               </View>
            ) : activeTab === 'body' ? renderBodyMap() : renderFeedbackTab()}
         </ScrollView>
       </View>
 
-      {/* MODAL FUSIÓN DE DATOS EN DOS PASOS */}
       <Modal visible={showMergeModal} transparent animationType="slide">
-        {/* ... (El Modal original de fusión se mantiene intacto) ... */}
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
-            
             {!mergeTargetItem ? (
               <>
                 <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>1. Test Principal</Text>
@@ -701,9 +767,7 @@ export default function AnalyticsScreen() {
         </View>
       </Modal>
 
-      {/* MODAL DICCIONARIO */}
       <Modal visible={showDictModal} transparent animationType="slide">
-        {/* ... (El Modal original de diccionario se mantiene intacto) ... */}
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 15 }}>Editar Diccionario: {dictTargetExercise}</Text>
@@ -724,14 +788,11 @@ export default function AnalyticsScreen() {
 }
 
 const styles = StyleSheet.create({
-  // Añadidos nuevos estilos para el resumen de rendimiento
   summaryBoard: { flexDirection: 'row', borderRadius: 20, padding: 20, marginBottom: 20, alignItems: 'center', justifyContent: 'space-around' },
   summaryItem: { alignItems: 'center' },
   summaryValue: { fontSize: 24, fontWeight: '900', marginTop: 5 },
   summaryLabel: { fontSize: 12, fontWeight: '600', marginTop: 2 },
   summaryDivider: { width: 1, height: '80%', backgroundColor: 'rgba(0,0,0,0.1)' },
-  
-  // (Mantenemos los estilos originales para no romper tu diseño base)
   container: { flex: 1 },
   mainWrapper: { flex: 1, width: '100%' },
   desktopWrapper: { maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
@@ -781,7 +842,13 @@ const styles = StyleSheet.create({
   progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden' },
   progHeader: { flexDirection: 'row', padding: 18, alignItems: 'center' },
   progName: { fontSize: 16, fontWeight: '800' },
-  searchBar: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 20 },
+  searchBar: { padding: 14, borderRadius: 12, borderWidth: 1 },
+  
+  // NUEVO: Estilos para la fila de filtros
+  filterChipsContainer: { flexDirection: 'row', gap: 8, marginBottom: 25, paddingBottom: 5 },
+  filterChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, gap: 6 },
+  filterChipText: { fontSize: 12, fontWeight: '600' },
+  
   feedbackCard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
