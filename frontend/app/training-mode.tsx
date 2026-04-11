@@ -339,7 +339,6 @@ export default function TrainingModeScreen() {
               (currentWorkout.exercises || []).forEach((ex: any, i: number) => { initial[i] = Array(parseInt(ex.sets) || 1).fill('pending'); });
               setSetsStatus(initial);
             }
-            // AHORA SIEMPRE APARECE EL MODAL INICIAL (Tanto si hay notas como si no)
             if (!hasShownIndicationsRef.current) { 
                 setShowIndicationsModal(true); 
                 hasShownIndicationsRef.current = true; 
@@ -531,11 +530,19 @@ export default function TrainingModeScreen() {
           {block.hiit_exercises?.map((ex: any, eIdx: number) => {
             const hasSets = ex.sets && parseInt(ex.sets) > 1;
             return (
-              <View key={eIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 10, marginBottom: 6 }}>
-                <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '500' }}>• {ex.name}</Text>
-                <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 10 }}>
-                  {hasSets ? `${ex.sets}x ` : ''}{ex.duration_reps || ex.duration || '-'}
-                </Text>
+              <View key={eIdx} style={{ paddingLeft: 10, marginBottom: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                  <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '500' }}>• {ex.name}</Text>
+                  <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 10 }}>
+                    {hasSets ? `${ex.sets}x ` : ''}{ex.duration_reps || ex.duration || '-'}
+                  </Text>
+                </View>
+                {/* NOTAS AÑADIDAS AQUÍ PARA LOS EJERCICIOS DE HIIT */}
+                {ex.exercise_notes ? (
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 2, marginLeft: 10 }}>
+                    Nota: {ex.exercise_notes}
+                  </Text>
+                ) : null}
               </View>
             )
           })}
@@ -557,7 +564,6 @@ export default function TrainingModeScreen() {
               ) : null}
             </View>
           </View>
-          {/* NUEVO: Indicaciones del ejercicio visibles en la lista inicial */}
           {ex.exercise_notes && <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>Nota: {ex.exercise_notes}</Text>}
         </View>
       ));
