@@ -45,6 +45,7 @@ export default function LoginScreen() {
   // --- CONFIGURACIÓN DE GOOGLE OAUTH ---
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com',
+    androidClientId: '351214985492-ahg14f57mak2mcj47q6jucsvcieu4dq9.apps.googleusercontent.com',
   });
 
   // Escucha la respuesta del navegador de Google
