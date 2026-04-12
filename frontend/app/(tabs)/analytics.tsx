@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Dimensions, Modal, TextInput, Platform
+  ActivityIndicator, Dimensions, Modal, TextInput, Platform,
+  KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -74,7 +75,6 @@ export default function AnalyticsScreen() {
   const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null); 
   const [searchQuery, setSearchQuery] = useState('');
   
-  // NUEVO: Estados para los filtros avanzados
   const [hideEmpty, setHideEmpty] = useState(true);
   const [filterCategory, setFilterCategory] = useState<'all' | 'ejercicio' | 'test'>('all');
   
@@ -241,21 +241,17 @@ export default function AnalyticsScreen() {
     return Object.values(itemsRecord).sort((a: any, b: any) => a.name.localeCompare(b.name));
   }, [rawItems, mergeMap]);
 
-  // NUEVA LÓGICA DE FILTRADO MULTIPLE
   const filteredProgression = useMemo(() => {
     let result = cleanProgression;
     
-    // 1. Filtro de vacíos
     if (hideEmpty) {
       result = result.filter((item: any) => item.maxW > 0);
     }
 
-    // 2. Filtro de Categoría (Fuerza vs Test)
     if (filterCategory !== 'all') {
       result = result.filter((item: any) => item.type === filterCategory);
     }
     
-    // 3. Búsqueda de texto
     if (searchQuery) {
       result = result.filter((ex: any) => ex.name.toLowerCase().includes(searchQuery.toLowerCase()));
     }
@@ -518,277 +514,294 @@ export default function AnalyticsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <View style={[styles.mainWrapper, isDesktop && styles.desktopWrapper]}>
-        <View style={styles.header}>
-          <View>
-            <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-              {isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Tus Analíticas'}
-            </Text>
-            {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>Vista Entrenador</Text>}
+      <KeyboardAvoidingView 
+        style={{ flex: 1 }} 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={[styles.mainWrapper, isDesktop && styles.desktopWrapper]}>
+          <View style={styles.header}>
+            <View>
+              <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
+                {isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Tus Analíticas'}
+              </Text>
+              {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>Vista Entrenador</Text>}
+            </View>
+            <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
+              {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
-            {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}
-          </TouchableOpacity>
-        </View>
 
-        <View style={{ paddingHorizontal: isDesktop ? 25 : 20, marginBottom: 15 }}>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={isDesktop ? styles.tabsContainerDesktop : styles.tabsContainerMobile}>
-            {['summary', 'progress', 'body', 'feedback'].map(tab => (
-              <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && { backgroundColor: colors.primary }]} onPress={() => setActiveTab(tab as any)}>
-                <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>
-                  {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'body' ? 'CUERPO' : 'FEEDBACK'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-        </View>
-
-        <ScrollView contentContainerStyle={{ padding: isDesktop ? 25 : 20 }}>
-          {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
-           activeTab === 'summary' ? (
-             <View>
-               {renderPerformanceSummary()}
-               {renderMeasurementsCard()}
-
-               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, marginTop: 10 }}>
-                 <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Histórico de Tests</Text>
-                 {isTrainer && (
-                   <TouchableOpacity onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}>
-                     <Ionicons name="git-merge" size={22} color={colors.primary} />
-                   </TouchableOpacity>
-                 )}
-               </View>
-
-               <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>
-                 {cleanProgression.filter((item: any) => item.type === 'test').map((item: any, i: number) => renderTestCard(item, i))}
-               </View>
-             </View>
-           ) : 
-           activeTab === 'progress' ? (
-              <View>
-                {/* BARRA DE BÚSQUEDA */}
-                <View style={{ marginBottom: 15 }}>
-                  <TextInput 
-                    style={[styles.searchBar, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                    placeholder="Buscar ejercicio o test..." 
-                    placeholderTextColor={colors.textSecondary} 
-                    value={searchQuery} 
-                    onChangeText={setSearchQuery} 
-                  />
-                </View>
-
-                {/* NUEVO: FILA DE CHIPS/FILTROS */}
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsContainer}>
-                  {/* Chip de Ocultar Vacíos */}
-                  <TouchableOpacity
-                    style={[
-                      styles.filterChip,
-                      { borderColor: colors.border, backgroundColor: hideEmpty ? colors.primary + '20' : colors.surface }
-                    ]}
-                    onPress={() => setHideEmpty(!hideEmpty)}
-                  >
-                    <Ionicons name={hideEmpty ? "eye-off" : "eye"} size={14} color={hideEmpty ? colors.primary : colors.textSecondary} />
-                    <Text style={[styles.filterChipText, { color: hideEmpty ? colors.primary : colors.textSecondary }]}>
-                      {hideEmpty ? 'Ocultando 0kg' : 'Mostrando Todo'}
-                    </Text>
-                  </TouchableOpacity>
-                  
-                  {/* Divisor Visual */}
-                  <View style={{ width: 1, backgroundColor: colors.border, marginHorizontal: 4, marginVertical: 6 }} />
-
-                  {/* Chips de Categoría */}
-                  {['all', 'ejercicio', 'test'].map((cat) => {
-                    const isActive = filterCategory === cat;
-                    let label = 'Todos';
-                    if (cat === 'ejercicio') label = 'Fuerza';
-                    if (cat === 'test') label = 'Tests';
-
-                    return (
-                      <TouchableOpacity
-                        key={cat}
-                        style={[
-                          styles.filterChip,
-                          { 
-                            borderColor: isActive ? colors.primary : colors.border, 
-                            backgroundColor: isActive ? colors.primary : colors.surface 
-                          }
-                        ]}
-                        onPress={() => setFilterCategory(cat as any)}
-                      >
-                        <Text style={[
-                          styles.filterChipText, 
-                          { color: isActive ? '#FFF' : colors.textSecondary, fontWeight: isActive ? '800' : '600' }
-                        ]}>
-                          {label}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-
-                {filteredProgression.length === 0 ? (
-                  <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40, paddingHorizontal: 20 }}>
-                    No hay datos que coincidan con tus filtros actuales.
+          <View style={{ paddingHorizontal: isDesktop ? 25 : 20, marginBottom: 15 }}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={isDesktop ? styles.tabsContainerDesktop : styles.tabsContainerMobile}>
+              {['summary', 'progress', 'body', 'feedback'].map(tab => (
+                <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && { backgroundColor: colors.primary }]} onPress={() => setActiveTab(tab as any)}>
+                  <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>
+                    {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'body' ? 'CUERPO' : 'FEEDBACK'}
                   </Text>
-                ) : (
-                  filteredProgression.map((item: any, i: number) => {
-                    return (
-                      <View key={item.id} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                        <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.id ? null : item.id)} style={styles.progHeader}>
-                          <View style={{flex:1}}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                              <Text style={[styles.progName, {color: colors.textPrimary}]}>{item.name}</Text>
-                              <View style={{ backgroundColor: item.type === 'test' ? colors.primary + '20' : '#E2E8F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                <Text style={{ fontSize: 9, fontWeight: '800', color: item.type === 'test' ? colors.primary : '#64748B' }}>
-                                  {item.type.toUpperCase()}
-                                </Text>
-                              </View>
-                              {item.mergedSources && item.mergedSources.length > 0 && (
-                                <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                  <Text style={{ fontSize: 9, fontWeight: '800', color: colors.warning }}>FUSIONADO</Text>
-                                </View>
-                              )}
-                            </View>
-                            <Text style={{color: colors.primary, fontWeight:'700'}}>PR: {item.maxW} {item.unit}</Text>
-                          </View>
-                          
-                          <View style={{ flexDirection: 'row', gap: 10 }}>
-                            {item.type === 'ejercicio' && isTrainer && (
-                              <TouchableOpacity style={{ padding: 5 }} onPress={(e) => { e.stopPropagation(); openDictModal(item.name); }}>
-                                <Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/>
-                              </TouchableOpacity>
-                            )}
-                          </View>
-
-                        </TouchableOpacity>
-                        {selectedExercise === item.id && (
-                          <View style={{padding: 15, borderTopWidth: 1, borderTopColor: colors.border}}>
-                            {renderChart(item.history, item.unit)}
-                            {item.mergedSources && item.mergedSources.length > 0 && (
-                              <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>
-                                Incluye datos absorbidos de: {item.mergedSources.join(', ')}
-                              </Text>
-                            )}
-                          </View>
-                        )}
-                      </View>
-                    );
-                  })
-                )}
-              </View>
-           ) : activeTab === 'body' ? renderBodyMap() : renderFeedbackTab()}
-        </ScrollView>
-      </View>
-
-      <Modal visible={showMergeModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
-            {!mergeTargetItem ? (
-              <>
-                <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>1. Test Principal</Text>
-                <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 20 }}>Selecciona el test o ejercicio de <Text style={{fontWeight: 'bold', color: colors.primary}}>destino</Text>:</Text>
-                
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  {Object.values(rawItems)
-                    .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                    .map((item: any) => (
-                      <TouchableOpacity 
-                        key={item.id} 
-                        style={[styles.dictSelectBtn, { borderColor: colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]} 
-                        onPress={() => setMergeTargetItem(item)}
-                      >
-                        <View>
-                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                            <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.name}</Text>
-                            <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '700' }}>({item.type.toUpperCase()})</Text>
-                          </View>
-                        </View>
-                        <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-                      </TouchableOpacity>
-                  ))}
-                </ScrollView>
-                <TouchableOpacity style={{ marginTop: 20, alignItems: 'center', padding: 15 }} onPress={() => setShowMergeModal(false)}>
-                  <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 16 }}>Cancelar</Text>
-                </TouchableOpacity>
-              </>
-            ) : (
-              <>
-                <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>2. Unificar con...</Text>
-                <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 20 }}>
-                  Selecciona qué históricos sumar a <Text style={{fontWeight: 'bold', color: colors.primary}}>{mergeTargetItem.name}</Text>:
-                </Text>
-                
-                <ScrollView showsVerticalScrollIndicator={false}>
-                  {Object.values(rawItems)
-                    .filter((rawItem: any) => rawItem.id !== mergeTargetItem.id)
-                    .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                    .map((rawItem: any) => {
-                      const isMergedIntoCurrent = mergeMap[rawItem.id] === mergeTargetItem.id;
-                      
-                      return (
-                        <TouchableOpacity 
-                          key={rawItem.id} 
-                          style={[
-                            styles.dictSelectBtn, 
-                            { borderColor: colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, 
-                            isMergedIntoCurrent && { backgroundColor: colors.primary + '15', borderColor: colors.primary }
-                          ]} 
-                          onPress={() => toggleMerge(rawItem.id)}
-                        >
-                          <View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>{rawItem.name}</Text>
-                              <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '700' }}>({rawItem.type.toUpperCase()})</Text>
-                            </View>
-                            <Text style={{ fontSize: 12, color: colors.textSecondary }}>PR Actual: {rawItem.maxW} {rawItem.unit}</Text>
-                          </View>
-                          
-                          {isMergedIntoCurrent ? (
-                            <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
-                          ) : (
-                            <Ionicons name="add-circle-outline" size={24} color={colors.textSecondary} />
-                          )}
-                        </TouchableOpacity>
-                      );
-                  })}
-                </ScrollView>
-                
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-                  <TouchableOpacity style={{ flex: 1, padding: 15, alignItems: 'center' }} onPress={() => setMergeTargetItem(null)}>
-                    <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 16 }}>Volver</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={{ flex: 1, padding: 15, alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12 }} onPress={() => setShowMergeModal(false)}>
-                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Terminar</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
-
-      <Modal visible={showDictModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 15 }}>Editar Diccionario: {dictTargetExercise}</Text>
-            <ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-              {ALL_MUSCLES.map(m => (
-                <TouchableOpacity key={m} style={[styles.dictSelectBtn, { borderColor: colors.border, padding: 12 }, dictSelectedMuscles.includes(m) && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => toggleDictMuscle(m)}>
-                  <Text style={{ color: dictSelectedMuscles.includes(m) ? '#FFF' : colors.textPrimary, fontWeight: '600' }}>{m}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={saveDictMuscles}><Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR CAMBIOS</Text></TouchableOpacity>
-            <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setShowDictModal(false)}><Text style={{ color: colors.textSecondary }}>Cancelar</Text></TouchableOpacity>
           </View>
+
+          <ScrollView contentContainerStyle={{ padding: isDesktop ? 25 : 20 }}>
+            {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
+             activeTab === 'summary' ? (
+               <View>
+                 {renderPerformanceSummary()}
+                 {renderMeasurementsCard()}
+
+                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, marginTop: 10 }}>
+                   <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Histórico de Tests</Text>
+                   {isTrainer && (
+                     <TouchableOpacity onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}>
+                       <Ionicons name="git-merge" size={22} color={colors.primary} />
+                     </TouchableOpacity>
+                   )}
+                 </View>
+
+                 <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>
+                   {cleanProgression.filter((item: any) => item.type === 'test').map((item: any, i: number) => renderTestCard(item, i))}
+                 </View>
+               </View>
+             ) : 
+             activeTab === 'progress' ? (
+                <View>
+                  {/* BARRA DE BÚSQUEDA */}
+                  <View style={{ marginBottom: 15 }}>
+                    <TextInput 
+                      style={[styles.searchBar, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
+                      placeholder="Buscar ejercicio o test..." 
+                      placeholderTextColor={colors.textSecondary} 
+                      value={searchQuery} 
+                      onChangeText={setSearchQuery} 
+                    />
+                  </View>
+
+                  {/* FILA DE CHIPS/FILTROS */}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsContainer}>
+                    {/* Chip de Ocultar Vacíos */}
+                    <TouchableOpacity
+                      style={[
+                        styles.filterChip,
+                        { borderColor: colors.border, backgroundColor: hideEmpty ? colors.primary + '20' : colors.surface }
+                      ]}
+                      onPress={() => setHideEmpty(!hideEmpty)}
+                    >
+                      <Ionicons name={hideEmpty ? "eye-off" : "eye"} size={14} color={hideEmpty ? colors.primary : colors.textSecondary} />
+                      <Text style={[styles.filterChipText, { color: hideEmpty ? colors.primary : colors.textSecondary }]}>
+                        {hideEmpty ? 'Ocultando 0kg' : 'Mostrando Todo'}
+                      </Text>
+                    </TouchableOpacity>
+                    
+                    {/* Divisor Visual */}
+                    <View style={{ width: 1, backgroundColor: colors.border, marginHorizontal: 4, marginVertical: 6 }} />
+
+                    {/* Chips de Categoría */}
+                    {['all', 'ejercicio', 'test'].map((cat) => {
+                      const isActive = filterCategory === cat;
+                      let label = 'Todos';
+                      if (cat === 'ejercicio') label = 'Fuerza';
+                      if (cat === 'test') label = 'Tests';
+
+                      return (
+                        <TouchableOpacity
+                          key={cat}
+                          style={[
+                            styles.filterChip,
+                            { 
+                              borderColor: isActive ? colors.primary : colors.border, 
+                              backgroundColor: isActive ? colors.primary : colors.surface 
+                            }
+                          ]}
+                          onPress={() => setFilterCategory(cat as any)}
+                        >
+                          <Text style={[
+                            styles.filterChipText, 
+                            { color: isActive ? '#FFF' : colors.textSecondary, fontWeight: isActive ? '800' : '600' }
+                          ]}>
+                            {label}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+
+                  {filteredProgression.length === 0 ? (
+                    <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40, paddingHorizontal: 20 }}>
+                      No hay datos que coincidan con tus filtros actuales.
+                    </Text>
+                  ) : (
+                    filteredProgression.map((item: any, i: number) => {
+                      return (
+                        <View key={item.id} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                          <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.id ? null : item.id)} style={styles.progHeader}>
+                            <View style={{flex:1}}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                <Text style={[styles.progName, {color: colors.textPrimary}]}>{item.name}</Text>
+                                <View style={{ backgroundColor: item.type === 'test' ? colors.primary + '20' : '#E2E8F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                  <Text style={{ fontSize: 9, fontWeight: '800', color: item.type === 'test' ? colors.primary : '#64748B' }}>
+                                    {item.type.toUpperCase()}
+                                  </Text>
+                                </View>
+                                {item.mergedSources && item.mergedSources.length > 0 && (
+                                  <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                    <Text style={{ fontSize: 9, fontWeight: '800', color: colors.warning }}>FUSIONADO</Text>
+                                  </View>
+                                )}
+                              </View>
+                              <Text style={{color: colors.primary, fontWeight:'700'}}>PR: {item.maxW} {item.unit}</Text>
+                            </View>
+                            
+                            <View style={{ flexDirection: 'row', gap: 10 }}>
+                              {item.type === 'ejercicio' && isTrainer && (
+                                <TouchableOpacity style={{ padding: 5 }} onPress={(e) => { e.stopPropagation(); openDictModal(item.name); }}>
+                                  <Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/>
+                                </TouchableOpacity>
+                              )}
+                            </View>
+
+                          </TouchableOpacity>
+                          {selectedExercise === item.id && (
+                            <View style={{padding: 15, borderTopWidth: 1, borderTopColor: colors.border}}>
+                              {renderChart(item.history, item.unit)}
+                              {item.mergedSources && item.mergedSources.length > 0 && (
+                                <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>
+                                  Incluye datos absorbidos de: {item.mergedSources.join(', ')}
+                                </Text>
+                              )}
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })
+                  )}
+                </View>
+             ) : activeTab === 'body' ? renderBodyMap() : renderFeedbackTab()}
+          </ScrollView>
         </View>
-      </Modal>
+
+        <Modal visible={showMergeModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
+              {!mergeTargetItem ? (
+                <>
+                  <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>1. Test Principal</Text>
+                  <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 20 }}>Selecciona el test o ejercicio de <Text style={{fontWeight: 'bold', color: colors.primary}}>destino</Text>:</Text>
+                  
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    {Object.values(rawItems)
+                      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                      .map((item: any) => (
+                        <TouchableOpacity 
+                          key={item.id} 
+                          style={[styles.dictSelectBtn, { borderColor: colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]} 
+                          onPress={() => setMergeTargetItem(item)}
+                        >
+                          <View>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                              <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.name}</Text>
+                              <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '700' }}>({item.type.toUpperCase()})</Text>
+                            </View>
+                          </View>
+                          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                        </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <TouchableOpacity style={{ marginTop: 20, alignItems: 'center', padding: 15 }} onPress={() => setShowMergeModal(false)}>
+                    <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 16 }}>Cancelar</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>2. Unificar con...</Text>
+                  <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 20 }}>
+                    Selecciona qué históricos sumar a <Text style={{fontWeight: 'bold', color: colors.primary}}>{mergeTargetItem.name}</Text>:
+                  </Text>
+                  
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    {Object.values(rawItems)
+                      .filter((rawItem: any) => rawItem.id !== mergeTargetItem.id)
+                      .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                      .map((rawItem: any) => {
+                        const isMergedIntoCurrent = mergeMap[rawItem.id] === mergeTargetItem.id;
+                        
+                        return (
+                          <TouchableOpacity 
+                            key={rawItem.id} 
+                            style={[
+                              styles.dictSelectBtn, 
+                              { borderColor: colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, 
+                              isMergedIntoCurrent && { backgroundColor: colors.primary + '15', borderColor: colors.primary }
+                            ]} 
+                            onPress={() => toggleMerge(rawItem.id)}
+                          >
+                            <View>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>{rawItem.name}</Text>
+                                <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '700' }}>({rawItem.type.toUpperCase()})</Text>
+                              </View>
+                              <Text style={{ fontSize: 12, color: colors.textSecondary }}>PR Actual: {rawItem.maxW} {rawItem.unit}</Text>
+                            </View>
+                            
+                            {isMergedIntoCurrent ? (
+                              <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
+                            ) : (
+                              <Ionicons name="add-circle-outline" size={24} color={colors.textSecondary} />
+                            )}
+                          </TouchableOpacity>
+                        );
+                    })}
+                  </ScrollView>
+                  
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                    <TouchableOpacity style={{ flex: 1, padding: 15, alignItems: 'center' }} onPress={() => setMergeTargetItem(null)}>
+                      <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 16 }}>Volver</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={{ flex: 1, padding: 15, alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12 }} onPress={() => setShowMergeModal(false)}>
+                      <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Terminar</Text>
+                    </TouchableOpacity>
+                  </View>
+                </>
+              )}
+            </View>
+          </View>
+        </Modal>
+
+        <Modal visible={showDictModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 15 }}>Editar Diccionario: {dictTargetExercise}</Text>
+              <ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {ALL_MUSCLES.map(m => (
+                  <TouchableOpacity key={m} style={[styles.dictSelectBtn, { borderColor: colors.border, padding: 12 }, dictSelectedMuscles.includes(m) && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => toggleDictMuscle(m)}>
+                    <Text style={{ color: dictSelectedMuscles.includes(m) ? '#FFF' : colors.textPrimary, fontWeight: '600' }}>{m}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={saveDictMuscles}><Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR CAMBIOS</Text></TouchableOpacity>
+              <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setShowDictModal(false)}><Text style={{ color: colors.textSecondary }}>Cancelar</Text></TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
+const shadowStyle = Platform.select({
+  ios: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+  },
+  android: {
+    elevation: 4,
+  },
+}) || {};
+
 const styles = StyleSheet.create({
-  summaryBoard: { flexDirection: 'row', borderRadius: 20, padding: 20, marginBottom: 20, alignItems: 'center', justifyContent: 'space-around' },
+  summaryBoard: { flexDirection: 'row', borderRadius: 20, padding: 20, marginBottom: 20, alignItems: 'center', justifyContent: 'space-around', ...shadowStyle },
   summaryItem: { alignItems: 'center' },
   summaryValue: { fontSize: 24, fontWeight: '900', marginTop: 5 },
   summaryLabel: { fontSize: 12, fontWeight: '600', marginTop: 2 },
@@ -814,12 +827,12 @@ const styles = StyleSheet.create({
   bodySideLabel: { fontSize: 11, fontWeight: '900', color: '#888', marginBottom: 20, letterSpacing: 1 },
   dataWrapper: { flex: 1, gap: 20 },
   cardTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
-  legendCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  legendCard: { padding: 20, borderRadius: 20, borderWidth: 1, ...shadowStyle },
   legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 14, height: 14, borderRadius: 4 },
   legendText: { fontSize: 12, fontWeight: '700', color: '#666' },
-  muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1, ...shadowStyle },
   muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   timeFilterContainerMobile: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
   timeBtnMobile: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
@@ -830,26 +843,25 @@ const styles = StyleSheet.create({
   legendItemMobile: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   dotMobile: { width: 12, height: 12, borderRadius: 3 },
   legendTextMobile: { fontSize: 10, fontWeight: '600', color: '#888' },
-  topMusclesCardMobile: { padding: 15, borderRadius: 20, borderWidth: 1 },
+  topMusclesCardMobile: { padding: 15, borderRadius: 20, borderWidth: 1, ...shadowStyle },
   topMuscleItemMobile: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
+  measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 20, ...shadowStyle },
   measurementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
   measureBadge: { flex: 1, minWidth: '45%', padding: 12, borderRadius: 14, borderWidth: 1 },
-  testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
+  testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15, ...shadowStyle },
   testName: { fontSize: 18, fontWeight: '800' },
   testValue: { fontSize: 26, fontWeight: '900' },
   sideLabel: { fontSize: 10, fontWeight: '900', color: '#888' },
-  progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden' },
+  progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden', ...shadowStyle },
   progHeader: { flexDirection: 'row', padding: 18, alignItems: 'center' },
   progName: { fontSize: 16, fontWeight: '800' },
   searchBar: { padding: 14, borderRadius: 12, borderWidth: 1 },
   
-  // NUEVO: Estilos para la fila de filtros
   filterChipsContainer: { flexDirection: 'row', gap: 8, marginBottom: 25, paddingBottom: 5 },
   filterChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, gap: 6 },
   filterChipText: { fontSize: 12, fontWeight: '600' },
   
-  feedbackCard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
+  feedbackCard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 15, ...shadowStyle },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
   dictSelectBtn: { padding: 16, borderRadius: 12, borderWidth: 1 },
