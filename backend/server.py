@@ -91,7 +91,7 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
-class Google(BaseModel):
+class GoogleAuth(BaseModel):
     token: str
     role: Optional[str] = "trainer" 
 
