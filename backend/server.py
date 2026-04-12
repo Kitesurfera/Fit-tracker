@@ -35,6 +35,7 @@ JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 876000
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com')
+GOOGLE_ANDROID_CLIENT_ID = os.environ.get('GOOGLE_ANDROID_CLIENT_ID', '351214985492-ahg14f57mak2mcj47q6jucsvcieu4dq9.apps.googleusercontent.com')
 
 security = HTTPBearer()
 app = FastAPI()
@@ -90,7 +91,7 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
-class GoogleAuth(BaseModel):
+class Google(BaseModel):
     token: str
     role: Optional[str] = "trainer" 
 
@@ -354,15 +355,24 @@ async def google_login(data: GoogleAuth):
     try:
         import google.auth.transport.requests as google_requests
         from google.oauth2 import id_token
-        id_info = id_token.verify_oauth2_token(data.token, google_requests.Request(), GOOGLE_CLIENT_ID)
+        
+        # Le decimos a google que verifique el token sin forzar un solo ID (audience=None)
+        id_info = id_token.verify_oauth2_token(data.token, google_requests.Request(), audience=None)
+        
+        # Comprobamos manualmente que el token viene de tu Web o de tu App Android
+        if id_info.get('aud') not in [GOOGLE_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID]:
+            raise HTTPException(status_code=401, detail="El token no pertenece a esta aplicación")
+
         email = id_info.get('email')
         if not email: raise HTTPException(status_code=400, detail="Token de Google no contiene email")
+        
         user = await db.users.find_one({"email": email})
         if not user:
             if data.role == 'athlete': raise HTTPException(status_code=403, detail="Sin invitación activa.")
             user_id = str(uuid.uuid4())
             user = {"id": user_id, "email": email, "password": hash_password(str(uuid.uuid4())), "name": id_info.get('name', 'Usuario'), "role": data.role, "created_at": datetime.now(timezone.utc).isoformat()}
             await db.users.insert_one(user)
+            
         return {"token": create_token(user['id'], user['role']), "user": {k: v for k, v in user.items() if k not in ('_id', 'password')}}
     except Exception as e:
         logger.error(f"Error Google Login: {str(e)}")
