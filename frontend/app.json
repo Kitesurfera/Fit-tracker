@@ -30,7 +30,10 @@
         "UIBackgroundModes": [
           "fetch",
           "remote-notification"
-        ]
+        ],
+        "NSPhotoLibraryUsageDescription": "AM Coaching necesita acceder a tu galería para que puedas subir vídeos de tus ejercicios para la corrección técnica.",
+        "NSCameraUsageDescription": "AM Coaching necesita usar la cámara para que puedas grabarte realizando los ejercicios.",
+        "NSMicrophoneUsageDescription": "AM Coaching necesita acceso al micrófono para grabar el audio de tus vídeos de entrenamiento."
       }
     },
     "web": {
