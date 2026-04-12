@@ -21,6 +21,18 @@
       },
       "edgeToEdgeEnabled": true
     },
+    
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.am.coaching",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
+      }
+    },
     "web": {
       "bundler": "metro",
       "output": "static",
