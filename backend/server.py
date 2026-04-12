@@ -36,6 +36,7 @@ JWT_EXPIRATION_HOURS = 876000
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com')
 GOOGLE_ANDROID_CLIENT_ID = os.environ.get('GOOGLE_ANDROID_CLIENT_ID', '351214985492-ahg14f57mak2mcj47q6jucsvcieu4dq9.apps.googleusercontent.com')
+GOOGLE_IOS_CLIENT_ID = os.environ.get('GOOGLE_IOS_CLIENT_ID', '351214985492-r7k26kmllj5j7nef3bpdcv8vg5c4robk.apps.googleusercontent.com')
 
 security = HTTPBearer()
 app = FastAPI()
@@ -359,8 +360,8 @@ async def google_login(data: GoogleAuth):
         # Le decimos a google que verifique el token sin forzar un solo ID (audience=None)
         id_info = id_token.verify_oauth2_token(data.token, google_requests.Request(), audience=None)
         
-        # Comprobamos manualmente que el token viene de tu Web o de tu App Android
-        if id_info.get('aud') not in [GOOGLE_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID]:
+        # Comprobamos manualmente que el token viene de tu Web, de tu App Android o de iOS
+        if id_info.get('aud') not in [GOOGLE_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID, GOOGLE_IOS_CLIENT_ID]:
             raise HTTPException(status_code=401, detail="El token no pertenece a esta aplicación")
 
         email = id_info.get('email')
