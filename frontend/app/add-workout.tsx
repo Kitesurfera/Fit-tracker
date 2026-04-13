@@ -7,6 +7,7 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as DocumentPicker from 'expo-document-picker';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
@@ -33,6 +34,26 @@ const normalizeName = (name: string) => {
   if (n.endsWith('es')) n = n.slice(0, -2);
   else if (n.endsWith('s')) n = n.slice(0, -1);
   return n;
+};
+
+// Lector de CSV robusto (ignora comas dentro de comillas)
+const parseCSV = (str: string) => {
+  const arr: string[][] = [];
+  let quote = false;
+  let row = 0, col = 0;
+  for (let c = 0; c < str.length; c++) {
+    let cc = str[c], nc = str[c + 1];
+    arr[row] = arr[row] || [];
+    arr[row][col] = arr[row][col] || '';
+    if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
+    if (cc === '"') { quote = !quote; continue; }
+    if (cc === ',' && !quote) { ++col; continue; }
+    if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
+    if (cc === '\n' && !quote) { ++row; col = 0; continue; }
+    if (cc === '\r' && !quote) { ++row; col = 0; continue; }
+    arr[row][col] += cc;
+  }
+  return arr;
 };
 
 export default function AddWorkoutScreen() {
@@ -114,6 +135,80 @@ export default function AddWorkoutScreen() {
   const moveHiitExerciseDown = (bIndex: number, eIndex: number) => {
     if (eIndex === hiitBlocks[bIndex].exercises.length - 1) return;
     const updated = [...hiitBlocks]; [updated[bIndex].exercises[eIndex + 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex + 1]]; setHiitBlocks(updated);
+  };
+
+  // --- CSV UPLOAD LOGIC ---
+  const handleCSVUpload = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel'] });
+      if (result.canceled || !result.assets) return;
+
+      const fileUri = result.assets[0].uri;
+      const response = await fetch(fileUri);
+      const csvText = await response.text();
+      
+      const rows = parseCSV(csvText);
+      if (rows.length < 2) {
+        Alert.alert("Error", "El CSV parece estar vacío o no tiene encabezados.");
+        return;
+      }
+
+      if (workoutType === 'traditional') {
+        const newExercises = rows.slice(1).map(row => ({
+          _key: Math.random().toString(),
+          name: row[0]?.trim() || '',
+          sets: row[1]?.trim() || '',
+          reps: row[2]?.trim() || '',
+          duration: row[3]?.trim() || '',
+          rest: row[4]?.trim() || '',
+          rest_exercise: row[5]?.trim() || '',
+          video_url: row[6]?.trim() || '',
+          exercise_notes: row[7]?.trim() || ''
+        })).filter(e => e.name);
+        if (newExercises.length > 0) setExercises(newExercises);
+        
+      } else {
+        const blocks: any[] = [];
+        let currentBlockName = null;
+        let currentBlockIndex = -1;
+
+        rows.slice(1).forEach(row => {
+          const bName = row[0]?.trim();
+          if (!bName) return;
+
+          if (bName !== currentBlockName) {
+            currentBlockName = bName;
+            blocks.push({
+              _key: Math.random().toString(),
+              name: bName,
+              sets: row[1]?.trim() || '1',
+              rest_exercise: row[2]?.trim() || '',
+              rest_block: row[3]?.trim() || '',
+              rest_between_blocks: row[4]?.trim() || '',
+              exercises: []
+            });
+            currentBlockIndex++;
+          }
+
+          if (row[5]?.trim()) {
+            blocks[currentBlockIndex].exercises.push({
+              _key: Math.random().toString(),
+              name: row[5]?.trim(),
+              sets: row[6]?.trim() || '1',
+              duration_reps: row[7]?.trim() || '',
+              duration: row[8]?.trim() || '',
+              video_url: row[9]?.trim() || '',
+              exercise_notes: row[10]?.trim() || ''
+            });
+          }
+        });
+        if (blocks.length > 0) setHiitBlocks(blocks);
+      }
+      Alert.alert("Éxito", "Ejercicios importados correctamente.");
+    } catch (err) {
+      Alert.alert("Error", "No se pudo leer el archivo CSV.");
+      console.error(err);
+    }
   };
 
   const handleSave = () => {
@@ -271,6 +366,23 @@ export default function AddWorkoutScreen() {
             <TouchableOpacity style={[styles.typeBtn, workoutType === 'hiit' && { backgroundColor: colors.error || '#EF4444' }]} onPress={() => setWorkoutType('hiit')}><Text style={{ color: workoutType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito HIIT</Text></TouchableOpacity>
           </View>
 
+          {/* TARJETA INFORMATIVA Y BOTÓN CSV */}
+          <View style={[styles.csvCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 8 }}>
+              <Ionicons name="document-text" size={20} color={colors.primary} />
+              <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14 }}>Importación Rápida por CSV</Text>
+            </View>
+            <Text style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 12, lineHeight: 18 }}>
+              {workoutType === 'traditional' 
+                ? "Columnas (1ª fila de encabezados):\nNombre, Series, Reps, Duracion, Desc. Serie, Desc. Ejercicio, Video URL, Notas"
+                : "Columnas (1ª fila de encabezados):\nBloque, Vueltas, Desc. Ej. (Bloque), Desc. Vuelta, Desc. Prox Bloque, Ejercicio, Series (Ej), Reps, Tiempo, Video URL, Notas"}
+            </Text>
+            <TouchableOpacity style={[styles.uploadBtn, { backgroundColor: colors.primary + '20' }]} onPress={handleCSVUpload}>
+              <Ionicons name="cloud-upload" size={18} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '700', marginLeft: 8 }}>Subir archivo .csv</Text>
+            </TouchableOpacity>
+          </View>
+
           {workoutType === 'traditional' ? (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -364,7 +476,7 @@ export default function AddWorkoutScreen() {
                              <TouchableOpacity onPress={() => removeHiitExercise(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="close-circle" size={20} color={colors.textSecondary} /></TouchableOpacity>
                           </View>
                         </View>
-                        {/* AQUI ESTÁN LOS 3 CAMPOS DEL HIIT */}
+                        {/* CAMPOS DEL HIIT */}
                         <View style={{ flexDirection: 'row', gap: 6, marginTop: 8, paddingLeft: 28 }}>
                           <TextInput style={[styles.hiitExInput, { flex: 0.8, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.sets} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'sets', v)} placeholder="Series (Ej: 3)" placeholderTextColor="rgba(150, 150, 150, 0.5)" keyboardType="numeric" />
                           <TextInput style={[styles.hiitExInput, { flex: 1.1, color: colors.textPrimary, borderColor: colors.border, fontSize: 13, padding: 8 }]} value={ex.duration_reps} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'duration_reps', v)} placeholder="Reps (Ej: 15)" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
@@ -449,8 +561,9 @@ const styles = StyleSheet.create({
   notesInputBig: { borderRadius: 10, padding: 14, fontSize: 15, borderWidth: 1, minHeight: 80, textAlignVertical: 'top' },
   typeSelector: { flexDirection: 'row', borderRadius: 12, padding: 4, borderWidth: 1 }, 
   typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 }, 
+  csvCard: { padding: 16, borderRadius: 12, borderWidth: 1 },
+  uploadBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 8 },
   microChip: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10, borderWidth: 1, marginRight: 10 }, 
-  csvBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 },
   exerciseCard: { borderRadius: 12, borderWidth: 1, overflow: 'hidden', marginBottom: 10 }, 
   exerciseHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 }, 
   exNameInput: { flex: 1, fontSize: 16, fontWeight: '500', minWidth: 0 }, 
