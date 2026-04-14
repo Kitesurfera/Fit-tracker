@@ -564,7 +564,26 @@ export default function TrainingModeScreen() {
   const skipSet = () => { stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
   const skipEntireExercise = () => { stopAllTimers(); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
-  const handleRecordVideoOptions = (key: string) => { if (Platform.OS === 'web') { launchVideoPicker('library', key); return; } Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ { text: "Cancelar", style: "cancel" }, { text: "Galería", onPress: () => launchVideoPicker('library', key) }, { text: "Grabar", onPress: () => launchVideoPicker('camera', key) } ]); };
+  const handleRecordVideoOptions = (key: string) => { 
+    if (Platform.OS === 'web') { 
+      // En Web, Alert.alert no soporta 3 botones, usamos la alerta nativa del navegador
+      const useCamera = window.confirm("¿Quieres grabar un vídeo ahora?\n\n[Aceptar] = Abrir Cámara\n[Cancelar] = Abrir Galería");
+      
+      if (useCamera) {
+        launchVideoPicker('camera', key);
+      } else {
+        launchVideoPicker('library', key);
+      }
+      return; 
+    } 
+
+    // Comportamiento normal para App Nativa (iOS/Android APK)
+    Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ 
+      { text: "Cancelar", style: "cancel" }, 
+      { text: "Galería", onPress: () => launchVideoPicker('library', key) }, 
+      { text: "Grabar", onPress: () => launchVideoPicker('camera', key) } 
+    ]); 
+  };
   
   const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
