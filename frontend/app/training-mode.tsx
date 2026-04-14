@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Linking, TextInput, Alert, Platform, Modal, Dimensions,
-  UIManager, LayoutAnimation
+  UIManager, LayoutAnimation, KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -463,7 +463,6 @@ export default function TrainingModeScreen() {
         const ex = workout.exercises[currentExIndex]; 
         let dur = parseTimeToSeconds(ex?.duration);
         
-        // APLICAR MODO FATIGA AL TIEMPO EN VIVO
         if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
 
         if (!isWorking && workTargetTime === null && workSeconds === 0) { 
@@ -480,7 +479,6 @@ export default function TrainingModeScreen() {
       const ex = b.hiit_exercises[hiitExIdx]; 
       let dur = parseTimeToSeconds(ex?.duration_reps || ex?.duration);
 
-      // APLICAR MODO FATIGA AL TIEMPO HIIT EN VIVO
       if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
 
       if (!isWorking && workTargetTime === null && workSeconds === 0) { 
@@ -566,18 +564,10 @@ export default function TrainingModeScreen() {
 
   const handleRecordVideoOptions = (key: string) => { 
     if (Platform.OS === 'web') { 
-      // En Web, Alert.alert no soporta 3 botones, usamos la alerta nativa del navegador
       const useCamera = window.confirm("¿Quieres grabar un vídeo ahora?\n\n[Aceptar] = Abrir Cámara\n[Cancelar] = Abrir Galería");
-      
-      if (useCamera) {
-        launchVideoPicker('camera', key);
-      } else {
-        launchVideoPicker('library', key);
-      }
+      if (useCamera) { launchVideoPicker('camera', key); } else { launchVideoPicker('library', key); }
       return; 
     } 
-
-    // Comportamiento normal para App Nativa (iOS/Android APK)
     Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ 
       { text: "Cancelar", style: "cancel" }, 
       { text: "Galería", onPress: () => launchVideoPicker('library', key) }, 
@@ -590,26 +580,15 @@ export default function TrainingModeScreen() {
       let result;
       if (source === 'camera') {
         const cameraPerm = await ImagePicker.requestCameraPermissionsAsync(); 
-        const micPerm = await ImagePicker.requestMicrophonePermissionsAsync(); // SOLUCIÓN AL BUG DE ANDROID
-        
+        const micPerm = await ImagePicker.requestMicrophonePermissionsAsync(); 
         if (cameraPerm.status !== 'granted' || micPerm.status !== 'granted') {
           Alert.alert("Permisos insuficientes", "Se necesita acceso a la cámara y al micrófono para poder grabar tus series.");
           return;
         }
-
-        result = await ImagePicker.launchCameraAsync({ 
-          mediaTypes: ImagePicker.MediaTypeOptions.Videos, 
-          videoMaxDuration: 60, 
-          quality: 0.7 
-        });
+        result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, videoMaxDuration: 60, quality: 0.7 });
       } else { 
-        result = await ImagePicker.launchImageLibraryAsync({ 
-          mediaTypes: ImagePicker.MediaTypeOptions.Videos, 
-          allowsEditing: true, 
-          quality: 0.7 
-        }); 
+        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, allowsEditing: true, quality: 0.7 }); 
       }
-      
       if (result.canceled || !result.assets) return;
       setVideoUploading(key); const asset = result.assets[0]; const uploaded = await api.uploadFile(asset);
       const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
@@ -624,7 +603,6 @@ export default function TrainingModeScreen() {
 
   const handleFinish = async () => { if (workout.completed) { router.back(); return; } if (!stableWorkoutId) return; stopAllTimers(); const data = buildCompletionData(); try { const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises }; if (observations.trim()) update.observations = observations.trim(); const net = await NetInfo.fetch(); if (net.isConnected) { await api.updateWorkout(stableWorkoutId, update); syncManager.syncPendingWorkouts(); } else { await syncManager.savePendingWorkout(stableWorkoutId, update); } router.back(); } catch (e) { console.error(e); } };
 
-  // --- LÓGICA DE LA CALCULADORA DE DISCOS ---
   const addPlate = (weight: number) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -706,138 +684,141 @@ export default function TrainingModeScreen() {
 
     return (
       <Modal visible={showPlateCalculator} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface, maxHeight: '90%' }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Calculadora de Carga</Text>
-              <TouchableOpacity onPress={() => setShowPlateCalculator(false)}>
-                <Ionicons name="close" size={28} color={colors.textSecondary} />
+        {/* Usamos KeyboardAvoidingView aquí para que el popup no se rompa al sacar el teclado */}
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.modalOverlay}>
+            <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface, maxHeight: '90%', width: '90%' }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Calculadora de Carga</Text>
+                <TouchableOpacity onPress={() => setShowPlateCalculator(false)}>
+                  <Ionicons name="close" size={28} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>PESO DE LA BARRA BASE</Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+                  {[20, 15].map(w => (
+                    <TouchableOpacity 
+                      key={w} 
+                      onPress={() => { setBarWeight(w); setShowCustomBarInput(false); }}
+                      style={[styles.barTypeBtn, { borderColor: barWeight === w && !showCustomBarInput ? colors.primary : colors.border, flex: 1, alignItems: 'center' }]}
+                    >
+                      <Text style={{ color: barWeight === w && !showCustomBarInput ? colors.primary : colors.textSecondary, fontWeight: '800' }}>{w}kg</Text>
+                    </TouchableOpacity>
+                  ))}
+
+                  {showCustomBarInput ? (
+                    <TextInput
+                      style={[styles.barTypeBtn, { flex: 1, borderColor: colors.primary, color: colors.textPrimary, textAlign: 'center', fontWeight: '800', paddingVertical: 0 }]}
+                      keyboardType="numeric"
+                      autoFocus
+                      placeholder="0"
+                      placeholderTextColor={colors.textSecondary}
+                      onChangeText={t => {
+                        const val = parseFloat(t);
+                        setBarWeight(isNaN(val) ? 0 : val);
+                      }}
+                    />
+                  ) : (
+                    <TouchableOpacity 
+                      onPress={() => setShowCustomBarInput(true)}
+                      style={[styles.barTypeBtn, { borderColor: (![20, 15].includes(barWeight)) ? colors.primary : colors.border, width: 60, alignItems: 'center', justifyContent: 'center' }]}
+                    >
+                      {![20, 15].includes(barWeight) ? (
+                        <Text style={{ color: colors.primary, fontWeight: '800' }}>{barWeight}kg</Text>
+                      ) : (
+                        <Ionicons name="pencil" size={18} color={colors.textSecondary} />
+                      )}
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                   <Text style={[styles.label, { color: colors.textSecondary }]}>MODO LANDMINE</Text>
+                   {isAutoLandmine ? (
+                     <View style={{ backgroundColor: colors.success + '20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                       <Ionicons name="flash" size={14} color={colors.success} />
+                       <Text style={{ color: colors.success, fontSize: 12, fontWeight: '900' }}>AUTO-DETECTADO</Text>
+                     </View>
+                   ) : (
+                     <TouchableOpacity 
+                        onPress={() => setIsLandmineMode(!isLandmineMode)}
+                        style={{ width: 50, height: 28, borderRadius: 14, backgroundColor: isLandmineMode ? colors.primary : colors.border, justifyContent: 'center', alignItems: isLandmineMode ? 'flex-end' : 'flex-start', paddingHorizontal: 4 }}
+                     >
+                       <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF' }} />
+                     </TouchableOpacity>
+                   )}
+                </View>
+
+                {(isLandmineMode || isAutoLandmine) && (
+                  <View style={{ marginBottom: 20, backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
+                     <Text style={{ color: colors.textPrimary, fontSize: 13, marginBottom: 10 }}>
+                       Calculando carga real compensada por trigonometría (Ángulo de palanca).
+                     </Text>
+                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Tu altura (cm):</Text>
+                        <TextInput 
+                          style={[styles.logInput, { flex: 1, padding: 8, borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} 
+                          keyboardType="numeric" 
+                          value={athleteHeight} 
+                          onChangeText={setAthleteHeight} 
+                        />
+                     </View>
+                  </View>
+                )}
+
+                <View style={{ alignItems: 'center', marginVertical: 30 }}>
+                   <Text style={{ fontSize: 40, fontWeight: '900', color: colors.primary, marginBottom: 5 }}>
+                     {calculateTotalWeight().toFixed(1)} <Text style={{ fontSize: 20, color: colors.textSecondary }}>kg</Text>
+                   </Text>
+                   {(isLandmineMode || isAutoLandmine) && <Text style={{ color: colors.warning, fontWeight: '700', fontSize: 12, marginBottom: 15 }}>CARGA EFECTIVA</Text>}
+
+                   <View style={styles.barSleeveContainer}>
+                      <View style={[styles.barSleeve, { backgroundColor: '#CBD5E1' }]} />
+                      {platesOnBar.length === 0 && <Text style={{ position: 'absolute', color: '#94A3B8', fontSize: 12, top: -25 }}>Vacía</Text>}
+                      <View style={styles.stackedPlatesContainer}>
+                        {platesOnBar.map((weight, index) => {
+                          const height = 120 + (weight * 2);
+                          const width = weight > 10 ? 25 : 15;
+                          return (
+                            <TouchableOpacity 
+                              key={`${weight}-${index}`} 
+                              onPress={() => removePlate(index)}
+                              style={[styles.stackedPlate, { height, width, backgroundColor: PLATE_COLORS[weight] || '#333' }]}
+                            >
+                               <Text style={{ color: weight === 5 ? '#000' : '#FFF', fontSize: 10, fontWeight: '900', transform: [{ rotate: '-90deg' }] }}>
+                                 {weight}
+                               </Text>
+                            </TouchableOpacity>
+                          )
+                        })}
+                      </View>
+                   </View>
+                   <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 15 }}>Toca un disco en la barra para quitarlo</Text>
+                </View>
+
+                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TOCA PARA AÑADIR DISCOS (1 LADO)</Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+                  {AVAILABLE_PLATES.map(w => (
+                    <TouchableOpacity 
+                      key={w} 
+                      onPress={() => addPlate(w)}
+                      style={[styles.legendPlate, { backgroundColor: PLATE_COLORS[w] || '#333' }]}
+                    >
+                      <Text style={{ color: w === 5 ? '#000' : '#FFF', fontWeight: '900' }}>{w}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+              </ScrollView>
+
+              <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary, marginTop: 20 }]} onPress={saveCalculatedWeight}>
+                <Text style={styles.finishWorkoutBtnText}>Guardar Peso</Text>
               </TouchableOpacity>
             </View>
-
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>PESO DE LA BARRA BASE</Text>
-              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
-                {[20, 15].map(w => (
-                  <TouchableOpacity 
-                    key={w} 
-                    onPress={() => { setBarWeight(w); setShowCustomBarInput(false); }}
-                    style={[styles.barTypeBtn, { borderColor: barWeight === w && !showCustomBarInput ? colors.primary : colors.border, flex: 1, alignItems: 'center' }]}
-                  >
-                    <Text style={{ color: barWeight === w && !showCustomBarInput ? colors.primary : colors.textSecondary, fontWeight: '800' }}>{w}kg</Text>
-                  </TouchableOpacity>
-                ))}
-
-                {showCustomBarInput ? (
-                  <TextInput
-                    style={[styles.barTypeBtn, { flex: 1, borderColor: colors.primary, color: colors.textPrimary, textAlign: 'center', fontWeight: '800', paddingVertical: 0 }]}
-                    keyboardType="numeric"
-                    autoFocus
-                    placeholder="0"
-                    placeholderTextColor={colors.textSecondary}
-                    onChangeText={t => {
-                      const val = parseFloat(t);
-                      setBarWeight(isNaN(val) ? 0 : val);
-                    }}
-                  />
-                ) : (
-                  <TouchableOpacity 
-                    onPress={() => setShowCustomBarInput(true)}
-                    style={[styles.barTypeBtn, { borderColor: (![20, 15].includes(barWeight)) ? colors.primary : colors.border, width: 60, alignItems: 'center', justifyContent: 'center' }]}
-                  >
-                    {![20, 15].includes(barWeight) ? (
-                      <Text style={{ color: colors.primary, fontWeight: '800' }}>{barWeight}kg</Text>
-                    ) : (
-                      <Ionicons name="pencil" size={18} color={colors.textSecondary} />
-                    )}
-                  </TouchableOpacity>
-                )}
-              </View>
-
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                 <Text style={[styles.label, { color: colors.textSecondary }]}>MODO LANDMINE</Text>
-                 {isAutoLandmine ? (
-                   <View style={{ backgroundColor: colors.success + '20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                     <Ionicons name="flash" size={14} color={colors.success} />
-                     <Text style={{ color: colors.success, fontSize: 12, fontWeight: '900' }}>AUTO-DETECTADO</Text>
-                   </View>
-                 ) : (
-                   <TouchableOpacity 
-                      onPress={() => setIsLandmineMode(!isLandmineMode)}
-                      style={{ width: 50, height: 28, borderRadius: 14, backgroundColor: isLandmineMode ? colors.primary : colors.border, justifyContent: 'center', alignItems: isLandmineMode ? 'flex-end' : 'flex-start', paddingHorizontal: 4 }}
-                   >
-                     <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF' }} />
-                   </TouchableOpacity>
-                 )}
-              </View>
-
-              {(isLandmineMode || isAutoLandmine) && (
-                <View style={{ marginBottom: 20, backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
-                   <Text style={{ color: colors.textPrimary, fontSize: 13, marginBottom: 10 }}>
-                     Calculando carga real compensada por trigonometría (Ángulo de palanca).
-                   </Text>
-                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Tu altura (cm):</Text>
-                      <TextInput 
-                        style={[styles.logInput, { flex: 1, padding: 8, borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} 
-                        keyboardType="numeric" 
-                        value={athleteHeight} 
-                        onChangeText={setAthleteHeight} 
-                      />
-                   </View>
-                </View>
-              )}
-
-              <View style={{ alignItems: 'center', marginVertical: 30 }}>
-                 <Text style={{ fontSize: 40, fontWeight: '900', color: colors.primary, marginBottom: 5 }}>
-                   {calculateTotalWeight().toFixed(1)} <Text style={{ fontSize: 20, color: colors.textSecondary }}>kg</Text>
-                 </Text>
-                 {(isLandmineMode || isAutoLandmine) && <Text style={{ color: colors.warning, fontWeight: '700', fontSize: 12, marginBottom: 15 }}>CARGA EFECTIVA</Text>}
-
-                 <View style={styles.barSleeveContainer}>
-                    <View style={[styles.barSleeve, { backgroundColor: '#CBD5E1' }]} />
-                    {platesOnBar.length === 0 && <Text style={{ position: 'absolute', color: '#94A3B8', fontSize: 12, top: -25 }}>Vacía</Text>}
-                    <View style={styles.stackedPlatesContainer}>
-                      {platesOnBar.map((weight, index) => {
-                        const height = 120 + (weight * 2);
-                        const width = weight > 10 ? 25 : 15;
-                        return (
-                          <TouchableOpacity 
-                            key={`${weight}-${index}`} 
-                            onPress={() => removePlate(index)}
-                            style={[styles.stackedPlate, { height, width, backgroundColor: PLATE_COLORS[weight] || '#333' }]}
-                          >
-                             <Text style={{ color: weight === 5 ? '#000' : '#FFF', fontSize: 10, fontWeight: '900', transform: [{ rotate: '-90deg' }] }}>
-                               {weight}
-                             </Text>
-                          </TouchableOpacity>
-                        )
-                      })}
-                    </View>
-                 </View>
-                 <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 15 }}>Toca un disco en la barra para quitarlo</Text>
-              </View>
-
-              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TOCA PARA AÑADIR DISCOS (1 LADO)</Text>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
-                {AVAILABLE_PLATES.map(w => (
-                  <TouchableOpacity 
-                    key={w} 
-                    onPress={() => addPlate(w)}
-                    style={[styles.legendPlate, { backgroundColor: PLATE_COLORS[w] || '#333' }]}
-                  >
-                    <Text style={{ color: w === 5 ? '#000' : '#FFF', fontWeight: '900' }}>{w}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-            </ScrollView>
-
-            <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary, marginTop: 20 }]} onPress={saveCalculatedWeight}>
-              <Text style={styles.finishWorkoutBtnText}>Guardar Peso</Text>
-            </TouchableOpacity>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
     );
   };
@@ -1007,96 +988,98 @@ export default function TrainingModeScreen() {
   if (finished || workout.completed) {
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        <View style={styles.topBar}><TouchableOpacity onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>Resumen</Text><View style={{ width: 26 }} /></View>
-        <ScrollView contentContainerStyle={[styles.content, { alignItems: 'center', paddingVertical: 40 }]}>
-          <View style={styles.finishedIconContainer}><Ionicons name="trophy" size={80} color={colors.warning || '#F59E0B'} /></View>
-          <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
-          
-          <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '900', marginTop: 10, marginBottom: 20 }}>
-            ⏱ Tiempo Total: {formatGlobalTime(globalSeconds)}
-          </Text>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.topBar}><TouchableOpacity onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>Resumen</Text><View style={{ width: 26 }} /></View>
+          <ScrollView contentContainerStyle={[styles.content, { alignItems: 'center', paddingVertical: 40 }]} keyboardShouldPersistTaps="handled">
+            <View style={styles.finishedIconContainer}><Ionicons name="trophy" size={80} color={colors.warning || '#F59E0B'} /></View>
+            <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
+            
+            <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '900', marginTop: 10, marginBottom: 20 }}>
+              ⏱ Tiempo Total: {formatGlobalTime(globalSeconds)}
+            </Text>
 
-          <Text style={[styles.finishedSubtitle, { color: colors.textSecondary }]}>¿Cómo te has sentido hoy?</Text>
-          
-          {!workout.completed && (
-            <View style={{ width: '100%', gap: 24, marginTop: 10 }}>
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>NIVEL DE ESFUERZO (RPE)</Text>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => { const isSelected = rpe === num; let c = (num >= 8) ? (colors.error || '#EF4444') : (num >= 4) ? (colors.warning || '#F59E0B') : (colors.success || '#10B981'); return ( <TouchableOpacity key={num} onPress={() => setRpe(num)} style={[styles.rpeCircle, { borderColor: colors.border }, isSelected && { backgroundColor: c, borderColor: c }]}><Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textSecondary }]}>{num}</Text></TouchableOpacity> ); })}</View>
-              </View>
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>CALIDAD DEL SUEÑO</Text><View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>{[1, 2, 3, 4, 5].map(num => ( <TouchableOpacity key={num} onPress={() => setSleepQuality(num)} style={{ padding: 5 }}><Ionicons name={sleepQuality && sleepQuality >= num ? "star" : "star-outline"} size={36} color={colors.warning || '#F59E0B'} /></TouchableOpacity> ))}</View></View>
-              
-              <View>
-                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA O IMPACTO</Text>
-                <View style={{ width: '100%', backgroundColor: colors.surfaceHighlight, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border }}>
-                  <TouchableOpacity
-                    style={{ padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
-                    onPress={() => setIsPainSelectorOpen(!isPainSelectorOpen)}
-                  >
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                      <Ionicons name="body" size={24} color={soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.primary} />
-                      <Text style={{ fontWeight: '700', color: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.textPrimary }}>
-                        {soreJoints.length > 0 ? `${soreJoints.length} Zonas Marcadas` : 'Registrar Molestias / Fatiga'}
-                      </Text>
-                    </View>
-                    <Ionicons name={isPainSelectorOpen ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
-                  </TouchableOpacity>
-
-                  {isPainSelectorOpen && (
-                    <View style={{ padding: 16, paddingTop: 0, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 10 }}>
-                       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
-                        {Object.entries(SLUG_TRANSLATIONS).map(([slug, name]) => {
-                          const isSelected = soreJoints.includes(slug);
-                          const activeColor = colors.error || '#EF4444';
-                          return (
-                            <TouchableOpacity
-                              key={slug}
-                              style={[
-                                styles.painButton, 
-                                { borderColor: colors.border, backgroundColor: colors.background },
-                                isSelected && { backgroundColor: activeColor, borderColor: activeColor }
-                              ]}
-                              onPress={() => toggleJoint(slug)}
-                            >
-                              <Text style={[
-                                styles.painButtonText, 
-                                { color: colors.textSecondary },
-                                isSelected && { color: '#FFF', fontWeight: '800' }
-                              ]}>
-                                {name}
-                              </Text>
-                            </TouchableOpacity>
-                          )
-                        })}
-                      </View>
-                    </View>
-                  )}
+            <Text style={[styles.finishedSubtitle, { color: colors.textSecondary }]}>¿Cómo te has sentido hoy?</Text>
+            
+            {!workout.completed && (
+              <View style={{ width: '100%', gap: 24, marginTop: 10 }}>
+                <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>NIVEL DE ESFUERZO (RPE)</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => { const isSelected = rpe === num; let c = (num >= 8) ? (colors.error || '#EF4444') : (num >= 4) ? (colors.warning || '#F59E0B') : (colors.success || '#10B981'); return ( <TouchableOpacity key={num} onPress={() => setRpe(num)} style={[styles.rpeCircle, { borderColor: colors.border }, isSelected && { backgroundColor: c, borderColor: c }]}><Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textSecondary }]}>{num}</Text></TouchableOpacity> ); })}</View>
                 </View>
+                <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>CALIDAD DEL SUEÑO</Text><View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>{[1, 2, 3, 4, 5].map(num => ( <TouchableOpacity key={num} onPress={() => setSleepQuality(num)} style={{ padding: 5 }}><Ionicons name={sleepQuality && sleepQuality >= num ? "star" : "star-outline"} size={36} color={colors.warning || '#F59E0B'} /></TouchableOpacity> ))}</View></View>
+                
+                <View>
+                  <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA O IMPACTO</Text>
+                  <View style={{ width: '100%', backgroundColor: colors.surfaceHighlight, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border }}>
+                    <TouchableOpacity
+                      style={{ padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                      onPress={() => setIsPainSelectorOpen(!isPainSelectorOpen)}
+                    >
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                        <Ionicons name="body" size={24} color={soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.primary} />
+                        <Text style={{ fontWeight: '700', color: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.textPrimary }}>
+                          {soreJoints.length > 0 ? `${soreJoints.length} Zonas Marcadas` : 'Registrar Molestias / Fatiga'}
+                        </Text>
+                      </View>
+                      <Ionicons name={isPainSelectorOpen ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+                    </TouchableOpacity>
+
+                    {isPainSelectorOpen && (
+                      <View style={{ padding: 16, paddingTop: 0, borderTopWidth: 1, borderTopColor: colors.border, marginTop: 10 }}>
+                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                          {Object.entries(SLUG_TRANSLATIONS).map(([slug, name]) => {
+                            const isSelected = soreJoints.includes(slug);
+                            const activeColor = colors.error || '#EF4444';
+                            return (
+                              <TouchableOpacity
+                                key={slug}
+                                style={[
+                                  styles.painButton, 
+                                  { borderColor: colors.border, backgroundColor: colors.background },
+                                  isSelected && { backgroundColor: activeColor, borderColor: activeColor }
+                                ]}
+                                onPress={() => toggleJoint(slug)}
+                              >
+                                <Text style={[
+                                  styles.painButtonText, 
+                                  { color: colors.textSecondary },
+                                  isSelected && { color: '#FFF', fontWeight: '800' }
+                                ]}>
+                                  {name}
+                                </Text>
+                              </TouchableOpacity>
+                            )
+                          })}
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                </View>
+
+                <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12 }]}>OBSERVACIONES</Text><TextInput style={[styles.obsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} multiline placeholder="¿Algo a destacar?..." placeholderTextColor={colors.textSecondary} value={observations} onChangeText={setObservations} /></View>
               </View>
+            )}
 
-              <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12 }]}>OBSERVACIONES</Text><TextInput style={[styles.obsInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} multiline placeholder="¿Algo a destacar?..." placeholderTextColor={colors.textSecondary} value={observations} onChangeText={setObservations} /></View>
+            <View style={{ width: '100%', marginTop: 30 }}>
+              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 15, textAlign: 'center' }]}>RESUMEN DE EJERCICIOS</Text>
+              {renderSessionSummary()}
             </View>
-          )}
 
-          <View style={{ width: '100%', marginTop: 30 }}>
-            <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 15, textAlign: 'center' }]}>RESUMEN DE EJERCICIOS</Text>
-            {renderSessionSummary()}
-          </View>
-
-          {workout.completed && workout.completion_data && (
-            <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
-              <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Feedback General:</Text>
-              
-              {workout.completion_data.duration_seconds && (
-                <Text style={{ color: colors.textPrimary, marginBottom: 4 }}>⏱ Tiempo Activo: {formatGlobalTime(workout.completion_data.duration_seconds)}</Text>
-              )}
-              
-              <Text style={{ color: colors.textPrimary }}>RPE: {workout.completion_data.rpe}/10</Text>
-              {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5, fontWeight: '600' }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
-              {workout.observations && <Text style={{ color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
-            </View>
-          )}
-          {!workout.completed && ( <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary }]} onPress={handleFinish}><Text style={styles.finishWorkoutBtnText}>Finalizar Entrenamiento</Text></TouchableOpacity> )}
-        </ScrollView>
+            {workout.completed && workout.completion_data && (
+              <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Feedback General:</Text>
+                
+                {workout.completion_data.duration_seconds && (
+                  <Text style={{ color: colors.textPrimary, marginBottom: 4 }}>⏱ Tiempo Activo: {formatGlobalTime(workout.completion_data.duration_seconds)}</Text>
+                )}
+                
+                <Text style={{ color: colors.textPrimary }}>RPE: {workout.completion_data.rpe}/10</Text>
+                {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5, fontWeight: '600' }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
+                {workout.observations && <Text style={{ color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
+              </View>
+            )}
+            {!workout.completed && ( <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary }]} onPress={handleFinish}><Text style={styles.finishWorkoutBtnText}>Finalizar Entrenamiento</Text></TouchableOpacity> )}
+          </ScrollView>
+        </KeyboardAvoidingView>
         {renderVideoModal()}
       </SafeAreaView>
     );
@@ -1104,7 +1087,6 @@ export default function TrainingModeScreen() {
     const b = workout.exercises?.[hiitBlockIdx];
     if (!b) return <ActivityIndicator color={colors.primary} />;
     
-    // Si la fatiga está activa, pasamos un "clon" del bloque al componente HiitCard con los textos reducidos visualmente
     let displayBlock = b;
     if (isFatigueMode) {
       displayBlock = {
@@ -1130,33 +1112,33 @@ export default function TrainingModeScreen() {
 
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}>
-            <Ionicons name="close" size={26} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 10 }}>
-            <Text style={[styles.topTitle, { color: colors.textPrimary }]} numberOfLines={1}>{workout.title}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 }}>
-              <Ionicons name="time-outline" size={14} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] }}>
-                {formatGlobalTime(globalSeconds)}
-              </Text>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}>
+              <Ionicons name="close" size={26} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 10 }}>
+              <Text style={[styles.topTitle, { color: colors.textPrimary }]} numberOfLines={1}>{workout.title}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 }}>
+                <Ionicons name="time-outline" size={14} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] }}>
+                  {formatGlobalTime(globalSeconds)}
+                </Text>
+              </View>
             </View>
+            <Text style={[styles.topProgress, { color: colors.textSecondary }]}>B{hiitBlockIdx + 1}/{workout.exercises.length}</Text>
           </View>
-          <Text style={[styles.topProgress, { color: colors.textSecondary }]}>B{hiitBlockIdx + 1}/{workout.exercises.length}</Text>
-        </View>
 
-        <ScrollView contentContainerStyle={styles.content}>
-          {renderFatigueToggle()}
-          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={timerExName} colors={colors} isHiit={isHiit} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
-          
-          {/* Se le pasa el bloque con la info modificada si la fatiga está activa */}
-          <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
-        </ScrollView>
-        <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
-          <Ionicons name="list" size={24} color="#FFF" />
-        </TouchableOpacity>
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            {renderFatigueToggle()}
+            <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={timerExName} colors={colors} isHiit={isHiit} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
+            
+            <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
+          </ScrollView>
+          <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
+            <Ionicons name="list" size={24} color="#FFF" />
+          </TouchableOpacity>
+        </KeyboardAvoidingView>
         {renderVideoModal()}{renderIndicationsModal()}
       </SafeAreaView>
     );
@@ -1176,86 +1158,88 @@ export default function TrainingModeScreen() {
 
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-        
-        <View style={styles.topBar}>
-          <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}>
-            <Ionicons name="close" size={26} color={colors.textPrimary} />
-          </TouchableOpacity>
-          <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 10 }}>
-            <Text style={[styles.topTitle, { color: colors.textPrimary }]} numberOfLines={1}>{workout.title}</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 }}>
-              <Ionicons name="time-outline" size={14} color={colors.primary} />
-              <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] }}>
-                {formatGlobalTime(globalSeconds)}
-              </Text>
-            </View>
-          </View>
-          <Text style={[styles.topProgress, { color: colors.textSecondary }]}>{currentExIndex + 1}/{workout.exercises.length}</Text>
-        </View>
-
-        <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${prog}%` }]} /></View>
-        <ScrollView contentContainerStyle={styles.content}>
-          {renderFatigueToggle()}
-          
-          <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={displayExName} colors={colors} isHiit={false} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
-          
-          <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
-            
-            <View style={styles.compactDetailsGrid}>
-              {['sets', 'reps', 'weight', 'duration', 'rest'].map(k => {
-                let val = ex[k];
-                if (!val) return null;
-                if (isFatigueMode) {
-                  if (k === 'reps') val = adjustReps(val);
-                  if (k === 'duration') val = adjustDurationStr(val);
-                }
-                return (
-                  <View key={k} style={styles.compactDetailItem}>
-                    <Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text>
-                    <Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{val}</Text>
-                  </View>
-                )
-              })}
-            </View>
-            
-            {ex.exercise_notes && (
-               <View style={{ padding: 16, paddingTop: 0, backgroundColor: colors.surface }}>
-                  <View style={{ flexDirection: 'row', backgroundColor: colors.background, padding: 10, borderRadius: 8 }}>
-                     <Ionicons name="information-circle" size={18} color={colors.textSecondary} />
-                     <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginLeft: 8, flex: 1 }}>{ex.exercise_notes}</Text>
-                  </View>
-               </View>
-            )}
-          </View>
-          
-          <View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
-            <View style={styles.setsGrid}>{s.map((st, i) => ( <View key={i} style={[styles.setCircle, { borderColor: colors.border }, st === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }, st === 'skipped' && { backgroundColor: colors.error, borderColor: colors.error }]}>{st === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : <Text style={{ color: colors.textSecondary }}>{i + 1}</Text>}</View> ))}</View>
-            <TouchableOpacity style={[styles.recordBtn, { marginTop: 20, borderColor: colors.border }]} onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text></TouchableOpacity>
-          </View>
-          <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
-             <View style={{ flexDirection: 'row', gap: 10 }}>
-               <TextInput style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder="Kilos" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={logs[currentExIndex]?.weight} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} />
-               <TextInput style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder="Reps" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={logs[currentExIndex]?.reps} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], reps: t}}))} />
-             </View>
-             <TextInput style={[styles.logInput, { borderColor: colors.border, marginTop: 10, minHeight: 60, backgroundColor: colors.background, color: colors.textPrimary }]} multiline placeholder="Anotaciones de la serie..." placeholderTextColor={colors.textSecondary} value={logs[currentExIndex]?.note} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} />
-          </View>
-        </ScrollView>
-        
-        {/* BOTONES FLOTANTES */}
-        <View style={{ position: 'absolute', right: 20, bottom: 100, gap: 15 }}>
-          {isBarbellLift && (
-            <TouchableOpacity style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.textPrimary }]} onPress={() => openPlateCalculator(isLandmineExercise)}>
-              <Text style={{ fontSize: 24, fontWeight: '900', color: colors.background }}>?</Text>
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}>
+              <Ionicons name="close" size={26} color={colors.textPrimary} />
             </TouchableOpacity>
-          )}
+            <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 10 }}>
+              <Text style={[styles.topTitle, { color: colors.textPrimary }]} numberOfLines={1}>{workout.title}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 }}>
+                <Ionicons name="time-outline" size={14} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '800', fontVariant: ['tabular-nums'] }}>
+                  {formatGlobalTime(globalSeconds)}
+                </Text>
+              </View>
+            </View>
+            <Text style={[styles.topProgress, { color: colors.textSecondary }]}>{currentExIndex + 1}/{workout.exercises.length}</Text>
+          </View>
 
-          <TouchableOpacity style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
-            <Ionicons name="list" size={24} color="#FFF" />
-          </TouchableOpacity>
-        </View>
+          <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${prog}%` }]} /></View>
+          
+          <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            {renderFatigueToggle()}
+            
+            <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={displayExName} colors={colors} isHiit={false} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
+            
+            <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
+              
+              <View style={styles.compactDetailsGrid}>
+                {['sets', 'reps', 'weight', 'duration', 'rest'].map(k => {
+                  let val = ex[k];
+                  if (!val) return null;
+                  if (isFatigueMode) {
+                    if (k === 'reps') val = adjustReps(val);
+                    if (k === 'duration') val = adjustDurationStr(val);
+                  }
+                  return (
+                    <View key={k} style={styles.compactDetailItem}>
+                      <Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text>
+                      <Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{val}</Text>
+                    </View>
+                  )
+                })}
+              </View>
+              
+              {ex.exercise_notes && (
+                 <View style={{ padding: 16, paddingTop: 0, backgroundColor: colors.surface }}>
+                    <View style={{ flexDirection: 'row', backgroundColor: colors.background, padding: 10, borderRadius: 8 }}>
+                       <Ionicons name="information-circle" size={18} color={colors.textSecondary} />
+                       <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginLeft: 8, flex: 1 }}>{ex.exercise_notes}</Text>
+                    </View>
+                 </View>
+              )}
+            </View>
+            
+            <View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
+              <View style={styles.setsGrid}>{s.map((st, i) => ( <View key={i} style={[styles.setCircle, { borderColor: colors.border }, st === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }, st === 'skipped' && { backgroundColor: colors.error, borderColor: colors.error }]}>{st === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : <Text style={{ color: colors.textSecondary }}>{i + 1}</Text>}</View> ))}</View>
+              <TouchableOpacity style={[styles.recordBtn, { marginTop: 20, borderColor: colors.border }]} onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text></TouchableOpacity>
+            </View>
+            <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
+               <View style={{ flexDirection: 'row', gap: 10 }}>
+                 <TextInput style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder="Kilos" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={logs[currentExIndex]?.weight} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} />
+                 <TextInput style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder="Reps" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={logs[currentExIndex]?.reps} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], reps: t}}))} />
+               </View>
+               <TextInput style={[styles.logInput, { borderColor: colors.border, marginTop: 10, minHeight: 60, backgroundColor: colors.background, color: colors.textPrimary }]} multiline placeholder="Anotaciones de la serie..." placeholderTextColor={colors.textSecondary} value={logs[currentExIndex]?.note} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} />
+            </View>
+          </ScrollView>
+          
+          {/* BOTONES FLOTANTES */}
+          <View style={{ position: 'absolute', right: 20, bottom: 100, gap: 15 }}>
+            {isBarbellLift && (
+              <TouchableOpacity style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.textPrimary }]} onPress={() => openPlateCalculator(isLandmineExercise)}>
+                <Text style={{ fontSize: 24, fontWeight: '900', color: colors.background }}>?</Text>
+              </TouchableOpacity>
+            )}
 
-        <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else { Speech.stop(); setFinished(true); } }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
+            <TouchableOpacity style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
+              <Ionicons name="list" size={24} color="#FFF" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else { Speech.stop(); setFinished(true); } }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
+        </KeyboardAvoidingView>
         {renderVideoModal()}{renderIndicationsModal()}{renderPlateCalculatorModal()}
       </SafeAreaView>
     );
