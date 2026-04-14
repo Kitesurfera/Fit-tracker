@@ -562,27 +562,39 @@ export default function TrainingModeScreen() {
   const skipSet = () => { stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
   const skipEntireExercise = () => { stopAllTimers(); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
-const handleRecordVideoOptions = (key: string) => { 
+  // AQUÍ ESTÁ LA FUNCIÓN CORREGIDA SIN LLAVES FALTANTES
+  const handleRecordVideoOptions = (key: string) => { 
     if (Platform.OS === 'web') { 
       const useCamera = window.confirm("¿Quieres grabar un vídeo ahora?\n\n[Aceptar] = Abrir Cámara\n[Cancelar] = Abrir Galería");
       
       if (useCamera) {
-        // En web, usar launchImageLibraryAsync con un pequeño "hack"
-        // suele ser más estable que launchCameraAsync
         ImagePicker.launchImageLibraryAsync({ 
           mediaTypes: ImagePicker.MediaTypeOptions.Videos, 
           allowsEditing: true, 
           quality: 0.7 
-        }).then(result => {
+        }).then(async (result) => {
           if (!result.canceled && result.assets) {
-            uploadWebVideo(result.assets[0], key);
+            try {
+              setVideoUploading(key);
+              const asset = result.assets[0];
+              const uploaded = await api.uploadFile(asset);
+              const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
+              setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
+            } catch (e) { console.error(e); } finally { setVideoUploading(null); }
           }
         });
       } else { 
         launchVideoPicker('library', key); 
       }
       return; 
-    }
+    } 
+
+    Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ 
+      { text: "Cancelar", style: "cancel" }, 
+      { text: "Galería", onPress: () => launchVideoPicker('library', key) }, 
+      { text: "Grabar", onPress: () => launchVideoPicker('camera', key) } 
+    ]); 
+  };
   
   const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
@@ -693,7 +705,6 @@ const handleRecordVideoOptions = (key: string) => {
 
     return (
       <Modal visible={showPlateCalculator} transparent animationType="slide">
-        {/* Usamos KeyboardAvoidingView aquí para que el popup no se rompa al sacar el teclado */}
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.modalOverlay}>
             <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface, maxHeight: '90%', width: '90%' }]}>
