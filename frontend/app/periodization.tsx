@@ -88,7 +88,7 @@ export default function PeriodizationScreen() {
     return cleanStr;
   };
 
-  const handleSaveMacro = async () => {
+const handleSaveMacro = async () => {
     if (!macroForm.nombre) return;
     try {
       const payload = {
@@ -99,6 +99,7 @@ export default function PeriodizationScreen() {
         end_date: formatDateForDB(macroForm.fecha_fin),
         athlete_id: params.athlete_id
       };
+      // FIX: Asegurar que le pasamos el ID correcto a la API
       if (editingId) await api.updateMacrociclo(editingId, payload);
       else await api.createMacrociclo(payload);
       setMacroModal(false); loadTree();
@@ -106,6 +107,7 @@ export default function PeriodizationScreen() {
   };
 
   const deleteMacro = (id: string) => {
+    if (!id) return;
     const action = async () => { await api.deleteMacrociclo(id); loadTree(); };
     if (Platform.OS === 'web') {
       if (window.confirm("¿Borrar este macrociclo entero?")) action();
@@ -136,6 +138,7 @@ export default function PeriodizationScreen() {
   };
 
   const deleteMicro = (id: string) => {
+    if (!id) return;
     const action = async () => { await api.deleteMicrociclo(id); loadTree(); };
     if (Platform.OS === 'web') {
       if (window.confirm("¿Borrar este microciclo?")) action();
