@@ -35,7 +35,7 @@ export default function PeriodizationScreen() {
   const [microForm, setMicroForm] = useState({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] });
 
   const sortByDateDesc = (a: any, b: any, key: string = 'fecha_inicio') => {
-    return new Date(b[key]).getTime() - new Date(a[key]).getTime();
+    return new Date(b[key] || b.start_date || 0).getTime() - new Date(a[key] || a.start_date || 0).getTime();
   };
 
   const loadTree = async () => {
@@ -59,7 +59,8 @@ export default function PeriodizationScreen() {
 
       // Expandimos el primer macro por defecto al cargar
       if (sortedMacros.length > 0 && Object.keys(expandedMacros).length === 0) {
-        setExpandedMacros({ [sortedMacros[0].id]: true });
+        const firstId = sortedMacros[0].id || sortedMacros[0]._id;
+        if (firstId) setExpandedMacros({ [firstId]: true });
       }
 
       setMacros(sortedMacros);
@@ -88,7 +89,7 @@ export default function PeriodizationScreen() {
     return cleanStr;
   };
 
-const handleSaveMacro = async () => {
+  const handleSaveMacro = async () => {
     if (!macroForm.nombre) return;
     try {
       const payload = {
@@ -99,11 +100,13 @@ const handleSaveMacro = async () => {
         end_date: formatDateForDB(macroForm.fecha_fin),
         athlete_id: params.athlete_id
       };
-      // FIX: Asegurar que le pasamos el ID correcto a la API
+      
       if (editingId) await api.updateMacrociclo(editingId, payload);
       else await api.createMacrociclo(payload);
-      setMacroModal(false); loadTree();
-    } catch (e) { Alert.alert("Error", "No se pudo guardar"); }
+      
+      setMacroModal(false); 
+      loadTree();
+    } catch (e) { Alert.alert("Error", "No se pudo guardar el macrociclo."); }
   };
 
   const deleteMacro = (id: string) => {
@@ -129,12 +132,14 @@ const handleSaveMacro = async () => {
       };
       if (editingId) await api.updateMicrociclo(editingId, payload);
       else await api.createMicrociclo(payload);
-      setMicroModal(false); loadTree();
+      
+      setMicroModal(false); 
+      loadTree();
       
       if (!editingId) {
         setExpandedMacros(prev => ({ ...prev, [selectedMacroId]: true }));
       }
-    } catch (e) { Alert.alert("Error", "No se pudo guardar"); }
+    } catch (e) { Alert.alert("Error", "No se pudo guardar el microciclo."); }
   };
 
   const deleteMicro = (id: string) => {
@@ -183,29 +188,56 @@ const handleSaveMacro = async () => {
         {macros.length === 0 && <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 30 }}>Aún no has creado ningún macrociclo.</Text>}
 
         {macros.map((macro) => {
-          const isMacroExpanded = expandedMacros[macro.id];
+          const macroId = macro.id || macro._id;
+          if (!macroId) return null;
+          const isMacroExpanded = expandedMacros[macroId];
 
           return (
-            <View key={macro.id} style={[styles.macroCard, { borderColor: macro.color || colors.border }]}>
+            <View key={macroId} style={[styles.macroCard, { borderColor: macro.color || colors.border }]}>
               <TouchableOpacity 
                 style={[styles.macroHeader, { backgroundColor: (macro.color || colors.primary) + '15' }]}
-                onPress={() => toggleMacro(macro.id)}
+                onPress={() => toggleMacro(macroId)}
                 activeOpacity={0.7}
               >
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.macroTitle, { color: colors.textPrimary }]}>{macro.nombre}</Text>
-                  <Text style={{ fontSize: 10, color: colors.textSecondary }}>{macro.fecha_inicio} - {macro.fecha_fin}</Text>
+                  <Text style={[styles.macroTitle, { color: colors.textPrimary }]}>{macro.nombre || macro.name}</Text>
+                  <Text style={{ fontSize: 10, color: colors.textSecondary }}>{macro.fecha_inicio || macro.start_date} - {macro.fecha_fin || macro.end_date}</Text>
                 </View>
                 <View style={styles.actionsRow}>
-                  <TouchableOpacity style={styles.iconHitbox} onPress={(e) => { e.stopPropagation(); setEditingId(macro.id); setMacroForm({ ...macro }); setMacroModal(true); }}>
+                  {/* EDITAR MACRO */}
+                  <TouchableOpacity style={styles.iconHitbox} onPress={(e) => { 
+                    if (e?.stopPropagation) e.stopPropagation(); 
+                    setEditingId(macroId); 
+                    setMacroForm({ 
+                      nombre: macro.nombre || macro.name || '', 
+                      fecha_inicio: macro.fecha_inicio || macro.start_date || '', 
+                      fecha_fin: macro.fecha_fin || macro.end_date || '', 
+                      color: macro.color || MACRO_COLORS[0] 
+                    }); 
+                    setMacroModal(true); 
+                  }}>
                     <Ionicons name="pencil" size={18} color={colors.textSecondary} />
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.iconHitbox} onPress={(e) => { e.stopPropagation(); deleteMacro(macro.id); }}>
+                  
+                  {/* ELIMINAR MACRO */}
+                  <TouchableOpacity style={styles.iconHitbox} onPress={(e) => { 
+                    if (e?.stopPropagation) e.stopPropagation(); 
+                    deleteMacro(macroId); 
+                  }}>
                     <Ionicons name="trash" size={18} color={colors.error || '#EF4444'} />
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.addMicroSmall, { backgroundColor: colors.primary }]} onPress={(e) => { e.stopPropagation(); setEditingId(null); setSelectedMacroId(macro.id); setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: macro.color || MICRO_COLORS[0] }); setMicroModal(true); }}>
+                  
+                  {/* NUEVO MICRO */}
+                  <TouchableOpacity style={[styles.addMicroSmall, { backgroundColor: colors.primary }]} onPress={(e) => { 
+                    if (e?.stopPropagation) e.stopPropagation(); 
+                    setEditingId(null); 
+                    setSelectedMacroId(macroId); 
+                    setMicroForm({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: macro.color || MICRO_COLORS[0] }); 
+                    setMicroModal(true); 
+                  }}>
                     <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '800' }}>+ MICRO</Text>
                   </TouchableOpacity>
+                  
                   <Ionicons name={isMacroExpanded ? "chevron-up" : "chevron-down"} size={22} color={colors.textSecondary} style={{ marginLeft: 10 }} />
                 </View>
               </TouchableOpacity>
@@ -214,28 +246,50 @@ const handleSaveMacro = async () => {
                 <View style={{ padding: 12 }}>
                   {macro.microciclos?.length > 0 ? (
                     macro.microciclos.map((micro: any) => {
-                      const isExpanded = expandedMicros[micro.id];
+                      const microId = micro.id || micro._id;
+                      if (!microId) return null;
+                      const isExpanded = expandedMicros[microId];
+                      
                       return (
-                        <View key={micro.id} style={[styles.microItem, { borderLeftColor: micro.color || colors.primary }]}>
+                        <View key={microId} style={[styles.microItem, { borderLeftColor: micro.color || colors.primary }]}>
                           <TouchableOpacity 
                             style={styles.microHeaderToggle} 
-                            onPress={() => toggleMicro(micro.id)}
+                            onPress={() => toggleMicro(microId)}
                             activeOpacity={0.7}
                           >
                             <View style={{ flex: 1 }}>
                               <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>
-                                {micro.nombre} <Text style={{fontSize:10, color: micro.color || colors.primary, fontWeight: '900'}}>[{micro.tipo}]</Text>
+                                {micro.nombre || micro.name} <Text style={{fontSize:10, color: micro.color || colors.primary, fontWeight: '900'}}>[{micro.tipo || micro.type}]</Text>
                               </Text>
-                              <Text style={{ fontSize: 9, color: colors.textSecondary }}>{micro.fecha_inicio} al {micro.fecha_fin}</Text>
+                              <Text style={{ fontSize: 9, color: colors.textSecondary }}>{micro.fecha_inicio || micro.start_date} al {micro.fecha_fin || micro.end_date}</Text>
                             </View>
                             
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                              <TouchableOpacity style={styles.iconHitboxSmall} onPress={(e) => { e.stopPropagation(); setEditingId(micro.id); setMicroForm({ ...micro }); setSelectedMacroId(macro.id); setMicroModal(true); }}>
+                              {/* EDITAR MICRO */}
+                              <TouchableOpacity style={styles.iconHitboxSmall} onPress={(e) => { 
+                                if (e?.stopPropagation) e.stopPropagation(); 
+                                setEditingId(microId); 
+                                setMicroForm({ 
+                                  nombre: micro.nombre || micro.name || '', 
+                                  tipo: micro.tipo || micro.type || 'CARGA', 
+                                  fecha_inicio: micro.fecha_inicio || micro.start_date || '', 
+                                  fecha_fin: micro.fecha_fin || micro.end_date || '', 
+                                  color: micro.color || macro.color || MICRO_COLORS[0] 
+                                }); 
+                                setSelectedMacroId(macroId); 
+                                setMicroModal(true); 
+                              }}>
                                 <Ionicons name="pencil" size={16} color={colors.textSecondary} />
                               </TouchableOpacity>
-                              <TouchableOpacity style={styles.iconHitboxSmall} onPress={(e) => { e.stopPropagation(); deleteMicro(micro.id); }}>
+                              
+                              {/* ELIMINAR MICRO */}
+                              <TouchableOpacity style={styles.iconHitboxSmall} onPress={(e) => { 
+                                if (e?.stopPropagation) e.stopPropagation(); 
+                                deleteMicro(microId); 
+                              }}>
                                 <Ionicons name="trash" size={16} color={colors.error || '#EF4444'} />
                               </TouchableOpacity>
+                              
                               <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.primary} />
                             </View>
                           </TouchableOpacity>
@@ -244,20 +298,23 @@ const handleSaveMacro = async () => {
                             <View style={styles.expandedContent}>
                               <TouchableOpacity 
                                 style={styles.addSessionBtn} 
-                                onPress={() => { setTargetMicroId(micro.id); setAssignModal(true); }}
+                                onPress={() => { setTargetMicroId(microId); setAssignModal(true); }}
                               >
                                 <Ionicons name="add-circle-outline" size={16} color={colors.primary} />
                                 <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '600' }}>Añadir sesión</Text>
                               </TouchableOpacity>
 
-                              {micro.workouts?.length > 0 ? micro.workouts.map((wk: any) => (
-                                <TouchableOpacity key={wk.id} style={styles.workoutRow} onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } })}>
-                                  <Ionicons name="barbell-outline" size={16} color={colors.textSecondary} />
-                                  <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{wk.title}</Text>
-                                  <Text style={{ fontSize: 10, color: colors.textSecondary, marginRight: 5 }}>{wk.date.split('-').slice(1).reverse().join('/')}</Text>
-                                  {wk.completed && <Ionicons name="checkmark-circle" size={14} color={colors.success || '#10B981'} />}
-                                </TouchableOpacity>
-                              )) : (
+                              {micro.workouts?.length > 0 ? micro.workouts.map((wk: any) => {
+                                const wkId = wk.id || wk._id;
+                                return (
+                                  <TouchableOpacity key={wkId} style={styles.workoutRow} onPress={() => router.push({ pathname: '/edit-workout', params: { workoutId: wkId } })}>
+                                    <Ionicons name="barbell-outline" size={16} color={colors.textSecondary} />
+                                    <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{wk.title}</Text>
+                                    <Text style={{ fontSize: 10, color: colors.textSecondary, marginRight: 5 }}>{(wk.date || '').split('-').slice(1).reverse().join('/')}</Text>
+                                    {wk.completed && <Ionicons name="checkmark-circle" size={14} color={colors.success || '#10B981'} />}
+                                  </TouchableOpacity>
+                                );
+                              }) : (
                                 <Text style={styles.emptyWorkoutsText}>No hay sesiones en este microciclo.</Text>
                               )}
                             </View>
@@ -298,7 +355,7 @@ const handleSaveMacro = async () => {
             <Text style={[styles.label, { marginBottom: 10 }]}>O RESCATAR SESIÓN SUELTA:</Text>
             <ScrollView style={{ maxHeight: 250 }}>
               {unassigned.length > 0 ? unassigned.map((wk: any) => (
-                <TouchableOpacity key={wk.id} style={[styles.unassignedWkBtn, { borderColor: colors.border }]} onPress={() => handleAssignWorkout(wk.id)}>
+                <TouchableOpacity key={wk.id || wk._id} style={[styles.unassignedWkBtn, { borderColor: colors.border }]} onPress={() => handleAssignWorkout(wk.id || wk._id)}>
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{wk.title}</Text>
                     <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.date}</Text>
@@ -427,7 +484,7 @@ const styles = StyleSheet.create({
   createNewSessionBtn: { flexDirection: 'row', justifyContent: 'center', padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 25 },
   unassignedWkBtn: { padding: 14, borderRadius: 12, borderWidth: 1, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   
-  // NUEVOS ESTILOS PARA LOS COLORES
+  // ESTILOS PARA LOS COLORES
   colorRow: { flexDirection: 'row', gap: 12, marginTop: 5, marginBottom: 5, flexWrap: 'wrap' },
   colorSwatch: { width: 34, height: 34, borderRadius: 17, opacity: 0.4, borderWidth: 2, borderColor: 'transparent' },
   colorSwatchSelected: { opacity: 1, borderColor: '#FFF', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3 }
