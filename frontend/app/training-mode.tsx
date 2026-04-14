@@ -568,10 +568,15 @@ export default function TrainingModeScreen() {
     setPlatesOnBar(prev => prev.filter((_, i) => i !== index));
   };
 
-  const calculateTotalWeight = () => {
+ const calculateTotalWeight = () => {
     const platesTotal = platesOnBar.reduce((sum, w) => sum + w, 0);
     
-    if (!isLandmineMode) {
+    // Comprobamos si es landmine manual o auto-detectado
+    const currentEx = workout?.exercises?.[currentExIndex];
+    const isAutoLandmine = /landmine|t-bar|t bar|mina/i.test(currentEx?.name || '');
+    const activeLandmine = isLandmineMode || isAutoLandmine;
+    
+    if (!activeLandmine) {
       return barWeight + (platesTotal * 2);
     } else {
       // Trigonometría Landmine
@@ -605,118 +610,132 @@ export default function TrainingModeScreen() {
     setShowPlateCalculator(true);
   };
 
-  const renderPlateCalculatorModal = () => (
-    <Modal visible={showPlateCalculator} transparent animationType="slide">
-      <View style={styles.modalOverlay}>
-        <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface, maxHeight: '90%' }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-            <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Calculadora de Carga</Text>
-            <TouchableOpacity onPress={() => setShowPlateCalculator(false)}>
-              <Ionicons name="close" size={28} color={colors.textSecondary} />
+const renderPlateCalculatorModal = () => {
+    // Detectamos automáticamente si el ejercicio actual es de tipo Landmine
+    const currentEx = workout?.exercises?.[currentExIndex];
+    const isAutoLandmine = /landmine|t-bar|t bar|mina/i.test(currentEx?.name || '');
+
+    return (
+      <Modal visible={showPlateCalculator} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface, maxHeight: '90%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Calculadora de Carga</Text>
+              <TouchableOpacity onPress={() => setShowPlateCalculator(false)}>
+                <Ionicons name="close" size={28} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Opciones de Barra */}
+              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TIPO DE BARRA</Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+                {[20, 15].map(w => (
+                  <TouchableOpacity 
+                    key={w} 
+                    onPress={() => setBarWeight(w)}
+                    style={[styles.barTypeBtn, { borderColor: barWeight === w ? colors.primary : colors.border, flex: 1, alignItems: 'center' }]}
+                  >
+                    <Text style={{ color: barWeight === w ? colors.primary : colors.textSecondary, fontWeight: '800' }}>{w}kg</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Modo Landmine Inteligente */}
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                 <Text style={[styles.label, { color: colors.textSecondary }]}>MODO LANDMINE</Text>
+                 {isAutoLandmine ? (
+                   <View style={{ backgroundColor: colors.success + '20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                     <Ionicons name="flash" size={14} color={colors.success} />
+                     <Text style={{ color: colors.success, fontSize: 12, fontWeight: '900' }}>AUTO-DETECTADO</Text>
+                   </View>
+                 ) : (
+                   <TouchableOpacity 
+                      onPress={() => setIsLandmineMode(!isLandmineMode)}
+                      style={{ width: 50, height: 28, borderRadius: 14, backgroundColor: isLandmineMode ? colors.primary : colors.border, justifyContent: 'center', alignItems: isLandmineMode ? 'flex-end' : 'flex-start', paddingHorizontal: 4 }}
+                   >
+                     <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF' }} />
+                   </TouchableOpacity>
+                 )}
+              </View>
+
+              {/* Muestra los cálculos si es Landmine (ya sea manual o auto-detectado) */}
+              {(isLandmineMode || isAutoLandmine) && (
+                <View style={{ marginBottom: 20, backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
+                   <Text style={{ color: colors.textPrimary, fontSize: 13, marginBottom: 10 }}>
+                     Calculando carga real compensada por trigonometría (Ángulo de palanca).
+                   </Text>
+                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Tu altura (cm):</Text>
+                      <TextInput 
+                        style={[styles.logInput, { flex: 1, padding: 8, borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} 
+                        keyboardType="numeric" 
+                        value={athleteHeight} 
+                        onChangeText={setAthleteHeight} 
+                      />
+                   </View>
+                </View>
+              )}
+
+              {/* Representación Visual de la Barra */}
+              <View style={{ alignItems: 'center', marginVertical: 30 }}>
+                 <Text style={{ fontSize: 40, fontWeight: '900', color: colors.primary, marginBottom: 5 }}>
+                   {calculateTotalWeight().toFixed(1)} <Text style={{ fontSize: 20, color: colors.textSecondary }}>kg</Text>
+                 </Text>
+                 {(isLandmineMode || isAutoLandmine) && <Text style={{ color: colors.warning, fontWeight: '700', fontSize: 12, marginBottom: 15 }}>CARGA EFECTIVA</Text>}
+
+                 <View style={styles.barSleeveContainer}>
+                    {/* Manga de la barra */}
+                    <View style={[styles.barSleeve, { backgroundColor: '#CBD5E1' }]} />
+                    {/* Topes si no hay discos */}
+                    {platesOnBar.length === 0 && <Text style={{ position: 'absolute', color: '#94A3B8', fontSize: 12, top: -25 }}>Vacía</Text>}
+                    
+                    {/* Discos Apilados */}
+                    <View style={styles.stackedPlatesContainer}>
+                      {platesOnBar.map((weight, index) => {
+                        const height = 120 + (weight * 2);
+                        const width = weight > 10 ? 25 : 15;
+                        return (
+                          <TouchableOpacity 
+                            key={`${weight}-${index}`} 
+                            onPress={() => removePlate(index)}
+                            style={[styles.stackedPlate, { height, width, backgroundColor: PLATE_COLORS[weight] || '#333' }]}
+                          >
+                             <Text style={{ color: weight === 5 ? '#000' : '#FFF', fontSize: 10, fontWeight: '900', transform: [{ rotate: '-90deg' }] }}>
+                               {weight}
+                             </Text>
+                          </TouchableOpacity>
+                        )
+                      })}
+                    </View>
+                 </View>
+                 <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 15 }}>Toca un disco en la barra para quitarlo</Text>
+              </View>
+
+              {/* Leyenda de Discos (Tap to Add) */}
+              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TOCA PARA AÑADIR DISCOS (1 LADO)</Text>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+                {AVAILABLE_PLATES.map(w => (
+                  <TouchableOpacity 
+                    key={w} 
+                    onPress={() => addPlate(w)}
+                    style={[styles.legendPlate, { backgroundColor: PLATE_COLORS[w] || '#333' }]}
+                  >
+                    <Text style={{ color: w === 5 ? '#000' : '#FFF', fontWeight: '900' }}>{w}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+            </ScrollView>
+
+            <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary, marginTop: 20 }]} onPress={saveCalculatedWeight}>
+              <Text style={styles.finishWorkoutBtnText}>Guardar Peso</Text>
             </TouchableOpacity>
           </View>
-
-          <ScrollView showsVerticalScrollIndicator={false}>
-            {/* Opciones de Barra - ACTUALIZADO A 20 y 15 */}
-            <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TIPO DE BARRA</Text>
-            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
-              {[20, 15].map(w => (
-                <TouchableOpacity 
-                  key={w} 
-                  onPress={() => setBarWeight(w)}
-                  style={[styles.barTypeBtn, { borderColor: barWeight === w ? colors.primary : colors.border, flex: 1, alignItems: 'center' }]}
-                >
-                  <Text style={{ color: barWeight === w ? colors.primary : colors.textSecondary, fontWeight: '800' }}>{w}kg</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {/* Modo Landmine */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-               <Text style={[styles.label, { color: colors.textSecondary }]}>MODO LANDMINE</Text>
-               <TouchableOpacity 
-                  onPress={() => setIsLandmineMode(!isLandmineMode)}
-                  style={{ width: 50, height: 28, borderRadius: 14, backgroundColor: isLandmineMode ? colors.primary : colors.border, justifyContent: 'center', alignItems: isLandmineMode ? 'flex-end' : 'flex-start', paddingHorizontal: 4 }}
-               >
-                 <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF' }} />
-               </TouchableOpacity>
-            </View>
-
-            {isLandmineMode && (
-              <View style={{ marginBottom: 20, backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
-                 <Text style={{ color: colors.textPrimary, fontSize: 13, marginBottom: 10 }}>
-                   Calculando carga real compensada por trigonometría (Ángulo de palanca).
-                 </Text>
-                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Tu altura (cm):</Text>
-                    <TextInput 
-                      style={[styles.logInput, { flex: 1, padding: 8, borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} 
-                      keyboardType="numeric" 
-                      value={athleteHeight} 
-                      onChangeText={setAthleteHeight} 
-                    />
-                 </View>
-              </View>
-            )}
-
-            {/* Representación Visual de la Barra */}
-            <View style={{ alignItems: 'center', marginVertical: 30 }}>
-               <Text style={{ fontSize: 40, fontWeight: '900', color: colors.primary, marginBottom: 5 }}>
-                 {calculateTotalWeight().toFixed(1)} <Text style={{ fontSize: 20, color: colors.textSecondary }}>kg</Text>
-               </Text>
-               {isLandmineMode && <Text style={{ color: colors.warning, fontWeight: '700', fontSize: 12, marginBottom: 15 }}>CARGA EFECTIVA</Text>}
-
-               <View style={styles.barSleeveContainer}>
-                  {/* Manga de la barra */}
-                  <View style={[styles.barSleeve, { backgroundColor: '#CBD5E1' }]} />
-                  {/* Topes si no hay discos */}
-                  {platesOnBar.length === 0 && <Text style={{ position: 'absolute', color: '#94A3B8', fontSize: 12, top: -25 }}>Vacía</Text>}
-                  
-                  {/* Discos Apilados */}
-                  <View style={styles.stackedPlatesContainer}>
-                    {platesOnBar.map((weight, index) => {
-                      const height = 120 + (weight * 2); // Discos más pesados son más altos
-                      const width = weight > 10 ? 25 : 15; // Grosor
-                      return (
-                        <TouchableOpacity 
-                          key={`${weight}-${index}`} 
-                          onPress={() => removePlate(index)}
-                          style={[styles.stackedPlate, { height, width, backgroundColor: PLATE_COLORS[weight] || '#333' }]}
-                        >
-                           <Text style={{ color: weight === 5 ? '#000' : '#FFF', fontSize: 10, fontWeight: '900', transform: [{ rotate: '-90deg' }] }}>
-                             {weight}
-                           </Text>
-                        </TouchableOpacity>
-                      )
-                    })}
-                  </View>
-               </View>
-               <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 15 }}>Toca un disco en la barra para quitarlo</Text>
-            </View>
-
-            {/* Leyenda de Discos (Tap to Add) */}
-            <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TOCA PARA AÑADIR DISCOS (1 LADO)</Text>
-            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
-              {AVAILABLE_PLATES.map(w => (
-                <TouchableOpacity 
-                  key={w} 
-                  onPress={() => addPlate(w)}
-                  style={[styles.legendPlate, { backgroundColor: PLATE_COLORS[w] || '#333' }]}
-                >
-                  <Text style={{ color: w === 5 ? '#000' : '#FFF', fontWeight: '900' }}>{w}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-          </ScrollView>
-
-          <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary, marginTop: 20 }]} onPress={saveCalculatedWeight}>
-            <Text style={styles.finishWorkoutBtnText}>Guardar Peso</Text>
-          </TouchableOpacity>
         </View>
-      </View>
-    </Modal>
-  );
+      </Modal>
+    );
+  };
 
   const renderVideoModal = () => (
     <Modal visible={!!expandedVideo} transparent animationType="fade">
