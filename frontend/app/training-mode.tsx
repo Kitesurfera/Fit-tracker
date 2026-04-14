@@ -168,6 +168,7 @@ export default function TrainingModeScreen() {
   const [showPlateCalculator, setShowPlateCalculator] = useState(false);
   const [platesOnBar, setPlatesOnBar] = useState<number[]>([]);
   const [barWeight, setBarWeight] = useState(20);
+  const [showCustomBarInput, setShowCustomBarInput] = useState(false); // NUEVO ESTADO PARA INPUT MANUAL
   const [isLandmineMode, setIsLandmineMode] = useState(false);
   const [athleteHeight, setAthleteHeight] = useState('170'); // en cm
 
@@ -568,7 +569,7 @@ export default function TrainingModeScreen() {
     setPlatesOnBar(prev => prev.filter((_, i) => i !== index));
   };
 
- const calculateTotalWeight = () => {
+  const calculateTotalWeight = () => {
     const platesTotal = platesOnBar.reduce((sum, w) => sum + w, 0);
     
     // Comprobamos si es landmine manual o auto-detectado
@@ -606,11 +607,21 @@ export default function TrainingModeScreen() {
   const openPlateCalculator = (isLandmine: boolean) => {
     setIsLandmineMode(isLandmine);
     setPlatesOnBar([]);
-    setBarWeight(20);
+    setShowCustomBarInput(false); // Reiniciamos el modo custom
+
+    const exName = workout?.exercises?.[currentExIndex]?.name || '';
+    if (/hex|trap|hexagonal/i.test(exName)) {
+      setBarWeight(25); // Hex bars suelen pesar 25kg
+    } else if (/smith|multipower/i.test(exName)) {
+      setBarWeight(0); // Smith machines se suelen contar como 0kg por los contrapesos
+    } else {
+      setBarWeight(20); // Olímpica estándar
+    }
+
     setShowPlateCalculator(true);
   };
 
-const renderPlateCalculatorModal = () => {
+  const renderPlateCalculatorModal = () => {
     // Detectamos automáticamente si el ejercicio actual es de tipo Landmine
     const currentEx = workout?.exercises?.[currentExIndex];
     const isAutoLandmine = /landmine|t-bar|t bar|mina/i.test(currentEx?.name || '');
@@ -628,17 +639,43 @@ const renderPlateCalculatorModal = () => {
 
             <ScrollView showsVerticalScrollIndicator={false}>
               {/* Opciones de Barra */}
-              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TIPO DE BARRA</Text>
+              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>PESO DE LA BARRA BASE</Text>
               <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
                 {[20, 15].map(w => (
                   <TouchableOpacity 
                     key={w} 
-                    onPress={() => setBarWeight(w)}
-                    style={[styles.barTypeBtn, { borderColor: barWeight === w ? colors.primary : colors.border, flex: 1, alignItems: 'center' }]}
+                    onPress={() => { setBarWeight(w); setShowCustomBarInput(false); }}
+                    style={[styles.barTypeBtn, { borderColor: barWeight === w && !showCustomBarInput ? colors.primary : colors.border, flex: 1, alignItems: 'center' }]}
                   >
-                    <Text style={{ color: barWeight === w ? colors.primary : colors.textSecondary, fontWeight: '800' }}>{w}kg</Text>
+                    <Text style={{ color: barWeight === w && !showCustomBarInput ? colors.primary : colors.textSecondary, fontWeight: '800' }}>{w}kg</Text>
                   </TouchableOpacity>
                 ))}
+
+                {/* BOTÓN CUSTOM EDITABLE (Nuevo) */}
+                {showCustomBarInput ? (
+                  <TextInput
+                    style={[styles.barTypeBtn, { flex: 1, borderColor: colors.primary, color: colors.textPrimary, textAlign: 'center', fontWeight: '800', paddingVertical: 0 }]}
+                    keyboardType="numeric"
+                    autoFocus
+                    placeholder="0"
+                    placeholderTextColor={colors.textSecondary}
+                    onChangeText={t => {
+                      const val = parseFloat(t);
+                      setBarWeight(isNaN(val) ? 0 : val);
+                    }}
+                  />
+                ) : (
+                  <TouchableOpacity 
+                    onPress={() => setShowCustomBarInput(true)}
+                    style={[styles.barTypeBtn, { borderColor: (![20, 15].includes(barWeight)) ? colors.primary : colors.border, width: 60, alignItems: 'center', justifyContent: 'center' }]}
+                  >
+                    {![20, 15].includes(barWeight) ? (
+                      <Text style={{ color: colors.primary, fontWeight: '800' }}>{barWeight}kg</Text>
+                    ) : (
+                      <Ionicons name="pencil" size={18} color={colors.textSecondary} />
+                    )}
+                  </TouchableOpacity>
+                )}
               </View>
 
               {/* Modo Landmine Inteligente */}
@@ -1063,7 +1100,7 @@ const renderPlateCalculatorModal = () => {
     }
 
     // NUEVO: Lógica de Detección de Ejercicios con Barra
-    const isBarbellLift = /barra|barbell|sentadilla|squat|peso muerto|deadlift|press|snatch|clean|jerk|landmine/i.test(ex?.name || '');
+    const isBarbellLift = /barra|barbell|sentadilla|squat|peso muerto|deadlift|press|snatch|clean|jerk|landmine|hex|hexagonal|trap|smith|multipower/i.test(ex?.name || '');
     const isLandmineExercise = /landmine/i.test(ex?.name || '');
 
     main = (
