@@ -134,6 +134,9 @@ export default function TrainingModeScreen() {
 
   const [isPaused, setIsPaused] = useState(false);
   
+  // --- MODO FATIGA ALTA (SUPERVIVENCIA) ---
+  const [isFatigueMode, setIsFatigueMode] = useState(false);
+
   const [globalSeconds, setGlobalSeconds] = useState(0);
   const globalTimerRef = useRef<any>(null);
 
@@ -164,13 +167,30 @@ export default function TrainingModeScreen() {
   const lastAnnouncedRef = useRef<string>('');
   const justFinishedRestRef = useRef(false);
 
-  // --- ESTADOS DE LA CALCULADORA DE DISCOS ---
   const [showPlateCalculator, setShowPlateCalculator] = useState(false);
   const [platesOnBar, setPlatesOnBar] = useState<number[]>([]);
   const [barWeight, setBarWeight] = useState(20);
-  const [showCustomBarInput, setShowCustomBarInput] = useState(false); // NUEVO ESTADO PARA INPUT MANUAL
+  const [showCustomBarInput, setShowCustomBarInput] = useState(false); 
   const [isLandmineMode, setIsLandmineMode] = useState(false);
-  const [athleteHeight, setAthleteHeight] = useState('170'); // en cm
+  const [athleteHeight, setAthleteHeight] = useState('170'); 
+
+  // --- Helpers de Reducción de Fatiga ---
+  const adjustReps = (reps: string | number | undefined | null) => {
+    if (!reps) return null;
+    return String(reps).replace(/\d+/g, (match) => {
+      const num = parseInt(match, 10);
+      if (num <= 3) return match; // No recortar fuerza máxima
+      return Math.max(1, Math.floor(num * 0.8)).toString();
+    });
+  };
+
+  const adjustDurationStr = (durStr: string | number | undefined | null) => {
+    if (!durStr) return null;
+    const secs = parseTimeToSeconds(durStr);
+    if (secs === 0) return String(durStr);
+    const reduced = Math.max(1, Math.floor(secs * 0.8));
+    return `${reduced}s`;
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -440,24 +460,34 @@ export default function TrainingModeScreen() {
     if (!isHiit && workout && !isResting && !isPrep && !showIndicationsModal) {
       const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending');
       if (next !== -1) {
-        const ex = workout.exercises[currentExIndex]; const dur = parseTimeToSeconds(ex?.duration);
+        const ex = workout.exercises[currentExIndex]; 
+        let dur = parseTimeToSeconds(ex?.duration);
+        
+        // APLICAR MODO FATIGA AL TIEMPO EN VIVO
+        if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
+
         if (!isWorking && workTargetTime === null && workSeconds === 0) { 
           handleStartWork(dur, ex.name); 
         }
       } else { stopWorkTimer(); }
     }
-  }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished]);
+  }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode]);
 
   useEffect(() => {
     if (finished || workout?.completed) return;
     if (isHiit && workout && hiitPhase === 'work' && !isResting && !isPrep && !showIndicationsModal) {
       const b = workout.exercises[hiitBlockIdx]; if (!b) return;
-      const ex = b.hiit_exercises[hiitExIdx]; const dur = parseTimeToSeconds(ex?.duration_reps || ex?.duration);
+      const ex = b.hiit_exercises[hiitExIdx]; 
+      let dur = parseTimeToSeconds(ex?.duration_reps || ex?.duration);
+
+      // APLICAR MODO FATIGA AL TIEMPO HIIT EN VIVO
+      if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
+
       if (!isWorking && workTargetTime === null && workSeconds === 0) { 
          handleStartWork(dur, ex.name); 
       }
     }
-  }, [hiitBlockIdx, hiitExIdx, hiitExSet, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished]);
+  }, [hiitBlockIdx, hiitExIdx, hiitExSet, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode]);
 
   useEffect(() => {
     if (finished || workout?.completed) return;
@@ -535,13 +565,32 @@ export default function TrainingModeScreen() {
   const skipEntireExercise = () => { stopAllTimers(); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
   const handleRecordVideoOptions = (key: string) => { if (Platform.OS === 'web') { launchVideoPicker('library', key); return; } Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ { text: "Cancelar", style: "cancel" }, { text: "Galería", onPress: () => launchVideoPicker('library', key) }, { text: "Grabar", onPress: () => launchVideoPicker('camera', key) } ]); };
+  
   const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
       let result;
       if (source === 'camera') {
-        const { status } = await ImagePicker.requestCameraPermissionsAsync(); if (status !== 'granted') return;
-        result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, videoMaxDuration: 60, quality: 0.7 });
-      } else { result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, allowsEditing: true, quality: 0.7 }); }
+        const cameraPerm = await ImagePicker.requestCameraPermissionsAsync(); 
+        const micPerm = await ImagePicker.requestMicrophonePermissionsAsync(); // SOLUCIÓN AL BUG DE ANDROID
+        
+        if (cameraPerm.status !== 'granted' || micPerm.status !== 'granted') {
+          Alert.alert("Permisos insuficientes", "Se necesita acceso a la cámara y al micrófono para poder grabar tus series.");
+          return;
+        }
+
+        result = await ImagePicker.launchCameraAsync({ 
+          mediaTypes: ImagePicker.MediaTypeOptions.Videos, 
+          videoMaxDuration: 60, 
+          quality: 0.7 
+        });
+      } else { 
+        result = await ImagePicker.launchImageLibraryAsync({ 
+          mediaTypes: ImagePicker.MediaTypeOptions.Videos, 
+          allowsEditing: true, 
+          quality: 0.7 
+        }); 
+      }
+      
       if (result.canceled || !result.assets) return;
       setVideoUploading(key); const asset = result.assets[0]; const uploaded = await api.uploadFile(asset);
       const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
@@ -571,8 +620,6 @@ export default function TrainingModeScreen() {
 
   const calculateTotalWeight = () => {
     const platesTotal = platesOnBar.reduce((sum, w) => sum + w, 0);
-    
-    // Comprobamos si es landmine manual o auto-detectado
     const currentEx = workout?.exercises?.[currentExIndex];
     const isAutoLandmine = /landmine|t-bar|t bar|mina/i.test(currentEx?.name || '');
     const activeLandmine = isLandmineMode || isAutoLandmine;
@@ -580,10 +627,9 @@ export default function TrainingModeScreen() {
     if (!activeLandmine) {
       return barWeight + (platesTotal * 2);
     } else {
-      // Trigonometría Landmine
-      const L = 220; // Longitud barra en cm
+      const L = 220; 
       const h_athlete = parseInt(athleteHeight) || 170;
-      const h_grip = h_athlete * 0.8; // Asumimos agarre al 80% de la altura
+      const h_grip = h_athlete * 0.8; 
       
       let effectiveWeight = 0;
       if (h_grip < L) {
@@ -592,7 +638,7 @@ export default function TrainingModeScreen() {
         const actualLoad = (barWeight / 2) + platesTotal;
         effectiveWeight = actualLoad * forceFactor;
       } else {
-        effectiveWeight = (barWeight / 2) + platesTotal; // Tope
+        effectiveWeight = (barWeight / 2) + platesTotal; 
       }
       return effectiveWeight;
     }
@@ -607,22 +653,35 @@ export default function TrainingModeScreen() {
   const openPlateCalculator = (isLandmine: boolean) => {
     setIsLandmineMode(isLandmine);
     setPlatesOnBar([]);
-    setShowCustomBarInput(false); // Reiniciamos el modo custom
+    setShowCustomBarInput(false); 
 
     const exName = workout?.exercises?.[currentExIndex]?.name || '';
     if (/hex|trap|hexagonal/i.test(exName)) {
-      setBarWeight(25); // Hex bars suelen pesar 25kg
+      setBarWeight(25); 
     } else if (/smith|multipower/i.test(exName)) {
-      setBarWeight(0); // Smith machines se suelen contar como 0kg por los contrapesos
+      setBarWeight(0); 
     } else {
-      setBarWeight(20); // Olímpica estándar
+      setBarWeight(20); 
     }
-
     setShowPlateCalculator(true);
   };
 
+  const renderFatigueToggle = () => (
+    <TouchableOpacity
+      style={[styles.fatigueToggle, isFatigueMode && styles.fatigueToggleActive]}
+      onPress={() => {
+        if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+        setIsFatigueMode(!isFatigueMode);
+      }}
+    >
+      <Ionicons name={isFatigueMode ? "battery-dead" : "battery-half"} size={20} color={isFatigueMode ? "#EF4444" : colors.textSecondary} />
+      <Text style={{ color: isFatigueMode ? "#EF4444" : colors.textSecondary, fontWeight: '800', marginLeft: 8, fontSize: 13 }}>
+        {isFatigueMode ? "SUPERVIVENCIA ACTIVADO (-20% Volumen)" : "Activar Modo Supervivencia (Alta Fatiga)"}
+      </Text>
+    </TouchableOpacity>
+  );
+
   const renderPlateCalculatorModal = () => {
-    // Detectamos automáticamente si el ejercicio actual es de tipo Landmine
     const currentEx = workout?.exercises?.[currentExIndex];
     const isAutoLandmine = /landmine|t-bar|t bar|mina/i.test(currentEx?.name || '');
 
@@ -638,7 +697,6 @@ export default function TrainingModeScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Opciones de Barra */}
               <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>PESO DE LA BARRA BASE</Text>
               <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
                 {[20, 15].map(w => (
@@ -651,7 +709,6 @@ export default function TrainingModeScreen() {
                   </TouchableOpacity>
                 ))}
 
-                {/* BOTÓN CUSTOM EDITABLE (Nuevo) */}
                 {showCustomBarInput ? (
                   <TextInput
                     style={[styles.barTypeBtn, { flex: 1, borderColor: colors.primary, color: colors.textPrimary, textAlign: 'center', fontWeight: '800', paddingVertical: 0 }]}
@@ -678,7 +735,6 @@ export default function TrainingModeScreen() {
                 )}
               </View>
 
-              {/* Modo Landmine Inteligente */}
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                  <Text style={[styles.label, { color: colors.textSecondary }]}>MODO LANDMINE</Text>
                  {isAutoLandmine ? (
@@ -696,7 +752,6 @@ export default function TrainingModeScreen() {
                  )}
               </View>
 
-              {/* Muestra los cálculos si es Landmine (ya sea manual o auto-detectado) */}
               {(isLandmineMode || isAutoLandmine) && (
                 <View style={{ marginBottom: 20, backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
                    <Text style={{ color: colors.textPrimary, fontSize: 13, marginBottom: 10 }}>
@@ -714,7 +769,6 @@ export default function TrainingModeScreen() {
                 </View>
               )}
 
-              {/* Representación Visual de la Barra */}
               <View style={{ alignItems: 'center', marginVertical: 30 }}>
                  <Text style={{ fontSize: 40, fontWeight: '900', color: colors.primary, marginBottom: 5 }}>
                    {calculateTotalWeight().toFixed(1)} <Text style={{ fontSize: 20, color: colors.textSecondary }}>kg</Text>
@@ -722,12 +776,8 @@ export default function TrainingModeScreen() {
                  {(isLandmineMode || isAutoLandmine) && <Text style={{ color: colors.warning, fontWeight: '700', fontSize: 12, marginBottom: 15 }}>CARGA EFECTIVA</Text>}
 
                  <View style={styles.barSleeveContainer}>
-                    {/* Manga de la barra */}
                     <View style={[styles.barSleeve, { backgroundColor: '#CBD5E1' }]} />
-                    {/* Topes si no hay discos */}
                     {platesOnBar.length === 0 && <Text style={{ position: 'absolute', color: '#94A3B8', fontSize: 12, top: -25 }}>Vacía</Text>}
-                    
-                    {/* Discos Apilados */}
                     <View style={styles.stackedPlatesContainer}>
                       {platesOnBar.map((weight, index) => {
                         const height = 120 + (weight * 2);
@@ -749,7 +799,6 @@ export default function TrainingModeScreen() {
                  <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 15 }}>Toca un disco en la barra para quitarlo</Text>
               </View>
 
-              {/* Leyenda de Discos (Tap to Add) */}
               <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TOCA PARA AÑADIR DISCOS (1 LADO)</Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
                 {AVAILABLE_PLATES.map(w => (
@@ -794,12 +843,13 @@ export default function TrainingModeScreen() {
           </Text>
           {block.hiit_exercises?.map((ex: any, eIdx: number) => {
             const hasSets = ex.sets && parseInt(ex.sets) > 1;
+            const displayDur = isFatigueMode ? adjustDurationStr(ex.duration_reps || ex.duration) : (ex.duration_reps || ex.duration);
             return (
               <View key={eIdx} style={{ paddingLeft: 10, marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '500' }}>• {ex.name}</Text>
                   <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 10 }}>
-                    {hasSets ? `${ex.sets}x ` : ''}{ex.duration_reps || ex.duration || '-'}
+                    {hasSets ? `${ex.sets}x ` : ''}{displayDur || '-'}
                   </Text>
                 </View>
                 {ex.exercise_notes ? (
@@ -813,30 +863,33 @@ export default function TrainingModeScreen() {
         </View>
       ));
     } else {
-      return workout.exercises.map((ex: any, idx: number) => (
-        <View key={idx} style={{ marginBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 8 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '600', paddingRight: 10 }}>
-              <Text style={{ color: colors.textSecondary }}>{idx + 1}.</Text> {ex.name}
-            </Text>
-            <View style={{ alignItems: 'flex-end' }}>
-              {(ex.sets && ex.reps) ? (
-                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.sets} x {ex.reps}</Text>
-              ) : null}
-              {ex.duration ? (
-                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.duration}</Text>
-              ) : null}
+      return workout.exercises.map((ex: any, idx: number) => {
+        const displayReps = isFatigueMode ? adjustReps(ex.reps) : ex.reps;
+        const displayDur = isFatigueMode ? adjustDurationStr(ex.duration) : ex.duration;
+        return (
+          <View key={idx} style={{ marginBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '600', paddingRight: 10 }}>
+                <Text style={{ color: colors.textSecondary }}>{idx + 1}.</Text> {ex.name}
+              </Text>
+              <View style={{ alignItems: 'flex-end' }}>
+                {(ex.sets && displayReps) ? (
+                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.sets} x {displayReps}</Text>
+                ) : null}
+                {displayDur ? (
+                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{displayDur}</Text>
+                ) : null}
+              </View>
             </View>
+            {ex.exercise_notes && <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>Nota: {ex.exercise_notes}</Text>}
           </View>
-          {ex.exercise_notes && <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>Nota: {ex.exercise_notes}</Text>}
-        </View>
-      ));
+        );
+      });
     }
   };
 
   const renderSessionSummary = () => {
     if (!workout?.exercises) return null;
-    
     if (isHiit) {
       return workout.exercises.map((block: any, bIdx: number) => (
         <View key={bIdx} style={[styles.summaryCard, { backgroundColor: colors.surfaceHighlight }]}>
@@ -1032,25 +1085,29 @@ export default function TrainingModeScreen() {
     const b = workout.exercises?.[hiitBlockIdx];
     if (!b) return <ActivityIndicator color={colors.primary} />;
     
+    // Si la fatiga está activa, pasamos un "clon" del bloque al componente HiitCard con los textos reducidos visualmente
+    let displayBlock = b;
+    if (isFatigueMode) {
+      displayBlock = {
+        ...b,
+        hiit_exercises: b.hiit_exercises.map((e: any) => ({
+          ...e,
+          duration: adjustDurationStr(e.duration),
+          duration_reps: adjustDurationStr(e.duration_reps)
+        }))
+      };
+    }
+
     const currentEx = b.hiit_exercises[hiitExIdx];
     const hasMultipleSets = parseInt(currentEx?.sets) > 1;
-    
     let timerExName = hasMultipleSets ? `${currentEx?.name} (Serie ${hiitExSet}/${currentEx?.sets})` : currentEx?.name || 'HIIT';
     
     if (isResting) {
-      if (hiitPhase === 'rest_set') {
-        timerExName = `Siguiente: ${currentEx?.name} (Serie ${hiitExSet + 1})`;
-      } else if (hiitPhase === 'rest_ex') {
-        timerExName = `Siguiente: ${b.hiit_exercises[hiitExIdx + 1]?.name}`;
-      } else if (hiitPhase === 'rest_block') {
-        timerExName = `Siguiente: ${b.hiit_exercises[0]?.name} (Vuelta ${hiitRound + 1})`;
-      } else if (hiitPhase === 'rest_next_block') {
-        const nextBlock = workout.exercises[hiitBlockIdx + 1];
-        timerExName = `Siguiente: ${nextBlock?.name}`;
-      }
-    } else if (isPrep) {
-      timerExName = `Prep: ${currentEx?.name}`;
-    }
+      if (hiitPhase === 'rest_set') { timerExName = `Siguiente: ${currentEx?.name} (Serie ${hiitExSet + 1})`; } 
+      else if (hiitPhase === 'rest_ex') { timerExName = `Siguiente: ${b.hiit_exercises[hiitExIdx + 1]?.name}`; } 
+      else if (hiitPhase === 'rest_block') { timerExName = `Siguiente: ${b.hiit_exercises[0]?.name} (Vuelta ${hiitRound + 1})`; } 
+      else if (hiitPhase === 'rest_next_block') { const nextBlock = workout.exercises[hiitBlockIdx + 1]; timerExName = `Siguiente: ${nextBlock?.name}`; }
+    } else if (isPrep) { timerExName = `Prep: ${currentEx?.name}`; }
 
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -1072,9 +1129,11 @@ export default function TrainingModeScreen() {
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
+          {renderFatigueToggle()}
           <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={timerExName} colors={colors} isHiit={isHiit} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
           
-          <HiitCard currentBlock={b} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
+          {/* Se le pasa el bloque con la info modificada si la fatiga está activa */}
+          <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
         </ScrollView>
         <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
           <Ionicons name="list" size={24} color="#FFF" />
@@ -1089,17 +1148,10 @@ export default function TrainingModeScreen() {
 
     let displayExName = ex?.name;
     if (isResting) {
-      if (restType === 'exercise' && currentExIndex < workout.exercises.length - 1) {
-        displayExName = `Siguiente: ${workout.exercises[currentExIndex + 1]?.name}`;
-      } else {
-        const comp = s.filter(x => x === 'completed').length;
-        displayExName = `Siguiente: ${ex?.name} (Serie ${comp + 1})`;
-      }
-    } else if (isPrep) {
-      displayExName = `Prep: ${ex?.name}`;
-    }
+      if (restType === 'exercise' && currentExIndex < workout.exercises.length - 1) { displayExName = `Siguiente: ${workout.exercises[currentExIndex + 1]?.name}`; } 
+      else { const comp = s.filter(x => x === 'completed').length; displayExName = `Siguiente: ${ex?.name} (Serie ${comp + 1})`; }
+    } else if (isPrep) { displayExName = `Prep: ${ex?.name}`; }
 
-    // NUEVO: Lógica de Detección de Ejercicios con Barra
     const isBarbellLift = /barra|barbell|sentadilla|squat|peso muerto|deadlift|press|snatch|clean|jerk|landmine|hex|hexagonal|trap|smith|multipower/i.test(ex?.name || '');
     const isLandmineExercise = /landmine/i.test(ex?.name || '');
 
@@ -1124,11 +1176,29 @@ export default function TrainingModeScreen() {
 
         <View style={[styles.progressBar, { backgroundColor: colors.surfaceHighlight }]}><View style={[styles.progressFill, { backgroundColor: colors.primary, width: `${prog}%` }]} /></View>
         <ScrollView contentContainerStyle={styles.content}>
+          {renderFatigueToggle()}
+          
           <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={displayExName} colors={colors} isHiit={false} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
           
           <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
             <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
-            <View style={styles.compactDetailsGrid}>{['sets', 'reps', 'weight', 'duration', 'rest'].map(k => ex[k] && ( <View key={k} style={styles.compactDetailItem}><Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text><Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{ex[k]}</Text></View> ))}</View>
+            
+            <View style={styles.compactDetailsGrid}>
+              {['sets', 'reps', 'weight', 'duration', 'rest'].map(k => {
+                let val = ex[k];
+                if (!val) return null;
+                if (isFatigueMode) {
+                  if (k === 'reps') val = adjustReps(val);
+                  if (k === 'duration') val = adjustDurationStr(val);
+                }
+                return (
+                  <View key={k} style={styles.compactDetailItem}>
+                    <Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text>
+                    <Text style={[styles.compactDetailValue, { color: colors.textPrimary }]}>{val}</Text>
+                  </View>
+                )
+              })}
+            </View>
             
             {ex.exercise_notes && (
                <View style={{ padding: 16, paddingTop: 0, backgroundColor: colors.surface }}>
@@ -1155,7 +1225,6 @@ export default function TrainingModeScreen() {
         
         {/* BOTONES FLOTANTES */}
         <View style={{ position: 'absolute', right: 20, bottom: 100, gap: 15 }}>
-          {/* Calculadora de Discos (Sólo ejercicios de barra) */}
           {isBarbellLift && (
             <TouchableOpacity style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.textPrimary }]} onPress={() => openPlateCalculator(isLandmineExercise)}>
               <Text style={{ fontSize: 24, fontWeight: '900', color: colors.background }}>?</Text>
@@ -1195,5 +1264,9 @@ const styles = StyleSheet.create({
   barSleeve: { position: 'absolute', height: 20, width: '100%', borderRadius: 4 },
   stackedPlatesContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   stackedPlate: { borderRadius: 4, marginHorizontal: 1, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 2, elevation: 3 },
-  legendPlate: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 2 }
+  legendPlate: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 2 },
+
+  /* NUEVO: ESTILO TOGGLE FATIGA */
+  fatigueToggle: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.03)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', marginBottom: 10, justifyContent: 'center' },
+  fatigueToggleActive: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#EF4444' }
 });
