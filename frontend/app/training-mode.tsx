@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Linking, TextInput, Alert, Platform, Modal, Dimensions
+  ActivityIndicator, Linking, TextInput, Alert, Platform, Modal, Dimensions,
+  UIManager, LayoutAnimation
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,11 +22,14 @@ import { syncManager } from '../src/offline';
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
 import HiitCard from '../src/components/training/HiitCard';
 
+// Activar animaciones de Layout en Android
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
 const { height: screenHeight } = Dimensions.get('window');
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
-
-const SLEEP_HOURS_OPTIONS = ['<6', '6', '7', '8', '9+'];
 
 const SLUG_TRANSLATIONS: Record<string, string> = {
   'chest-left': 'Pecho Izquierdo', 'chest-right': 'Pecho Derecho',
@@ -45,6 +49,12 @@ const SLUG_TRANSLATIONS: Record<string, string> = {
   'abs': 'Abdomen Central', 'neck': 'Cuello / Trapecio'
 };
 
+const AVAILABLE_PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+const PLATE_COLORS: Record<number, string> = {
+  25: '#EF4444', 20: '#3B82F6', 15: '#F59E0B', 10: '#10B981', 
+  5: '#FFFFFF', 2.5: '#000000', 1.25: '#6B7280'
+};
+
 const parseTimeToSeconds = (timeStr: string | number | undefined | null): number => {
   if (!timeStr) return 0;
   const str = String(timeStr).toLowerCase().trim();
@@ -62,7 +72,6 @@ const parseTimeToSeconds = (timeStr: string | number | undefined | null): number
   return totalSeconds;
 };
 
-// NUEVO: Función para formatear el tiempo global
 const formatGlobalTime = (totalSeconds: number): string => {
   const h = Math.floor(totalSeconds / 3600);
   const m = Math.floor((totalSeconds % 3600) / 60);
@@ -125,7 +134,6 @@ export default function TrainingModeScreen() {
 
   const [isPaused, setIsPaused] = useState(false);
   
-  // NUEVO: Estados y Ref para el tiempo total del entrenamiento
   const [globalSeconds, setGlobalSeconds] = useState(0);
   const globalTimerRef = useRef<any>(null);
 
@@ -155,6 +163,13 @@ export default function TrainingModeScreen() {
 
   const lastAnnouncedRef = useRef<string>('');
   const justFinishedRestRef = useRef(false);
+
+  // --- ESTADOS DE LA CALCULADORA DE DISCOS ---
+  const [showPlateCalculator, setShowPlateCalculator] = useState(false);
+  const [platesOnBar, setPlatesOnBar] = useState<number[]>([]);
+  const [barWeight, setBarWeight] = useState(20);
+  const [isLandmineMode, setIsLandmineMode] = useState(false);
+  const [athleteHeight, setAthleteHeight] = useState('170'); // en cm
 
   useFocusEffect(
     useCallback(() => {
@@ -313,7 +328,6 @@ export default function TrainingModeScreen() {
               setRpe(currentWorkout.completion_data.rpe || null); setSleepQuality(currentWorkout.completion_data.sleep_quality || null);
               setSleepHours(currentWorkout.completion_data.sleep_hours || ''); if (currentWorkout.completion_data.sore_joints) setSoreJoints(currentWorkout.completion_data.sore_joints);
               
-              // NUEVO: Cargar el tiempo guardado si el entrenamiento ya estaba completado
               if (currentWorkout.completion_data.duration_seconds) {
                 setGlobalSeconds(currentWorkout.completion_data.duration_seconds);
               }
@@ -370,7 +384,6 @@ export default function TrainingModeScreen() {
     return () => { isMounted = false; };
   }, [stableWorkoutId]);
 
-  // NUEVO: Efecto para el Temporizador Global
   useEffect(() => {
     if (workout && !workout.completed && !finished && !isPaused) {
       globalTimerRef.current = setInterval(() => {
@@ -536,12 +549,174 @@ export default function TrainingModeScreen() {
   };
 
   const buildCompletionData = () => {
-    // NUEVO: Se añade duration_seconds
     if (isHiit) { return { duration_seconds: globalSeconds, rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, hiit_completed: true, hiit_results: (workout.exercises || []).map((b: any, bIdx: number) => ({ ...b, hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ ...ex, skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0, recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '' })) })) }; }
     return { duration_seconds: globalSeconds, rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, exercise_results: (workout.exercises || []).map((ex: any, i: number) => { const s = setsStatus[i] || []; return { exercise_index: i, name: ex.name, total_sets: parseInt(ex.sets) || 1, completed_sets: s.filter(item => item === 'completed').length, skipped_sets: s.filter(item => item === 'skipped').length, set_details: s.map((status, si) => ({ set: si + 1, status })), logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', athlete_note: logs[i]?.note || '', recorded_video_url: recordedVideos[i.toString()] || '' }; }), };
   };
 
   const handleFinish = async () => { if (workout.completed) { router.back(); return; } if (!stableWorkoutId) return; stopAllTimers(); const data = buildCompletionData(); try { const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises }; if (observations.trim()) update.observations = observations.trim(); const net = await NetInfo.fetch(); if (net.isConnected) { await api.updateWorkout(stableWorkoutId, update); syncManager.syncPendingWorkouts(); } else { await syncManager.savePendingWorkout(stableWorkoutId, update); } router.back(); } catch (e) { console.error(e); } };
+
+  // --- LÓGICA DE LA CALCULADORA DE DISCOS ---
+  const addPlate = (weight: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPlatesOnBar(prev => [...prev, weight].sort((a,b) => b-a));
+  };
+
+  const removePlate = (index: number) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setPlatesOnBar(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const calculateTotalWeight = () => {
+    const platesTotal = platesOnBar.reduce((sum, w) => sum + w, 0);
+    
+    if (!isLandmineMode) {
+      return barWeight + (platesTotal * 2);
+    } else {
+      // Trigonometría Landmine
+      const L = 220; // Longitud barra en cm
+      const h_athlete = parseInt(athleteHeight) || 170;
+      const h_grip = h_athlete * 0.8; // Asumimos agarre al 80% de la altura
+      
+      let effectiveWeight = 0;
+      if (h_grip < L) {
+        const theta_rad = Math.asin(h_grip / L);
+        const forceFactor = Math.cos(theta_rad);
+        const actualLoad = (barWeight / 2) + platesTotal;
+        effectiveWeight = actualLoad * forceFactor;
+      } else {
+        effectiveWeight = (barWeight / 2) + platesTotal; // Tope
+      }
+      return effectiveWeight;
+    }
+  };
+
+  const saveCalculatedWeight = () => {
+    const total = calculateTotalWeight().toFixed(1);
+    setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: total}}));
+    setShowPlateCalculator(false);
+  };
+
+  const openPlateCalculator = (isLandmine: boolean) => {
+    setIsLandmineMode(isLandmine);
+    setPlatesOnBar([]);
+    setBarWeight(20);
+    setShowPlateCalculator(true);
+  };
+
+  const renderPlateCalculatorModal = () => (
+    <Modal visible={showPlateCalculator} transparent animationType="slide">
+      <View style={styles.modalOverlay}>
+        <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface, maxHeight: '90%' }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+            <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Calculadora de Carga</Text>
+            <TouchableOpacity onPress={() => setShowPlateCalculator(false)}>
+              <Ionicons name="close" size={28} color={colors.textSecondary} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {/* Opciones de Barra - ACTUALIZADO A 20 y 15 */}
+            <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TIPO DE BARRA</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+              {[20, 15].map(w => (
+                <TouchableOpacity 
+                  key={w} 
+                  onPress={() => setBarWeight(w)}
+                  style={[styles.barTypeBtn, { borderColor: barWeight === w ? colors.primary : colors.border, flex: 1, alignItems: 'center' }]}
+                >
+                  <Text style={{ color: barWeight === w ? colors.primary : colors.textSecondary, fontWeight: '800' }}>{w}kg</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Modo Landmine */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+               <Text style={[styles.label, { color: colors.textSecondary }]}>MODO LANDMINE</Text>
+               <TouchableOpacity 
+                  onPress={() => setIsLandmineMode(!isLandmineMode)}
+                  style={{ width: 50, height: 28, borderRadius: 14, backgroundColor: isLandmineMode ? colors.primary : colors.border, justifyContent: 'center', alignItems: isLandmineMode ? 'flex-end' : 'flex-start', paddingHorizontal: 4 }}
+               >
+                 <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF' }} />
+               </TouchableOpacity>
+            </View>
+
+            {isLandmineMode && (
+              <View style={{ marginBottom: 20, backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
+                 <Text style={{ color: colors.textPrimary, fontSize: 13, marginBottom: 10 }}>
+                   Calculando carga real compensada por trigonometría (Ángulo de palanca).
+                 </Text>
+                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Tu altura (cm):</Text>
+                    <TextInput 
+                      style={[styles.logInput, { flex: 1, padding: 8, borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} 
+                      keyboardType="numeric" 
+                      value={athleteHeight} 
+                      onChangeText={setAthleteHeight} 
+                    />
+                 </View>
+              </View>
+            )}
+
+            {/* Representación Visual de la Barra */}
+            <View style={{ alignItems: 'center', marginVertical: 30 }}>
+               <Text style={{ fontSize: 40, fontWeight: '900', color: colors.primary, marginBottom: 5 }}>
+                 {calculateTotalWeight().toFixed(1)} <Text style={{ fontSize: 20, color: colors.textSecondary }}>kg</Text>
+               </Text>
+               {isLandmineMode && <Text style={{ color: colors.warning, fontWeight: '700', fontSize: 12, marginBottom: 15 }}>CARGA EFECTIVA</Text>}
+
+               <View style={styles.barSleeveContainer}>
+                  {/* Manga de la barra */}
+                  <View style={[styles.barSleeve, { backgroundColor: '#CBD5E1' }]} />
+                  {/* Topes si no hay discos */}
+                  {platesOnBar.length === 0 && <Text style={{ position: 'absolute', color: '#94A3B8', fontSize: 12, top: -25 }}>Vacía</Text>}
+                  
+                  {/* Discos Apilados */}
+                  <View style={styles.stackedPlatesContainer}>
+                    {platesOnBar.map((weight, index) => {
+                      const height = 120 + (weight * 2); // Discos más pesados son más altos
+                      const width = weight > 10 ? 25 : 15; // Grosor
+                      return (
+                        <TouchableOpacity 
+                          key={`${weight}-${index}`} 
+                          onPress={() => removePlate(index)}
+                          style={[styles.stackedPlate, { height, width, backgroundColor: PLATE_COLORS[weight] || '#333' }]}
+                        >
+                           <Text style={{ color: weight === 5 ? '#000' : '#FFF', fontSize: 10, fontWeight: '900', transform: [{ rotate: '-90deg' }] }}>
+                             {weight}
+                           </Text>
+                        </TouchableOpacity>
+                      )
+                    })}
+                  </View>
+               </View>
+               <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 15 }}>Toca un disco en la barra para quitarlo</Text>
+            </View>
+
+            {/* Leyenda de Discos (Tap to Add) */}
+            <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TOCA PARA AÑADIR DISCOS (1 LADO)</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+              {AVAILABLE_PLATES.map(w => (
+                <TouchableOpacity 
+                  key={w} 
+                  onPress={() => addPlate(w)}
+                  style={[styles.legendPlate, { backgroundColor: PLATE_COLORS[w] || '#333' }]}
+                >
+                  <Text style={{ color: w === 5 ? '#000' : '#FFF', fontWeight: '900' }}>{w}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+          </ScrollView>
+
+          <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary, marginTop: 20 }]} onPress={saveCalculatedWeight}>
+            <Text style={styles.finishWorkoutBtnText}>Guardar Peso</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
 
   const renderVideoModal = () => (
     <Modal visible={!!expandedVideo} transparent animationType="fade">
@@ -709,7 +884,6 @@ export default function TrainingModeScreen() {
           <View style={styles.finishedIconContainer}><Ionicons name="trophy" size={80} color={colors.warning || '#F59E0B'} /></View>
           <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
           
-          {/* NUEVO: Contador en la pantalla de completado */}
           <Text style={{ color: colors.primary, fontSize: 18, fontWeight: '900', marginTop: 10, marginBottom: 20 }}>
             ⏱ Tiempo Total: {formatGlobalTime(globalSeconds)}
           </Text>
@@ -784,7 +958,6 @@ export default function TrainingModeScreen() {
             <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
               <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Feedback General:</Text>
               
-              {/* NUEVO: Mostrar en los detalles guardados */}
               {workout.completion_data.duration_seconds && (
                 <Text style={{ color: colors.textPrimary, marginBottom: 4 }}>⏱ Tiempo Activo: {formatGlobalTime(workout.completion_data.duration_seconds)}</Text>
               )}
@@ -826,7 +999,6 @@ export default function TrainingModeScreen() {
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         
-        {/* NUEVO: TopBar actualizada para HIIT */}
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}>
             <Ionicons name="close" size={26} color={colors.textPrimary} />
@@ -871,10 +1043,13 @@ export default function TrainingModeScreen() {
       displayExName = `Prep: ${ex?.name}`;
     }
 
+    // NUEVO: Lógica de Detección de Ejercicios con Barra
+    const isBarbellLift = /barra|barbell|sentadilla|squat|peso muerto|deadlift|press|snatch|clean|jerk|landmine/i.test(ex?.name || '');
+    const isLandmineExercise = /landmine/i.test(ex?.name || '');
+
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         
-        {/* NUEVO: TopBar actualizada para TRADICIONAL */}
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}>
             <Ionicons name="close" size={26} color={colors.textPrimary} />
@@ -921,11 +1096,23 @@ export default function TrainingModeScreen() {
              <TextInput style={[styles.logInput, { borderColor: colors.border, marginTop: 10, minHeight: 60, backgroundColor: colors.background, color: colors.textPrimary }]} multiline placeholder="Anotaciones de la serie..." placeholderTextColor={colors.textSecondary} value={logs[currentExIndex]?.note} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} />
           </View>
         </ScrollView>
-        <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
-          <Ionicons name="list" size={24} color="#FFF" />
-        </TouchableOpacity>
+        
+        {/* BOTONES FLOTANTES */}
+        <View style={{ position: 'absolute', right: 20, bottom: 100, gap: 15 }}>
+          {/* Calculadora de Discos (Sólo ejercicios de barra) */}
+          {isBarbellLift && (
+            <TouchableOpacity style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.textPrimary }]} onPress={() => openPlateCalculator(isLandmineExercise)}>
+              <Text style={{ fontSize: 24, fontWeight: '900', color: colors.background }}>?</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
+            <Ionicons name="list" size={24} color="#FFF" />
+          </TouchableOpacity>
+        </View>
+
         <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else { Speech.stop(); setFinished(true); } }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
-        {renderVideoModal()}{renderIndicationsModal()}
+        {renderVideoModal()}{renderIndicationsModal()}{renderPlateCalculatorModal()}
       </SafeAreaView>
     );
   }
@@ -944,7 +1131,13 @@ const styles = StyleSheet.create({
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 },
   floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 },
+  painButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, painButtonText: { fontSize: 13, fontWeight: '600' },
   
-  painButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 },
-  painButtonText: { fontSize: 13, fontWeight: '600' }
+  /* ESTILOS CALCULADORA DE DISCOS */
+  barTypeBtn: { paddingVertical: 8, paddingHorizontal: 16, borderWidth: 2, borderRadius: 12 },
+  barSleeveContainer: { height: 60, width: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
+  barSleeve: { position: 'absolute', height: 20, width: '100%', borderRadius: 4 },
+  stackedPlatesContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
+  stackedPlate: { borderRadius: 4, marginHorizontal: 1, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 2, elevation: 3 },
+  legendPlate: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 2 }
 });
