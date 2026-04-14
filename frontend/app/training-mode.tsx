@@ -562,40 +562,45 @@ export default function TrainingModeScreen() {
   const skipSet = () => { stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
   const skipEntireExercise = () => { stopAllTimers(); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
-  // AQUÍ ESTÁ LA FUNCIÓN CORREGIDA SIN LLAVES FALTANTES
-  const handleRecordVideoOptions = (key: string) => { 
+const handleRecordVideoOptions = (key: string) => { 
     if (Platform.OS === 'web') { 
+      // FIX PWA ANDROID: Usamos un input HTML nativo para evitar bloqueos del navegador
       const useCamera = window.confirm("¿Quieres grabar un vídeo ahora?\n\n[Aceptar] = Abrir Cámara\n[Cancelar] = Abrir Galería");
       
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'video/*';
       if (useCamera) {
-        ImagePicker.launchImageLibraryAsync({ 
-          mediaTypes: ImagePicker.MediaTypeOptions.Videos, 
-          allowsEditing: true, 
-          quality: 0.7 
-        }).then(async (result) => {
-          if (!result.canceled && result.assets) {
-            try {
-              setVideoUploading(key);
-              const asset = result.assets[0];
-              const uploaded = await api.uploadFile(asset);
-              const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
-              setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
-            } catch (e) { console.error(e); } finally { setVideoUploading(null); }
-          }
-        });
-      } else { 
-        launchVideoPicker('library', key); 
+        input.capture = 'environment'; // Fuerza a abrir la cámara trasera directamente
       }
+      
+      input.onchange = async (e: any) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+          setVideoUploading(key);
+          // Subimos el archivo nativo directamente a la API
+          const uploaded = await api.uploadFile(file);
+          const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || URL.createObjectURL(file));
+          setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
+        } catch (err) { 
+          console.error("Error subiendo video:", err); 
+        } finally { 
+          setVideoUploading(null); 
+        }
+      };
+      
+      input.click();
       return; 
     } 
 
+    // Flujo normal para iOS/Android Nativo
     Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ 
       { text: "Cancelar", style: "cancel" }, 
       { text: "Galería", onPress: () => launchVideoPicker('library', key) }, 
       { text: "Grabar", onPress: () => launchVideoPicker('camera', key) } 
     ]); 
   };
-  
   const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
       let result;
