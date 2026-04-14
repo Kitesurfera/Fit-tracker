@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Dimensions, Modal, TextInput, Platform,
-  KeyboardAvoidingView
+  KeyboardAvoidingView, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -130,6 +130,54 @@ export default function AnalyticsScreen() {
   const onRefresh = () => { 
     setRefreshing(true); 
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
+  };
+
+  // --- EXPORTAR A CSV (NATIVO WEB) ---
+  const exportToCSV = () => {
+    let csvContent = "Fecha,Atleta,Categoria,Ejercicio/Test,Carga/Valor,Unidad,Series Completadas,RPE,Calidad Sueno,Molestias\n";
+    const athleteName = selectedAthlete?.name || user?.name || 'Yo';
+
+    // 1. Añadir Entrenamientos
+    workoutHistory.forEach(w => {
+      if (!w.completed) return;
+      const rpe = w.completion_data?.rpe || '';
+      const sleep = w.completion_data?.sleep_quality || '';
+      const sore = (w.completion_data?.sore_joints || []).join(' | ');
+
+      w.completion_data?.exercise_results?.forEach((r: any) => {
+        if (r.completed_sets > 0) {
+          const val = r.logged_weight || '';
+          csvContent += `${w.date},${athleteName},Fuerza,${r.name},${val},kg,${r.completed_sets}/${r.total_sets},${rpe},${sleep},${sore}\n`;
+        }
+      });
+
+      w.completion_data?.hiit_results?.forEach((b: any) => {
+         b.hiit_exercises?.forEach((ex: any) => {
+            csvContent += `${w.date},${athleteName},HIIT,${ex.name},,,1,${rpe},${sleep},${sore}\n`;
+         });
+      });
+    });
+
+    // 2. Añadir Tests
+    testHistory.forEach(t => {
+      const rawName = t.custom_name || TEST_TRANSLATIONS[t.test_name] || t.test_name;
+      const val = t.value || Math.max(parseFloat(t.value_left || 0), parseFloat(t.value_right || 0));
+      csvContent += `${t.date},${athleteName},Test,${rawName},${val},${t.unit || ''},,,,, \n`;
+    });
+
+    if (Platform.OS === 'web') {
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `Analiticas_${athleteName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      Alert.alert("Aviso", "La descarga CSV está habilitada al usar la App desde el navegador web.");
+    }
   };
 
   const getMusclesForExercise = useCallback((exerciseName: string) => {
@@ -526,9 +574,14 @@ export default function AnalyticsScreen() {
               </Text>
               {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>Vista Entrenador</Text>}
             </View>
-            <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
-              {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity onPress={exportToCSV} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
+                <Ionicons name="download" size={22} color={colors.primary} />
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
+                {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}
+              </TouchableOpacity>
+            </View>
           </View>
 
           <View style={{ paddingHorizontal: isDesktop ? 25 : 20, marginBottom: 15 }}>
@@ -579,7 +632,6 @@ export default function AnalyticsScreen() {
 
                   {/* FILA DE CHIPS/FILTROS */}
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsContainer}>
-                    {/* Chip de Ocultar Vacíos */}
                     <TouchableOpacity
                       style={[
                         styles.filterChip,
@@ -593,10 +645,8 @@ export default function AnalyticsScreen() {
                       </Text>
                     </TouchableOpacity>
                     
-                    {/* Divisor Visual */}
                     <View style={{ width: 1, backgroundColor: colors.border, marginHorizontal: 4, marginVertical: 6 }} />
 
-                    {/* Chips de Categoría */}
                     {['all', 'ejercicio', 'test'].map((cat) => {
                       const isActive = filterCategory === cat;
                       let label = 'Todos';
