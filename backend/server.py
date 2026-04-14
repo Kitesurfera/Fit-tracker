@@ -162,6 +162,7 @@ class MacroCreate(BaseModel):
     nombre: str
     fecha_inicio: str
     fecha_fin: str
+    color: Optional[str] = None
     
 class MicroCreate(BaseModel):
     macrociclo_id: str
@@ -547,6 +548,29 @@ async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
     macro.pop('_id', None)
     return {"status": "success", "macro": macro}
 
+@api_router.put("/macrociclos/{macro_id}")
+async def update_macro(macro_id: str, data: Dict[str, Any], user=Depends(get_current_user)):
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    # Quitamos los IDs para no sobreescribirlos accidentalmente
+    update_data = {k: v for k, v in data.items() if k not in ('id', '_id', 'athlete_id')}
+    await db.macrociclos.update_one({"id": macro_id}, {"$set": update_data})
+    return {"status": "success"}
+
+@api_router.delete("/macrociclos/{macro_id}")
+async def delete_macro(macro_id: str, user=Depends(get_current_user)):
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    await db.macrociclos.delete_one({"id": macro_id})
+    
+    # Lógica de cascada: Al borrar un macro, borramos sus micros asociados
+    micros = await db.microciclos.find({"macrociclo_id": macro_id}).to_list(100)
+    micro_ids = [m["id"] for m in micros]
+    await db.microciclos.delete_many({"macrociclo_id": macro_id})
+    
+    # Y liberamos las sesiones que estaban en esos micros (quedan como "sueltas")
+    if micro_ids:
+        await db.workouts.update_many({"microciclo_id": {"$in": micro_ids}}, {"$set": {"microciclo_id": None}})
+    return {"status": "success"}
+
 @api_router.post("/microciclos")
 async def create_micro(data: MicroCreate, user=Depends(get_current_user)):
     micro = data.dict()
@@ -554,6 +578,22 @@ async def create_micro(data: MicroCreate, user=Depends(get_current_user)):
     await db.microciclos.insert_one(micro)
     micro.pop('_id', None)
     return {"status": "success", "micro": micro}
+
+@api_router.put("/microciclos/{micro_id}")
+async def update_micro(micro_id: str, data: Dict[str, Any], user=Depends(get_current_user)):
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    update_data = {k: v for k, v in data.items() if k not in ('id', '_id', 'macrociclo_id')}
+    await db.microciclos.update_one({"id": micro_id}, {"$set": update_data})
+    return {"status": "success"}
+
+@api_router.delete("/microciclos/{micro_id}")
+async def delete_micro(micro_id: str, user=Depends(get_current_user)):
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    await db.microciclos.delete_one({"id": micro_id})
+    
+    # Al borrar un micro, liberamos sus sesiones
+    await db.workouts.update_many({"microciclo_id": micro_id}, {"$set": {"microciclo_id": None}})
+    return {"status": "success"}
 
 # --- TESTS FÍSICOS ---
 @api_router.post("/tests")
