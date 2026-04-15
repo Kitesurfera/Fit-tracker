@@ -274,60 +274,60 @@ async def get_brain_examples(user=Depends(get_current_user)):
 @api_router.post("/brain/generate-workout")
 async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current_user)):
     if not GEMINI_API_KEY:
+        logger.error("Error: GEMINI_API_KEY no detectada en el servidor.")
         raise HTTPException(status_code=500, detail="API de Gemini no configurada en el servidor.")
         
     try:
+        # Instrucción reforzada para evitar errores de formato
         system_instruction = f"""
-        Eres un preparador físico de élite especializado en alto rendimiento (ej. kitesurf freestyle).
-        Tu objetivo es generar o modificar rutinas de entrenamiento basándote en la petición del usuario y su estado de recuperación actual.
+        Eres un preparador físico de élite. 
+        ESTADO DEL ATLETA: Fatiga {data.athleteContext.get('fatigue', 3)}/5, Dolor {data.athleteContext.get('soreness', 3)}/5.
         
-        ESTADO DEL ATLETA HOY:
-        - Fatiga: {data.athleteContext.get('fatigue', 3)}/5
-        - Dolor muscular: {data.athleteContext.get('soreness', 3)}/5
-        - Fase del ciclo: {data.athleteContext.get('cyclePhase', 'No especificada')}
-        
-        REGLA ESTRICTA: 
-        Debes responder ÚNICAMENTE con un objeto JSON válido, sin formato markdown (sin bloques de código), con esta estructura exacta:
+        RESPONDE EXCLUSIVAMENTE CON UN JSON PURO. 
+        No uses bloques de código ```json ```. Solo el objeto {{ }}.
+        Estructura:
         {{
-            "response_message": "Mensaje motivacional corto en texto explicando por qué has elegido o cambiado estos ejercicios.",
+            "response_message": "Texto corto",
             "workoutData": {{
-                "title": "Nombre de la sesión",
+                "title": "Nombre",
                 "exercises": [
-                    {{
-                        "name": "Nombre del ejercicio",
-                        "sets": 3,
-                        "reps": "10",
-                        "is_hiit_block": false,
-                        "exercise_notes": "Nota de técnica breve"
-                    }}
+                    {{"name": "Ejerc.", "sets": 3, "reps": "10", "is_hiit_block": false, "exercise_notes": "Técnica"}}
                 ]
             }}
         }}
-        
-        Si el usuario te pide un bloque HIIT, añade "is_hiit_block": true, elimina "reps" y usa "hiit_exercises" dentro del bloque JSON.
         """
         
         model = genai.GenerativeModel(
             model_name="gemini-1.5-flash",
-            system_instruction=system_instruction,
-            generation_config={"response_mime_type": "application/json"}
+            system_instruction=system_instruction
         )
         
+        # Limpiamos y formateamos el historial para evitar errores de envío
         formatted_history = []
         for msg in data.chatHistory:
             role = "model" if msg.get("role") == "model" else "user"
-            text_parts = msg.get("parts", [{}])
-            text_content = text_parts[0].get("text", "") if text_parts else ""
-            formatted_history.append({"role": role, "parts": [text_content]})
+            text_content = msg.get("parts", [{}])[0].get("text", "")
+            if text_content:
+                formatted_history.append({"role": role, "parts": [text_content]})
             
         chat = model.start_chat(history=formatted_history)
         response = chat.send_message(data.userMessage)
         
-        return json.loads(response.text)
+        # --- BLOQUE DE SEGURIDAD PARA EL JSON ---
+        raw_text = response.text.strip()
+        # Si Gemini responde con bloques de código ```json ... ```, los quitamos
+        if raw_text.startswith("```"):
+            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+        
+        try:
+            return json.loads(raw_text)
+        except json.JSONDecodeError:
+            logger.error(f"Gemini envió un JSON inválido: {raw_text}")
+            raise HTTPException(status_code=500, detail="La IA respondió con un formato incorrecto.")
         
     except Exception as e:
-        logger.error(f"Error generando workout con Gemini: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error de conexión con la inteligencia artificial.")
+        logger.error(f"Error crítico en Gemini: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error de conexión: {str(e)}")
 
 
 # --- RUTAS DE WELLNESS ---
