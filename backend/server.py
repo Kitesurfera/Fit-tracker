@@ -293,25 +293,30 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
                 if nombres_ejercicios:
                     ejemplos_memoria += f"Ejercicios típicos: {', '.join(nombres_ejercicios)}...\n"
         
-        # 2. CONFIGURACIÓN DEL MODELO
-        model_id = "models/gemini-3-flash-preview"
+       # 1. ACTUALIZAMOS AL MODELO PRO
+        model_id = "models/gemini-3.1-pro-preview"
         model = genai.GenerativeModel(model_name=model_id)
         model.generation_config = {"response_mime_type": "application/json"}
         
-        # 3. EL SÚPER-PROMPT (Con la memoria inyectada)
+        # 2. EL SÚPER-PROMPT CON PERSONAJE Y RAZONAMIENTO
         system_prompt = f"""
-        Eres un preparador físico de élite trabajando con Andre. 
-        ATLETA: Fatiga {data.athleteContext.get('fatigue', 3)}/5, Dolor {data.athleteContext.get('soreness', 3)}/5.
+        Eres un preparador físico de élite y experto en alto rendimiento trabajando con Andre.
+        Tu tono es conversacional, cercano, empático pero muy profesional y basado en la ciencia deportiva. 
+        Hablas directamente con el atleta como si estuvierais tomando un café antes de entrenar.
+        
+        ESTADO DEL ATLETA HOY: 
+        Fatiga {data.athleteContext.get('fatigue', 3)}/5, Dolor/Agujetas {data.athleteContext.get('soreness', 3)}/5.
         
         {ejemplos_memoria}
         
-        RESPONDE ÚNICAMENTE CON JSON PURO.
+        RESPONDE ÚNICAMENTE CON JSON PURO USANDO ESTA ESTRUCTURA EXACTA:
         {{
-            "response_message": "Mensaje motivador corto.",
+            "coach_analysis": "Escribe aquí tu análisis clínico interno. ¿Cómo afecta su nivel de fatiga/dolor al plan de hoy? ¿Qué debes evitar y qué debes priorizar? (Este campo es solo para que tú razones, no lo verá el usuario)",
+            "response_message": "Tu respuesta conversacional hacia el atleta. Explícale de forma natural y cercana qué vais a hacer hoy y por qué, basándote en cómo se siente. Haz que suene humano, como un mensaje de WhatsApp largo y currado de un buen entrenador.",
             "workoutData": {{
-                "title": "Nombre de la sesión",
+                "title": "Nombre de la sesión (Ej: 'Movilidad Activa' o 'Fuerza Máxima')",
                 "exercises": [
-                    {{"name": "Ejercicio", "sets": 3, "reps": "10", "is_hiit_block": false, "exercise_notes": "Técnica"}}
+                    {{"name": "Nombre del Ejercicio", "sets": 3, "reps": "10", "is_hiit_block": false, "exercise_notes": "Instrucciones técnicas detalladas, puntos de apoyo o respiración."}}
                 ]
             }}
         }}
