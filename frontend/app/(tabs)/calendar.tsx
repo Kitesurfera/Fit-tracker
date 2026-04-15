@@ -9,6 +9,7 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
+import GeminiChatModal from '../../src/components/GeminiChatModal';
 
 const DAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -75,6 +76,9 @@ export default function CalendarScreen() {
   const [showSkipModal, setShowSkipModal] = useState(false);
   const [skipWorkoutId, setSkipWorkoutId] = useState<string | null>(null);
   const [skipReason, setSkipReason] = useState('');
+
+  // <-- ESTADO PARA EL MODAL DE IA -->
+  const [isChatVisible, setChatVisible] = useState(false);
 
   const isTrainer = user?.role === 'trainer';
   const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
@@ -664,12 +668,12 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {/* --- BOTÓN FLOTANTE DEL CHAT --- */}
+      {/* --- BOTÓN FLOTANTE GEMINI --- */}
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: colors.primary }]}
-        onPress={() => router.push('/chat')}
+        onPress={() => setChatVisible(true)}
       >
-        <Ionicons name="chatbubbles" size={28} color="#FFF" />
+        <Ionicons name="sparkles" size={26} color="#FFF" />
       </TouchableOpacity>
 
       {/* --- MODALES COMPARTIDOS --- */}
@@ -731,6 +735,14 @@ export default function CalendarScreen() {
           </TouchableOpacity>
         </TouchableOpacity>
       </Modal>
+
+      {/* <-- MODAL DE GEMINI --> */}
+      <GeminiChatModal 
+        isVisible={isChatVisible} 
+        onClose={() => setChatVisible(false)} 
+        athleteContext={selectedAthlete} 
+      />
+
     </SafeAreaView>
   );
 }
