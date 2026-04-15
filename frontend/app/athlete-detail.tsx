@@ -10,6 +10,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
+import GeminiChatModal from '../src/components/GeminiChatModal'; 
 
 const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
@@ -25,7 +26,6 @@ const extractDateString = (dateVal: any) => {
   return null;
 };
 
-// COMPONENTE EXTRAÍDO: Para evitar re-renders de toda la pantalla al teclear
 const FeedbackInputRow = React.memo(({ initialNote, onSave, colors, isDesktop }: any) => {
   const [note, setNote] = useState(initialNote || '');
   const isSaved = note === initialNote && !!initialNote;
@@ -88,6 +88,9 @@ export default function AthleteDetailScreen() {
   const [workoutToDuplicate, setWorkoutToDuplicate] = useState<any>(null);
   const [duplicateDate, setDuplicateDate] = useState(getLocalDateStr(new Date()));
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
+
+  // <-- ESTADO PARA EL CHAT DE GEMINI -->
+  const [isChatVisible, setChatVisible] = useState(false);
 
   const todayStr = useMemo(() => getLocalDateStr(new Date()), []);
 
@@ -577,7 +580,7 @@ export default function AthleteDetailScreen() {
     
     let isWorkoutHiit = false;
     let itemsToRender = [];
-    let hasVideos = false; // Lógica nueva de validación de videos
+    let hasVideos = false; 
 
     if (wk.exercises && wk.exercises.length > 0 && wk.exercises[0].is_hiit_block) {
         isWorkoutHiit = true;
@@ -635,7 +638,6 @@ export default function AthleteDetailScreen() {
         {isExpanded && (
           <View style={[styles.completionDetails, { backgroundColor: colors.background, borderColor: colors.border }]}>
             
-            {/* NUEVO AVISO DE VÍDEO PARA EL COACH */}
             {(isTrainer && hasVideos) && (
               <View style={{ backgroundColor: colors.primary + '15', padding: 12, borderRadius: 10, marginBottom: 15, flexDirection: 'row', alignItems: 'center', borderWidth: 1, borderColor: colors.primary }}>
                   <Ionicons name="videocam" size={22} color={colors.primary} />
@@ -816,7 +818,6 @@ export default function AthleteDetailScreen() {
         </View>
       ) : (
         <>
-          {/* Sistema original de Pestañas para Móvil */}
           <View style={styles.tabsRow}>
             {[{ id: 'dashboard', label: 'RESUMEN' }, { id: 'workouts', label: 'SESIONES' }].map(tab => (
               <TouchableOpacity key={tab.id} style={[styles.tab, activeTab === tab.id && { borderBottomColor: colors.primary, borderBottomWidth: 3 }]} onPress={() => setActiveTab(tab.id as any)}>
@@ -834,6 +835,16 @@ export default function AthleteDetailScreen() {
           onPress={handleTrainerWhatsApp}
         >
           <Ionicons name="logo-whatsapp" size={30} color="#FFF" />
+        </TouchableOpacity>
+      )}
+
+      {/* <-- BOTÓN FLOTANTE GEMINI SÓLO PARA EL COACH --> */}
+      {isTrainer && (
+        <TouchableOpacity 
+          style={styles.geminiFab} 
+          onPress={() => setChatVisible(true)}
+        >
+          <Ionicons name="sparkles" size={26} color="#FFF" />
         </TouchableOpacity>
       )}
 
@@ -856,6 +867,14 @@ export default function AthleteDetailScreen() {
           {!!expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
         </View>
       </Modal>
+
+      {/* <-- MODAL DE GEMINI --> */}
+      <GeminiChatModal 
+        isVisible={isChatVisible} 
+        onClose={() => setChatVisible(false)} 
+        athleteContext={summary?.latest_wellness} 
+      />
+
     </SafeAreaView>
   );
 }
@@ -909,6 +928,7 @@ const styles = StyleSheet.create({
   sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }, 
   chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   whatsappFab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 100 },
+  geminiFab: { position: 'absolute', bottom: 100, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#8B5CF6', justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 100 },
   toggleSectionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, borderRadius: 12, marginBottom: 15 },
   nextWorkoutCard: { padding: 16, borderRadius: 20, marginBottom: 25, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
   nextWorkoutIcon: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
