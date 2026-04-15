@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
+import GeminiChatModal from '../src/components/GeminiChatModal';
 
 const MACRO_COLORS = ['#4A90E2', '#FF3B30', '#34C759', '#FF9500', '#AF52DE'];
 const MICRO_COLORS = ['#34C759', '#5856D6', '#FF9500', '#FF2D55', '#32ADE6', '#8B5CF6'];
@@ -33,6 +34,9 @@ export default function PeriodizationScreen() {
   
   const [macroForm, setMacroForm] = useState({ nombre: '', fecha_inicio: '', fecha_fin: '', color: MACRO_COLORS[0] });
   const [microForm, setMicroForm] = useState({ nombre: '', tipo: 'CARGA', fecha_inicio: '', fecha_fin: '', color: MICRO_COLORS[0] });
+
+  // <-- ESTADO PARA EL MODAL DE IA -->
+  const [isChatVisible, setChatVisible] = useState(false);
 
   const sortByDateDesc = (a: any, b: any, key: string = 'fecha_inicio') => {
     return new Date(b[key] || b.start_date || 0).getTime() - new Date(a[key] || a.start_date || 0).getTime();
@@ -69,7 +73,6 @@ export default function PeriodizationScreen() {
     finally { setLoading(false); }
   };
 
-  // Esto reemplaza al useEffect para que recargue los datos cada vez que abres la pantalla
   useFocusEffect(
     useCallback(() => {
       if (params.athlete_id) {
@@ -339,12 +342,12 @@ export default function PeriodizationScreen() {
         })}
       </ScrollView>
 
-      {/* --- BOTÓN FLOTANTE DEL CHAT --- */}
+      {/* --- BOTÓN FLOTANTE GEMINI --- */}
       <TouchableOpacity
         style={[styles.fab, { backgroundColor: colors.primary }]}
-        onPress={() => router.push('/chat')}
+        onPress={() => setChatVisible(true)}
       >
-        <Ionicons name="chatbubbles" size={28} color="#FFF" />
+        <Ionicons name="sparkles" size={26} color="#FFF" />
       </TouchableOpacity>
 
       {/* --- MODAL PARA ASIGNAR SESIONES --- */}
@@ -464,6 +467,13 @@ export default function PeriodizationScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
+      {/* <-- MODAL DE GEMINI --> */}
+      <GeminiChatModal 
+        isVisible={isChatVisible} 
+        onClose={() => setChatVisible(false)} 
+      />
+
     </SafeAreaView>
   );
 }
