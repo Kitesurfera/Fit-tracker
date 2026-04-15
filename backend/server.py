@@ -19,7 +19,9 @@ import shutil
 import asyncio
 import time
 import json
+import re
 import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -37,6 +39,9 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 else:
     logger.warning("No se ha encontrado GEMINI_API_KEY en el entorno. El chat de IA no funcionará.")
+
+# Variable global para el Cortocircuito del modelo Pro
+COOLDOWN_PRO_UNTIL = 0
 
 JWT_SECRET = os.environ.get('JWT_SECRET')
 JWT_ALGORITHM = 'HS256'
@@ -276,6 +281,8 @@ async def get_brain_examples(user=Depends(get_current_user)):
 
 @api_router.post("/brain/generate-workout")
 async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current_user)):
+    global COOLDOWN_PRO_UNTIL
+
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
         
@@ -312,7 +319,6 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
             current_micro = await db.microciclos.find_one({
                 "fecha_inicio": {"$lte": today},
                 "fecha_fin": {"$gte": today}
-                # Nota: Idealmente filtramos también por el macrociclo del atleta, pero esto ya da buen contexto
             })
             if current_micro:
                 contexto_atleta += f"\n📅 FASE DE PERIODIZACIÓN ACTUAL: {current_micro.get('nombre')} (Tipo: {current_micro.get('tipo', 'CARGA')}). Adapta la intensidad a esta fase.\n"
@@ -322,12 +328,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         dolor = data.athleteContext.get('soreness', '-')
         fase_ciclo = data.athleteContext.get('cycle_phase', 'No registrada')
         
-        # 2. CONFIGURAMOS EL MODELO PRO
-        model_id = "models/gemini-3.1-pro-preview"
-        model = genai.GenerativeModel(model_name=model_id)
-        model.generation_config = {"response_mime_type": "application/json"}
-        
-        # 3. EL SÚPER-PROMPT CON PERSONAJE Y RAZONAMIENTO HIPER-PERSONALIZADO
+        # 2. EL SÚPER-PROMPT 
         system_prompt = f"""
         Eres un preparador físico de élite y experto en alto rendimiento.
         Estás diseñando una sesión para {nombre_atleta}.
@@ -380,11 +381,55 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
             }}
         }}
         """
+
+        # 3. LÓGICA DE FALLBACK Y CORTOCIRCUITO
+        model_pro_id = "models/gemini-3.1-pro-preview"
+        model_flash_id = "models/gemini-2.5-flash"
         
-        chat = model.start_chat(history=[])
-        chat.send_message(system_prompt)
-        response = chat.send_message(data.userMessage)
+        intentar_pro = time.time() > COOLDOWN_PRO_UNTIL
+        modelo_actual_id = model_pro_id if intentar_pro else model_flash_id
         
+        if not intentar_pro:
+            tiempo_restante = int(COOLDOWN_PRO_UNTIL - time.time())
+            logger.info(f"Usando modelo Flash (Pro en cooldown por {tiempo_restante}s más).")
+
+        try:
+            model = genai.GenerativeModel(model_name=modelo_actual_id)
+            model.generation_config = {"response_mime_type": "application/json"}
+            chat = model.start_chat(history=[])
+            chat.send_message(system_prompt)
+            response = chat.send_message(data.userMessage)
+            
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "Quota" in error_str or isinstance(e, ResourceExhausted):
+                if intentar_pro:
+                    cooldown_seconds = 60 # Por defecto 1 minuto
+                    match = re.search(r'retry_delay\s*\{\s*seconds:\s*(\d+)\s*\}', error_str)
+                    if match:
+                        cooldown_seconds = int(match.group(1)) + 5 # Añadimos 5 segundos de margen
+                        
+                    logger.warning(f"Cuota de Gemini Pro excedida. Aplicando cooldown de {cooldown_seconds}s. Cambiando a Flash...")
+                    COOLDOWN_PRO_UNTIL = time.time() + cooldown_seconds
+                    
+                    try:
+                        logger.info("Lanzando petición de rescate con modelo Flash...")
+                        model_fallback = genai.GenerativeModel(model_name=model_flash_id)
+                        model_fallback.generation_config = {"response_mime_type": "application/json"}
+                        chat = model_fallback.start_chat(history=[])
+                        chat.send_message(system_prompt)
+                        response = chat.send_message(data.userMessage)
+                    except Exception as e_fallback:
+                        logger.error(f"Error en modelo Flash de rescate: {str(e_fallback)}")
+                        raise HTTPException(status_code=500, detail="Error en IA (ambos modelos fallaron).")
+                else:
+                    logger.error("Cuota excedida incluso en el modelo Flash.")
+                    raise HTTPException(status_code=429, detail="Límite de peticiones alcanzado. Por favor, espera un poco.")
+            else:
+                logger.error(f"Error IA desconocido: {error_str}")
+                raise HTTPException(status_code=500, detail=f"Error conectando con la IA: {error_str}")
+
+        # 4. LIMPIEZA DE LA RESPUESTA
         raw_text = response.text.strip()
         if raw_text.startswith("```"):
             raw_text = raw_text.replace("```json", "").replace("```", "").strip()
@@ -392,7 +437,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         return json.loads(raw_text)
         
     except Exception as e:
-        logger.error(f"Error IA: {str(e)}")
+        logger.error(f"Error general en endpoint IA: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error conectando con la IA: {str(e)}")
 
 # --- RUTAS DE WELLNESS ---
