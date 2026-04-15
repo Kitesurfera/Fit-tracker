@@ -528,14 +528,26 @@ async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)
     try:
         macros = await db.macrociclos.find({"athlete_id": athlete_id}).to_list(100)
         for m in macros:
+            # Rescate de IDs antiguos
+            m["id"] = m.get("id", str(m.get("_id")))
             m.pop('_id', None)
+            
             m["microciclos"] = await db.microciclos.find({"macrociclo_id": m["id"]}).to_list(100)
             for mic in m["microciclos"]:
+                # Rescate de IDs antiguos
+                mic["id"] = mic.get("id", str(mic.get("_id")))
                 mic.pop('_id', None)
+                
                 mic["workouts"] = await db.workouts.find({"microciclo_id": mic["id"]}).to_list(100)
-                for w in mic["workouts"]: w.pop('_id', None)
+                for w in mic["workouts"]: 
+                    w["id"] = w.get("id", str(w.get("_id")))
+                    w.pop('_id', None)
+                    
         unassigned = await db.workouts.find({"athlete_id": athlete_id, "microciclo_id": {"$in": [None, ""]}}).to_list(100)
-        for u in unassigned: u.pop('_id', None)
+        for u in unassigned: 
+            u["id"] = u.get("id", str(u.get("_id")))
+            u.pop('_id', None)
+            
         return {"macros": macros, "unassigned_workouts": unassigned}
     except Exception as e:
         return {"macros": [], "unassigned_workouts": [], "error": str(e)}
