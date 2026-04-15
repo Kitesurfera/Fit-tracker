@@ -279,16 +279,32 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
         
     try:
-        # AQUÍ ESTÁ EL MODEL_ID FIJO A GEMINI 3 🚀
-        model_id = "models/gemini-3-flash-preview"
+        # 1. EXTRAER LA MEMORIA (El aprendizaje)
+        # Buscamos los últimos 3 entrenamientos que habéis creado a mano
+        recent_memories = await db.brain_memory.find({}, {"_id": 0}).sort("learned_at", -1).limit(3).to_list(3)
         
-        # CONFIGURACIÓN Y LLAMADA
+        ejemplos_memoria = ""
+        if recent_memories:
+            ejemplos_memoria = "\nHISTORIAL DE ENTRENAMIENTOS REALES (Imita este estilo y vocabulario):\n"
+            for mem in recent_memories:
+                ejemplos_memoria += f"- Título: {mem.get('title')}. "
+                # Añadimos los primeros 3 ejercicios de cada sesión como contexto
+                nombres_ejercicios = [ex.get('name') for ex in mem.get('exercises', [])[:3]]
+                if nombres_ejercicios:
+                    ejemplos_memoria += f"Ejercicios típicos: {', '.join(nombres_ejercicios)}...\n"
+        
+        # 2. CONFIGURACIÓN DEL MODELO
+        model_id = "models/gemini-3-flash-preview"
         model = genai.GenerativeModel(model_name=model_id)
         model.generation_config = {"response_mime_type": "application/json"}
         
+        # 3. EL SÚPER-PROMPT (Con la memoria inyectada)
         system_prompt = f"""
-        Eres un preparador físico de élite. 
+        Eres un preparador físico de élite trabajando con Andre. 
         ATLETA: Fatiga {data.athleteContext.get('fatigue', 3)}/5, Dolor {data.athleteContext.get('soreness', 3)}/5.
+        
+        {ejemplos_memoria}
+        
         RESPONDE ÚNICAMENTE CON JSON PURO.
         {{
             "response_message": "Mensaje motivador corto.",
