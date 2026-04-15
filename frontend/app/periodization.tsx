@@ -468,10 +468,12 @@ export default function PeriodizationScreen() {
         </View>
       </Modal>
 
-      {/* <-- MODAL DE GEMINI --> */}
+      {/* <-- MODAL DE GEMINI ACTUALIZADO --> */}
       <GeminiChatModal 
         isVisible={isChatVisible} 
         onClose={() => setChatVisible(false)} 
+        athleteId={params.athlete_id as string}
+        athleteName={params.name as string}
       />
 
     </SafeAreaView>
