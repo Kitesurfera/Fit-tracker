@@ -19,11 +19,15 @@ interface ChatMessage {
 export default function GeminiChatModal({ 
   isVisible, 
   onClose, 
-  athleteContext 
+  athleteContext,
+  athleteId,
+  athleteName
 }: { 
   isVisible: boolean; 
   onClose: () => void;
   athleteContext?: any; 
+  athleteId?: string;
+  athleteName?: string;
 }) {
   const { colors } = useTheme();
   
@@ -31,7 +35,7 @@ export default function GeminiChatModal({
     {
       id: 'welcome-1',
       role: 'assistant',
-      content: '¡Hola! Soy la IA de asistencia deportiva. ¿Qué ajustamos o planificamos hoy?',
+      content: `¡Hola! Soy la IA de asistencia deportiva. ¿Qué ajustamos o planificamos hoy${athleteName ? ` para ${athleteName}` : ''}?`,
     }
   ]);
   const [inputText, setInputText] = useState('');
@@ -67,11 +71,12 @@ export default function GeminiChatModal({
           parts: [{ text: m.content }]
         }));
 
-      // Llamada a tu API con el contexto del atleta
+      // Llamada a tu API con el contexto del atleta y su ID
       const aiData = await api.generateWorkout({
           userMessage: currentInput,
           athleteContext: athleteContext || { fatigue: 3, soreness: 3, cyclePhase: 'No definida' },
-          chatHistory: chatHistory
+          chatHistory: chatHistory,
+          athlete_id: athleteId
       });
 
       const newAssistantMsg: ChatMessage = {
