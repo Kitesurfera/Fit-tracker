@@ -339,6 +339,14 @@ export default function PeriodizationScreen() {
         })}
       </ScrollView>
 
+      {/* --- BOTÓN FLOTANTE DEL CHAT --- */}
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: colors.primary }]}
+        onPress={() => router.push('/chat')}
+      >
+        <Ionicons name="chatbubbles" size={28} color="#FFF" />
+      </TouchableOpacity>
+
       {/* --- MODAL PARA ASIGNAR SESIONES --- */}
       <Modal visible={assignModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -494,5 +502,22 @@ const styles = StyleSheet.create({
   // ESTILOS PARA LOS COLORES
   colorRow: { flexDirection: 'row', gap: 12, marginTop: 5, marginBottom: 5, flexWrap: 'wrap' },
   colorSwatch: { width: 34, height: 34, borderRadius: 17, opacity: 0.4, borderWidth: 2, borderColor: 'transparent' },
-  colorSwatchSelected: { opacity: 1, borderColor: '#FFF', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3 }
+  colorSwatchSelected: { opacity: 1, borderColor: '#FFF', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 3 },
+
+  // --- ESTILO DEL BOTÓN FLOTANTE ---
+  fab: {
+    position: 'absolute',
+    bottom: 25,
+    right: 25,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  }
 });
