@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert, Modal } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../src/hooks/useTheme';
@@ -69,7 +69,14 @@ export default function PeriodizationScreen() {
     finally { setLoading(false); }
   };
 
-  useEffect(() => { loadTree(); }, [params.athlete_id]);
+  // Esto reemplaza al useEffect para que recargue los datos cada vez que abres la pantalla
+  useFocusEffect(
+    useCallback(() => {
+      if (params.athlete_id) {
+        loadTree();
+      }
+    }, [params.athlete_id])
+  );
 
   const toggleMicro = (id: string) => {
     setExpandedMicros(prev => ({ ...prev, [id]: !prev[id] }));
