@@ -276,18 +276,19 @@ async def get_brain_examples(user=Depends(get_current_user)):
 @api_router.post("/brain/generate-workout")
 async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current_user)):
     if not GEMINI_API_KEY:
-        logger.error("Error: GEMINI_API_KEY no detectada en el servidor.")
-        raise HTTPException(status_code=500, detail="API de Gemini no configurada en el servidor.")
+        raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
         
     try:
-        # Instrucción reforzada para evitar errores de formato
-        system_instruction = f"""
+        # CAMBIO CLAVE: Usamos el string para la versión 2.5
+        # En 2026, el string suele ser "gemini-2.5-flash" o "gemini-2.5-flash-latest"
+        model_id = "gemini-2.5-flash" 
+        
+        model = genai.GenerativeModel(model_name=model_id)
+        
+        system_prompt = f"""
         Eres un preparador físico de élite. 
         ESTADO DEL ATLETA: Fatiga {data.athleteContext.get('fatigue', 3)}/5, Dolor {data.athleteContext.get('soreness', 3)}/5.
-        
-        RESPONDE EXCLUSIVAMENTE CON UN JSON PURO. 
-        No uses bloques de código ```json ```. Solo el objeto {{ }}.
-        Estructura:
+        RESPONDE EXCLUSIVAMENTE CON UN JSON PURO.
         {{
             "response_message": "Texto corto",
             "workoutData": {{
@@ -299,37 +300,23 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         }}
         """
         
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=system_instruction
-        )
+        # Con 2.5, el manejo de historial es más fluido
+        chat = model.start_chat(history=[])
+        # Enviamos el contexto primero como un mensaje de "setup"
+        chat.send_message(system_prompt)
         
-        # Limpiamos y formateamos el historial para evitar errores de envío
-        formatted_history = []
-        for msg in data.chatHistory:
-            role = "model" if msg.get("role") == "model" else "user"
-            text_content = msg.get("parts", [{}])[0].get("text", "")
-            if text_content:
-                formatted_history.append({"role": role, "parts": [text_content]})
-            
-        chat = model.start_chat(history=formatted_history)
+        # Enviamos la petición del usuario
         response = chat.send_message(data.userMessage)
         
-        # --- BLOQUE DE SEGURIDAD PARA EL JSON ---
         raw_text = response.text.strip()
-        # Si Gemini responde con bloques de código ```json ... ```, los quitamos
         if raw_text.startswith("```"):
             raw_text = raw_text.replace("```json", "").replace("```", "").strip()
         
-        try:
-            return json.loads(raw_text)
-        except json.JSONDecodeError:
-            logger.error(f"Gemini envió un JSON inválido: {raw_text}")
-            raise HTTPException(status_code=500, detail="La IA respondió con un formato incorrecto.")
+        return json.loads(raw_text)
         
     except Exception as e:
-        logger.error(f"Error crítico en Gemini: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error de conexión: {str(e)}")
+        logger.error(f"Error con Gemini 2.5: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error IA (v2.5): {str(e)}")
 
 
 # --- RUTAS DE WELLNESS ---
