@@ -279,18 +279,24 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
         
     try:
-        # Intentamos primero con el 3, si falla probamos con el 1.5-flash
-        # que es el estándar universal por ahora
-        try:
-            model_id = "gemini-3-flash-preview"
-            model = genai.GenerativeModel(model_name=model_id)
-            # Prueba rápida
-            model.generate_content("test") 
-        except Exception:
-            logger.warning("Gemini 3 no disponible, bajando a 1.5-flash")
-            model_id = "gemini-1.5-flash"
-            model = genai.GenerativeModel(model_name=model_id)
+        # 1. RASTREADOR DE MODELOS: Le preguntamos a Google qué podemos usar
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        logger.info(f"MODELOS DISPONIBLES PARA ESTA LLAVE: {available_models}")
+        
+        if not available_models:
+            raise Exception("La llave es válida pero no tiene acceso a ningún modelo de Gemini. ¡Revisa Google AI Studio!")
 
+        # 2. AUTO-SELECCIÓN: Cogemos el modelo más rápido que contenga 'flash' (sea 1.5, 2.5 o 3)
+        # Si no hay ninguno con 'flash', cogemos el primero de la lista.
+        model_id = next((m for m in available_models if 'flash' in m), available_models[0])
+        logger.info(f"MODELO AUTO-SELECCIONADO: {model_id}")
+        
+        # 3. CONFIGURACIÓN Y LLAMADA
+        model = genai.GenerativeModel(model_name=model_id)
         model.generation_config = {"response_mime_type": "application/json"}
         
         system_prompt = f"""
@@ -298,11 +304,11 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         ATLETA: Fatiga {data.athleteContext.get('fatigue', 3)}/5, Dolor {data.athleteContext.get('soreness', 3)}/5.
         RESPONDE ÚNICAMENTE CON JSON PURO.
         {{
-            "response_message": "Mensaje corto.",
+            "response_message": "Mensaje motivador corto.",
             "workoutData": {{
-                "title": "Nombre",
+                "title": "Nombre de la sesión",
                 "exercises": [
-                    {{"name": "Ejerc.", "sets": 3, "reps": "10", "is_hiit_block": false, "exercise_notes": "Técnica"}}
+                    {{"name": "Ejercicio", "sets": 3, "reps": "10", "is_hiit_block": false, "exercise_notes": "Técnica"}}
                 ]
             }}
         }}
@@ -312,17 +318,15 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         chat.send_message(system_prompt)
         response = chat.send_message(data.userMessage)
         
-        return json.loads(response.text.strip().replace("```json", "").replace("```", ""))
+        raw_text = response.text.strip()
+        if raw_text.startswith("```"):
+            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+        
+        return json.loads(raw_text)
         
     except Exception as e:
-        # ESTO ES LO MÁS IMPORTANTE: Ver qué modelos ve tu servidor
-        try:
-            available_models = [m.name for m in genai.list_models()]
-            logger.error(f"Modelos que tu API Key realmente ve: {available_models}")
-        except:
-            pass
-        logger.error(f"Error final: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error de conexión con la IA")
+        logger.error(f"Error IA: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error conectando con la IA: {str(e)}")
 
 # --- RUTAS DE WELLNESS ---
 @api_router.get("/wellness/history/{athlete_id}")
