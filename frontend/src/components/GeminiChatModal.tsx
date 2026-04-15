@@ -5,9 +5,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
-import { api } from '../api'; // <-- IMPORTAMOS TU API
+import { api } from '../api';
 
-// Estructura de los mensajes del chat
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -31,7 +30,7 @@ export default function GeminiChatModal({
     {
       id: 'welcome-1',
       role: 'assistant',
-      content: '¡Hola! Soy tu asistente de planificación. Dime qué tipo de sesión necesitas hoy o qué quieres modificar de tus entrenamientos anteriores.',
+      content: '¡Hola! Soy la IA de asistencia deportiva. ¿Qué ajustamos o planificamos hoy?',
     }
   ]);
   const [inputText, setInputText] = useState('');
@@ -59,7 +58,6 @@ export default function GeminiChatModal({
     setIsTyping(true);
 
     try {
-      // Preparamos el historial para que la IA sepa de qué estamos hablando
       const chatHistory = messages
         .filter(m => m.id !== 'welcome-1')
         .map(m => ({
@@ -67,7 +65,6 @@ export default function GeminiChatModal({
           parts: [{ text: m.content }]
         }));
 
-      // <-- USAMOS LA API QUE YA TIENE EL TOKEN INTEGRADO -->
       const aiData = await api.generateWorkout({
           userMessage: currentInput,
           athleteContext: athleteContext || { fatigue: 3, soreness: 3, cyclePhase: 'No definida' },
@@ -117,29 +114,65 @@ export default function GeminiChatModal({
             </Text>
           </View>
 
+          {/* --- TARJETA DE ENTRENAMIENTO PREMIUM --- */}
           {item.isWorkoutPayload && item.workoutData && (
-            <View style={[styles.workoutPreviewCard, { borderColor: colors.primary, backgroundColor: colors.surface }]}>
+            <View style={[styles.workoutPreviewCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
               <View style={styles.previewHeader}>
-                <Ionicons name="barbell" size={16} color={colors.primary} />
-                <Text style={[styles.previewTitle, { color: colors.textPrimary }]}>
-                  {item.workoutData.title}
+                <View style={styles.titleRow}>
+                  <Ionicons name="clipboard" size={18} color={colors.primary} />
+                  <Text style={[styles.previewTitle, { color: colors.textPrimary }]}>
+                    {item.workoutData.title}
+                  </Text>
+                </View>
+                <Text style={styles.blockCountText}>
+                  {item.workoutData.exercises.length} bloques
                 </Text>
               </View>
               
               <View style={styles.previewBody}>
-                {item.workoutData.exercises.map((ex: any, idx: number) => (
-                  <Text key={idx} style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 4 }}>
-                    • {ex.name} <Text style={{fontWeight: '700', color: colors.textPrimary}}>({ex.sets}x{ex.reps})</Text>
-                  </Text>
-                ))}
+                {item.workoutData.exercises.map((ex: any, idx: number) => {
+                  const isHiit = ex.is_hiit_block;
+                  // Colores dinámicos según el tipo de bloque
+                  const badgeBg = isHiit ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)';
+                  const badgeColor = isHiit ? '#EF4444' : '#3B82F6';
+                  const badgeText = isHiit ? 'HIIT / METCON' : 'FUERZA';
+
+                  return (
+                    <View key={idx} style={[styles.exerciseBlock, { borderLeftColor: badgeColor }]}>
+                      <View style={styles.exerciseHeader}>
+                        <Text style={[styles.exerciseName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                        <View style={[styles.badge, { backgroundColor: badgeBg }]}>
+                          <Text style={[styles.badgeText, { color: badgeColor }]}>{badgeText}</Text>
+                        </View>
+                      </View>
+                      
+                      <View style={styles.metricsRow}>
+                        <View style={styles.metricItem}>
+                          <Ionicons name="layers-outline" size={14} color={colors.textSecondary} />
+                          <Text style={[styles.metricText, { color: colors.textSecondary }]}>{ex.sets} series</Text>
+                        </View>
+                        <View style={styles.metricItem}>
+                          <Ionicons name="repeat-outline" size={14} color={colors.textSecondary} />
+                          <Text style={[styles.metricText, { color: colors.textSecondary }]}>{ex.reps}</Text>
+                        </View>
+                      </View>
+
+                      {ex.exercise_notes ? (
+                        <Text style={[styles.notesText, { color: colors.textSecondary }]}>
+                          💡 {ex.exercise_notes}
+                        </Text>
+                      ) : null}
+                    </View>
+                  )
+                })}
               </View>
 
               <TouchableOpacity 
                 style={[styles.acceptBtn, { backgroundColor: colors.primary }]}
-                onPress={() => console.log("Claudia, aquí guardarías este JSON en tu base de datos:", item.workoutData)}
+                onPress={() => console.log("Añadir lógica de guardado aquí:", item.workoutData)}
               >
-                <Ionicons name="checkmark-circle" size={18} color="#FFF" />
-                <Text style={styles.acceptBtnText}>Aceptar y Guardar Sesión</Text>
+                <Ionicons name="add-circle" size={20} color="#FFF" />
+                <Text style={styles.acceptBtnText}>Añadir al Calendario</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -158,7 +191,7 @@ export default function GeminiChatModal({
           <View style={[styles.header, { borderBottomColor: colors.border }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="sparkles" size={20} color={colors.primary} />
-              <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Gemini Coach</Text>
+              <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>AI Coach Pro</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={24} color={colors.textSecondary} />
@@ -177,14 +210,16 @@ export default function GeminiChatModal({
           {isTyping && (
             <View style={styles.typingContainer}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 8 }}>Escribiendo...</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 13, marginLeft: 8, fontWeight: '500' }}>
+                Analizando biomecánica y fatiga...
+              </Text>
             </View>
           )}
 
           <View style={[styles.inputArea, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary }]}
-              placeholder="Ej: Necesito un entreno suave hoy..."
+              placeholder="Ej: Adapta el entreno, me duele el hombro..."
               placeholderTextColor={colors.textSecondary}
               value={inputText}
               onChangeText={setInputText}
@@ -195,7 +230,7 @@ export default function GeminiChatModal({
               onPress={handleSend}
               disabled={!inputText.trim()}
             >
-              <Ionicons name="send" size={18} color={inputText.trim() ? '#FFF' : colors.textSecondary} />
+              <Ionicons name="arrow-up" size={20} color={inputText.trim() ? '#FFF' : colors.textSecondary} />
             </TouchableOpacity>
           </View>
         </KeyboardAvoidingView>
@@ -205,26 +240,42 @@ export default function GeminiChatModal({
 }
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  container: { flex: 0.9, borderTopLeftRadius: 25, borderTopRightRadius: 25, overflow: 'hidden' },
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  container: { flex: 0.92, borderTopLeftRadius: 28, borderTopRightRadius: 28, overflow: 'hidden' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20, borderBottomWidth: 1 },
-  headerTitle: { fontSize: 18, fontWeight: '900' },
-  closeBtn: { padding: 4 },
+  headerTitle: { fontSize: 18, fontWeight: '800', letterSpacing: -0.5 },
+  closeBtn: { padding: 4, backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 20 },
   listContent: { padding: 15, paddingBottom: 20 },
-  messageWrapper: { flexDirection: 'row', marginBottom: 20, maxWidth: '85%' },
+  messageWrapper: { flexDirection: 'row', marginBottom: 24, maxWidth: '90%' },
   messageWrapperUser: { alignSelf: 'flex-end', justifyContent: 'flex-end' },
   messageWrapperAssistant: { alignSelf: 'flex-start' },
-  avatar: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 10, marginTop: 2 },
-  messageBubble: { padding: 14, borderRadius: 20 },
-  messageText: { fontSize: 15, lineHeight: 22 },
-  workoutPreviewCard: { marginTop: 10, borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
-  previewHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  previewTitle: { fontSize: 14, fontWeight: '800', marginLeft: 8 },
-  previewBody: { padding: 12 },
-  acceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, gap: 8 },
-  acceptBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
-  typingContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
-  inputArea: { flexDirection: 'row', padding: 15, paddingBottom: Platform.OS === 'ios' ? 30 : 15, borderTopWidth: 1, alignItems: 'flex-end' },
-  input: { flex: 1, minHeight: 45, maxHeight: 100, borderRadius: 20, paddingHorizontal: 15, paddingTop: 12, paddingBottom: 12, fontSize: 15 },
-  sendBtn: { width: 45, height: 45, borderRadius: 22.5, justifyContent: 'center', alignItems: 'center', marginLeft: 10 }
+  avatar: { width: 32, height: 32, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 12, marginTop: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4, elevation: 2 },
+  messageBubble: { padding: 16, borderRadius: 24, borderTopLeftRadius: 4 },
+  messageText: { fontSize: 16, lineHeight: 24 },
+  
+  // Estilos de la nueva Tarjeta de Entrenamiento
+  workoutPreviewCard: { marginTop: 12, borderWidth: 1, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
+  previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  previewTitle: { fontSize: 16, fontWeight: '800', marginLeft: 8, flex: 1 },
+  blockCountText: { fontSize: 12, fontWeight: '600', color: '#888', backgroundColor: '#F0F0F0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
+  previewBody: { padding: 16, gap: 16 },
+  
+  // Estilos de cada bloque de ejercicio
+  exerciseBlock: { borderLeftWidth: 4, paddingLeft: 12, marginBottom: 4 },
+  exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
+  exerciseName: { fontSize: 15, fontWeight: '700', flex: 1, marginRight: 8 },
+  badge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
+  badgeText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  metricsRow: { flexDirection: 'row', gap: 16, marginBottom: 8 },
+  metricItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  metricText: { fontSize: 13, fontWeight: '600' },
+  notesText: { fontSize: 13, fontStyle: 'italic', lineHeight: 18, marginTop: 4 },
+  
+  acceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, gap: 8, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
+  acceptBtnText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
+  typingContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingBottom: 16 },
+  inputArea: { flexDirection: 'row', padding: 16, paddingBottom: Platform.OS === 'ios' ? 36 : 16, borderTopWidth: 1, alignItems: 'flex-end' },
+  input: { flex: 1, minHeight: 48, maxHeight: 120, borderRadius: 24, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14, fontSize: 16, lineHeight: 22 },
+  sendBtn: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center', marginLeft: 12 }
 });
