@@ -66,7 +66,7 @@ export const api = {
     });
     if (!res.ok) throw new Error('Error conectando con la IA');
     return res.json();
-  }
+  },
 
   googleLogin: async (googleToken: string, role: string = 'athlete') => {
     try {
