@@ -205,6 +205,7 @@ class GeminiChatRequest(BaseModel):
     userMessage: str
     athleteContext: dict = {}
     chatHistory: list = []
+    athlete_id: Optional[str] = None
 
 # --- AUTH HELPERS ---
 def hash_password(password: str) -> str:
@@ -279,72 +280,98 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
         
     try:
-        # 1. EXTRAER LA MEMORIA (El aprendizaje)
-        # Buscamos los últimos 3 entrenamientos que habéis creado a mano
-        recent_memories = await db.brain_memory.find({}, {"_id": 0}).sort("learned_at", -1).limit(3).to_list(3)
+        # 1. CONSTRUCCIÓN DEL CONTEXTO ESPECÍFICO DEL ATLETA
+        contexto_atleta = ""
+        nombre_atleta = "el atleta"
         
-        ejemplos_memoria = ""
-        if recent_memories:
-            ejemplos_memoria = "\nHISTORIAL DE ENTRENAMIENTOS REALES (Imita este estilo y vocabulario):\n"
-            for mem in recent_memories:
-                ejemplos_memoria += f"- Título: {mem.get('title')}. "
-                # Añadimos los primeros 3 ejercicios de cada sesión como contexto
-                nombres_ejercicios = [ex.get('name') for ex in mem.get('exercises', [])[:3]]
-                if nombres_ejercicios:
-                    ejemplos_memoria += f"Ejercicios típicos: {', '.join(nombres_ejercicios)}...\n"
+        if data.athlete_id:
+            # A) Datos del Perfil y Lesiones
+            athlete = await db.users.find_one({"id": data.athlete_id})
+            if athlete:
+                nombre_atleta = athlete.get('name', 'Atleta')
+                contexto_atleta += f"PERFIL: {nombre_atleta}, Género: {athlete.get('gender', 'N/A')}, Deporte: {athlete.get('sport', 'N/A')}.\n"
+                if athlete.get('is_injured'):
+                    contexto_atleta += f"🚨 ALERTA MÉDICA: El atleta está lesionado/a. Notas: {athlete.get('injury_notes', '')}\n"
+                if athlete.get('equipment'):
+                    contexto_atleta += f"🛠️ MATERIAL DISPONIBLE: {athlete.get('equipment')}\n"
+
+            # B) Últimos entrenamientos (para saber su nivel y rutina habitual)
+            recent_workouts = await db.workouts.find(
+                {"athlete_id": data.athlete_id, "completed": True}
+            ).sort("date", -1).limit(3).to_list(3)
+            
+            if recent_workouts:
+                contexto_atleta += "\nHISTORIAL RECIENTE (Últimas sesiones completadas):\n"
+                for w in recent_workouts:
+                    rpe = w.get('completion_data', {}).get('rpe', '?')
+                    nombres_ejercicios = [ex.get('name') for ex in w.get('exercises', [])[:3]]
+                    contexto_atleta += f"- {w.get('title')} (RPE reportado: {rpe}/10). Ejercicios: {', '.join(nombres_ejercicios)}...\n"
+                    
+            # C) Periodización Actual (¿En qué fase está?)
+            today = datetime.now(timezone.utc).isoformat().split('T')[0]
+            current_micro = await db.microciclos.find_one({
+                "fecha_inicio": {"$lte": today},
+                "fecha_fin": {"$gte": today}
+                # Nota: Idealmente filtramos también por el macrociclo del atleta, pero esto ya da buen contexto
+            })
+            if current_micro:
+                contexto_atleta += f"\n📅 FASE DE PERIODIZACIÓN ACTUAL: {current_micro.get('nombre')} (Tipo: {current_micro.get('tipo', 'CARGA')}). Adapta la intensidad a esta fase.\n"
+
+        # D) Bienestar del día (Fatiga, Dolor, Regla)
+        fatiga = data.athleteContext.get('fatigue', '-')
+        dolor = data.athleteContext.get('soreness', '-')
+        fase_ciclo = data.athleteContext.get('cycle_phase', 'No registrada')
         
-       # 1. ACTUALIZAMOS AL MODELO PRO
+        # 2. CONFIGURAMOS EL MODELO PRO
         model_id = "models/gemini-3.1-pro-preview"
         model = genai.GenerativeModel(model_name=model_id)
         model.generation_config = {"response_mime_type": "application/json"}
         
-        # 2. EL SÚPER-PROMPT CON PERSONAJE Y RAZONAMIENTO
-        # 2. EL SÚPER-PROMPT CON PERSONAJE Y RAZONAMIENTO (NIVEL ÉLITE)
+        # 3. EL SÚPER-PROMPT CON PERSONAJE Y RAZONAMIENTO HIPER-PERSONALIZADO
         system_prompt = f"""
-        Eres un preparador físico de élite y experto en alto rendimiento trabajando con Andre.
+        Eres un preparador físico de élite y experto en alto rendimiento.
+        Estás diseñando una sesión para {nombre_atleta}.
         Tu tono es conversacional, cercano, empático pero muy profesional y basado en la ciencia deportiva. 
-        Hablas directamente con el atleta como si estuvierais tomando un café antes de entrenar.
         
-        ESTADO DEL ATLETA HOY: 
-        Fatiga {data.athleteContext.get('fatigue', 3)}/5, Dolor/Agujetas {data.athleteContext.get('soreness', 3)}/5.
+        CONTEXTO BIOMÉTRICO Y DEPORTIVO DE {nombre_atleta.upper()}:
+        {contexto_atleta}
         
-        {ejemplos_memoria}
+        ESTADO HOY: 
+        Fatiga {fatiga}/5, Dolor/Agujetas {dolor}/5. Fase del ciclo: {fase_ciclo}.
         
         RESPONDE ÚNICAMENTE CON JSON PURO USANDO ESTA ESTRUCTURA EXACTA. 
         Tienes dos formas de crear bloques dentro de "exercises": TRADICIONAL (Fuerza) o HIIT (Circuito). Puedes mezclarlos.
 
         {{
-            "coach_analysis": "Análisis clínico interno. ¿Cómo afecta su fatiga/dolor al plan?",
-            "response_message": "Respuesta conversacional motivadora hacia el atleta.",
+            "coach_analysis": "Análisis interno. ¿Cómo afecta su fatiga, lesiones o historial al plan de hoy?",
+            "response_message": "Respuesta conversacional motivadora dirigiéndote a {nombre_atleta}.",
             "workoutData": {{
                 "title": "Nombre de la sesión",
-                "notes": "Indicaciones generales de la sesión (calentamiento, enfoque).",
+                "notes": "Indicaciones generales (calentamiento, enfoque).",
                 "exercises": [
-                    // EJEMPLO 1: BLOQUE TRADICIONAL (FUERZA / AISLAMIENTO)
                     {{
                         "is_hiit_block": false,
                         "name": "Sentadilla Búlgara", 
                         "sets": "3", 
                         "reps": "10-12", 
                         "duration": "", 
-                        "rest": "90s", // Descanso tras acabar una serie
-                        "rest_exercise": "60s", // Descanso antes de pasar al siguiente ejercicio de la lista
+                        "rest": "90s", 
+                        "rest_exercise": "60s", 
                         "exercise_notes": "Enfoque en excéntrica."
                     }},
-                    // EJEMPLO 2: BLOQUE HIIT / CIRCUITO METABÓLICO
                     {{
                         "is_hiit_block": true,
                         "name": "Metcon Finisher",
-                        "sets": "4", // Número de Vueltas al circuito
-                        "rest_exercise": "15s", // Transición entre ejercicios del circuito
-                        "rest_block": "60s", // Descanso al completar una vuelta entera
-                        "rest_between_blocks": "2m", // Descanso al terminar todas las vueltas antes del siguiente bloque de la sesión
+                        "sets": "4", 
+                        "rest_exercise": "15s", 
+                        "rest_block": "60s", 
+                        "rest_between_blocks": "2m", 
                         "hiit_exercises": [
                             {{
                                 "name": "Burpees", 
                                 "sets": "1", 
-                                "duration_reps": "15", // Si va por reps
-                                "duration": "45s", // Si va por tiempo
+                                "duration_reps": "15", 
+                                "duration": "45s", 
                                 "exercise_notes": "Ritmo constante"
                             }}
                         ]
