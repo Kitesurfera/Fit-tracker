@@ -838,13 +838,13 @@ export default function AthleteDetailScreen() {
         </TouchableOpacity>
       )}
 
-      {/* <-- BOTÓN FLOTANTE GEMINI SÓLO PARA EL COACH --> */}
+      {/* <-- BOTÓN FLOTANTE CHAT/GEMINI --> */}
       {isTrainer && (
         <TouchableOpacity 
-          style={styles.geminiFab} 
+          style={[styles.geminiFab, { backgroundColor: colors.primary }]} 
           onPress={() => setChatVisible(true)}
         >
-          <Ionicons name="sparkles" size={26} color="#FFF" />
+          <Ionicons name="chatbubbles" size={28} color="#FFF" />
         </TouchableOpacity>
       )}
 
@@ -928,7 +928,7 @@ const styles = StyleSheet.create({
   sendBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' }, 
   chartCard: { padding: 20, borderRadius: 25, height: 160, justifyContent: 'flex-end', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   whatsappFab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 100 },
-  geminiFab: { position: 'absolute', bottom: 100, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#8B5CF6', justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 100 },
+  geminiFab: { position: 'absolute', bottom: 100, right: 20, width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 100 },
   toggleSectionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, borderRadius: 12, marginBottom: 15 },
   nextWorkoutCard: { padding: 16, borderRadius: 20, marginBottom: 25, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
   nextWorkoutIcon: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
