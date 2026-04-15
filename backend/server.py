@@ -19,6 +19,7 @@ import shutil
 import asyncio
 import time
 import json
+import google.generativeai as genai
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -29,6 +30,13 @@ logger = logging.getLogger(__name__)
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
+
+# --- CONFIGURACIÓN GEMINI IA ---
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
+else:
+    logger.warning("No se ha encontrado GEMINI_API_KEY en el entorno. El chat de IA no funcionará.")
 
 JWT_SECRET = os.environ.get('JWT_SECRET', 'fitness-tracker-secret-key-2026')
 JWT_ALGORITHM = 'HS256'
@@ -143,7 +151,7 @@ class WorkoutUpdate(BaseModel):
     completion_data: Optional[dict] = None
     observations: Optional[str] = None
     microciclo_id: Optional[str] = None
-    is_ai: Optional[bool] = False # <-- ETIQUETA PARA EL MACHINE LEARNING
+    is_ai: Optional[bool] = False
 
 class WorkoutCreate(BaseModel):
     title: str
@@ -152,7 +160,7 @@ class WorkoutCreate(BaseModel):
     notes: Optional[str] = ""
     athlete_id: str
     microciclo_id: Optional[str] = None
-    is_ai: Optional[bool] = False # <-- ETIQUETA PARA EL MACHINE LEARNING
+    is_ai: Optional[bool] = False
     
 class WorkoutBulkCreate(BaseModel):
     workouts: List[WorkoutCreate]
@@ -190,6 +198,11 @@ class TestUpdate(BaseModel):
     value_right: Optional[float] = None
     unit: Optional[str] = None
     notes: Optional[str] = None
+
+class GeminiChatRequest(BaseModel):
+    userMessage: str
+    athleteContext: dict = {}
+    chatHistory: list = []
 
 # --- AUTH HELPERS ---
 def hash_password(password: str) -> str:
@@ -249,16 +262,72 @@ def send_web_push(subscription_info: dict, title: str, message: str):
 @api_router.get("/brain/memory")
 async def get_brain_memory(user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
-    # Cuenta cuántas rutinas manuales ha analizado y guardado el sistema
     count = await db.brain_memory.count_documents({})
     return {"status": "success", "total_learned": count}
 
 @api_router.get("/brain/memory/examples")
 async def get_brain_examples(user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
-    # Sacamos las últimas 5 rutinas manuales (para no saturar la memoria de la IA)
     examples = await db.brain_memory.find({}, {"_id": 0, "learned_at": 0, "id": 0}).sort("learned_at", -1).limit(5).to_list(5)
     return {"status": "success", "examples": examples}
+
+@api_router.post("/brain/generate-workout")
+async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current_user)):
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="API de Gemini no configurada en el servidor.")
+        
+    try:
+        system_instruction = f"""
+        Eres un preparador físico de élite especializado en alto rendimiento (ej. kitesurf freestyle).
+        Tu objetivo es generar o modificar rutinas de entrenamiento basándote en la petición del usuario y su estado de recuperación actual.
+        
+        ESTADO DEL ATLETA HOY:
+        - Fatiga: {data.athleteContext.get('fatigue', 3)}/5
+        - Dolor muscular: {data.athleteContext.get('soreness', 3)}/5
+        - Fase del ciclo: {data.athleteContext.get('cyclePhase', 'No especificada')}
+        
+        REGLA ESTRICTA: 
+        Debes responder ÚNICAMENTE con un objeto JSON válido, sin formato markdown (sin bloques de código), con esta estructura exacta:
+        {{
+            "response_message": "Mensaje motivacional corto en texto explicando por qué has elegido o cambiado estos ejercicios.",
+            "workoutData": {{
+                "title": "Nombre de la sesión",
+                "exercises": [
+                    {{
+                        "name": "Nombre del ejercicio",
+                        "sets": 3,
+                        "reps": "10",
+                        "is_hiit_block": false,
+                        "exercise_notes": "Nota de técnica breve"
+                    }}
+                ]
+            }}
+        }}
+        
+        Si el usuario te pide un bloque HIIT, añade "is_hiit_block": true, elimina "reps" y usa "hiit_exercises" dentro del bloque JSON.
+        """
+        
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-flash",
+            system_instruction=system_instruction,
+            generation_config={"response_mime_type": "application/json"}
+        )
+        
+        formatted_history = []
+        for msg in data.chatHistory:
+            role = "model" if msg.get("role") == "model" else "user"
+            text_parts = msg.get("parts", [{}])
+            text_content = text_parts[0].get("text", "") if text_parts else ""
+            formatted_history.append({"role": role, "parts": [text_content]})
+            
+        chat = model.start_chat(history=formatted_history)
+        response = chat.send_message(data.userMessage)
+        
+        return json.loads(response.text)
+        
+    except Exception as e:
+        logger.error(f"Error generando workout con Gemini: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error de conexión con la inteligencia artificial.")
 
 
 # --- RUTAS DE WELLNESS ---
@@ -358,10 +427,8 @@ async def google_login(data: GoogleAuth):
         import google.auth.transport.requests as google_requests
         from google.oauth2 import id_token
         
-        # Le decimos a google que verifique el token sin forzar un solo ID (audience=None)
         id_info = id_token.verify_oauth2_token(data.token, google_requests.Request(), audience=None)
         
-        # Comprobamos manualmente que el token viene de tu Web, de tu App Android o de iOS
         if id_info.get('aud') not in [GOOGLE_CLIENT_ID, GOOGLE_ANDROID_CLIENT_ID, GOOGLE_IOS_CLIENT_ID]:
             raise HTTPException(status_code=401, detail="El token no pertenece a esta aplicación")
 
@@ -438,12 +505,12 @@ async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
 @api_router.post("/workouts")
 async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     workout = data.dict()
-    is_ai = workout.pop("is_ai", False) # Separamos la etiqueta
+    is_ai = workout.pop("is_ai", False)
     workout.update({"id": str(uuid.uuid4()), "completed": False, "completion_data": None})
     
     await db.workouts.insert_one(workout)
     
-    # 🔥 MACHINE LEARNING: Si NO lo hizo la IA y lo hizo Andre, lo guardamos como patrón de aprendizaje
+    # 🔥 MACHINE LEARNING
     if not is_ai and user['role'] == 'trainer':
         await db.brain_memory.insert_one({
             "id": str(uuid.uuid4()),
@@ -473,7 +540,6 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
         new_workouts.append(workout)
         athlete_ids.add(w.athlete_id)
         
-        # 🔥 MACHINE LEARNING BULK
         if not is_ai and user['role'] == 'trainer':
             brain_memories.append({
                 "id": str(uuid.uuid4()),
@@ -486,7 +552,7 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
     if new_workouts:
         await db.workouts.insert_many(new_workouts)
         if brain_memories:
-            await db.brain_memory.insert_many(brain_memories) # Inyección en la red neuronal
+            await db.brain_memory.insert_many(brain_memories) 
             
         if user['role'] == 'trainer':
             trainer_name = user.get('name', 'Tu entrenador')
@@ -508,7 +574,7 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks:
     existing = await db.workouts.find_one({"id": workout_id})
     if not existing: raise HTTPException(status_code=404, detail="Sesión no encontrada")
     update_data = data.dict(exclude_unset=True)
-    update_data.pop("is_ai", None) # No necesitamos actualizar la etiqueta
+    update_data.pop("is_ai", None) 
     await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
     
     if data.completed is True and not existing.get('completed') and user.get('role') == 'athlete' and user.get('trainer_id'):
@@ -528,13 +594,11 @@ async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)
     try:
         macros = await db.macrociclos.find({"athlete_id": athlete_id}).to_list(100)
         for m in macros:
-            # Rescate de IDs antiguos
             m["id"] = m.get("id", str(m.get("_id")))
             m.pop('_id', None)
             
             m["microciclos"] = await db.microciclos.find({"macrociclo_id": m["id"]}).to_list(100)
             for mic in m["microciclos"]:
-                # Rescate de IDs antiguos
                 mic["id"] = mic.get("id", str(mic.get("_id")))
                 mic.pop('_id', None)
                 
@@ -563,7 +627,6 @@ async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
 @api_router.put("/macrociclos/{macro_id}")
 async def update_macro(macro_id: str, data: Dict[str, Any], user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
-    # Quitamos los IDs para no sobreescribirlos accidentalmente
     update_data = {k: v for k, v in data.items() if k not in ('id', '_id', 'athlete_id')}
     await db.macrociclos.update_one({"id": macro_id}, {"$set": update_data})
     return {"status": "success"}
@@ -573,12 +636,10 @@ async def delete_macro(macro_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
     await db.macrociclos.delete_one({"id": macro_id})
     
-    # Lógica de cascada: Al borrar un macro, borramos sus micros asociados
     micros = await db.microciclos.find({"macrociclo_id": macro_id}).to_list(100)
     micro_ids = [m["id"] for m in micros]
     await db.microciclos.delete_many({"macrociclo_id": macro_id})
     
-    # Y liberamos las sesiones que estaban en esos micros (quedan como "sueltas")
     if micro_ids:
         await db.workouts.update_many({"microciclo_id": {"$in": micro_ids}}, {"$set": {"microciclo_id": None}})
     return {"status": "success"}
@@ -603,7 +664,6 @@ async def delete_micro(micro_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
     await db.microciclos.delete_one({"id": micro_id})
     
-    # Al borrar un micro, liberamos sus sesiones
     await db.workouts.update_many({"microciclo_id": micro_id}, {"$set": {"microciclo_id": None}})
     return {"status": "success"}
 
