@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
+import { api } from '../api'; // <-- IMPORTAMOS TU API
 
 // Estructura de los mensajes del chat
 interface ChatMessage {
@@ -18,7 +19,7 @@ interface ChatMessage {
 export default function GeminiChatModal({ 
   isVisible, 
   onClose, 
-  athleteContext // Aquí es donde recibes los datos de fatiga/dolor del deportista
+  athleteContext 
 }: { 
   isVisible: boolean; 
   onClose: () => void;
@@ -66,23 +67,12 @@ export default function GeminiChatModal({
           parts: [{ text: m.content }]
         }));
 
-      // Llamada a tu servidor en Render
-      const response = await fetch('https://fit-tracker-backend-rtx2.onrender.com/api/brain/generate-workout', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      // <-- USAMOS LA API QUE YA TIENE EL TOKEN INTEGRADO -->
+      const aiData = await api.generateWorkout({
           userMessage: currentInput,
-          // Si no hay datos de wellness, mandamos unos valores por defecto (3/5)
           athleteContext: athleteContext || { fatigue: 3, soreness: 3, cyclePhase: 'No definida' },
           chatHistory: chatHistory
-        })
       });
-
-      if (!response.ok) throw new Error('Error en el servidor');
-
-      const aiData = await response.json();
 
       const newAssistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
