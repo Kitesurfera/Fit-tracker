@@ -458,6 +458,63 @@ export default function CalendarScreen() {
   const handleWorkoutPress = (workout: any) => { router.push(isTrainer && !workout.completed ? `/edit-workout?workoutId=${workout.id}` : `/training-mode?workoutId=${workout.id}`); };
   const handleCloseMicroInfo = () => { setViewMicroInfo(null); setExpandedWorkoutId(null); };
 
+  // <-- NUEVA FUNCIÓN PARA GESTIONAR EL GUARDADO DESDE LA IA -->
+  const handleSaveWorkoutFromAI = async (workoutData: any, targetDate: string) => {
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(targetDate)) {
+      if (Platform.OS === 'web') window.alert("⚠️ Formato incorrecto. Usa AAAA-MM-DD");
+      else Alert.alert("Error", "El formato de fecha debe ser AAAA-MM-DD (Ej: 2026-04-15)");
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      let matchedMicroId = null;
+      if (macros && Array.isArray(macros)) {
+        for (const macro of macros) {
+          const micros = macro.microciclos || macro.microcycles || [];
+          for (const m of micros) {
+            const start = extractDateString(m.fecha_inicio || m.start_date);
+            const end = extractDateString(m.fecha_fin || m.end_date);
+            if (start && end && targetDate >= start && targetDate <= end) {
+              matchedMicroId = m.id || m._id;
+              break;
+            }
+          }
+          if (matchedMicroId) break;
+        }
+      }
+
+      const payload = {
+        title: workoutData.title || "Entrenamiento de IA",
+        date: targetDate,
+        athlete_id: selectedAthlete.id,
+        exercises: workoutData.exercises || [],
+        notes: workoutData.notes || "",
+        completed: false,
+        is_ai: true,
+        microciclo_id: matchedMicroId 
+      };
+
+      await api.createWorkout(payload);
+      
+      setChatVisible(false);
+      refreshAthleteData(selectedAthlete);
+      
+      if (Platform.OS === 'web') {
+        window.alert("¡Entrenamiento guardado y asignado correctamente!");
+      } else {
+        Alert.alert("¡Hecho!", "Entrenamiento agendado en el calendario.");
+      }
+
+    } catch (error) {
+      console.error("Error al guardar desde IA:", error);
+      if (Platform.OS === 'web') window.alert("Ocurrió un error al guardar la sesión.");
+      else Alert.alert("Error", "No se pudo guardar la sesión.");
+      setUpdating(false);
+    }
+  };
+
   const microWorkouts = useMemo(() => {
     if (!viewMicroInfo) return [];
     return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
@@ -743,6 +800,7 @@ export default function CalendarScreen() {
         athleteContext={selectedAthlete} 
         athleteId={selectedAthlete?.id}
         athleteName={selectedAthlete?.name}
+        onSaveWorkout={handleSaveWorkoutFromAI} 
       />
 
     </SafeAreaView>
