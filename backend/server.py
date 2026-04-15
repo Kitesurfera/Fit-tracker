@@ -279,23 +279,10 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
         
     try:
-        # 1. RASTREADOR DE MODELOS: Le preguntamos a Google qué podemos usar
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
+        # AQUÍ ESTÁ EL MODEL_ID FIJO A GEMINI 3 🚀
+        model_id = "models/gemini-3-flash-preview"
         
-        logger.info(f"MODELOS DISPONIBLES PARA ESTA LLAVE: {available_models}")
-        
-        if not available_models:
-            raise Exception("La llave es válida pero no tiene acceso a ningún modelo de Gemini. ¡Revisa Google AI Studio!")
-
-        # 2. AUTO-SELECCIÓN: Cogemos el modelo más rápido que contenga 'flash' (sea 1.5, 2.5 o 3)
-        # Si no hay ninguno con 'flash', cogemos el primero de la lista.
-        model_id = next((m for m in available_models if 'flash' in m), available_models[0])
-        logger.info(f"MODELO AUTO-SELECCIONADO: {model_id}")
-        
-        # 3. CONFIGURACIÓN Y LLAMADA
+        # CONFIGURACIÓN Y LLAMADA
         model = genai.GenerativeModel(model_name=model_id)
         model.generation_config = {"response_mime_type": "application/json"}
         
