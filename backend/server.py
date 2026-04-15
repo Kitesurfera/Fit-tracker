@@ -299,6 +299,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         model.generation_config = {"response_mime_type": "application/json"}
         
         # 2. EL SÚPER-PROMPT CON PERSONAJE Y RAZONAMIENTO
+        # 2. EL SÚPER-PROMPT CON PERSONAJE Y RAZONAMIENTO (NIVEL ÉLITE)
         system_prompt = f"""
         Eres un preparador físico de élite y experto en alto rendimiento trabajando con Andre.
         Tu tono es conversacional, cercano, empático pero muy profesional y basado en la ciencia deportiva. 
@@ -309,14 +310,45 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         
         {ejemplos_memoria}
         
-        RESPONDE ÚNICAMENTE CON JSON PURO USANDO ESTA ESTRUCTURA EXACTA:
+        RESPONDE ÚNICAMENTE CON JSON PURO USANDO ESTA ESTRUCTURA EXACTA. 
+        Tienes dos formas de crear bloques dentro de "exercises": TRADICIONAL (Fuerza) o HIIT (Circuito). Puedes mezclarlos.
+
         {{
-            "coach_analysis": "Escribe aquí tu análisis clínico interno. ¿Cómo afecta su nivel de fatiga/dolor al plan de hoy? ¿Qué debes evitar y qué debes priorizar? (Este campo es solo para que tú razones, no lo verá el usuario)",
-            "response_message": "Tu respuesta conversacional hacia el atleta. Explícale de forma natural y cercana qué vais a hacer hoy y por qué, basándote en cómo se siente. Haz que suene humano, como un mensaje de WhatsApp largo y currado de un buen entrenador.",
+            "coach_analysis": "Análisis clínico interno. ¿Cómo afecta su fatiga/dolor al plan?",
+            "response_message": "Respuesta conversacional motivadora hacia el atleta.",
             "workoutData": {{
-                "title": "Nombre de la sesión (Ej: 'Movilidad Activa' o 'Fuerza Máxima')",
+                "title": "Nombre de la sesión",
+                "notes": "Indicaciones generales de la sesión (calentamiento, enfoque).",
                 "exercises": [
-                    {{"name": "Nombre del Ejercicio", "sets": 3, "reps": "10", "is_hiit_block": false, "exercise_notes": "Instrucciones técnicas detalladas, puntos de apoyo o respiración."}}
+                    // EJEMPLO 1: BLOQUE TRADICIONAL (FUERZA / AISLAMIENTO)
+                    {{
+                        "is_hiit_block": false,
+                        "name": "Sentadilla Búlgara", 
+                        "sets": "3", 
+                        "reps": "10-12", 
+                        "duration": "", 
+                        "rest": "90s", // Descanso tras acabar una serie
+                        "rest_exercise": "60s", // Descanso antes de pasar al siguiente ejercicio de la lista
+                        "exercise_notes": "Enfoque en excéntrica."
+                    }},
+                    // EJEMPLO 2: BLOQUE HIIT / CIRCUITO METABÓLICO
+                    {{
+                        "is_hiit_block": true,
+                        "name": "Metcon Finisher",
+                        "sets": "4", // Número de Vueltas al circuito
+                        "rest_exercise": "15s", // Transición entre ejercicios del circuito
+                        "rest_block": "60s", // Descanso al completar una vuelta entera
+                        "rest_between_blocks": "2m", // Descanso al terminar todas las vueltas antes del siguiente bloque de la sesión
+                        "hiit_exercises": [
+                            {{
+                                "name": "Burpees", 
+                                "sets": "1", 
+                                "duration_reps": "15", // Si va por reps
+                                "duration": "45s", // Si va por tiempo
+                                "exercise_notes": "Ritmo constante"
+                            }}
+                        ]
+                    }}
                 ]
             }}
         }}
