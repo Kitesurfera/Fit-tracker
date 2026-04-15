@@ -590,7 +590,7 @@ export default function CalendarScreen() {
             </View>
           </View>
 
-          <ScrollView style={[styles.footer, isDesktop && styles.rightColumnDesktop]} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 40 }}>
+          <ScrollView style={[styles.footer, isDesktop && styles.rightColumnDesktop]} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
             {isFemale && phaseInfo && (
               <View style={{ marginBottom: 25 }}>
                 <Text style={styles.footerLabel}>BIOLOGÍA Y RENDIMIENTO (DÍA {phaseInfo.day})</Text>
@@ -663,6 +663,14 @@ export default function CalendarScreen() {
           </ScrollView>
         </View>
       )}
+
+      {/* --- BOTÓN FLOTANTE DEL CHAT --- */}
+      <TouchableOpacity
+        style={[styles.fab, { backgroundColor: colors.primary }]}
+        onPress={() => router.push('/chat')}
+      >
+        <Ionicons name="chatbubbles" size={28} color="#FFF" />
+      </TouchableOpacity>
 
       {/* --- MODALES COMPARTIDOS --- */}
       <Modal visible={showSkipModal} transparent animationType="fade">
@@ -796,5 +804,22 @@ const styles = StyleSheet.create({
   microMacroName: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 },
   microName: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
   microTypeBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8, maxWidth: '100%' },
-  microDates: { fontSize: 11, fontWeight: '600' }
+  microDates: { fontSize: 11, fontWeight: '600' },
+
+  // --- ESTILO DEL BOTÓN FLOTANTE ---
+  fab: {
+    position: 'absolute',
+    bottom: 25,
+    right: 25,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+  }
 });
