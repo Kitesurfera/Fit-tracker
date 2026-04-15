@@ -256,7 +256,13 @@ export default function AthleteDetailScreen() {
       }
       if (!actualDayOneStr) return null;
 
-      const actualDayOne = new Date(actualDayOneStr);
+      const parts = actualDayOneStr.split('-');
+      const startY = Number(parts[0]);
+      const startM = Number(parts[1]);
+      const startD = Number(parts[2]);
+      if (isNaN(startY) || isNaN(startM) || isNaN(startD)) return null;
+
+      const actualDayOne = new Date(startY, startM - 1, startD);
       const cycleLength = Number(athlete?.cycle_length) || 28;
       const periodLength = Number(athlete?.period_length) || 5;
 
@@ -266,31 +272,39 @@ export default function AthleteDetailScreen() {
     }
   }, [history, athlete, isFemale, getActualDayOneStr]);
 
-  const phaseInfo = useMemo(() => {
+  const getPhaseForDate = useCallback((targetDateStr: string) => {
     try {
       if (!cycleData || !cycleData.actualDayOne || isNaN(cycleData.actualDayOne.getTime())) return null;
+      if (!targetDateStr) return null;
+      const parts = targetDateStr.split('-');
+      const tY = Number(parts[0]);
+      const tM = Number(parts[1]);
+      const tD = Number(parts[2]);
+      if (isNaN(tY) || isNaN(tM) || isNaN(tD)) return null;
       
-      const targetTime = new Date(todayStr).getTime();
+      const targetTime = new Date(tY, tM - 1, tD).getTime();
       const startTime = cycleData.actualDayOne.getTime();
       const diffDays = Math.floor((targetTime - startTime) / (1000 * 3600 * 24));
-
+      
       if (diffDays < 0) return null;
-
+      
       const currentCycleDay = (diffDays % cycleData.cycleLength) + 1;
-
+      
       if (currentCycleDay <= cycleData.periodLength) {
-        return { day: currentCycleDay, name: 'Fase Menstrual (Baja Carga)', color: '#EF4444', icon: 'water', simpleName: 'Menstrual' };
+        return { day: currentCycleDay, name: 'Fase Menstrual', color: '#EF4444', icon: 'water', training: 'Baja carga. Prioriza técnica y recuperación.', risk: 'Fatiga general alta. Escucha a tu cuerpo.', nutrition: 'Aumenta el hierro y alimentos antiinflamatorios.' };
       } else if (currentCycleDay <= Math.floor(cycleData.cycleLength / 2) - 2) {
-        return { day: currentCycleDay, name: 'Fase Folicular (Alta Energía)', color: '#10B981', icon: 'leaf', simpleName: 'Folicular' };
+        return { day: currentCycleDay, name: 'Fase Folicular', color: '#10B981', icon: 'leaf', training: 'Alta energía. Ideal para entrenos de fuerza.', risk: 'Bajo riesgo. ¡Aprovecha el pico de energía!', nutrition: 'Mayor sensibilidad a la insulina. Cargas de carbohidratos eficientes.' };
       } else if (currentCycleDay <= Math.floor(cycleData.cycleLength / 2) + 2) {
-        return { day: currentCycleDay, name: 'Fase Ovulatoria (Pico de Fuerza)', color: '#F59E0B', icon: 'sunny', simpleName: 'Ovulatoria' };
+        return { day: currentCycleDay, name: 'Fase Ovulatoria', color: '#F59E0B', icon: 'sunny', training: 'Pico de fuerza máxima. Cuidado con el exceso de confianza.', risk: 'ALTO RIESGO: Mayor laxitud de ligamentos (rodillas/hombros). Controla los aterrizajes.', nutrition: 'Mantén hidratación alta y proteína para recuperación.' };
       } else {
-        return { day: currentCycleDay, name: 'Fase Lútea (Posible Fatiga)', color: '#8B5CF6', icon: 'moon', simpleName: 'Lútea' };
+        return { day: currentCycleDay, name: 'Fase Lútea', color: '#8B5CF6', icon: 'moon', training: 'Posible bajón de energía. Reduce intensidad si notas pesadez.', risk: 'Aumenta la temperatura basal y fatiga central.', nutrition: 'El cuerpo quema más grasas. Antojos normales; prioriza grasas saludables.' };
       }
     } catch (e) {
       return null;
     }
-  }, [cycleData, todayStr]);
+  }, [cycleData]);
+
+  const phaseInfo = useMemo(() => getPhaseForDate(todayStr), [getPhaseForDate, todayStr]);
 
   const fatigueChartData = useMemo(() => {
     const days = 7;
@@ -329,7 +343,6 @@ export default function AthleteDetailScreen() {
     return { startStr: getLocalDateStr(start), endStr: getLocalDateStr(end) };
   }, [todayStr]);
 
-  // OPTIMIZACIÓN: Memoizar listas de entrenamientos para no ordenarlas en cada render
   const { activeWeekWorkouts, historyWorkouts, futureWorkouts } = useMemo(() => {
     const active: any[] = [];
     const hist: any[] = [];
@@ -358,6 +371,22 @@ export default function AthleteDetailScreen() {
     
     return future.length > 0 ? future[0] : null;
   }, [workouts, todayStr]);
+
+  const handleTrainerWhatsApp = () => {
+    let msg = `¡Hola ${params.name}! He estado revisando tu progreso. `;
+    const discomfortsObj = summary?.latest_wellness?.discomforts || {};
+    const discomfortParts = Object.keys(discomfortsObj);
+    
+    if (discomfortParts.length > 0) {
+      msg += `He visto que has registrado molestias musculares/articulares en: ${discomfortParts.join(', ')}. ¿Cómo sigues de eso? `;
+    }
+    
+    if (phaseInfo) {
+      msg += `También he tenido en cuenta que estás en ${phaseInfo.name} para adaptar la carga. `;
+    }
+    
+    Linking.openURL(`https://wa.me/${athlete.phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`);
+  };
 
   const renderDashboard = () => {
     const discomfortsObj = summary?.latest_wellness?.discomforts || {};
@@ -459,22 +488,24 @@ export default function AthleteDetailScreen() {
         )}
 
         {(isFemale && phaseInfo) && (
-          <View style={[styles.cycleCard, { backgroundColor: phaseInfo.color + '15', borderColor: phaseInfo.color }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Ionicons name={phaseInfo.icon as any} size={24} color={phaseInfo.color} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: phaseInfo.color, fontSize: isDesktop ? 13 : 11, fontWeight: '900', letterSpacing: 1 }}>BIOLOGÍA (DÍA {phaseInfo.day})</Text>
-                <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 18 : 15, fontWeight: '800', marginTop: 2 }}>{phaseInfo.name}</Text>
-                {phaseInfo.simpleName === 'Ovulatoria' && (
-                    <Text style={{ color: colors.error || '#EF4444', fontSize: isDesktop ? 13 : 11, fontWeight: '800', marginTop: 4 }}>⚠️ PRECAUCIÓN: Laxitud de ligamentos</Text>
-                )}
+          <View style={{ marginBottom: 25 }}>
+            <Text style={styles.sectionTitle}>BIOLOGÍA Y RENDIMIENTO (DÍA {phaseInfo.day})</Text>
+            <View style={[styles.insightCard, { borderColor: phaseInfo.color, backgroundColor: colors.surface }]}>
+              <View style={[styles.insightHeader, { backgroundColor: phaseInfo.color + '15' }]}>
+                <Ionicons name={phaseInfo.icon as any} size={20} color={phaseInfo.color} />
+                <Text style={[styles.insightTitle, { color: phaseInfo.color }]}>{phaseInfo.name}</Text>
+              </View>
+              <View style={styles.insightContent}>
+                <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Entrenamiento:</Text> {phaseInfo.training}</Text>
+                <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Prevención:</Text> {phaseInfo.risk}</Text>
+                <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Nutrición:</Text> {phaseInfo.nutrition}</Text>
               </View>
             </View>
           </View>
         )}
 
         <TouchableOpacity 
-          style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: 25, marginTop: (isFemale && phaseInfo) ? 0 : 5 }]} 
+          style={[styles.actionBtn, { backgroundColor: colors.primary, marginBottom: 25, marginTop: 5 }]} 
           onPress={() => router.push(`/periodization?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
         >
           <Ionicons name="calendar" size={20} color="#FFF" />
@@ -800,7 +831,7 @@ export default function AthleteDetailScreen() {
       {!!athlete?.phone && (
         <TouchableOpacity 
           style={styles.whatsappFab} 
-          onPress={() => Linking.openURL(`https://wa.me/${athlete.phone.replace(/\D/g, '')}?text=¡Hola ${params.name}! He estado revisando tu progreso...`)}
+          onPress={handleTrainerWhatsApp}
         >
           <Ionicons name="logo-whatsapp" size={30} color="#FFF" />
         </TouchableOpacity>
@@ -880,5 +911,10 @@ const styles = StyleSheet.create({
   whatsappFab: { position: 'absolute', bottom: 30, right: 20, width: 60, height: 60, borderRadius: 30, backgroundColor: '#25D366', justifyContent: 'center', alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 6, zIndex: 100 },
   toggleSectionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, borderRadius: 12, marginBottom: 15 },
   nextWorkoutCard: { padding: 16, borderRadius: 20, marginBottom: 25, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 1 },
-  nextWorkoutIcon: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 15 }
+  nextWorkoutIcon: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  insightCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
+  insightHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
+  insightTitle: { fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
+  insightContent: { padding: 15, gap: 8 },
+  insightText: { fontSize: 13, lineHeight: 18 },
 });
