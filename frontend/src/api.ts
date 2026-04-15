@@ -55,6 +55,18 @@ export const api = {
     if (!res.ok) throw new Error('Credenciales incorrectas');
     return res.json();
   },
+  
+  // --- IA / GEMINI ---
+  generateWorkout: async (data: { userMessage: string; athleteContext: any; chatHistory: any[] }) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/brain/generate-workout`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data),
+    });
+    if (!res.ok) throw new Error('Error conectando con la IA');
+    return res.json();
+  }
 
   googleLogin: async (googleToken: string, role: string = 'athlete') => {
     try {
