@@ -322,7 +322,7 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
-  // --- LÓGICA CICLO MESTRUAL (Se mantiene igual) ---
+  // --- LÓGICA CICLO MESTRUAL ---
   const cycleData = useMemo(() => {
     try {
       if (!isFemale) return null;
@@ -736,11 +736,13 @@ export default function CalendarScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* <-- MODAL DE GEMINI --> */}
+      {/* <-- MODAL DE GEMINI ACTUALIZADO --> */}
       <GeminiChatModal 
         isVisible={isChatVisible} 
         onClose={() => setChatVisible(false)} 
         athleteContext={selectedAthlete} 
+        athleteId={selectedAthlete?.id}
+        athleteName={selectedAthlete?.name}
       />
 
     </SafeAreaView>
