@@ -279,35 +279,38 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
         
     try:
-        # CAMBIO CLAVE: Usamos el string para la versión 2.5
-        # En 2026, el string suele ser "gemini-2.5-flash" o "gemini-2.5-flash-latest"
-        model_id = "gemini-2.5-flash" 
+        # EL CAMBIO MÁGICO: Usamos el ID exacto que sale en tu captura
+        model_id = "gemini-3-flash-preview" 
         
-        model = genai.GenerativeModel(model_name=model_id)
+        # Configuramos el modelo para que responda siempre en JSON
+        model = genai.GenerativeModel(
+            model_name=model_id,
+            generation_config={"response_mime_type": "application/json"}
+        )
         
         system_prompt = f"""
         Eres un preparador físico de élite. 
-        ESTADO DEL ATLETA: Fatiga {data.athleteContext.get('fatigue', 3)}/5, Dolor {data.athleteContext.get('soreness', 3)}/5.
-        RESPONDE EXCLUSIVAMENTE CON UN JSON PURO.
+        ATLETA: Fatiga {data.athleteContext.get('fatigue', 3)}/5, Dolor {data.athleteContext.get('soreness', 3)}/5.
+        RESPONDE ÚNICAMENTE CON JSON PURO. No añadas explicaciones fuera del JSON.
         {{
-            "response_message": "Texto corto",
+            "response_message": "Mensaje motivador corto.",
             "workoutData": {{
-                "title": "Nombre",
+                "title": "Nombre de la sesión",
                 "exercises": [
-                    {{"name": "Ejerc.", "sets": 3, "reps": "10", "is_hiit_block": false, "exercise_notes": "Técnica"}}
+                    {{"name": "Ejercicio", "sets": 3, "reps": "10", "is_hiit_block": false, "exercise_notes": "Técnica"}}
                 ]
             }}
         }}
         """
         
-        # Con 2.5, el manejo de historial es más fluido
+        # Con Gemini 3, el sistema de chat es súper estable
         chat = model.start_chat(history=[])
-        # Enviamos el contexto primero como un mensaje de "setup"
+        # Le enviamos las instrucciones de sistema
         chat.send_message(system_prompt)
-        
-        # Enviamos la petición del usuario
+        # Enviamos la petición de Claudia
         response = chat.send_message(data.userMessage)
         
+        # Limpieza por si acaso
         raw_text = response.text.strip()
         if raw_text.startswith("```"):
             raw_text = raw_text.replace("```json", "").replace("```", "").strip()
@@ -315,9 +318,8 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         return json.loads(raw_text)
         
     except Exception as e:
-        logger.error(f"Error con Gemini 2.5: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error IA (v2.5): {str(e)}")
-
+        logger.error(f"Error con Gemini 3: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error en el cerebro (v3): {str(e)}")
 
 # --- RUTAS DE WELLNESS ---
 @api_router.get("/wellness/history/{athlete_id}")
