@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { api } from '../api';
 
+// Estructura de los mensajes del chat
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -58,6 +59,7 @@ export default function GeminiChatModal({
     setIsTyping(true);
 
     try {
+      // Preparamos el historial para que la IA sepa de qué estamos hablando
       const chatHistory = messages
         .filter(m => m.id !== 'welcome-1')
         .map(m => ({
@@ -65,6 +67,7 @@ export default function GeminiChatModal({
           parts: [{ text: m.content }]
         }));
 
+      // Llamada a tu API con el contexto del atleta
       const aiData = await api.generateWorkout({
           userMessage: currentInput,
           athleteContext: athleteContext || { fatigue: 3, soreness: 3, cyclePhase: 'No definida' },
@@ -125,17 +128,24 @@ export default function GeminiChatModal({
                   </Text>
                 </View>
                 <Text style={styles.blockCountText}>
-                  {item.workoutData.exercises.length} bloques
+                  {item.workoutData.exercises?.length || 0} bloques
                 </Text>
               </View>
               
               <View style={styles.previewBody}>
-                {item.workoutData.exercises.map((ex: any, idx: number) => {
+                {/* Notas generales de la sesión */}
+                {item.workoutData.notes && (
+                  <Text style={{ color: colors.textSecondary, fontStyle: 'italic', marginBottom: 12, fontSize: 13 }}>
+                    📝 {item.workoutData.notes}
+                  </Text>
+                )}
+
+                {/* Renderizado dinámico de los bloques */}
+                {item.workoutData.exercises?.map((ex: any, idx: number) => {
                   const isHiit = ex.is_hiit_block;
-                  // Colores dinámicos según el tipo de bloque
                   const badgeBg = isHiit ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)';
                   const badgeColor = isHiit ? '#EF4444' : '#3B82F6';
-                  const badgeText = isHiit ? 'HIIT / METCON' : 'FUERZA';
+                  const badgeText = isHiit ? 'HIIT / CIRCUITO' : 'FUERZA';
 
                   return (
                     <View key={idx} style={[styles.exerciseBlock, { borderLeftColor: badgeColor }]}>
@@ -146,22 +156,61 @@ export default function GeminiChatModal({
                         </View>
                       </View>
                       
-                      <View style={styles.metricsRow}>
-                        <View style={styles.metricItem}>
-                          <Ionicons name="layers-outline" size={14} color={colors.textSecondary} />
-                          <Text style={[styles.metricText, { color: colors.textSecondary }]}>{ex.sets} series</Text>
-                        </View>
-                        <View style={styles.metricItem}>
-                          <Ionicons name="repeat-outline" size={14} color={colors.textSecondary} />
-                          <Text style={[styles.metricText, { color: colors.textSecondary }]}>{ex.reps}</Text>
-                        </View>
-                      </View>
+                      {/* RENDERIZADO SI ES FUERZA TRADICIONAL */}
+                      {!isHiit && (
+                        <>
+                          <View style={styles.metricsRow}>
+                            <View style={styles.metricItem}>
+                              <Ionicons name="layers-outline" size={14} color={colors.textSecondary} />
+                              <Text style={[styles.metricText, { color: colors.textSecondary }]}>{ex.sets} series</Text>
+                            </View>
+                            <View style={styles.metricItem}>
+                              <Ionicons name="repeat-outline" size={14} color={colors.textSecondary} />
+                              <Text style={[styles.metricText, { color: colors.textSecondary }]}>{ex.reps || ex.duration}</Text>
+                            </View>
+                            <View style={styles.metricItem}>
+                              <Ionicons name="timer-outline" size={14} color={colors.textSecondary} />
+                              <Text style={[styles.metricText, { color: colors.textSecondary }]}>{ex.rest || '-'} rec.</Text>
+                            </View>
+                          </View>
+                          {ex.exercise_notes ? (
+                            <Text style={[styles.notesText, { color: colors.textSecondary }]}>💡 {ex.exercise_notes}</Text>
+                          ) : null}
+                        </>
+                      )}
 
-                      {ex.exercise_notes ? (
-                        <Text style={[styles.notesText, { color: colors.textSecondary }]}>
-                          💡 {ex.exercise_notes}
-                        </Text>
-                      ) : null}
+                      {/* RENDERIZADO SI ES BLOQUE HIIT */}
+                      {isHiit && (
+                        <View style={{ backgroundColor: 'rgba(0,0,0,0.02)', padding: 10, borderRadius: 8, marginTop: 4 }}>
+                          <View style={[styles.metricsRow, { marginBottom: 10 }]}>
+                            <Text style={[styles.metricText, { color: colors.textPrimary, fontWeight: '700' }]}>
+                              🔄 {ex.sets || '1'} Vueltas
+                            </Text>
+                            {ex.rest_block ? (
+                              <Text style={[styles.metricText, { color: colors.textSecondary }]}>
+                                ⏱️ {ex.rest_block} desc. vuelta
+                              </Text>
+                            ) : null}
+                          </View>
+                          
+                          {ex.hiit_exercises && ex.hiit_exercises.map((hiitEx: any, hIdx: number) => (
+                            <View key={hIdx} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 6 }}>
+                              <Text style={{ color: badgeColor, fontWeight: '900', marginRight: 6 }}>{hIdx + 1}.</Text>
+                              <View style={{ flex: 1 }}>
+                                <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '600' }}>
+                                  {hiitEx.name} <Text style={{ fontWeight: '400', color: colors.textSecondary }}>
+                                    ({hiitEx.duration_reps || hiitEx.duration})
+                                  </Text>
+                                </Text>
+                                {hiitEx.exercise_notes ? (
+                                  <Text style={{ color: colors.textSecondary, fontSize: 11, fontStyle: 'italic' }}>- {hiitEx.exercise_notes}</Text>
+                                ) : null}
+                              </View>
+                            </View>
+                          ))}
+                        </View>
+                      )}
+
                     </View>
                   )
                 })}
