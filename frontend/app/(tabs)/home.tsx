@@ -259,7 +259,7 @@ export default function HomeScreen() {
         
         const sData = await loadData(true); 
         
-        // Lógica corregida del Modal de Wellness para que solo salte 1 vez al día
+        // Lógica del Modal de Wellness
         if (sData?.latest_wellness?.date !== todayStr) {
           const promptedKey = `wellness_prompted_${user.id}_${todayStr}`;
           const alreadyPrompted = await AsyncStorage.getItem(promptedKey);
