@@ -6,49 +6,46 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 
-// Interfaces temporales para estructurar el chat
+// Estructura de los mensajes del chat
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
   isWorkoutPayload?: boolean; 
-  workoutData?: any; // Aquí guardaremos el JSON parseado cuando exista
+  workoutData?: any; 
 }
 
 export default function GeminiChatModal({ 
   isVisible, 
   onClose, 
-  athleteContext 
+  athleteContext // Aquí es donde recibes los datos de fatiga/dolor del deportista
 }: { 
   isVisible: boolean; 
   onClose: () => void;
-  athleteContext?: any; // Para pasarle datos del atleta al prompt inicial
+  athleteContext?: any; 
 }) {
   const { colors } = useTheme();
   
-  // Estado inicial con un mensaje de bienvenida de Gemini
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'welcome-1',
       role: 'assistant',
-      content: '¡Hola! Soy tu asistente de planificación. Dime qué tipo de sesión necesitas hoy o qué quieres modificar del entrenamiento anterior.',
+      content: '¡Hola! Soy tu asistente de planificación. Dime qué tipo de sesión necesitas hoy o qué quieres modificar de tus entrenamientos anteriores.',
     }
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
-  // Auto-scroll al último mensaje
   useEffect(() => {
     if (messages.length > 0) {
       setTimeout(() => flatListRef.current?.scrollToEnd({ animated: true }), 200);
     }
   }, [messages]);
 
-const handleSend = async () => {
+  const handleSend = async () => {
     if (!inputText.trim()) return;
 
-    // 1. Añadimos el mensaje del usuario a la pantalla inmediatamente
     const newUserMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
@@ -56,50 +53,53 @@ const handleSend = async () => {
     };
     
     setMessages(prev => [...prev, newUserMsg]);
-    const currentInput = inputText; // Guardamos el texto antes de limpiar
+    const currentInput = inputText;
     setInputText('');
     setIsTyping(true);
 
     try {
-      // 2. Llamamos a nuestra API propia (que a su vez llama a Gemini)
-      // Asegúrate de cambiar la URL por la ruta real de tu backend
-      const response = await fetch('https://tu-backend.com/api/generate-workout', {
+      // Preparamos el historial para que la IA sepa de qué estamos hablando
+      const chatHistory = messages
+        .filter(m => m.id !== 'welcome-1')
+        .map(m => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }]
+        }));
+
+      // Llamada a tu servidor en Render
+      const response = await fetch('https://fit-tracker-backend-rtx2.onrender.com/api/brain/generate-workout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           userMessage: currentInput,
-          // Pasamos los datos del wellness para que la IA los tenga en cuenta
-          athleteContext: athleteContext || { fatigue: 3, soreness: 3 }, 
-          // Pasamos el historial para mantener la conversación
-          chatHistory: messages.map(m => ({ 
-            role: m.role === 'assistant' ? 'model' : 'user', 
-            parts: [{ text: m.content }] 
-          }))
+          // Si no hay datos de wellness, mandamos unos valores por defecto (3/5)
+          athleteContext: athleteContext || { fatigue: 3, soreness: 3, cyclePhase: 'No definida' },
+          chatHistory: chatHistory
         })
       });
 
-      if (!response.ok) throw new Error('Error en la red');
-      
-      const aiResponse = await response.json();
+      if (!response.ok) throw new Error('Error en el servidor');
 
-      // 3. Añadimos la respuesta de la IA a la pantalla
+      const aiData = await response.json();
+
       const newAssistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: aiResponse.response_message, // El mensaje de texto amigable
-        isWorkoutPayload: !!aiResponse.workoutData,
-        workoutData: aiResponse.workoutData // El JSON del entrenamiento para renderizar la tarjeta
+        content: aiData.response_message || 'He preparado esta sesión para ti:',
+        isWorkoutPayload: !!aiData.workoutData,
+        workoutData: aiData.workoutData
       };
 
       setMessages(prev => [...prev, newAssistantMsg]);
 
     } catch (error) {
       console.error("Error en el chat:", error);
-      // Opcional: Mostrar una burbuja de error
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',
-        content: 'Uy, ha habido un problema de conexión al generar la sesión. ¿Lo intentamos de nuevo?'
+        content: 'Lo siento, no he podido conectar con el cerebro de la IA. Comprueba tu conexión.'
       }]);
     } finally {
       setIsTyping(false);
@@ -118,7 +118,6 @@ const handleSend = async () => {
         )}
         
         <View style={{ flex: 1 }}>
-          {/* Burbuja de texto normal */}
           <View style={[
             styles.messageBubble, 
             isUser ? { backgroundColor: colors.primary } : { backgroundColor: colors.surfaceHighlight }
@@ -128,7 +127,6 @@ const handleSend = async () => {
             </Text>
           </View>
 
-          {/* Tarjeta interactiva si la IA devuelve un entrenamiento */}
           {item.isWorkoutPayload && item.workoutData && (
             <View style={[styles.workoutPreviewCard, { borderColor: colors.primary, backgroundColor: colors.surface }]}>
               <View style={styles.previewHeader}>
@@ -148,10 +146,10 @@ const handleSend = async () => {
 
               <TouchableOpacity 
                 style={[styles.acceptBtn, { backgroundColor: colors.primary }]}
-                onPress={() => console.log("Aceptar y guardar JSON:", item.workoutData)}
+                onPress={() => console.log("Claudia, aquí guardarías este JSON en tu base de datos:", item.workoutData)}
               >
                 <Ionicons name="checkmark-circle" size={18} color="#FFF" />
-                <Text style={styles.acceptBtnText}>Aceptar e Insertar en Calendario</Text>
+                <Text style={styles.acceptBtnText}>Aceptar y Guardar Sesión</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -167,7 +165,6 @@ const handleSend = async () => {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
           style={[styles.container, { backgroundColor: colors.background }]}
         >
-          {/* Header del Modal */}
           <View style={[styles.header, { borderBottomColor: colors.border }]}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
               <Ionicons name="sparkles" size={20} color={colors.primary} />
@@ -178,7 +175,6 @@ const handleSend = async () => {
             </TouchableOpacity>
           </View>
 
-          {/* Lista de Mensajes */}
           <FlatList
             ref={flatListRef}
             data={messages}
@@ -188,19 +184,17 @@ const handleSend = async () => {
             showsVerticalScrollIndicator={false}
           />
 
-          {/* Indicador de escritura */}
           {isTyping && (
             <View style={styles.typingContainer}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 8 }}>Gemini está pensando...</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 8 }}>Escribiendo...</Text>
             </View>
           )}
 
-          {/* Zona de Input */}
           <View style={[styles.inputArea, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
             <TextInput
               style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary }]}
-              placeholder="Ej: Quita el HIIT de hoy..."
+              placeholder="Ej: Necesito un entreno suave hoy..."
               placeholderTextColor={colors.textSecondary}
               value={inputText}
               onChangeText={setInputText}
@@ -214,7 +208,6 @@ const handleSend = async () => {
               <Ionicons name="send" size={18} color={inputText.trim() ? '#FFF' : colors.textSecondary} />
             </TouchableOpacity>
           </View>
-
         </KeyboardAvoidingView>
       </View>
     </Modal>
@@ -228,26 +221,19 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 18, fontWeight: '900' },
   closeBtn: { padding: 4 },
   listContent: { padding: 15, paddingBottom: 20 },
-  
   messageWrapper: { flexDirection: 'row', marginBottom: 20, maxWidth: '85%' },
   messageWrapperUser: { alignSelf: 'flex-end', justifyContent: 'flex-end' },
   messageWrapperAssistant: { alignSelf: 'flex-start' },
-  
   avatar: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 10, marginTop: 2 },
-  
   messageBubble: { padding: 14, borderRadius: 20 },
   messageText: { fontSize: 15, lineHeight: 22 },
-  
   workoutPreviewCard: { marginTop: 10, borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
   previewHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   previewTitle: { fontSize: 14, fontWeight: '800', marginLeft: 8 },
   previewBody: { padding: 12 },
-  
   acceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, gap: 8 },
   acceptBtnText: { color: '#FFF', fontWeight: '800', fontSize: 13 },
-  
   typingContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 10 },
-  
   inputArea: { flexDirection: 'row', padding: 15, paddingBottom: Platform.OS === 'ios' ? 30 : 15, borderTopWidth: 1, alignItems: 'flex-end' },
   input: { flex: 1, minHeight: 45, maxHeight: 100, borderRadius: 20, paddingHorizontal: 15, paddingTop: 12, paddingBottom: 12, fontSize: 15 },
   sendBtn: { width: 45, height: 45, borderRadius: 22.5, justifyContent: 'center', alignItems: 'center', marginLeft: 10 }
