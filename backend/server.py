@@ -279,47 +279,50 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
         
     try:
-        # EL CAMBIO MÁGICO: Usamos el ID exacto que sale en tu captura
-        model_id = "gemini-3-flash-preview" 
-        
-        # Configuramos el modelo para que responda siempre en JSON
-        model = genai.GenerativeModel(
-            model_name=model_id,
-            generation_config={"response_mime_type": "application/json"}
-        )
+        # Intentamos primero con el 3, si falla probamos con el 1.5-flash
+        # que es el estándar universal por ahora
+        try:
+            model_id = "gemini-3-flash-preview"
+            model = genai.GenerativeModel(model_name=model_id)
+            # Prueba rápida
+            model.generate_content("test") 
+        except Exception:
+            logger.warning("Gemini 3 no disponible, bajando a 1.5-flash")
+            model_id = "gemini-1.5-flash"
+            model = genai.GenerativeModel(model_name=model_id)
+
+        model.generation_config = {"response_mime_type": "application/json"}
         
         system_prompt = f"""
         Eres un preparador físico de élite. 
         ATLETA: Fatiga {data.athleteContext.get('fatigue', 3)}/5, Dolor {data.athleteContext.get('soreness', 3)}/5.
-        RESPONDE ÚNICAMENTE CON JSON PURO. No añadas explicaciones fuera del JSON.
+        RESPONDE ÚNICAMENTE CON JSON PURO.
         {{
-            "response_message": "Mensaje motivador corto.",
+            "response_message": "Mensaje corto.",
             "workoutData": {{
-                "title": "Nombre de la sesión",
+                "title": "Nombre",
                 "exercises": [
-                    {{"name": "Ejercicio", "sets": 3, "reps": "10", "is_hiit_block": false, "exercise_notes": "Técnica"}}
+                    {{"name": "Ejerc.", "sets": 3, "reps": "10", "is_hiit_block": false, "exercise_notes": "Técnica"}}
                 ]
             }}
         }}
         """
         
-        # Con Gemini 3, el sistema de chat es súper estable
         chat = model.start_chat(history=[])
-        # Le enviamos las instrucciones de sistema
         chat.send_message(system_prompt)
-        # Enviamos la petición de Claudia
         response = chat.send_message(data.userMessage)
         
-        # Limpieza por si acaso
-        raw_text = response.text.strip()
-        if raw_text.startswith("```"):
-            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-        
-        return json.loads(raw_text)
+        return json.loads(response.text.strip().replace("```json", "").replace("```", ""))
         
     except Exception as e:
-        logger.error(f"Error con Gemini 3: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error en el cerebro (v3): {str(e)}")
+        # ESTO ES LO MÁS IMPORTANTE: Ver qué modelos ve tu servidor
+        try:
+            available_models = [m.name for m in genai.list_models()]
+            logger.error(f"Modelos que tu API Key realmente ve: {available_models}")
+        except:
+            pass
+        logger.error(f"Error final: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error de conexión con la IA")
 
 # --- RUTAS DE WELLNESS ---
 @api_router.get("/wellness/history/{athlete_id}")
