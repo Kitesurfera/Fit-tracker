@@ -45,38 +45,65 @@ export default function GeminiChatModal({
     }
   }, [messages]);
 
-  const handleSend = () => {
+const handleSend = async () => {
     if (!inputText.trim()) return;
 
+    // 1. Añadimos el mensaje del usuario a la pantalla inmediatamente
     const newUserMsg: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
       content: inputText.trim(),
     };
-
+    
     setMessages(prev => [...prev, newUserMsg]);
+    const currentInput = inputText; // Guardamos el texto antes de limpiar
     setInputText('');
     setIsTyping(true);
 
-    // AQUÍ IRÁ LA LLAMADA A TU BACKEND/GEMINI API
-    // Simulamos una respuesta tras 2 segundos para probar la UI
-    setTimeout(() => {
-      const mockWorkoutResponse: ChatMessage = {
+    try {
+      // 2. Llamamos a nuestra API propia (que a su vez llama a Gemini)
+      // Asegúrate de cambiar la URL por la ruta real de tu backend
+      const response = await fetch('https://tu-backend.com/api/generate-workout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userMessage: currentInput,
+          // Pasamos los datos del wellness para que la IA los tenga en cuenta
+          athleteContext: athleteContext || { fatigue: 3, soreness: 3 }, 
+          // Pasamos el historial para mantener la conversación
+          chatHistory: messages.map(m => ({ 
+            role: m.role === 'assistant' ? 'model' : 'user', 
+            parts: [{ text: m.content }] 
+          }))
+        })
+      });
+
+      if (!response.ok) throw new Error('Error en la red');
+      
+      const aiResponse = await response.json();
+
+      // 3. Añadimos la respuesta de la IA a la pantalla
+      const newAssistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: 'Aquí tienes una propuesta adaptada a tu estado actual. He priorizado movilidad en hombros como pediste.',
-        isWorkoutPayload: true,
-        workoutData: {
-          title: "Fuerza + Movilidad Adaptada",
-          exercises: [
-            { name: "Movilidad Escapular", sets: 2, reps: 15 },
-            { name: "Press Militar Controlado", sets: 3, reps: 10, weight: 15 }
-          ]
-        }
+        content: aiResponse.response_message, // El mensaje de texto amigable
+        isWorkoutPayload: !!aiResponse.workoutData,
+        workoutData: aiResponse.workoutData // El JSON del entrenamiento para renderizar la tarjeta
       };
-      setMessages(prev => [...prev, mockWorkoutResponse]);
+
+      setMessages(prev => [...prev, newAssistantMsg]);
+
+    } catch (error) {
+      console.error("Error en el chat:", error);
+      // Opcional: Mostrar una burbuja de error
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        role: 'assistant',
+        content: 'Uy, ha habido un problema de conexión al generar la sesión. ¿Lo intentamos de nuevo?'
+      }]);
+    } finally {
       setIsTyping(false);
-    }, 2000);
+    }
   };
 
   const renderMessage = ({ item }: { item: ChatMessage }) => {
