@@ -7,7 +7,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { api } from '../api';
 
-// Estructura de los mensajes del chat
 interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -21,13 +20,15 @@ export default function GeminiChatModal({
   onClose, 
   athleteContext,
   athleteId,
-  athleteName
+  athleteName,
+  onSaveWorkout // <-- NUEVA PROP
 }: { 
   isVisible: boolean; 
   onClose: () => void;
   athleteContext?: any; 
   athleteId?: string;
   athleteName?: string;
+  onSaveWorkout?: (workoutData: any, targetDate: string) => void;
 }) {
   const { colors } = useTheme();
   
@@ -41,6 +42,10 @@ export default function GeminiChatModal({
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+
+  // <-- ESTADOS PARA PREGUNTAR LA FECHA -->
+  const [schedulingId, setSchedulingId] = useState<string | null>(null);
+  const [scheduleDate, setScheduleDate] = useState(() => new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -63,7 +68,6 @@ export default function GeminiChatModal({
     setIsTyping(true);
 
     try {
-      // Preparamos el historial para que la IA sepa de qué estamos hablando
       const chatHistory = messages
         .filter(m => m.id !== 'welcome-1')
         .map(m => ({
@@ -71,7 +75,6 @@ export default function GeminiChatModal({
           parts: [{ text: m.content }]
         }));
 
-      // Llamada a tu API con el contexto del atleta y su ID
       const aiData = await api.generateWorkout({
           userMessage: currentInput,
           athleteContext: athleteContext || { fatigue: 3, soreness: 3, cyclePhase: 'No definida' },
@@ -122,7 +125,6 @@ export default function GeminiChatModal({
             </Text>
           </View>
 
-          {/* --- TARJETA DE ENTRENAMIENTO PREMIUM --- */}
           {item.isWorkoutPayload && item.workoutData && (
             <View style={[styles.workoutPreviewCard, { borderColor: colors.border, backgroundColor: colors.surface }]}>
               <View style={styles.previewHeader}>
@@ -138,14 +140,12 @@ export default function GeminiChatModal({
               </View>
               
               <View style={styles.previewBody}>
-                {/* Notas generales de la sesión */}
                 {item.workoutData.notes && (
                   <Text style={{ color: colors.textSecondary, fontStyle: 'italic', marginBottom: 12, fontSize: 13 }}>
                     📝 {item.workoutData.notes}
                   </Text>
                 )}
 
-                {/* Renderizado dinámico de los bloques */}
                 {item.workoutData.exercises?.map((ex: any, idx: number) => {
                   const isHiit = ex.is_hiit_block;
                   const badgeBg = isHiit ? 'rgba(239, 68, 68, 0.1)' : 'rgba(59, 130, 246, 0.1)';
@@ -161,7 +161,6 @@ export default function GeminiChatModal({
                         </View>
                       </View>
                       
-                      {/* RENDERIZADO SI ES FUERZA TRADICIONAL */}
                       {!isHiit && (
                         <>
                           <View style={styles.metricsRow}>
@@ -184,7 +183,6 @@ export default function GeminiChatModal({
                         </>
                       )}
 
-                      {/* RENDERIZADO SI ES BLOQUE HIIT */}
                       {isHiit && (
                         <View style={{ backgroundColor: 'rgba(0,0,0,0.02)', padding: 10, borderRadius: 8, marginTop: 4 }}>
                           <View style={[styles.metricsRow, { marginBottom: 10 }]}>
@@ -215,19 +213,53 @@ export default function GeminiChatModal({
                           ))}
                         </View>
                       )}
-
                     </View>
                   )
                 })}
               </View>
 
-              <TouchableOpacity 
-                style={[styles.acceptBtn, { backgroundColor: colors.primary }]}
-                onPress={() => console.log("Añadir lógica de guardado aquí:", item.workoutData)}
-              >
-                <Ionicons name="add-circle" size={20} color="#FFF" />
-                <Text style={styles.acceptBtnText}>Añadir al Calendario</Text>
-              </TouchableOpacity>
+              {/* <-- ZONA DE PREGUNTAR FECHA Y GUARDAR --> */}
+              {schedulingId === item.id ? (
+                <View style={[styles.scheduleArea, { backgroundColor: colors.surfaceHighlight }]}>
+                  <Text style={[styles.scheduleLabel, { color: colors.textPrimary }]}>¿Para qué día quieres programarlo?</Text>
+                  <TextInput 
+                    style={[styles.dateInput, { backgroundColor: colors.surface, borderColor: colors.border, color: colors.textPrimary }]}
+                    value={scheduleDate}
+                    onChangeText={setScheduleDate}
+                    placeholder="AAAA-MM-DD"
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                  <View style={{flexDirection: 'row', gap: 10}}>
+                    <TouchableOpacity 
+                      style={[styles.scheduleBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.border }]} 
+                      onPress={() => setSchedulingId(null)}
+                    >
+                      <Text style={{color: colors.textPrimary, fontWeight: '700'}}>Cancelar</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.scheduleBtn, { backgroundColor: colors.primary, borderWidth: 1, borderColor: colors.primary }]} 
+                      onPress={() => {
+                        if (onSaveWorkout) onSaveWorkout(item.workoutData, scheduleDate);
+                        setSchedulingId(null);
+                      }}
+                    >
+                      <Text style={{color: '#FFF', fontWeight: '800'}}>Guardar en Agenda</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : (
+                <TouchableOpacity 
+                  style={[styles.acceptBtn, { backgroundColor: colors.primary }]}
+                  onPress={() => {
+                    setScheduleDate(new Date().toISOString().split('T')[0]); // Resetear al día de hoy
+                    setSchedulingId(item.id);
+                  }}
+                >
+                  <Ionicons name="calendar" size={20} color="#FFF" />
+                  <Text style={styles.acceptBtnText}>Añadir Entrenamiento</Text>
+                </TouchableOpacity>
+              )}
+
             </View>
           )}
         </View>
@@ -307,15 +339,13 @@ const styles = StyleSheet.create({
   messageBubble: { padding: 16, borderRadius: 24, borderTopLeftRadius: 4 },
   messageText: { fontSize: 16, lineHeight: 24 },
   
-  // Estilos de la nueva Tarjeta de Entrenamiento
-  workoutPreviewCard: { marginTop: 12, borderWidth: 1, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3 },
+  workoutPreviewCard: { marginTop: 12, borderWidth: 1, borderRadius: 20, shadowColor: '#000', shadowOpacity: 0.05, shadowRadius: 10, elevation: 3, overflow: 'hidden' },
   previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   titleRow: { flexDirection: 'row', alignItems: 'center', flex: 1 },
   previewTitle: { fontSize: 16, fontWeight: '800', marginLeft: 8, flex: 1 },
   blockCountText: { fontSize: 12, fontWeight: '600', color: '#888', backgroundColor: '#F0F0F0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12 },
   previewBody: { padding: 16, gap: 16 },
   
-  // Estilos de cada bloque de ejercicio
   exerciseBlock: { borderLeftWidth: 4, paddingLeft: 12, marginBottom: 4 },
   exerciseHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 },
   exerciseName: { fontSize: 15, fontWeight: '700', flex: 1, marginRight: 8 },
@@ -326,8 +356,15 @@ const styles = StyleSheet.create({
   metricText: { fontSize: 13, fontWeight: '600' },
   notesText: { fontSize: 13, fontStyle: 'italic', lineHeight: 18, marginTop: 4 },
   
-  acceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, gap: 8, borderBottomLeftRadius: 20, borderBottomRightRadius: 20 },
+  // NUEVOS ESTILOS PARA LA ZONA DE AGENDAR
+  scheduleArea: { padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
+  scheduleLabel: { fontWeight: '800', marginBottom: 12, fontSize: 14 },
+  dateInput: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16, marginBottom: 12, textAlign: 'center', fontWeight: '600', letterSpacing: 1 },
+  scheduleBtn: { flex: 1, padding: 14, alignItems: 'center', borderRadius: 12 },
+  
+  acceptBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, gap: 8 },
   acceptBtnText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
+  
   typingContainer: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingBottom: 16 },
   inputArea: { flexDirection: 'row', padding: 16, paddingBottom: Platform.OS === 'ios' ? 36 : 16, borderTopWidth: 1, alignItems: 'flex-end' },
   input: { flex: 1, minHeight: 48, maxHeight: 120, borderRadius: 24, paddingHorizontal: 20, paddingTop: 14, paddingBottom: 14, fontSize: 16, lineHeight: 22 },
