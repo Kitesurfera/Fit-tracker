@@ -38,9 +38,11 @@ if GEMINI_API_KEY:
 else:
     logger.warning("No se ha encontrado GEMINI_API_KEY en el entorno. El chat de IA no funcionará.")
 
-JWT_SECRET = os.environ.get('JWT_SECRET', 'fitness-tracker-secret-key-2026')
+JWT_SECRET = os.environ.get('JWT_SECRET')
 JWT_ALGORITHM = 'HS256'
 JWT_EXPIRATION_HOURS = 876000
+if not JWT_SECRET:
+    logger.error("¡ERROR CRÍTICO: No se ha encontrado JWT_SECRET!")
 
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com')
 GOOGLE_ANDROID_CLIENT_ID = os.environ.get('GOOGLE_ANDROID_CLIENT_ID', '351214985492-ahg14f57mak2mcj47q6jucsvcieu4dq9.apps.googleusercontent.com')
