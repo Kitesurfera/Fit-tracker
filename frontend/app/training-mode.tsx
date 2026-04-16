@@ -1156,7 +1156,15 @@ const handleRecordVideoOptions = (key: string) => {
 
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             {renderFatigueToggle()}
-            <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={timerExName} colors={colors} isHiit={isHiit} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={advanceHiit} onSkip={skipHiitEx} />
+            <UnifiedTimer 
+              isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} 
+              prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} 
+              restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} 
+              exName={timerExName} colors={colors} isHiit={isHiit} 
+              onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} 
+              onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} 
+              onComplete={advanceHiit} onSkip={skipHiitEx} 
+            />
             
             <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
           </ScrollView>
@@ -1178,8 +1186,14 @@ const handleRecordVideoOptions = (key: string) => {
       else { const comp = s.filter(x => x === 'completed').length; displayExName = `Siguiente: ${ex?.name} (Serie ${comp + 1})`; }
     } else if (isPrep) { displayExName = `Prep: ${ex?.name}`; }
 
+    // Aquí evitamos que aparezca el botón si el nombre contiene ciertas palabras clave
     const isBarbellLift = /barra|barbell|sentadilla|squat|peso muerto|deadlift|press|snatch|clean|jerk|landmine|hex|hexagonal|trap|smith|multipower/i.test(ex?.name || '');
+    const isDumbbellOrKettlebell = /dumbell|dumbbell|mancuerna|kettlebell|hex|pesa rusa/i.test(ex?.name || '');
+    const showCalculatorButton = isBarbellLift && !isDumbbellOrKettlebell;
+    
     const isLandmineExercise = /landmine/i.test(ex?.name || '');
+
+    const displayReps = isFatigueMode ? adjustReps(ex.reps) : ex.reps;
 
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -1205,7 +1219,16 @@ const handleRecordVideoOptions = (key: string) => {
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             {renderFatigueToggle()}
             
-            <UnifiedTimer isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} exName={displayExName} colors={colors} isHiit={false} onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} onComplete={completeSet} onSkip={skipSet} />
+            <UnifiedTimer 
+              isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} 
+              prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} 
+              restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} 
+              exName={displayExName} colors={colors} isHiit={false} 
+              reps={displayReps} sets={ex.sets}
+              onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} 
+              onSkipRest={skipTradRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} 
+              onComplete={completeSet} onSkip={skipSet} 
+            />
             
             <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
@@ -1252,7 +1275,7 @@ const handleRecordVideoOptions = (key: string) => {
           
           {/* BOTONES FLOTANTES */}
           <View style={{ position: 'absolute', right: 20, bottom: 100, gap: 15 }}>
-            {isBarbellLift && (
+            {showCalculatorButton && (
               <TouchableOpacity style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.textPrimary }]} onPress={() => openPlateCalculator(isLandmineExercise)}>
                 <Text style={{ fontSize: 24, fontWeight: '900', color: colors.background }}>?</Text>
               </TouchableOpacity>
