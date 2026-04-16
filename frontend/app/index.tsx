@@ -47,6 +47,7 @@ export default function LoginScreen() {
     clientId: '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com',
     androidClientId: '351214985492-ahg14f57mak2mcj47q6jucsvcieu4dq9.apps.googleusercontent.com',
     iosClientId: '351214985492-r7k26kmllj5j7nef3bpdcv8vg5c4robk.apps.googleusercontent.com',
+    prompt: 'select_account',
   });
 
   // Escucha la respuesta del navegador de Google
