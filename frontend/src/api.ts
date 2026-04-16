@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { router } from 'expo-router';
 import { syncManager } from './offline';
 
-const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
+const BACKEND_URL = "https://fit-tracker-backend-rtx2.onrender.com"
 
 const getAuthHeaders = async () => {
   try {
