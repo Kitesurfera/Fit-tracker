@@ -271,9 +271,7 @@ export default function CalendarScreen() {
       if (lastPeriodDateInput && lastPeriodDateInput !== currentActualDayOne) {
           const wellnessData = { athlete_id: selectedAthlete.id, date: lastPeriodDateInput, cycle_phase: 'menstruacion', sleep_quality: 3, stress_level: 3, muscle_soreness: 3, energy_level: 3 };
           try {
-             if (api.submitWellness) await api.submitWellness(wellnessData);
-             else if ((api as any).createWellness) await (api as any).createWellness(wellnessData);
-             else if ((api as any).logWellness) await (api as any).logWellness(wellnessData);
+             if (api.postWellness) await api.postWellness(wellnessData);
              setWellnessHistory(prev => [...prev, wellnessData]);
           } catch (wellnessErr) { console.warn("Wellness silencioso falló:", wellnessErr); }
       }
@@ -288,7 +286,6 @@ export default function CalendarScreen() {
     }
   };
 
-  // --- LÓGICA SEMANAL ---
   const changeWeek = (dir: number) => {
     const d = new Date(currentWeekStart);
     d.setDate(d.getDate() + (dir * 7));
@@ -305,7 +302,6 @@ export default function CalendarScreen() {
     return days;
   }, [currentWeekStart]);
 
-  // --- LÓGICA MENSUAL ---
   const changeMonth = (dir: number) => {
     if (dir === -1) { if (currentMonth === 0) { setCurrentMonth(11); setCurrentYear(currentYear - 1); } else setCurrentMonth(currentMonth - 1); } 
     else { if (currentMonth === 11) { setCurrentMonth(0); setCurrentYear(currentYear + 1); } else setCurrentMonth(currentMonth + 1); }
@@ -322,7 +318,6 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
-  // --- LÓGICA CICLO MESTRUAL ---
   const cycleData = useMemo(() => {
     try {
       if (!isFemale) return null;
@@ -458,7 +453,6 @@ export default function CalendarScreen() {
   const handleWorkoutPress = (workout: any) => { router.push(isTrainer && !workout.completed ? `/edit-workout?workoutId=${workout.id}` : `/training-mode?workoutId=${workout.id}`); };
   const handleCloseMicroInfo = () => { setViewMicroInfo(null); setExpandedWorkoutId(null); };
 
-  // <-- NUEVA FUNCIÓN PARA GESTIONAR EL GUARDADO DESDE LA IA -->
   const handleSaveWorkoutFromAI = async (workoutData: any, targetDate: string) => {
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(targetDate)) {
@@ -725,15 +719,28 @@ export default function CalendarScreen() {
         </View>
       )}
 
-      {/* --- BOTÓN FLOTANTE GEMINI --- */}
-      <TouchableOpacity
-        style={[styles.fab, { backgroundColor: colors.primary }]}
-        onPress={() => setChatVisible(true)}
-      >
-        <Ionicons name="sparkles" size={26} color="#FFF" />
-      </TouchableOpacity>
+      {/* --- BOTONES DE IA (SOLO ENTRENADORES) --- */}
+      {isTrainer && (
+        <>
+          <TouchableOpacity
+            style={[styles.fab, { backgroundColor: colors.primary }]}
+            onPress={() => setChatVisible(true)}
+          >
+            <Ionicons name="sparkles" size={26} color="#FFF" />
+          </TouchableOpacity>
 
-      {/* --- MODALES COMPARTIDOS --- */}
+          <GeminiChatModal 
+            isVisible={isChatVisible} 
+            onClose={() => setChatVisible(false)} 
+            athleteContext={selectedAthlete} 
+            athleteId={selectedAthlete?.id}
+            athleteName={selectedAthlete?.name}
+            onSaveWorkout={handleSaveWorkoutFromAI} 
+          />
+        </>
+      )}
+
+      {/* --- MODALES DE CONFIGURACIÓN --- */}
       <Modal visible={showSkipModal} transparent animationType="fade">
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
@@ -793,16 +800,6 @@ export default function CalendarScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* <-- MODAL DE GEMINI ACTUALIZADO --> */}
-      <GeminiChatModal 
-        isVisible={isChatVisible} 
-        onClose={() => setChatVisible(false)} 
-        athleteContext={selectedAthlete} 
-        athleteId={selectedAthlete?.id}
-        athleteName={selectedAthlete?.name}
-        onSaveWorkout={handleSaveWorkoutFromAI} 
-      />
-
     </SafeAreaView>
   );
 }
@@ -828,7 +825,6 @@ const styles = StyleSheet.create({
   dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
   dayText: { fontSize: 15, fontWeight: '600' },
   
-  // Estilos de Vista Semanal
   weekDayColumn: { borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.05)' },
   weekDayHeader: { paddingVertical: 20, alignItems: 'center', marginBottom: 10 },
   weeklyWorkoutCard: { borderWidth: 1, borderRadius: 16, marginBottom: 15, overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOffset: {width:0, height:2}, shadowOpacity: 0.1, shadowRadius: 4 },
@@ -846,7 +842,6 @@ const styles = StyleSheet.create({
   copyBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 20, justifyContent: 'center' },
   copyBannerText: { color: '#FFF', fontSize: 12, fontWeight: '700', textAlign: 'center' },
   
-  // Estilos de Modales y Ciclo
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30, width: '100%', position: 'absolute', bottom: 0 },
   modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20 },
@@ -878,7 +873,6 @@ const styles = StyleSheet.create({
   microTypeBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8, maxWidth: '100%' },
   microDates: { fontSize: 11, fontWeight: '600' },
 
-  // --- ESTILO DEL BOTÓN FLOTANTE ---
   fab: {
     position: 'absolute',
     bottom: 25,
