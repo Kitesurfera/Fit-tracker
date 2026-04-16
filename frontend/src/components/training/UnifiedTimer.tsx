@@ -1,128 +1,215 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Svg, { Circle } from 'react-native-svg';
+import { Svg, Circle } from 'react-native-svg';
 
-export default function UnifiedTimer({ 
-  isPrep, isResting, isWorking, isPaused, prepSeconds, restSeconds, workSeconds, 
-  restTotalSeconds, workTotalSeconds, exName, colors, isHiit,
-  onTogglePause, onStopPrep, onSkipRest, onResetWork, onResetRest,
-  onComplete, onSkip
-}: any) {
+const formatTime = (totalSeconds: number): string => {
+  if (!totalSeconds || isNaN(totalSeconds) || totalSeconds < 0) return "00:00";
+  const m = Math.floor(totalSeconds / 60);
+  const s = totalSeconds % 60;
+  return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+};
+
+interface UnifiedTimerProps {
+  isPrep: boolean;
+  isResting: boolean;
+  isWorking: boolean;
+  isPaused: boolean;
+  prepSeconds: number;
+  restSeconds: number;
+  workSeconds: number;
+  restTotalSeconds: number;
+  workTotalSeconds: number;
+  exName?: string;
+  colors: any;
+  isHiit: boolean;
+  reps?: string;
+  sets?: string;
+  onTogglePause: () => void;
+  onStopPrep: () => void;
+  onSkipRest: () => void;
+  onResetWork: () => void;
+  onResetRest: () => void;
+  onComplete: () => void;
+  onSkip: () => void;
+}
+
+export default function UnifiedTimer({
+  isPrep, isResting, isWorking, isPaused,
+  prepSeconds, restSeconds, workSeconds,
+  restTotalSeconds, workTotalSeconds,
+  exName, colors, isHiit,
+  reps, sets,
+  onTogglePause, onStopPrep, onSkipRest,
+  onResetWork, onResetRest, onComplete, onSkip
+}: UnifiedTimerProps) {
   
-  if (!isPrep && !isResting && !isWorking) return null;
-
-  const currentSeconds = isPrep ? prepSeconds : isResting ? restSeconds : workSeconds;
-  const currentTotal = isPrep ? 5 : isResting ? restTotalSeconds : workTotalSeconds;
-  const currentTitle = isPrep ? 'PREPÁRATE' : isResting ? 'DESCANSO' : (isPaused ? 'EN PAUSA' : '¡A TOPE!');
-  
-  const activeColor = isResting || isPrep ? (colors.success || '#10B981') : colors.primary;
-  const inactiveColor = colors.surfaceHighlight || '#E5E7EB';
-  const hasTime = isPrep || isResting || (isWorking && workTotalSeconds > 0);
-
-  const size = 240; 
-  const strokeWidth = 14; 
+  const size = 260;
+  const strokeWidth = 12;
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
-  const safeTotal = currentTotal > 0 ? currentTotal : 1; 
-  const progress = currentSeconds / safeTotal;
+
+  let stateColor = colors.primary;
+  let statusText = isHiit ? 'MODO CIRCUITO' : 'SERIE';
+  let timeText = "00:00";
+  let progress = 1;
+  let showProgress = false;
+
+  const isTimeBased = workTotalSeconds > 0;
+
+  if (isPrep) {
+    stateColor = colors.warning || '#F59E0B';
+    statusText = 'PREPARACIÓN';
+    timeText = formatTime(prepSeconds);
+    progress = prepSeconds / 5;
+    showProgress = true;
+  } else if (isResting) {
+    stateColor = colors.success || '#10B981';
+    statusText = 'DESCANSO';
+    timeText = formatTime(restSeconds);
+    progress = restTotalSeconds > 0 ? restSeconds / restTotalSeconds : 0;
+    showProgress = true;
+  } else if (isWorking && isTimeBased) {
+    stateColor = colors.error || '#EF4444';
+    statusText = 'EN CURSO';
+    timeText = formatTime(workSeconds);
+    progress = workTotalSeconds > 0 ? workSeconds / workTotalSeconds : 0;
+    showProgress = true;
+  }
+
   const strokeDashoffset = circumference - (progress * circumference);
 
   return (
-    <View style={[styles.card, { backgroundColor: colors.surface }]}>
-      
-      {/* ZONA VISUAL: RUEDA O TEXTO LIBRE */}
-      <View style={{ width: size, height: size, justifyContent: 'center', alignItems: 'center' }}>
-        {hasTime ? (
+    <View style={[styles.timerContainer, { backgroundColor: colors.surface }]}>
+      <View style={styles.header}>
+        <View style={styles.titleRow}>
+          <Ionicons name="barbell" size={24} color={stateColor} />
+          <Text style={[styles.exName, { color: colors.textPrimary }]} numberOfLines={2}>
+            {exName || 'Preparación'}
+          </Text>
+        </View>
+        <Text style={[styles.statusBadge, { backgroundColor: stateColor + '20', color: stateColor }]}>
+          {statusText}
+        </Text>
+      </View>
+
+      <View style={styles.circleContainer}>
+        {showProgress ? (
           <>
-            <Svg width={size} height={size} style={{ position: 'absolute', transform: [{ rotate: '-90deg' }] }}>
-              <Circle stroke="rgba(0,0,0,0.03)" fill="none" cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth + 4} />
-              <Circle stroke={inactiveColor} fill="none" cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} />
+            <Svg width={size} height={size}>
+              <Circle stroke={colors.border} fill="none" cx={size / 2} cy={size / 2} r={radius} strokeWidth={strokeWidth} />
               <Circle
-                stroke={isPaused ? colors.warning || '#F59E0B' : activeColor} fill="none" cx={size / 2} cy={size / 2} r={radius}
-                strokeWidth={strokeWidth} strokeDasharray={circumference}
-                strokeDashoffset={strokeDashoffset} strokeLinecap="round"
+                stroke={stateColor}
+                fill="none"
+                cx={size / 2}
+                cy={size / 2}
+                r={radius}
+                strokeWidth={strokeWidth}
+                strokeDasharray={`${circumference} ${circumference}`}
+                strokeDashoffset={strokeDashoffset}
+                strokeLinecap="round"
+                transform={`rotate(-90 ${size / 2} ${size / 2})`}
               />
             </Svg>
-
-            <View style={{ alignItems: 'center', justifyContent: 'center', width: size - 30 }}>
-              <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '900', letterSpacing: 2, marginBottom: 2 }}>
-                {currentTitle}
-              </Text>
-              <Text style={{ color: isPaused ? (colors.warning || '#F59E0B') : activeColor, fontSize: 72, fontWeight: '900', letterSpacing: -3 }}>
-                {currentSeconds}
-              </Text>
-              <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: '800', textAlign: 'center', marginTop: 2, paddingHorizontal: 10 }} numberOfLines={3} adjustsFontSizeToFit>
-                {exName}
-              </Text>
+            <View style={styles.timeWrapper}>
+              <Text style={[styles.timeText, { color: colors.textPrimary }]}>{timeText}</Text>
+              {isPaused && <Text style={[styles.pausedText, { color: colors.textSecondary }]}>PAUSADO</Text>}
             </View>
           </>
         ) : (
-          <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 20 }}>
-            <Ionicons name="barbell" size={64} color={colors.primary} style={{ opacity: 0.9, marginBottom: 12 }} />
-            <Text style={{ color: colors.textSecondary, fontSize: 14, fontWeight: '900', letterSpacing: 2, marginBottom: 6 }}>
-              A TU RITMO
-            </Text>
-            <Text style={{ color: colors.textPrimary, fontSize: 20, fontWeight: '900', textAlign: 'center', paddingHorizontal: 10 }} numberOfLines={3}>
-              {exName}
-            </Text>
+          <View style={[styles.repsDisplay, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+            <View style={styles.repsRow}>
+              <View style={styles.repItem}>
+                 <Text style={[styles.repLabel, { color: colors.textSecondary }]}>Series</Text>
+                 <Text style={[styles.repValue, { color: colors.textPrimary }]}>{sets || '-'}</Text>
+              </View>
+              <View style={[styles.repDivider, { backgroundColor: colors.border }]} />
+              <View style={styles.repItem}>
+                 <Text style={[styles.repLabel, { color: colors.textSecondary }]}>Reps</Text>
+                 <Text style={[styles.repValue, { color: colors.textPrimary }]}>{reps || '-'}</Text>
+              </View>
+            </View>
           </View>
         )}
       </View>
-      
-      {/* BOTONES DE CONTROL UNIFICADOS */}
-      <View style={{ width: '100%', marginTop: 30, gap: 12 }}>
-        
-        {/* Controles Secundarios: Reset, Pausa y Saltar */}
-        <View style={{ flexDirection: 'row', gap: 12, justifyContent: 'center' }}>
-          
-          {(isResting || (isWorking && workTotalSeconds > 0)) && (
-            <TouchableOpacity style={[styles.roundBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={isResting ? onResetRest : onResetWork}>
-              <Ionicons name="refresh" size={26} color={colors.textPrimary} />
-            </TouchableOpacity>
-          )}
 
-          {hasTime && (
-            <TouchableOpacity style={[styles.roundBtn, { backgroundColor: isPaused ? (colors.warning || '#F59E0B') + '20' : colors.primary + '20' }]} onPress={onTogglePause}>
-              <Ionicons name={isPaused ? "play" : "pause"} size={26} color={isPaused ? (colors.warning || '#F59E0B') : colors.primary} />
+      <View style={styles.controlsRow}>
+        {(isPrep || isWorking || isResting) ? (
+          <>
+            <TouchableOpacity style={[styles.controlBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={onTogglePause}>
+              <Ionicons name={isPaused ? "play" : "pause"} size={28} color={colors.textPrimary} />
             </TouchableOpacity>
-          )}
-
-          {isPrep || isResting ? (
-            <TouchableOpacity style={[styles.actionBtn, { backgroundColor: activeColor, flex: 1 }]} onPress={isPrep ? onStopPrep : onSkipRest}>
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Saltar {isPrep ? 'Prep.' : 'Descanso'}</Text>
-              <Ionicons name="play-forward" size={20} color="#FFF" />
-            </TouchableOpacity>
-          ) : (
-            isWorking && workTotalSeconds > 0 ? (
-              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: (colors.error || '#EF4444') + '15', flex: 1, paddingVertical: 0 }]} onPress={onSkip}>
-                <Ionicons name="play-skip-forward" size={20} color={colors.error || '#EF4444'} />
-                <Text style={{ color: colors.error || '#EF4444', fontWeight: '800', fontSize: 15 }}>Saltar</Text>
+            
+            {isPrep && (
+              <TouchableOpacity style={[styles.mainBtn, { backgroundColor: stateColor }]} onPress={onStopPrep}>
+                <Text style={styles.mainBtnText}>EMPEZAR YA</Text>
+                <Ionicons name="flash" size={20} color="#FFF" />
               </TouchableOpacity>
-            ) : (
-              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: (colors.error || '#EF4444') + '15', flex: 1 }]} onPress={onSkip}>
-                <Ionicons name="play-skip-forward" size={20} color={colors.error || '#EF4444'} />
-                <Text style={{ color: colors.error || '#EF4444', fontWeight: '800', fontSize: 16 }}>Saltar Ejercicio</Text>
-              </TouchableOpacity>
-            )
-          )}
-        </View>
+            )}
 
-        {/* Botón Principal (Completar) */}
-        {isWorking && onComplete && (
-          <TouchableOpacity style={[styles.actionBtn, { backgroundColor: activeColor, width: '100%', paddingVertical: 18 }]} onPress={onComplete}>
-            <Ionicons name="checkmark-circle" size={24} color="#FFF" />
-            <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 17 }}>Completar {isHiit ? 'Ronda' : 'Serie'}</Text>
-          </TouchableOpacity>
+            {isResting && (
+              <>
+                <TouchableOpacity style={[styles.controlBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={onResetRest}>
+                  <Ionicons name="refresh" size={24} color={colors.textPrimary} />
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.mainBtn, { backgroundColor: stateColor }]} onPress={onSkipRest}>
+                  <Text style={styles.mainBtnText}>SALTAR</Text>
+                  <Ionicons name="play-forward" size={20} color="#FFF" />
+                </TouchableOpacity>
+              </>
+            )}
+
+            {isWorking && (
+              <>
+                <TouchableOpacity style={[styles.controlBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={onResetWork}>
+                  <Ionicons name="refresh" size={24} color={colors.textPrimary} />
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.mainBtn, { backgroundColor: stateColor }]} onPress={onComplete}>
+                  <Text style={styles.mainBtnText}>{isHiit ? 'SIGUIENTE' : 'HECHO'}</Text>
+                  <Ionicons name="checkmark-done" size={20} color="#FFF" />
+                </TouchableOpacity>
+              </>
+            )}
+          </>
+        ) : (
+           <View style={{ flexDirection: 'row', width: '100%', gap: 15 }}>
+             {!isHiit && (
+               <TouchableOpacity style={[styles.controlBtn, { backgroundColor: colors.surfaceHighlight, flex: 1 }]} onPress={onSkip}>
+                 <Ionicons name="play-skip-forward" size={24} color={colors.textPrimary} />
+                 <Text style={{color: colors.textPrimary, fontWeight: '700', marginLeft: 8}}>Saltar Serie</Text>
+               </TouchableOpacity>
+             )}
+             <TouchableOpacity style={[styles.mainBtn, { backgroundColor: colors.success || '#10B981', flex: isHiit ? 1 : 1.5 }]} onPress={onComplete}>
+               <Text style={styles.mainBtnText}>{isHiit ? 'SIGUIENTE' : 'COMPLETAR'}</Text>
+               <Ionicons name="checkmark-done" size={20} color="#FFF" />
+             </TouchableOpacity>
+           </View>
         )}
-
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { padding: 25, borderRadius: 24, alignItems: 'center', marginBottom: 20, shadowColor: "#000", shadowOffset: { width: 0, height: 6 }, shadowOpacity: 0.08, shadowRadius: 15, elevation: 5 },
-  roundBtn: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
-  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 16, borderRadius: 16 }
+  timerContainer: { borderRadius: 24, padding: 24, alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 12, elevation: 5, marginBottom: 16 },
+  header: { width: '100%', alignItems: 'center', marginBottom: 20 },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 12, paddingHorizontal: 10 },
+  exName: { fontSize: 22, fontWeight: '900', textAlign: 'center', marginLeft: 10, flexShrink: 1 },
+  statusBadge: { paddingHorizontal: 16, paddingVertical: 6, borderRadius: 12, fontSize: 13, fontWeight: '900', letterSpacing: 1 },
+  circleContainer: { alignItems: 'center', justifyContent: 'center', marginVertical: 10 },
+  timeWrapper: { position: 'absolute', alignItems: 'center', justifyContent: 'center' },
+  timeText: { fontSize: 56, fontWeight: '900', fontVariant: ['tabular-nums'] },
+  pausedText: { fontSize: 14, fontWeight: '800', letterSpacing: 2, marginTop: 4 },
+  controlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 15, marginTop: 20, width: '100%' },
+  controlBtn: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', flexDirection: 'row' },
+  mainBtn: { flex: 1, height: 60, borderRadius: 30, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, gap: 10 },
+  mainBtnText: { color: '#FFF', fontSize: 16, fontWeight: '900', letterSpacing: 1 },
+  
+  // Estilos para la visualización de Repeticiones/Series
+  repsDisplay: { width: 220, height: 220, borderRadius: 110, borderWidth: 8, justifyContent: 'center', alignItems: 'center' },
+  repsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  repItem: { alignItems: 'center', justifyContent: 'center', paddingHorizontal: 15 },
+  repLabel: { fontSize: 14, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
+  repValue: { fontSize: 42, fontWeight: '900' },
+  repDivider: { width: 2, height: 60, opacity: 0.2, marginHorizontal: 5 }
 });
