@@ -14,9 +14,6 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isDesktop = SCREEN_WIDTH > 768;
 const MAX_WIDTH = 1000;
 
-// Eliminamos el TEST_LABELS estricto para el frontend,
-// dejamos que el usuario vea exactamente lo que escribe, 
-// pero mantenemos algunas traducciones por retrocompatibilidad.
 const TEST_TRANSLATIONS: Record<string, string> = {
   squat_rm: 'Sentadilla RM',
   bench_rm: 'Press Banca RM',
@@ -47,7 +44,11 @@ export default function TestsScreen() {
   const [tests, setTests] = useState<any[]>([]);
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedAthlete, setSelectedAthlete] = useState<string | null>(null);
+  
+  // Guardamos el objeto completo del deportista, igual que en Calendar
+  const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
+  const [showPicker, setShowPicker] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dynamicCategories, setDynamicCategories] = useState(INITIAL_CATEGORIES);
@@ -55,26 +56,18 @@ export default function TestsScreen() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showCustomModal, setShowCustomModal] = useState(false);
   
-  // Mantenemos editTest solo por si pulsas el icono de lápiz en un test concreto
   const [editTest, setEditTest] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
   const [formData, setFormData] = useState({
-    name: '',
-    category: 'strength',
-    isBilateral: false,
-    unit: 'kg',
-    value: '',
-    valueLeft: '',
-    valueRight: '',
-    notes: ''
+    name: '', category: 'strength', isBilateral: false, unit: 'kg', value: '', valueLeft: '', valueRight: '', notes: ''
   });
 
   const loadData = async () => {
     try {
       const params: any = {};
       if (selectedCategory !== 'all') params.test_type = selectedCategory;
-      if (selectedAthlete) params.athlete_id = selectedAthlete;
+      if (isTrainer && selectedAthlete?.id) params.athlete_id = selectedAthlete.id;
       if (!isTrainer && user?.id) params.athlete_id = user.id;
 
       const ts = await api.getTests(params);
@@ -83,8 +76,15 @@ export default function TestsScreen() {
       const rawTests = Array.isArray(ts) ? ts : (ts?.data || []);
       const filteredTests = rawTests.filter(t => t.test_type !== 'medicion');
 
+      const athletesData = Array.isArray(ath) ? ath : (ath?.data || []);
+      setAthletes(athletesData);
+      
+      // Autoseleccionar el primero si es entrenador y no hay ninguno seleccionado
+      if (isTrainer && athletesData.length > 0 && !selectedAthlete) {
+        setSelectedAthlete(athletesData[0]);
+      }
+      
       setTests(filteredTests);
-      setAthletes(Array.isArray(ath) ? ath : (ath?.data || []));
     } catch (e) {
       console.log("Error cargando tests:", e);
     } finally {
@@ -96,6 +96,11 @@ export default function TestsScreen() {
   useEffect(() => { loadData(); }, [selectedCategory, selectedAthlete]);
 
   const onRefresh = () => { setRefreshing(true); loadData(); };
+
+  const handleSelectAthlete = (athlete: any) => {
+    setSelectedAthlete(athlete);
+    setShowPicker(false);
+  };
 
   const deleteTest = (testId: string, testName: string) => {
     const performDelete = async () => {
@@ -132,11 +137,7 @@ export default function TestsScreen() {
   const handleSaveCategory = () => {
     if (!newCategoryName.trim()) return;
     const newKey = newCategoryName.trim().toLowerCase().replace(/\s+/g, '_');
-    
-    if (!dynamicCategories.find(c => c.key === newKey)) {
-      setDynamicCategories([...dynamicCategories, { key: newKey, label: newCategoryName.trim() }]);
-    }
-    
+    if (!dynamicCategories.find(c => c.key === newKey)) setDynamicCategories([...dynamicCategories, { key: newKey, label: newCategoryName.trim() }]);
     setNewCategoryName('');
     setShowCategoryModal(false);
     setSelectedCategory(newKey);
@@ -146,13 +147,11 @@ export default function TestsScreen() {
     if (!formData.name.trim()) return Alert.alert("Error", "El nombre es obligatorio.");
     if (!formData.isBilateral && !formData.value) return Alert.alert("Error", "Añade un valor al test.");
     if (formData.isBilateral && (!formData.valueLeft || !formData.valueRight)) return Alert.alert("Error", "Añade valores para ambos lados.");
-    if (isTrainer && !selectedAthlete) return Alert.alert("Atención", "Selecciona primero un deportista en la lista para asignarle el test.");
+    if (isTrainer && !selectedAthlete?.id) return Alert.alert("Atención", "Selecciona primero un deportista en la lista para asignarle el test.");
 
     setSaving(true);
     try {
       const todayStr = new Date().toISOString().split('T')[0];
-      const inputName = formData.name.trim();
-
       const payload: any = {
         unit: formData.unit.trim(),
         notes: formData.notes.trim(),
@@ -162,22 +161,15 @@ export default function TestsScreen() {
         value_right: formData.isBilateral ? parseFloat(String(formData.valueRight).replace(',', '.') || '0') : null,
         date: todayStr,
         test_name: 'custom', 
-        custom_name: inputName,
-        athlete_id: isTrainer ? selectedAthlete : user?.id
+        custom_name: formData.name.trim(),
+        athlete_id: isTrainer ? selectedAthlete.id : user?.id
       };
 
-      // Si editTest tiene un ID, significa que el usuario ha hecho clic en el icono del lápiz
-      // para corregir un error en un registro existente. En ese caso SÍ actualizamos.
-      // Si editTest es null, SIEMPRE creamos uno nuevo, sin buscar coincidencias de nombre.
-      if (editTest && editTest.id) {
-        await api.updateTest(editTest.id, payload);
-      } else {
-        await api.createTest(payload);
-      }
+      if (editTest && editTest.id) await api.updateTest(editTest.id, payload);
+      else await api.createTest(payload);
 
       await loadData();
       setShowCustomModal(false);
-
     } catch (e: any) {
       console.log("Error guardando test:", e);
       Alert.alert("Error", e?.message || "Falló la comunicación con el servidor al guardar.");
@@ -200,11 +192,21 @@ export default function TestsScreen() {
           ListHeaderComponent={
             <View style={{ marginBottom: 20 }}>
               <View style={styles.headerRow}>
-                <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Tests Físicos</Text>
+                <View>
+                  <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>Tests Físicos</Text>
+                  {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 14 }}>{selectedAthlete?.name || 'Seleccionando...'}</Text>}
+                </View>
                 <View style={styles.headerActions}>
                   <TouchableOpacity onPress={onRefresh} style={styles.refreshIcon}>
                     {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={24} color={colors.primary} />}
                   </TouchableOpacity>
+                  
+                  {isTrainer && (
+                    <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.actionBtn, { backgroundColor: colors.primary + '15' }]}>
+                      <Ionicons name="people" size={22} color={colors.primary} />
+                    </TouchableOpacity>
+                  )}
+
                   <TouchableOpacity 
                     style={[styles.actionBtn, { backgroundColor: colors.primary }]} 
                     onPress={() => {
@@ -229,7 +231,6 @@ export default function TestsScreen() {
                   </TouchableOpacity>
                 ))}
                 
-                {/* BOTÓN NUEVA CATEGORÍA */}
                 <TouchableOpacity 
                   style={[styles.filterChip, { borderColor: colors.primary, backgroundColor: colors.primary + '10', borderStyle: 'dashed' }]} 
                   onPress={() => setShowCategoryModal(true)}
@@ -270,9 +271,23 @@ export default function TestsScreen() {
         />
       </View>
 
+      {/* MODAL SELECCIÓN DE DEPORTISTA */}
+      <Modal visible={showPicker} transparent animationType="slide">
+        <TouchableOpacity style={styles.pickerOverlay} onPress={() => setShowPicker(false)}>
+          <View style={[styles.pickerContent, { backgroundColor: colors.surface }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text>
+            {athletes.map(a => (
+              <TouchableOpacity key={a.id} style={[styles.athleteItem, { borderBottomColor: colors.border }]} onPress={() => handleSelectAthlete(a)}>
+                <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
       {/* MODAL NUEVA CATEGORÍA */}
       <Modal visible={showCategoryModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlayCenter}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboard}>
             <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
               <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Nueva Categoría</Text>
@@ -299,7 +314,7 @@ export default function TestsScreen() {
 
       {/* MODAL NUEVO/EDITAR TEST */}
       <Modal visible={showCustomModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
+        <View style={styles.modalOverlayCenter}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboard}>
             <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
               <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -444,7 +459,7 @@ const styles = StyleSheet.create({
   unitText: { fontSize: 16, fontWeight: '600' },
   sideLabel: { fontSize: 10, fontWeight: '700', color: '#888', marginTop: 4 },
   dateText: { fontSize: 12, marginTop: 15, opacity: 0.6 },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
+  modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center' },
   modalKeyboard: { width: '100%', maxWidth: 450, padding: 20 },
   modalCard: { padding: 25, borderRadius: 25, borderWidth: 1 },
   modalTitle: { fontSize: 20, fontWeight: '900', marginBottom: 20 },
@@ -454,5 +469,8 @@ const styles = StyleSheet.create({
   toggleBtn: { flex: 1, paddingVertical: 12, borderWidth: 1, borderRadius: 12, alignItems: 'center' },
   chipSelect: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, marginRight: 8, alignSelf: 'center' },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 10 },
-  modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' }
+  modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' },
+  pickerOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  pickerContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30, width: '100%', position: 'absolute', bottom: 0 },
+  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
 });
