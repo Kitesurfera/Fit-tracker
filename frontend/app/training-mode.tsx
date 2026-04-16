@@ -627,7 +627,24 @@ const handleRecordVideoOptions = (key: string) => {
     return { duration_seconds: globalSeconds, rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, exercise_results: (workout.exercises || []).map((ex: any, i: number) => { const s = setsStatus[i] || []; return { exercise_index: i, name: ex.name, total_sets: parseInt(ex.sets) || 1, completed_sets: s.filter(item => item === 'completed').length, skipped_sets: s.filter(item => item === 'skipped').length, set_details: s.map((status, si) => ({ set: si + 1, status })), logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', athlete_note: logs[i]?.note || '', recorded_video_url: recordedVideos[i.toString()] || '' }; }), };
   };
 
-  const handleFinish = async () => { if (workout.completed) { router.back(); return; } if (!stableWorkoutId) return; stopAllTimers(); const data = buildCompletionData(); try { const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises }; if (observations.trim()) update.observations = observations.trim(); const net = await NetInfo.fetch(); if (net.isConnected) { await api.updateWorkout(stableWorkoutId, update); syncManager.syncPendingWorkouts(); } else { await syncManager.savePendingWorkout(stableWorkoutId, update); } router.back(); } catch (e) { console.error(e); } };
+ const handleFinish = async () => { 
+    if (workout.completed) { router.back(); return; } 
+    if (!stableWorkoutId) return; 
+    stopAllTimers(); 
+    const data = buildCompletionData(); 
+    try { 
+      const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises }; 
+      if (observations.trim()) update.observations = observations.trim(); 
+      
+      // ¡La magia de api.ts! Si no hay internet, api.ts lo encola solo y no da error.
+      await api.updateWorkout(stableWorkoutId, update); 
+      
+      router.back(); 
+    } catch (e) { 
+      console.error(e); 
+      Alert.alert("Error", "No se pudo guardar el entrenamiento.");
+    } 
+  };
 
   const addPlate = (weight: number) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
