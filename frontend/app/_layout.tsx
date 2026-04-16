@@ -1,11 +1,28 @@
+import { useEffect } from 'react';
 import { Stack } from 'expo-router';
 import { AuthProvider } from '../src/context/AuthContext';
-import { ThemeProvider } from '../src/hooks/useTheme'; // <-- Importamos tu nuevo cerebro central
+import { ThemeProvider } from '../src/hooks/useTheme';
 import { StatusBar } from 'expo-status-bar';
+import NetInfo from '@react-native-community/netinfo';
+import { syncManager } from '../src/offline'; // <-- Importar el syncManager
 
 export default function RootLayout() {
+
+  useEffect(() => {
+    // 1. Intentar sincronizar al abrir la app
+    syncManager.syncPendingActions();
+
+    // 2. Escuchar cambios de conexión (ej. sales de un túnel, vuelve el WiFi)
+    const unsubscribe = NetInfo.addEventListener(state => {
+      if (state.isConnected) {
+        syncManager.syncPendingActions();
+      }
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   return (
-    // Envolvemos TODO en el ThemeProvider para que proteja desde la raíz
     <ThemeProvider>
       <AuthProvider>
         <StatusBar style="auto" />
