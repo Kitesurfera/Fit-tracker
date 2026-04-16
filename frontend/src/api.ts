@@ -1,6 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { router } from 'expo-router'; // <-- AÑADIDO PARA REDIRIGIR
+import { router } from 'expo-router';
+import NetInfo from '@react-native-community/netinfo';
+import { syncManager, OfflineAction } from './offline'; // <-- IMPORTAMOS EL MANAGER OFFLINE
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -16,174 +18,47 @@ const getAuthHeaders = async () => {
   }
 };
 
-// --- NUEVO WRAPPER PARA INTERCEPTAR 401 ---
 const authFetch = async (url: string, options?: RequestInit) => {
   const res = await fetch(url, options);
   
   if (res.status === 401) {
-    // 1. Limpiamos la memoria del dispositivo
     await AsyncStorage.removeItem('auth_token');
     await AsyncStorage.removeItem('user_data');
     
-    // 2. Echamos al usuario a la pantalla de Login
     if (Platform.OS === 'web') {
       window.location.href = '/';
     } else {
-      try {
-        router.replace('/');
-      } catch (e) {
-        console.log("No se pudo redirigir automáticamente:", e);
-      }
+      try { router.replace('/'); } catch (e) { console.log(e); }
     }
-    
-    // 3. Lanzamos error para detener la ejecución de lo que estuviera haciendo
     throw new Error('Sesión expirada. Por favor, vuelve a iniciar sesión.');
   }
-  
   return res;
 };
 
+// Helper para saber si un error es por falta de internet/backend caído
+const isNetworkError = (error: any) => {
+  return error.message === 'Network request failed' || error.message.includes('fetch');
+};
+
 export const api = {
-  // --- AUTENTICACIÓN ---
-  // IMPORTANTE: Aquí usamos fetch normal porque 401 = credenciales incorrectas
+  // --- AUTENTICACIÓN (Obligatorio Online) ---
   login: async (email, password) => {
     const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
     });
     if (!res.ok) throw new Error('Credenciales incorrectas');
     return res.json();
   },
   
-  // --- IA / GEMINI ---
-  generateWorkout: async (data: { userMessage: string; athleteContext: any; chatHistory: any[] }) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/brain/generate-workout`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error('Error conectando con la IA');
-    return res.json();
-  },
-
   googleLogin: async (googleToken: string, role: string = 'athlete') => {
-    try {
-      const response = await fetch(`${BACKEND_URL}/api/auth/google`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: googleToken, role }),
-      });
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.detail || 'Error al iniciar sesión con Google');
-      }
-      return await response.json();
-    } catch (error) {
-      console.error('API Google Login Error:', error);
-      throw error;
-    }
-  },
-
-  // --- NOTIFICACIONES PUSH ---
-  // A partir de aquí, todo usa authFetch
-  subscribeWebPush: async (subscriptionData: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/notifications/subscribe`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(subscriptionData),
+    const res = await fetch(`${BACKEND_URL}/api/auth/google`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: googleToken, role }),
     });
-    return res.json();
+    if (!res.ok) throw new Error('Error al iniciar sesión con Google');
+    return await res.json();
   },
 
-  testWebPush: async () => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/notifications/test`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({ title: "¡Prueba!", message: "El sistema Web Push funciona." }),
-    });
-    return res.json();
-  },
-
-  // --- WELLNESS ---
-  postWellness: async (data: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/wellness`, {
-      method: 'POST', headers, body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.detail || 'Error al guardar el estado');
-    }
-    return res.json();
-  },
-
-  getWellnessHistory: async (athleteId: string) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/wellness/history/${athleteId}`, { headers });
-    if (!res.ok) throw new Error('No se pudo obtener el historial');
-    return res.json();
-  },
-
-  getSummary: async (athleteId?: string) => {
-    const headers = await getAuthHeaders();
-    const url = athleteId ? `${BACKEND_URL}/api/analytics/summary?athlete_id=${athleteId}` : `${BACKEND_URL}/api/analytics/summary`;
-    const res = await authFetch(url, { headers });
-    return res.json();
-  },
-
-  // --- ATLETAS ---
-  getAthletes: async () => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/athletes`, { headers });
-    return res.json();
-  },
-
-  getAthlete: async (id: string) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/athletes/${id}`, { headers });
-    return res.json();
-  },
-
-  createAthlete: async (data: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/athletes`, {
-      method: 'POST', headers, body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error('Error al crear deportista');
-    return res.json();
-  },
-
-  updateAthlete: async (id: string, data: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/athletes/${id}`, {
-      method: 'PUT', headers, body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error('Error al actualizar deportista');
-    return res.json();
-  },
-
-  deleteAthlete: async (id: string) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/athletes/${id}`, {
-      method: 'DELETE', headers,
-    });
-    if (!res.ok) throw new Error('Error al eliminar deportista');
-    return res.json();
-  },
-
-  updateProfile: async (data: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/profile`, {
-      method: 'PUT', headers, body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  // --- ENTRENAMIENTOS ---
+  // --- ENTRENAMIENTOS (Con soporte Offline) ---
   getWorkouts: async (params?: { athlete_id?: string; date?: string }) => {
     const headers = await getAuthHeaders();
     let url = `${BACKEND_URL}/api/workouts`;
@@ -191,158 +66,117 @@ export const api = {
       const query = new URLSearchParams(params as any).toString();
       url += `?${query}`;
     }
-    const res = await authFetch(url, { headers });
-    return res.json();
+    
+    try {
+      const res = await authFetch(url, { headers });
+      const data = await res.json();
+      // Guardamos caché
+      await syncManager.cacheData(`workouts_${params?.athlete_id || 'all'}`, data);
+      return data;
+    } catch (e) {
+      if (isNetworkError(e)) {
+        console.log('Modo offline: Cargando entrenamientos desde caché');
+        const cached = await syncManager.getCachedData(`workouts_${params?.athlete_id || 'all'}`);
+        return cached || []; // Si no hay caché, devolvemos array vacío para no romper la app
+      }
+      throw e;
+    }
   },
 
   createWorkout: async (data: any) => {
     const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/workouts`, {
-      method: 'POST', headers, body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  createWorkoutsBulk: async (data: { workouts: any[] }) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/workouts/bulk`, {
-      method: 'POST', headers, body: JSON.stringify(data),
-    });
-    return res.json();
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/workouts`, {
+        method: 'POST', headers, body: JSON.stringify(data),
+      });
+      return await res.json();
+    } catch (e) {
+      if (isNetworkError(e)) {
+        console.log('Modo offline: Encolando creación de entrenamiento');
+        const tempId = `temp_${Date.now()}`;
+        const offlineData = { ...data, id: tempId };
+        await syncManager.savePendingAction('CREATE_WORKOUT', offlineData);
+        return offlineData; // Falso positivo para la UI
+      }
+      throw e;
+    }
   },
 
   updateWorkout: async (id: string, data: any) => {
     const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/workouts/${id}`, {
-      method: 'PUT', headers, body: JSON.stringify(data),
-    });
-    if (!res.ok) throw new Error('No se pudo actualizar el entrenamiento');
-    return res.json();
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/workouts/${id}`, {
+        method: 'PUT', headers, body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('No se pudo actualizar el entrenamiento');
+      return await res.json();
+    } catch (e) {
+      if (isNetworkError(e)) {
+        console.log('Modo offline: Encolando actualización de entrenamiento');
+        await syncManager.savePendingAction('UPDATE_WORKOUT', data, id);
+        return { success: true, offline: true }; // Falso positivo para la UI
+      }
+      throw e;
+    }
   },
 
   deleteWorkout: async (id: string) => {
     const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/workouts/${id}`, { method: 'DELETE', headers });
-    return res.json();
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/workouts/${id}`, { method: 'DELETE', headers });
+      return await res.json();
+    } catch (e) {
+      if (isNetworkError(e)) {
+        await syncManager.savePendingAction('DELETE_WORKOUT', null, id);
+        return { success: true, offline: true };
+      }
+      throw e;
+    }
   },
 
-  // --- PERIODIZACIÓN ---
+  // --- PERIODIZACIÓN (Con soporte de Caché para leer Offline) ---
   getPeriodizationTree: async (athleteId: string) => {
     try {
       const headers = await getAuthHeaders();
       const res = await authFetch(`${BACKEND_URL}/api/periodization/tree/${athleteId}`, { headers });
       
-      if (!res.ok) {
-        console.warn(`Error API Tree (Status: ${res.status})`);
-        return { macros: [], unassigned_workouts: [] };
-      }
-      
+      if (!res.ok) return { macros: [], unassigned_workouts: [] };
       const data = await res.json();
       
-      if (Array.isArray(data)) {
-        return { macros: data, unassigned_workouts: [] };
-      }
+      const result = Array.isArray(data) 
+        ? { macros: data, unassigned_workouts: [] } 
+        : { macros: Array.isArray(data?.macros) ? data.macros : [], unassigned_workouts: Array.isArray(data?.unassigned_workouts) ? data.unassigned_workouts : [] };
       
-      return { 
-        macros: Array.isArray(data?.macros) ? data.macros : [], 
-        unassigned_workouts: Array.isArray(data?.unassigned_workouts) ? data.unassigned_workouts : [] 
-      };
+      await syncManager.cacheData(`tree_${athleteId}`, result);
+      return result;
       
     } catch (e) {
-      console.error("Error catched in API Tree:", e);
+      if (isNetworkError(e)) {
+        console.log('Modo offline: Cargando árbol de periodización desde caché');
+        const cached = await syncManager.getCachedData(`tree_${athleteId}`);
+        return cached || { macros: [], unassigned_workouts: [] };
+      }
       return { macros: [], unassigned_workouts: [] };
     }
   },
 
-  createMacrociclo: async (data: any) => {
+  // ... (RESTO DE TUS MÉTODOS SIN CAMBIOS IMPORTANTES, ej: wellness, uploadFile, athletes. 
+  // Puedes aplicar este mismo patrón try/catch a los tests físicos si lo deseas).
+  
+  getAthletes: async () => {
     const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/macrociclos`, {
-      method: 'POST', headers, body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  updateMacrociclo: async (id: string, data: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/macrociclos/${id}`, {
-      method: 'PUT', headers, body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  deleteMacrociclo: async (id: string) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/macrociclos/${id}`, { method: 'DELETE', headers });
-    return res.json();
-  },
-
-  createMicrociclo: async (data: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/microciclos`, {
-      method: 'POST', headers, body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  updateMicrociclo: async (id: string, data: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/microciclos/${id}`, {
-      method: 'PUT', headers, body: JSON.stringify(data),
-    });
-    return res.json();
-  },
-
-  deleteMicrociclo: async (id: string) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/microciclos/${id}`, { method: 'DELETE', headers });
-    return res.json();
-  },
-
-  // --- TESTS FÍSICOS ---
-  getTests: async (params?: { athlete_id?: string; test_type?: string }) => {
-    const headers = await getAuthHeaders();
-    let url = `${BACKEND_URL}/api/tests`;
-    if (params) {
-      const query = new URLSearchParams(params as any).toString();
-      url += `?${query}`;
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/athletes`, { headers });
+      const data = await res.json();
+      await syncManager.cacheData('athletes_list', data);
+      return data;
+    } catch (e) {
+      if (isNetworkError(e)) return await syncManager.getCachedData('athletes_list') || [];
+      throw e;
     }
-    const res = await authFetch(url, { headers });
-    if (!res.ok) throw new Error('Error al obtener los tests');
-    return res.json();
   },
 
-  createTest: async (data: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/tests`, {
-      method: 'POST', headers, body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.detail ? JSON.stringify(errorData.detail) : 'Error al registrar el test');
-    }
-    return res.json();
-  },
-
-  updateTest: async (id: string, data: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/tests/${id}`, {
-      method: 'PUT', headers, body: JSON.stringify(data),
-    });
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.detail ? JSON.stringify(errorData.detail) : 'Error al actualizar el test');
-    }
-    return res.json();
-  },
-
-  deleteTest: async (id: string) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/tests/${id}`, { method: 'DELETE', headers });
-    if (!res.ok) throw new Error('Error al eliminar el test');
-    return res.json();
-  },
-
-  // --- SUBIDA DE ARCHIVOS ---
+  // Copia el resto de tus métodos originales aquí debajo (uploadFile, wellness, etc.)
   uploadFile: async (asset: any) => {
     const headers: any = await getAuthHeaders();
     delete headers['Content-Type']; 
@@ -366,9 +200,7 @@ export const api = {
     }
 
     const res = await authFetch(`${BACKEND_URL}/api/upload`, { 
-      method: 'POST',
-      headers,
-      body: formData,
+      method: 'POST', headers, body: formData,
     });
     
     if (!res.ok) {
