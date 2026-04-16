@@ -1,8 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
-import NetInfo from '@react-native-community/netinfo';
-import { syncManager, OfflineAction } from './offline'; // <-- IMPORTAMOS EL MANAGER OFFLINE
+import { syncManager } from './offline';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -18,13 +17,19 @@ const getAuthHeaders = async () => {
   }
 };
 
+// --- WRAPPER ULTRA ROBUSTO ---
 const authFetch = async (url: string, options?: RequestInit) => {
-  const res = await fetch(url, options);
+  let res;
+  try {
+    res = await fetch(url, options);
+  } catch (e) {
+    // 1. Fallo puro de red (sin WiFi, modo avión o backend apagado completamente)
+    throw new Error('NETWORK_ERROR');
+  }
   
   if (res.status === 401) {
     await AsyncStorage.removeItem('auth_token');
     await AsyncStorage.removeItem('user_data');
-    
     if (Platform.OS === 'web') {
       window.location.href = '/';
     } else {
@@ -32,16 +37,28 @@ const authFetch = async (url: string, options?: RequestInit) => {
     }
     throw new Error('Sesión expirada. Por favor, vuelve a iniciar sesión.');
   }
+
+  // 2. Fallo interno del servidor (ej. Error 500 o 502 Bad Gateway)
+  if (res.status >= 500) {
+    throw new Error('SERVER_ERROR');
+  }
+
+  // 3. Error del cliente (ej. 400 Bad Request por faltar un título) -> AQUÍ SÍ HAY INTERNET
+  if (!res.ok) {
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || `Error HTTP: ${res.status}`);
+  }
+  
   return res;
 };
 
-// Helper para saber si un error es por falta de internet/backend caído
-const isNetworkError = (error: any) => {
-  return error.message === 'Network request failed' || error.message.includes('fetch');
+// Helper para saber cuándo tirar de Caché/Cola Offline
+const shouldFallbackToOffline = (error: any) => {
+  return error.message === 'NETWORK_ERROR' || error.message === 'SERVER_ERROR';
 };
 
 export const api = {
-  // --- AUTENTICACIÓN (Obligatorio Online) ---
+  // --- AUTENTICACIÓN ---
   login: async (email, password) => {
     const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }),
@@ -58,7 +75,7 @@ export const api = {
     return await res.json();
   },
 
-  // --- ENTRENAMIENTOS (Con soporte Offline) ---
+  // --- ENTRENAMIENTOS ---
   getWorkouts: async (params?: { athlete_id?: string; date?: string }) => {
     const headers = await getAuthHeaders();
     let url = `${BACKEND_URL}/api/workouts`;
@@ -70,14 +87,14 @@ export const api = {
     try {
       const res = await authFetch(url, { headers });
       const data = await res.json();
-      // Guardamos caché
+      // Guardamos caché fresca
       await syncManager.cacheData(`workouts_${params?.athlete_id || 'all'}`, data);
       return data;
     } catch (e) {
-      if (isNetworkError(e)) {
+      if (shouldFallbackToOffline(e)) {
         console.log('Modo offline: Cargando entrenamientos desde caché');
         const cached = await syncManager.getCachedData(`workouts_${params?.athlete_id || 'all'}`);
-        return cached || []; // Si no hay caché, devolvemos array vacío para no romper la app
+        return cached || []; 
       }
       throw e;
     }
@@ -91,12 +108,12 @@ export const api = {
       });
       return await res.json();
     } catch (e) {
-      if (isNetworkError(e)) {
-        console.log('Modo offline: Encolando creación de entrenamiento');
+      if (shouldFallbackToOffline(e)) {
+        console.log('Modo offline: Encolando creación');
         const tempId = `temp_${Date.now()}`;
         const offlineData = { ...data, id: tempId };
         await syncManager.savePendingAction('CREATE_WORKOUT', offlineData);
-        return offlineData; // Falso positivo para la UI
+        return offlineData; 
       }
       throw e;
     }
@@ -108,13 +125,12 @@ export const api = {
       const res = await authFetch(`${BACKEND_URL}/api/workouts/${id}`, {
         method: 'PUT', headers, body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error('No se pudo actualizar el entrenamiento');
       return await res.json();
     } catch (e) {
-      if (isNetworkError(e)) {
-        console.log('Modo offline: Encolando actualización de entrenamiento');
+      if (shouldFallbackToOffline(e)) {
+        console.log('Modo offline: Encolando actualización');
         await syncManager.savePendingAction('UPDATE_WORKOUT', data, id);
-        return { success: true, offline: true }; // Falso positivo para la UI
+        return { success: true, offline: true }; 
       }
       throw e;
     }
@@ -126,7 +142,7 @@ export const api = {
       const res = await authFetch(`${BACKEND_URL}/api/workouts/${id}`, { method: 'DELETE', headers });
       return await res.json();
     } catch (e) {
-      if (isNetworkError(e)) {
+      if (shouldFallbackToOffline(e)) {
         await syncManager.savePendingAction('DELETE_WORKOUT', null, id);
         return { success: true, offline: true };
       }
@@ -134,15 +150,13 @@ export const api = {
     }
   },
 
-  // --- PERIODIZACIÓN (Con soporte de Caché para leer Offline) ---
+  // --- PERIODIZACIÓN ---
   getPeriodizationTree: async (athleteId: string) => {
     try {
       const headers = await getAuthHeaders();
       const res = await authFetch(`${BACKEND_URL}/api/periodization/tree/${athleteId}`, { headers });
       
-      if (!res.ok) return { macros: [], unassigned_workouts: [] };
       const data = await res.json();
-      
       const result = Array.isArray(data) 
         ? { macros: data, unassigned_workouts: [] } 
         : { macros: Array.isArray(data?.macros) ? data.macros : [], unassigned_workouts: Array.isArray(data?.unassigned_workouts) ? data.unassigned_workouts : [] };
@@ -151,8 +165,8 @@ export const api = {
       return result;
       
     } catch (e) {
-      if (isNetworkError(e)) {
-        console.log('Modo offline: Cargando árbol de periodización desde caché');
+      if (shouldFallbackToOffline(e)) {
+        console.log('Modo offline: Cargando árbol desde caché');
         const cached = await syncManager.getCachedData(`tree_${athleteId}`);
         return cached || { macros: [], unassigned_workouts: [] };
       }
@@ -160,9 +174,7 @@ export const api = {
     }
   },
 
-  // ... (RESTO DE TUS MÉTODOS SIN CAMBIOS IMPORTANTES, ej: wellness, uploadFile, athletes. 
-  // Puedes aplicar este mismo patrón try/catch a los tests físicos si lo deseas).
-  
+  // --- RESTO DE MÉTODOS (SIN CAMBIOS ESTRUCTURALES) ---
   getAthletes: async () => {
     const headers = await getAuthHeaders();
     try {
@@ -171,12 +183,30 @@ export const api = {
       await syncManager.cacheData('athletes_list', data);
       return data;
     } catch (e) {
-      if (isNetworkError(e)) return await syncManager.getCachedData('athletes_list') || [];
+      if (shouldFallbackToOffline(e)) return await syncManager.getCachedData('athletes_list') || [];
       throw e;
     }
   },
 
-  // Copia el resto de tus métodos originales aquí debajo (uploadFile, wellness, etc.)
+  getAthlete: async (id: string) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/athletes/${id}`, { headers });
+    return res.json();
+  },
+
+  getWellnessHistory: async (athleteId: string) => {
+    const headers = await getAuthHeaders();
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/wellness/history/${athleteId}`, { headers });
+      const data = await res.json();
+      await syncManager.cacheData(`wellness_${athleteId}`, data);
+      return data;
+    } catch (e) {
+      if (shouldFallbackToOffline(e)) return await syncManager.getCachedData(`wellness_${athleteId}`) || [];
+      throw e;
+    }
+  },
+
   uploadFile: async (asset: any) => {
     const headers: any = await getAuthHeaders();
     delete headers['Content-Type']; 
@@ -203,10 +233,6 @@ export const api = {
       method: 'POST', headers, body: formData,
     });
     
-    if (!res.ok) {
-      const errorText = await res.text();
-      throw new Error(`Fallo en el servidor: ${errorText}`);
-    }
     return res.json();
   }
 };
