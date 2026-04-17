@@ -415,7 +415,7 @@ export default function TrainingModeScreen() {
     }
     return () => {
       if (globalTimerRef.current) clearInterval(globalTimerRef.current);
-    };
+    }
   }, [workout, finished, isPaused]);
 
   useEffect(() => {
@@ -564,14 +564,13 @@ export default function TrainingModeScreen() {
 
 const handleRecordVideoOptions = (key: string) => { 
     if (Platform.OS === 'web') { 
-      // FIX PWA ANDROID: Usamos un input HTML nativo para evitar bloqueos del navegador
       const useCamera = window.confirm("¿Quieres grabar un vídeo ahora?\n\n[Aceptar] = Abrir Cámara\n[Cancelar] = Abrir Galería");
       
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = 'video/*';
       if (useCamera) {
-        input.capture = 'environment'; // Fuerza a abrir la cámara trasera directamente
+        input.capture = 'environment'; 
       }
       
       input.onchange = async (e: any) => {
@@ -579,7 +578,6 @@ const handleRecordVideoOptions = (key: string) => {
         if (!file) return;
         try {
           setVideoUploading(key);
-          // Subimos el archivo nativo directamente a la API
           const uploaded = await api.uploadFile(file);
           const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || URL.createObjectURL(file));
           setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
@@ -594,7 +592,6 @@ const handleRecordVideoOptions = (key: string) => {
       return; 
     } 
 
-    // Flujo normal para iOS/Android Nativo
     Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ 
       { text: "Cancelar", style: "cancel" }, 
       { text: "Galería", onPress: () => launchVideoPicker('library', key) }, 
@@ -636,7 +633,6 @@ const handleRecordVideoOptions = (key: string) => {
       const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises }; 
       if (observations.trim()) update.observations = observations.trim(); 
       
-      // ¡La magia de api.ts! Si no hay internet, api.ts lo encola solo y no da error.
       await api.updateWorkout(stableWorkoutId, update); 
       
       router.back(); 
@@ -1141,16 +1137,20 @@ const handleRecordVideoOptions = (key: string) => {
       };
     }
 
-    const currentEx = b.hiit_exercises[hiitExIdx];
+    // EXTRAEMOS LA INFO PARA PASARLE LAS REPS Y SERIES CORRECTAMENTE
+    const currentEx = displayBlock.hiit_exercises[hiitExIdx];
     const hasMultipleSets = parseInt(currentEx?.sets) > 1;
     let timerExName = hasMultipleSets ? `${currentEx?.name} (Serie ${hiitExSet}/${currentEx?.sets})` : currentEx?.name || 'HIIT';
     
     if (isResting) {
       if (hiitPhase === 'rest_set') { timerExName = `Siguiente: ${currentEx?.name} (Serie ${hiitExSet + 1})`; } 
-      else if (hiitPhase === 'rest_ex') { timerExName = `Siguiente: ${b.hiit_exercises[hiitExIdx + 1]?.name}`; } 
-      else if (hiitPhase === 'rest_block') { timerExName = `Siguiente: ${b.hiit_exercises[0]?.name} (Vuelta ${hiitRound + 1})`; } 
+      else if (hiitPhase === 'rest_ex') { timerExName = `Siguiente: ${displayBlock.hiit_exercises[hiitExIdx + 1]?.name}`; } 
+      else if (hiitPhase === 'rest_block') { timerExName = `Siguiente: ${displayBlock.hiit_exercises[0]?.name} (Vuelta ${hiitRound + 1})`; } 
       else if (hiitPhase === 'rest_next_block') { const nextBlock = workout.exercises[hiitBlockIdx + 1]; timerExName = `Siguiente: ${nextBlock?.name}`; }
     } else if (isPrep) { timerExName = `Prep: ${currentEx?.name}`; }
+
+    // Obtenemos los datos para cuando no hay tiempo ('A TU RITMO')
+    const displayHiitReps = currentEx?.duration_reps || currentEx?.duration;
 
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -1178,6 +1178,7 @@ const handleRecordVideoOptions = (key: string) => {
               prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} 
               restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} 
               exName={timerExName} colors={colors} isHiit={isHiit} 
+              reps={displayHiitReps} sets={currentEx?.sets} // <-- NUEVAS PROPS AÑADIDAS
               onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} 
               onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} 
               onComplete={advanceHiit} onSkip={skipHiitEx} 
