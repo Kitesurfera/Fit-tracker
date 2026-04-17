@@ -71,6 +71,9 @@ export default function AnalyticsScreen() {
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
   
+  // <-- ESTADO PARA EL SELECTOR DE DEPORTISTAS -->
+  const [showPicker, setShowPicker] = useState(false);
+
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null); 
   const [searchQuery, setSearchQuery] = useState('');
@@ -132,12 +135,10 @@ export default function AnalyticsScreen() {
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
 
-  // --- EXPORTAR A CSV (NATIVO WEB) ---
   const exportToCSV = () => {
     let csvContent = "Fecha,Atleta,Categoria,Ejercicio/Test,Carga/Valor,Unidad,Series Completadas,RPE,Calidad Sueno,Molestias\n";
     const athleteName = selectedAthlete?.name || user?.name || 'Yo';
 
-    // 1. Añadir Entrenamientos
     workoutHistory.forEach(w => {
       if (!w.completed) return;
       const rpe = w.completion_data?.rpe || '';
@@ -158,7 +159,6 @@ export default function AnalyticsScreen() {
       });
     });
 
-    // 2. Añadir Tests
     testHistory.forEach(t => {
       const rawName = t.custom_name || TEST_TRANSLATIONS[t.test_name] || t.test_name;
       const val = t.value || Math.max(parseFloat(t.value_left || 0), parseFloat(t.value_right || 0));
@@ -575,6 +575,12 @@ export default function AnalyticsScreen() {
               {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>Vista Entrenador</Text>}
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
+              {/* <-- BOTÓN DE SELECCIÓN DE DEPORTISTA --> */}
+              {isTrainer && (
+                <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
+                  <Ionicons name="people" size={22} color={colors.primary} />
+                </TouchableOpacity>
+              )}
               <TouchableOpacity onPress={exportToCSV} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
                 <Ionicons name="download" size={22} color={colors.primary} />
               </TouchableOpacity>
@@ -730,6 +736,27 @@ export default function AnalyticsScreen() {
           </ScrollView>
         </View>
 
+        {/* <-- MODAL SELECTOR DE DEPORTISTA --> */}
+        <Modal visible={showPicker} transparent animationType="slide">
+          <TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}>
+            <View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {athletes.map(a => (
+                  <TouchableOpacity 
+                    key={a.id} 
+                    style={[styles.athleteItem, { borderBottomColor: colors.border }]} 
+                    onPress={() => { handleSelectAthlete(a); setShowPicker(false); }}
+                  >
+                    <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* OTROS MODALES DE LA PANTALLA... */}
         <Modal visible={showMergeModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
@@ -915,5 +942,10 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContent: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
   dictSelectBtn: { padding: 16, borderRadius: 12, borderWidth: 1 },
-  confirmBtn: { padding: 18, borderRadius: 15, alignItems: 'center', marginTop: 30 }
+  confirmBtn: { padding: 18, borderRadius: 15, alignItems: 'center', marginTop: 30 },
+  
+  // <-- ESTILOS DEL SELECTOR DE DEPORTISTAS -->
+  modalOverlayPicker: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
+  modalContentPicker: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30, maxHeight: '80%' },
+  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
 });
