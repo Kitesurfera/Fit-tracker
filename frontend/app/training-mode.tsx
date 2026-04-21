@@ -22,7 +22,6 @@ import { syncManager } from '../src/offline';
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
 import HiitCard from '../src/components/training/HiitCard';
 
-// Activar animaciones de Layout en Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -80,7 +79,6 @@ const formatGlobalTime = (totalSeconds: number): string => {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
-// Ayudante para asegurar que si hay "15" en repeticiones viejas, lo trate como "15r" y no como 15 segundos
 const normalizeHiitReps = (val: string | number | undefined | null) => {
   if (!val) return '';
   let str = String(val).trim();
@@ -127,6 +125,7 @@ export default function TrainingModeScreen() {
   const [hiitExIdx, setHiitExIdx] = useState(0);
   const [hiitExSet, setHiitExSet] = useState(1);
   const [hiitPhase, setHiitPhase] = useState<'work' | 'rest_set' | 'rest_ex' | 'rest_block' | 'rest_next_block'>('work');
+  const [hiitSide, setHiitSide] = useState<1 | 2>(1); 
   const [hiitSkipped, setHiitSkipped] = useState<Record<string, number>>({}); 
 
   const [rpe, setRpe] = useState<number | null>(null);
@@ -181,7 +180,6 @@ export default function TrainingModeScreen() {
   const [isLandmineMode, setIsLandmineMode] = useState(false);
   const [athleteHeight, setAthleteHeight] = useState('170'); 
 
-  // --- Helpers de Reducción de Fatiga ---
   const adjustReps = (reps: string | number | undefined | null) => {
     if (!reps) return null;
     return String(reps).replace(/\d+/g, (match) => {
@@ -285,7 +283,7 @@ export default function TrainingModeScreen() {
 
   const handleStartWork = (dur: number, name?: string) => {
     const isFirst = (!isHiit && currentExIndex === 0 && setsStatus[0]?.findIndex(s => s === 'pending') === 0) ||
-                    (isHiit && hiitBlockIdx === 0 && hiitExIdx === 0 && hiitRound === 1 && hiitExSet === 1);
+                    (isHiit && hiitBlockIdx === 0 && hiitExIdx === 0 && hiitRound === 1 && hiitExSet === 1 && hiitSide === 1);
 
     if (isFirst || !justFinishedRestRef.current) {
       startPrepTimer(dur, name);
@@ -329,15 +327,15 @@ export default function TrainingModeScreen() {
     if (isHiit) {
       const b = workout.exercises[hiitBlockIdx]; const ex = b?.hiit_exercises?.[hiitExIdx];
       if (ex) { 
-        id = `hiit-${hiitBlockIdx}-${hiitRound}-${hiitExIdx}-${hiitExSet}`; 
-        text = ex.name + (parseInt(ex.sets) > 1 ? ` serie ${hiitExSet}` : ''); 
+        id = `hiit-${hiitBlockIdx}-${hiitRound}-${hiitExIdx}-${hiitExSet}-${hiitSide}`; 
+        text = ex.name + (parseInt(ex.sets) > 1 ? ` serie ${hiitExSet}` : '') + (ex.is_unilateral ? (hiitSide === 1 ? ' Lado uno' : ' Lado dos') : ''); 
       }
     } else {
       const ex = workout.exercises[currentExIndex];
       if (ex) { const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next !== -1) { id = `trad-${currentExIndex}`; text = ex.name; } }
     }
     if (text && lastAnnouncedRef.current !== id) { announce(text); lastAnnouncedRef.current = id; }
-  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, hiitExSet, isResting, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
+  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, hiitExSet, hiitSide, isResting, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
 
   useEffect(() => {
     let isMounted = true;
@@ -355,11 +353,7 @@ export default function TrainingModeScreen() {
             if (currentWorkout.completion_data) {
               setRpe(currentWorkout.completion_data.rpe || null); setSleepQuality(currentWorkout.completion_data.sleep_quality || null);
               setSleepHours(currentWorkout.completion_data.sleep_hours || ''); if (currentWorkout.completion_data.sore_joints) setSoreJoints(currentWorkout.completion_data.sore_joints);
-              
-              if (currentWorkout.completion_data.duration_seconds) {
-                setGlobalSeconds(currentWorkout.completion_data.duration_seconds);
-              }
-
+              if (currentWorkout.completion_data.duration_seconds) setGlobalSeconds(currentWorkout.completion_data.duration_seconds);
               const savedVideos: Record<string, string> = {}; 
               if (!isWorkoutHiit) {
                 const loadedLogs: Record<number, any> = {};
@@ -462,7 +456,6 @@ export default function TrainingModeScreen() {
     return () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); };
   }, [isWorking, workTargetTime]);
 
-  // Manejo del trabajo - Tradicional
   useEffect(() => {
     if (finished || workout?.completed) return;
     if (!isHiit && workout && !isResting && !isPrep && !showIndicationsModal) {
@@ -470,9 +463,7 @@ export default function TrainingModeScreen() {
       if (next !== -1) {
         const ex = workout.exercises[currentExIndex]; 
         let dur = parseTimeToSeconds(ex?.duration);
-        
         if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
-
         if (!isWorking && workTargetTime === null && workSeconds === 0) { 
           handleStartWork(dur, ex.name); 
         }
@@ -480,34 +471,30 @@ export default function TrainingModeScreen() {
     }
   }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode]);
 
-  // Manejo del trabajo - HIIT
   useEffect(() => {
     if (finished || workout?.completed) return;
     if (isHiit && workout && hiitPhase === 'work' && !isResting && !isPrep && !showIndicationsModal) {
       const b = workout.exercises[hiitBlockIdx]; if (!b) return;
       const ex = b.hiit_exercises[hiitExIdx]; 
       
-      // PRIORIDAD ABSOLUTA AL CAMPO "TIEMPO" (duration). 
-      // Si el tiempo es 0, miramos si las repeticiones son en realidad tiempo oculto.
       let dur = parseTimeToSeconds(ex?.duration);
       if (dur === 0) dur = parseTimeToSeconds(normalizeHiitReps(ex?.duration_reps));
-
       if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
 
       if (!isWorking && workTargetTime === null && workSeconds === 0) { 
-         handleStartWork(dur, ex.name); 
+         handleStartWork(dur, ex.name + (ex.is_unilateral ? (hiitSide === 1 ? ' (Lado 1)' : ' (Lado 2)') : '')); 
       }
     }
-  }, [hiitBlockIdx, hiitExIdx, hiitExSet, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode]);
+  }, [hiitBlockIdx, hiitExIdx, hiitExSet, hiitSide, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode]);
 
   useEffect(() => {
     if (finished || workout?.completed) return;
     if (!isResting && workout && !showIndicationsModal && !isPaused) {
       if (isHiit) {
-        if (hiitPhase === 'rest_set') { setHiitPhase('work'); setHiitExSet(prev => prev + 1); }
-        else if (hiitPhase === 'rest_ex') { setHiitPhase('work'); setHiitExIdx(prev => prev + 1); setHiitExSet(1); } 
-        else if (hiitPhase === 'rest_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitExSet(1); setHiitRound(prev => prev + 1); } 
-        else if (hiitPhase === 'rest_next_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitExSet(1); setHiitRound(1); setHiitBlockIdx(prev => prev + 1); }
+        if (hiitPhase === 'rest_set') { setHiitPhase('work'); setHiitExSet(prev => prev + 1); setHiitSide(1); }
+        else if (hiitPhase === 'rest_ex') { setHiitPhase('work'); setHiitExIdx(prev => prev + 1); setHiitExSet(1); setHiitSide(1); } 
+        else if (hiitPhase === 'rest_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitExSet(1); setHiitSide(1); setHiitRound(prev => prev + 1); } 
+        else if (hiitPhase === 'rest_next_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitExSet(1); setHiitSide(1); setHiitRound(1); setHiitBlockIdx(prev => prev + 1); }
       } else { if (restType === 'exercise') { autoAdvance(currentExIndex); setRestType(null); } }
     }
   }, [isResting, showIndicationsModal, finished, workout, isPaused]);
@@ -516,6 +503,19 @@ export default function TrainingModeScreen() {
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const b = workout.exercises[hiitBlockIdx]; 
     const ex = b.hiit_exercises[hiitExIdx];
+    
+    // Unilateral check (Lado 1 a Lado 2)
+    if (!skipEx && ex.is_unilateral && hiitSide === 1) {
+      setHiitSide(2);
+      let dur = parseTimeToSeconds(ex?.duration);
+      if (dur === 0) dur = parseTimeToSeconds(normalizeHiitReps(ex?.duration_reps));
+      if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
+      startPrepTimer(dur, `${ex.name} (Lado 2)`);
+      return;
+    }
+
+    setHiitSide(1); // Reset para el siguiente 
+
     const totalEx = b.hiit_exercises.length; 
     const totalRounds = parseInt(b.sets) || 1;
     const totalExSets = parseInt(ex?.sets) || 1;
@@ -575,17 +575,12 @@ export default function TrainingModeScreen() {
   const skipSet = () => { stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
   const skipEntireExercise = () => { stopAllTimers(); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
-const handleRecordVideoOptions = (key: string) => { 
+  const handleRecordVideoOptions = (key: string) => { 
     if (Platform.OS === 'web') { 
       const useCamera = window.confirm("¿Quieres grabar un vídeo ahora?\n\n[Aceptar] = Abrir Cámara\n[Cancelar] = Abrir Galería");
-      
       const input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'video/*';
-      if (useCamera) {
-        input.capture = 'environment'; 
-      }
-      
+      input.type = 'file'; input.accept = 'video/*';
+      if (useCamera) input.capture = 'environment'; 
       input.onchange = async (e: any) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -594,17 +589,12 @@ const handleRecordVideoOptions = (key: string) => {
           const uploaded = await api.uploadFile(file);
           const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || URL.createObjectURL(file));
           setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
-        } catch (err) { 
-          console.error("Error subiendo video:", err); 
-        } finally { 
-          setVideoUploading(null); 
-        }
+        } catch (err) { console.error("Error subiendo video:", err); } 
+        finally { setVideoUploading(null); }
       };
-      
       input.click();
       return; 
     } 
-
     Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ 
       { text: "Cancelar", style: "cancel" }, 
       { text: "Galería", onPress: () => launchVideoPicker('library', key) }, 
@@ -618,8 +608,7 @@ const handleRecordVideoOptions = (key: string) => {
         const cameraPerm = await ImagePicker.requestCameraPermissionsAsync(); 
         const micPerm = await ImagePicker.requestMicrophonePermissionsAsync(); 
         if (cameraPerm.status !== 'granted' || micPerm.status !== 'granted') {
-          Alert.alert("Permisos insuficientes", "Se necesita acceso a la cámara y al micrófono para poder grabar tus series.");
-          return;
+          Alert.alert("Permisos insuficientes", "Se necesita acceso a la cámara y al micrófono para poder grabar tus series."); return;
         }
         result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, videoMaxDuration: 60, quality: 0.7 });
       } else { 
@@ -637,7 +626,7 @@ const handleRecordVideoOptions = (key: string) => {
     return { duration_seconds: globalSeconds, rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, exercise_results: (workout.exercises || []).map((ex: any, i: number) => { const s = setsStatus[i] || []; return { exercise_index: i, name: ex.name, total_sets: parseInt(ex.sets) || 1, completed_sets: s.filter(item => item === 'completed').length, skipped_sets: s.filter(item => item === 'skipped').length, set_details: s.map((status, si) => ({ set: si + 1, status })), logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', athlete_note: logs[i]?.note || '', recorded_video_url: recordedVideos[i.toString()] || '' }; }), };
   };
 
- const handleFinish = async () => { 
+  const handleFinish = async () => { 
     if (workout.completed) { router.back(); return; } 
     if (!stableWorkoutId) return; 
     stopAllTimers(); 
@@ -645,14 +634,9 @@ const handleRecordVideoOptions = (key: string) => {
     try { 
       const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises }; 
       if (observations.trim()) update.observations = observations.trim(); 
-      
       await api.updateWorkout(stableWorkoutId, update); 
-      
       router.back(); 
-    } catch (e) { 
-      console.error(e); 
-      Alert.alert("Error", "No se pudo guardar el entrenamiento.");
-    } 
+    } catch (e) { Alert.alert("Error", "No se pudo guardar el entrenamiento."); } 
   };
 
   const addPlate = (weight: number) => {
@@ -885,7 +869,6 @@ const handleRecordVideoOptions = (key: string) => {
 
   const renderExerciseList = () => {
     if (!workout?.exercises) return null;
-    
     if (isHiit) {
       return workout.exercises.map((block: any, bIdx: number) => (
         <View key={bIdx} style={{ marginBottom: 15 }}>
@@ -894,30 +877,22 @@ const handleRecordVideoOptions = (key: string) => {
           </Text>
           {block.hiit_exercises?.map((ex: any, eIdx: number) => {
             const hasSets = ex.sets && parseInt(ex.sets) > 1;
-            
             const normReps = normalizeHiitReps(ex.duration_reps);
             let finalTime = ex.duration;
             if (isFatigueMode && finalTime) finalTime = adjustDurationStr(finalTime);
-
             let displayDur = '';
             if (normReps && finalTime) displayDur = `${normReps} / ${finalTime}`;
             else displayDur = normReps || finalTime || '-';
-            
             const notesText = ex.exercise_notes || ex.notes || ex.observations || ex.observaciones;
-
             return (
               <View key={eIdx} style={{ paddingLeft: 10, marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                  <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '500' }}>• {ex.name}</Text>
+                  <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '500' }}>• {ex.name} {ex.is_unilateral && '(Unilateral)'}</Text>
                   <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 10 }}>
                     {hasSets ? `${ex.sets}x ` : ''}{displayDur}
                   </Text>
                 </View>
-                {notesText ? (
-                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 2, marginLeft: 10 }}>
-                    Nota: {notesText}
-                  </Text>
-                ) : null}
+                {notesText ? <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 2, marginLeft: 10 }}>Nota: {notesText}</Text> : null}
               </View>
             )
           })}
@@ -928,7 +903,6 @@ const handleRecordVideoOptions = (key: string) => {
         const displayReps = isFatigueMode ? adjustReps(ex.reps) : ex.reps;
         const displayDur = isFatigueMode ? adjustDurationStr(ex.duration) : ex.duration;
         const notesText = ex.exercise_notes || ex.notes || ex.observations || ex.observaciones;
-
         return (
           <View key={idx} style={{ marginBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 8 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -936,12 +910,8 @@ const handleRecordVideoOptions = (key: string) => {
                 <Text style={{ color: colors.textSecondary }}>{idx + 1}.</Text> {ex.name}
               </Text>
               <View style={{ alignItems: 'flex-end' }}>
-                {(ex.sets && displayReps) ? (
-                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.sets} x {displayReps}</Text>
-                ) : null}
-                {displayDur ? (
-                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{displayDur}</Text>
-                ) : null}
+                {(ex.sets && displayReps) ? <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.sets} x {displayReps}</Text> : null}
+                {displayDur ? <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{displayDur}</Text> : null}
               </View>
             </View>
             {notesText && <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>Nota: {notesText}</Text>}
@@ -964,7 +934,7 @@ const handleRecordVideoOptions = (key: string) => {
             const skipped = hiitSkipped[key] || 0;
             return (
               <View key={eIdx} style={{ marginTop: 8, paddingLeft: 12, borderLeftWidth: 3, borderLeftColor: colors.primary }}>
-                <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{ex.name}</Text>
+                <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{ex.name} {ex.is_unilateral && '(Unilateral)'}</Text>
                 {skipped > 0 && <Text style={{ color: colors.error, fontSize: 13, marginTop: 2 }}>⏭ Rondas saltadas: {skipped}</Text>}
                 {note ? <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 2 }}>📝 Nota: {note}</Text> : null}
                 {vid ? <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '700', marginTop: 2 }}>📹 Video técnico guardado</Text> : null}
@@ -981,7 +951,6 @@ const handleRecordVideoOptions = (key: string) => {
         const tot = parseInt(ex.sets) || 1;
         const log = logs[i];
         const vid = recordedVideos[i.toString()];
-
         return (
           <View key={i} style={[styles.summaryCard, { backgroundColor: colors.surfaceHighlight }]}>
             <Text style={{ fontWeight: '900', color: colors.textPrimary, fontSize: 15 }}>{i + 1}. {ex.name}</Text>
@@ -995,12 +964,8 @@ const handleRecordVideoOptions = (key: string) => {
                 Registro: {log.weight ? `${log.weight}kg ` : ''}{log.reps ? `x ${log.reps} reps` : ''}
               </Text>
             )}
-            {log?.note && (
-              <Text style={{ color: colors.textSecondary, fontSize: 14, fontStyle: 'italic', marginTop: 6 }}>📝 Nota: {log.note}</Text>
-            )}
-            {vid && (
-              <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '700', marginTop: 6 }}>📹 Video técnico guardado</Text>
-            )}
+            {log?.note && <Text style={{ color: colors.textSecondary, fontSize: 14, fontStyle: 'italic', marginTop: 6 }}>📝 Nota: {log.note}</Text>}
+            {vid && <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '700', marginTop: 6 }}>📹 Video técnico guardado</Text>}
           </View>
         );
       });
@@ -1015,7 +980,6 @@ const handleRecordVideoOptions = (key: string) => {
             <Ionicons name="list" size={28} color={colors.primary} />
             <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, flex: 1 }}>Detalles de Sesión</Text>
           </View>
-          
           <ScrollView style={{ marginBottom: 20 }} showsVerticalScrollIndicator={false}>
             {workout?.notes ? (
               <View style={{ marginBottom: 20, padding: 15, backgroundColor: colors.surfaceHighlight, borderRadius: 12 }}>
@@ -1023,11 +987,9 @@ const handleRecordVideoOptions = (key: string) => {
                 <Text style={{ color: colors.textPrimary, fontSize: 15, lineHeight: 22, fontStyle: 'italic' }}>"{workout.notes}"</Text>
               </View>
             ) : null}
-            
             <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '800', marginBottom: 10, letterSpacing: 1 }}>LISTA DE EJERCICIOS</Text>
             {renderExerciseList()}
           </ScrollView>
-
           <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={() => setShowIndicationsModal(false)}>
             <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Entendido / Cerrar</Text>
           </TouchableOpacity>
@@ -1038,9 +1000,7 @@ const handleRecordVideoOptions = (key: string) => {
 
   const toggleJoint = (slug: string) => { 
     if (!slug) return; 
-    if (Platform.OS !== 'web') {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(()=>{}); 
-    }
+    if (Platform.OS !== 'web') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(()=>{}); }
     setSoreJoints(prev => prev.includes(slug) ? prev.filter(j => j !== slug) : [...prev, slug]); 
   };
 
@@ -1130,11 +1090,9 @@ const handleRecordVideoOptions = (key: string) => {
             {workout.completed && workout.completion_data && (
               <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
                 <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Feedback General:</Text>
-                
                 {workout.completion_data.duration_seconds && (
                   <Text style={{ color: colors.textPrimary, marginBottom: 4 }}>⏱ Tiempo Activo: {formatGlobalTime(workout.completion_data.duration_seconds)}</Text>
                 )}
-                
                 <Text style={{ color: colors.textPrimary }}>RPE: {workout.completion_data.rpe}/10</Text>
                 {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5, fontWeight: '600' }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
                 {workout.observations && <Text style={{ color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
@@ -1164,14 +1122,20 @@ const handleRecordVideoOptions = (key: string) => {
 
     const currentEx = displayBlock.hiit_exercises[hiitExIdx];
     const hasMultipleSets = parseInt(currentEx?.sets) > 1;
-    let timerExName = hasMultipleSets ? `${currentEx?.name} (Serie ${hiitExSet}/${currentEx?.sets})` : currentEx?.name || 'HIIT';
+    let timerExName = currentEx?.name || 'HIIT';
+    
+    if (currentEx?.is_unilateral) timerExName += hiitSide === 1 ? ' (Lado 1)' : ' (Lado 2)';
+    if (hasMultipleSets) timerExName += ` (Serie ${hiitExSet}/${currentEx?.sets})`;
     
     if (isResting) {
       if (hiitPhase === 'rest_set') { timerExName = `Siguiente: ${currentEx?.name} (Serie ${hiitExSet + 1})`; } 
       else if (hiitPhase === 'rest_ex') { timerExName = `Siguiente: ${displayBlock.hiit_exercises[hiitExIdx + 1]?.name}`; } 
       else if (hiitPhase === 'rest_block') { timerExName = `Siguiente: ${displayBlock.hiit_exercises[0]?.name} (Vuelta ${hiitRound + 1})`; } 
       else if (hiitPhase === 'rest_next_block') { const nextBlock = workout.exercises[hiitBlockIdx + 1]; timerExName = `Siguiente: ${nextBlock?.name}`; }
-    } else if (isPrep) { timerExName = `Prep: ${currentEx?.name}`; }
+    } else if (isPrep) { 
+      timerExName = `Prep: ${currentEx?.name}`; 
+      if (currentEx?.is_unilateral) timerExName += hiitSide === 1 ? ' (Lado 1)' : ' (Lado 2)';
+    }
 
     const normReps = normalizeHiitReps(currentEx?.duration_reps);
     let displayHiitReps = '';
@@ -1210,7 +1174,7 @@ const handleRecordVideoOptions = (key: string) => {
               onComplete={advanceHiit} onSkip={skipHiitEx} 
             />
             
-            <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
+            <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} hiitSide={hiitSide} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
           </ScrollView>
           <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
             <Ionicons name="list" size={24} color="#FFF" />
@@ -1230,16 +1194,13 @@ const handleRecordVideoOptions = (key: string) => {
       else { const comp = s.filter(x => x === 'completed').length; displayExName = `Siguiente: ${ex?.name} (Serie ${comp + 1})`; }
     } else if (isPrep) { displayExName = `Prep: ${ex?.name}`; }
 
-    // Aquí evitamos que aparezca el botón si el nombre contiene ciertas palabras clave
     const isBarbellLift = /barra|barbell|sentadilla|squat|peso muerto|deadlift|press|snatch|clean|jerk|landmine|hex|hexagonal|trap|smith|multipower/i.test(ex?.name || '');
     const isDumbbellOrKettlebell = /dumbell|dumbbell|mancuerna|kettlebell|hex|pesa rusa/i.test(ex?.name || '');
     const showCalculatorButton = isBarbellLift && !isDumbbellOrKettlebell;
-    
     const isLandmineExercise = /landmine/i.test(ex?.name || '');
 
     const displayReps = isFatigueMode ? adjustReps(ex.reps) : ex.reps;
 
-    // ALIAS PARA MODO FUERZA
     const vidUrl = ex.video_url || ex.link || ex.url;
     const notesText = ex.exercise_notes || ex.notes || ex.observations || ex.observaciones;
 
@@ -1321,7 +1282,6 @@ const handleRecordVideoOptions = (key: string) => {
             </View>
           </ScrollView>
           
-          {/* BOTONES FLOTANTES */}
           <View style={{ position: 'absolute', right: 20, bottom: 100, gap: 15 }}>
             {showCalculatorButton && (
               <TouchableOpacity style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.textPrimary }]} onPress={() => openPlateCalculator(isLandmineExercise)}>
@@ -1357,15 +1317,12 @@ const styles = StyleSheet.create({
   floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 },
   painButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, painButtonText: { fontSize: 13, fontWeight: '600' },
   
-  /* ESTILOS CALCULADORA DE DISCOS */
   barTypeBtn: { paddingVertical: 8, paddingHorizontal: 16, borderWidth: 2, borderRadius: 12 },
   barSleeveContainer: { height: 60, width: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
   barSleeve: { position: 'absolute', height: 20, width: '100%', borderRadius: 4 },
   stackedPlatesContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
   stackedPlate: { borderRadius: 4, marginHorizontal: 1, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 2, elevation: 3 },
   legendPlate: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 2 },
-
-  /* NUEVO: ESTILO TOGGLE FATIGA */
   fatigueToggle: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.03)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', marginBottom: 10, justifyContent: 'center' },
   fatigueToggleActive: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#EF4444' }
 });
