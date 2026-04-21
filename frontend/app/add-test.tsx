@@ -259,7 +259,24 @@ export default function AddTestScreen() {
 
           {isBilateral ? (
             <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>VALORES ({unit}) *</Text>
+              {/* Nueva cabecera con el campo de unidad editable */}
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <Text style={[styles.label, { color: colors.textSecondary }]}>VALORES *</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={[styles.label, { color: colors.textSecondary }]}>UNIDAD:</Text>
+                  <TextInput
+                    style={[
+                      styles.input, 
+                      { paddingVertical: 4, paddingHorizontal: 12, minWidth: 80, textAlign: 'center', backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }
+                    ]}
+                    value={unit} 
+                    onChangeText={setUnit}
+                    placeholder="N" 
+                    placeholderTextColor={colors.textSecondary}
+                  />
+                </View>
+              </View>
+
               <View style={styles.bilateralRow}>
                 <View style={styles.bilateralSide}>
                   <View style={[styles.sideLabel, { backgroundColor: '#1565C0' + '20' }]}>
