@@ -80,7 +80,6 @@ export default function AnalyticsScreen() {
   const [filterCategory, setFilterCategory] = useState<'all' | 'ejercicio' | 'test'>('all');
   
   const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(1);
-  const [bodySideView, setBodySideView] = useState<'front' | 'back'>('front'); // ESTADO PARA GIRAR EL CUERPO
   
   const [showDictModal, setShowDictModal] = useState(false);
   const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
@@ -290,19 +289,9 @@ export default function AnalyticsScreen() {
 
   const filteredProgression = useMemo(() => {
     let result = cleanProgression;
-    
-    if (hideEmpty) {
-      result = result.filter((item: any) => item.maxW > 0);
-    }
-
-    if (filterCategory !== 'all') {
-      result = result.filter((item: any) => item.type === filterCategory);
-    }
-    
-    if (searchQuery) {
-      result = result.filter((ex: any) => ex.name.toLowerCase().includes(searchQuery.toLowerCase()));
-    }
-    
+    if (hideEmpty) result = result.filter((item: any) => item.maxW > 0);
+    if (filterCategory !== 'all') result = result.filter((item: any) => item.type === filterCategory);
+    if (searchQuery) result = result.filter((ex: any) => ex.name.toLowerCase().includes(searchQuery.toLowerCase()));
     return result;
   }, [cleanProgression, searchQuery, hideEmpty, filterCategory]);
 
@@ -310,9 +299,7 @@ export default function AnalyticsScreen() {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const limitDateStr = getLocalDateStr(thirtyDaysAgo);
-    
     const recentWorkouts = workoutHistory.filter(w => w.completed && w.date >= limitDateStr);
-    
     return (
       <View style={[styles.summaryBoard, { backgroundColor: colors.surfaceHighlight }]}>
         <View style={styles.summaryItem}>
@@ -333,36 +320,16 @@ export default function AnalyticsScreen() {
   const renderChart = (history: any[], unit: string) => {
     const data = [...history].sort((a, b) => a.date.localeCompare(b.date));
     if (data.length === 0) return null;
-    
     const slicedData = data.slice(-8); 
     const labels = slicedData.map(d => d.date.split('-').slice(1).join('/'));
     const isBilateral = slicedData.some(d => d.isBilateral);
-    
-    let datasets = [];
-    if (isBilateral) {
-      datasets = [
-        { data: slicedData.map(d => d.valL || 0), color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`, strokeWidth: 3 },
-        { data: slicedData.map(d => d.valR || 0), color: (opacity = 1) => `rgba(239, 68, 68, ${opacity})`, strokeWidth: 3 }
-      ];
-    } else {
-      datasets = [
-        { data: slicedData.map(d => d.val || 0), color: (opacity = 1) => colors.primary, strokeWidth: 3 }
-      ];
-    }
-
+    let datasets = isBilateral ? [
+      { data: slicedData.map(d => d.valL || 0), color: (opacity = 1) => `rgba(59, 130, 246, ${opacity})`, strokeWidth: 3 },
+      { data: slicedData.map(d => d.valR || 0), color: (opacity = 1) => `rgba(239, 68, 68, ${opacity})`, strokeWidth: 3 }
+    ] : [
+      { data: slicedData.map(d => d.val || 0), color: (opacity = 1) => colors.primary, strokeWidth: 3 }
+    ];
     const chartWidth = isDesktop ? (MAX_CONTENT_WIDTH / 2) - 80 : SCREEN_WIDTH - 80;
-
-    const chartConfig = {
-      backgroundGradientFrom: colors.surface,
-      backgroundGradientTo: colors.surface,
-      color: (opacity = 1) => colors.textSecondary,
-      labelColor: (opacity = 1) => colors.textSecondary,
-      strokeWidth: 2,
-      barPercentage: 0.5,
-      useShadowColorFromDataset: false,
-      decimalPlaces: 1,
-    };
-
     return (
       <View style={{ alignItems: 'center', marginTop: 10 }}>
         {isBilateral && (
@@ -373,12 +340,9 @@ export default function AnalyticsScreen() {
         )}
         <LineChart
           data={{ labels, datasets }}
-          width={chartWidth}
-          height={220}
-          chartConfig={chartConfig}
-          bezier
-          style={{ borderRadius: 16 }}
-          yAxisSuffix={` ${unit}`}
+          width={chartWidth} height={220}
+          chartConfig={{ backgroundGradientFrom: colors.surface, backgroundGradientTo: colors.surface, color: (opacity = 1) => colors.textSecondary, labelColor: (opacity = 1) => colors.textSecondary, decimalPlaces: 1 }}
+          bezier style={{ borderRadius: 16 }} yAxisSuffix={` ${unit}`}
         />
       </View>
     );
@@ -390,25 +354,22 @@ export default function AnalyticsScreen() {
     const valR = test ? parseFloat(test.value_right) : NaN;
     const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
     const isSelected = selectedTestKey === mergedItem.id;
-
     return (
       <View key={index} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, width: isDesktop ? '48%' : '100%' }]}>
         <TouchableOpacity onPress={() => setSelectedTestKey(isSelected ? null : mergedItem.id)} activeOpacity={0.7}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <View style={{ flex: 1, paddingRight: 10 }}>
-                <Text style={[styles.testName, { color: colors.textPrimary }]}>{mergedItem.name}</Text>
-                {mergedItem.mergedSources && mergedItem.mergedSources.length > 0 && (
-                    <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 }}>
-                        <Text style={{ fontSize: 9, fontWeight: '800', color: colors.warning }}>FUSIONADO</Text>
-                    </View>
-                )}
+              <Text style={[styles.testName, { color: colors.textPrimary }]}>{mergedItem.name}</Text>
+              {mergedItem.mergedSources && mergedItem.mergedSources.length > 0 && (
+                <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, alignSelf: 'flex-start', marginTop: 4 }}>
+                  <Text style={{ fontSize: 9, fontWeight: '800', color: colors.warning }}>FUSIONADO</Text>
+                </View>
+              )}
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}>
-                <Ionicons name="trophy" size={16} color={colors.primary} />
-                <Text style={{ fontSize: 12, color: colors.primary, fontWeight: '900' }}>PR {mergedItem.maxW}</Text>
+              <Ionicons name="trophy" size={16} color={colors.primary} /><Text style={{ fontSize: 12, color: colors.primary, fontWeight: '900' }}>PR {mergedItem.maxW}</Text>
             </View>
           </View>
-          
           <View style={{ flexDirection: 'row', marginTop: 15, alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flexDirection: 'row', flex: 1 }}>
               {hasSides ? (
@@ -424,49 +385,7 @@ export default function AnalyticsScreen() {
           </View>
           {test && <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 10 }}>Último registro: {test.date}</Text>}
         </TouchableOpacity>
-        
         {isSelected && <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>{renderChart(mergedItem.history, mergedItem.unit)}</View>}
-      </View>
-    );
-  };
-
-  const renderFeedbackTab = () => { 
-    const feedbacks: any[] = [];
-    workoutHistory.forEach(w => {
-      if (!w.completed) return; 
-      w.completion_data?.exercise_results?.forEach((ex: any) => { 
-        if (ex.coach_note) feedbacks.push({ date: w.date, exercise: ex.name, note: ex.coach_note }); 
-      });
-    });
-    return (
-      <View>
-        {feedbacks.length > 0 ? feedbacks.reverse().map((fb, i) => (
-          <View key={i} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: colors.warning + '40' }]}>
-            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{fb.date}</Text><Text style={{ color: colors.textPrimary, fontWeight: '800' }}>{fb.exercise}</Text><Text style={{ color: colors.textPrimary, fontStyle: 'italic' }}>"{fb.note}"</Text>
-          </View>
-        )) : <Text style={{color: colors.textSecondary, textAlign: 'center'}}>No hay correcciones del Coach.</Text>}
-      </View>
-    );
-  };
-
-  const renderMeasurementsCard = () => { 
-    if (Object.keys(latestMeasurements).length === 0) return null;
-    const displayNames: Record<string, string> = { weight: 'Peso', shoulders: 'Hombros', chest: 'Pecho', arm: 'Brazo', thigh: 'Muslo' };
-    return (
-      <View style={[styles.measurementsContainer, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 20 }]}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary, textAlign: isDesktop ? 'left' : 'center', marginBottom: 15 }]}>Últimas Mediciones</Text>
-        <View style={styles.measurementsGrid}>
-          {Object.entries(displayNames).map(([key, label]) => {
-            const m = latestMeasurements[key]; if (!m) return null;
-            return (
-              <View key={key} style={[styles.measureBadge, { backgroundColor: colors.background, borderColor: colors.border }]}>
-                <Text style={{ fontSize: 10, color: colors.textSecondary, fontWeight: '800', textTransform: 'uppercase' }}>{label}</Text>
-                <Text style={{ fontSize: 18, color: colors.textPrimary, fontWeight: '900', marginTop: 2 }}>{m.value} <Text style={{ fontSize: 11, fontWeight: '600', color: colors.textSecondary }}>{m.unit}</Text></Text>
-                <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 4 }}>{m.date.split('-').reverse().join('/')}</Text>
-              </View>
-            );
-          })}
-        </View>
       </View>
     );
   };
@@ -477,108 +396,55 @@ export default function AnalyticsScreen() {
     const bodyData: { slug: string; intensity: number }[] = [];
     const mapIntensity = (p: number) => { if (p === 0) return 0; if (p <= 20) return 1; if (p <= 40) return 2; if (p <= 50) return 3; return 4; };
     const addToBody = (muscle: string, slugs: string[]) => { const s = heatMap[muscle] || 0; if (s > 0) { const p = (s / totalSets) * 100; slugs.forEach(slug => bodyData.push({ slug, intensity: mapIntensity(p) })); } };
-
     addToBody('Pecho', ['chest']); addToBody('Espalda', ['trapezius', 'upper-back', 'lower-back']); addToBody('Cuádriceps', ['quadriceps']); addToBody('Isquiotibiales', ['hamstring']); addToBody('Glúteo', ['gluteal']); addToBody('Hombro', ['front-deltoids', 'back-deltoids']); addToBody('Bíceps', ['biceps']); addToBody('Tríceps', ['triceps']); addToBody('Core', ['abs', 'obliques']); addToBody('Gemelos', ['calves']); addToBody('Antebrazos', ['forearm']); addToBody('Aductores', ['adductor']); addToBody('Abductores', ['abductors']);
 
-    if (isDesktop) {
-      return (
-        <View style={styles.bodyTabWrapper}>
-          <View style={styles.timeFilterContainer}>
-            {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
-              <TouchableOpacity key={f.v} style={[styles.timeBtn, bodyTimeFilter === f.v && {backgroundColor: colors.primary}]} onPress={() => setBodyTimeFilter(f.v as any)}>
-                <Text style={{color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700'}}>{f.l}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={styles.desktopBodyLayout}>
-            <View style={styles.silhouettesWrapper}>
-              <View style={styles.bodyContainer}>
-                {/* AHORA SOLO MOSTRAMOS UNA SILUETA CON BOTÓN DE GIRAR */}
-                <View style={styles.bodySide}>
-                  <TouchableOpacity 
-                    style={[styles.flipBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]} 
-                    onPress={() => setBodySideView(prev => prev === 'front' ? 'back' : 'front')}
-                    activeOpacity={0.7}
-                  >
-                    <Ionicons name="sync-outline" size={18} color={colors.primary} />
-                    <Text style={[styles.bodySideLabel, { marginBottom: 0, color: colors.textPrimary }]}>
-                      VISTA {bodySideView === 'front' ? 'FRONTAL' : 'DORSAL'}
-                    </Text>
-                  </TouchableOpacity>
-                  <Body data={bodyData} gender="female" side={bodySideView} scale={1.4} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-                </View>
-              </View>
-            </View>
-            <View style={styles.dataWrapper}>
-              <View style={[styles.legendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Leyenda de % Series</Text>
-                <View style={styles.legendGrid}>
-                  <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#E2E8F0' }]} /><Text style={styles.legendText}>0%</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#3B82F6' }]} /><Text style={styles.legendText}>0-20%</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#FBBF24' }]} /><Text style={styles.legendText}>20-40%</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#F97316' }]} /><Text style={styles.legendText}>40-50%</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.dot, { backgroundColor: '#EF4444' }]} /><Text style={styles.legendText}>50%+</Text></View>
-                </View>
-              </View>
-              <View style={[styles.muscleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Reparto Muscular</Text>
-                {sortedMuscles.map(([m, s]) => {
-                  const p = totalSets > 0 ? (s / totalSets) * 100 : 0;
-                  return (
-                    <View key={m} style={styles.muscleRow}><Text style={{ color: colors.textPrimary, fontWeight: '500' }}>{m}</Text><View style={{ alignItems: 'flex-end' }}><Text style={{ color: colors.primary, fontWeight: '800' }}>{p.toFixed(1)}%</Text><Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text></View></View>
-                  );
-                })}
-              </View>
-            </View>
-          </View>
-        </View>
-      );
-    }
-
     return (
-      <View style={{ paddingBottom: 100 }}>
-        <View style={styles.timeFilterContainerMobile}>
+      <View style={styles.bodyMainContainer}>
+        {/* Filtro de tiempo compartido */}
+        <View style={isDesktop ? styles.timeFilterContainer : styles.timeFilterContainerMobile}>
           {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
-            <TouchableOpacity key={f.v} style={[styles.timeBtnMobile, bodyTimeFilter === f.v && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.v as any)}>
-              <Text style={{ color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700', fontSize: 13 }}>{f.l}</Text>
+            <TouchableOpacity key={f.v} style={[isDesktop ? styles.timeBtn : styles.timeBtnMobile, bodyTimeFilter === f.v && {backgroundColor: colors.primary}]} onPress={() => setBodyTimeFilter(f.v as any)}>
+              <Text style={{color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700'}}>{f.l}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* AHORA SOLO MOSTRAMOS UNA SILUETA CON BOTÓN DE GIRAR */}
-        <View style={{ alignItems: 'center', marginBottom: 25 }}>
-          <TouchableOpacity 
-            style={[styles.flipBtnMobile, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]} 
-            onPress={() => setBodySideView(prev => prev === 'front' ? 'back' : 'front')}
-            activeOpacity={0.7}
-          >
-            <Ionicons name="sync-outline" size={16} color={colors.primary} />
-            <Text style={[styles.bodySideLabelMobile, { marginBottom: 0, color: colors.textPrimary }]}>
-              VISTA {bodySideView === 'front' ? 'FRONTAL' : 'DORSAL'}
-            </Text>
-          </TouchableOpacity>
-          {/* Hemos subido la escala de 0.9 a 1.1 para que se vea más grande y claro al tener todo el ancho */}
-          <Body data={bodyData} gender="female" side={bodySideView} scale={1.1} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-        </View>
+        <View style={isDesktop ? styles.desktopBodyLayout : styles.mobileBodyLayout}>
+          {/* Siluetas - RENDERIZADAS UNA SOLA VEZ */}
+          <View style={styles.silhouettesWrapper}>
+            <View style={styles.bodySide}>
+              <Text style={styles.bodySideLabel}>FRONTAL</Text>
+              <Body data={bodyData} gender="female" side="front" scale={isDesktop ? 1.4 : 0.85} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+            </View>
+            <View style={styles.bodySide}>
+              <Text style={styles.bodySideLabel}>DORSAL</Text>
+              <Body data={bodyData} gender="female" side="back" scale={isDesktop ? 1.4 : 0.85} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+            </View>
+          </View>
 
-        <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15, textAlign: 'center' }}>Distribución de Carga</Text>
-        <View style={styles.legendRowMobile}>
-          <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#E2E8F0' }]} /><Text style={styles.legendTextMobile}>0%</Text></View>
-          <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#3B82F6' }]} /><Text style={styles.legendTextMobile}>0-20%</Text></View>
-          <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#FBBF24' }]} /><Text style={styles.legendTextMobile}>20-40%</Text></View>
-          <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#F97316' }]} /><Text style={styles.legendTextMobile}>40-50%</Text></View>
-          <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#EF4444' }]} /><Text style={styles.legendTextMobile}>50%+</Text></View>
-        </View>
-        <View style={[styles.topMusclesCardMobile, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {sortedMuscles.map(([m, s], i) => {
-            const p = totalSets > 0 ? ((s / totalSets) * 100) : 0;
-            return (
-              <View key={m} style={styles.topMuscleItemMobile}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: colors.textSecondary, width: 25, fontWeight: '800' }}>{i + 1}</Text><Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600' }}>{m}</Text></View>
-                <View style={{ alignItems: 'flex-end' }}><Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '800' }}>{p.toFixed(1)}%</Text><Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text></View>
+          {/* Datos y Leyenda */}
+          <View style={styles.dataWrapper}>
+            <View style={[styles.legendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Leyenda de % Series</Text>
+              <View style={styles.legendGrid}>
+                {['0%', '0-20%', '20-40%', '40-50%', '50%+'].map((l, i) => (
+                  <View key={l} style={styles.legendItem}>
+                    <View style={[styles.dot, { backgroundColor: ['#E2E8F0', '#3B82F6', '#FBBF24', '#F97316', '#EF4444'][i] }]} />
+                    <Text style={styles.legendText}>{l}</Text>
+                  </View>
+                ))}
               </View>
-            );
-          })}
+            </View>
+            <View style={[styles.muscleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Reparto Muscular</Text>
+              {sortedMuscles.map(([m, s]) => {
+                const p = totalSets > 0 ? (s / totalSets) * 100 : 0;
+                return (
+                  <View key={m} style={styles.muscleRow}><Text style={{ color: colors.textPrimary, fontWeight: '500' }}>{m}</Text><View style={{ alignItems: 'flex-end' }}><Text style={{ color: colors.primary, fontWeight: '800' }}>{p.toFixed(1)}%</Text><Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text></View></View>
+                );
+              })}
+            </View>
+          </View>
         </View>
       </View>
     );
@@ -586,30 +452,17 @@ export default function AnalyticsScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView 
-        style={{ flex: 1 }} 
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[styles.mainWrapper, isDesktop && styles.desktopWrapper]}>
           <View style={styles.header}>
             <View>
-              <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
-                {isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Tus Analíticas'}
-              </Text>
+              <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Tus Analíticas'}</Text>
               {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>Vista Entrenador</Text>}
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              {isTrainer && (
-                <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
-                  <Ionicons name="people" size={22} color={colors.primary} />
-                </TouchableOpacity>
-              )}
-              <TouchableOpacity onPress={exportToCSV} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
-                <Ionicons name="download" size={22} color={colors.primary} />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
-                {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}
-              </TouchableOpacity>
+              {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
+              <TouchableOpacity onPress={exportToCSV} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="download" size={22} color={colors.primary} /></TouchableOpacity>
+              <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>{refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}</TouchableOpacity>
             </View>
           </View>
 
@@ -617,9 +470,7 @@ export default function AnalyticsScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={isDesktop ? styles.tabsContainerDesktop : styles.tabsContainerMobile}>
               {['summary', 'progress', 'body', 'feedback'].map(tab => (
                 <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && { backgroundColor: colors.primary }]} onPress={() => setActiveTab(tab as any)}>
-                  <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>
-                    {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'body' ? 'CUERPO' : 'FEEDBACK'}
-                  </Text>
+                  <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>{tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'body' ? 'CUERPO' : 'FEEDBACK'}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -629,347 +480,104 @@ export default function AnalyticsScreen() {
             {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
              activeTab === 'summary' ? (
                <View>
-                 {renderPerformanceSummary()}
-                 {renderMeasurementsCard()}
-
-                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, marginTop: 10 }}>
-                   <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Histórico de Tests</Text>
-                   {isTrainer && (
-                     <TouchableOpacity onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}>
-                       <Ionicons name="git-merge" size={22} color={colors.primary} />
-                     </TouchableOpacity>
-                   )}
-                 </View>
-
-                 <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>
-                   {cleanProgression.filter((item: any) => item.type === 'test').map((item: any, i: number) => renderTestCard(item, i))}
-                 </View>
+                 {renderPerformanceSummary()}{renderMeasurementsCard()}
+                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, marginTop: 10 }}><Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Histórico de Tests</Text>{isTrainer && <TouchableOpacity onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}><Ionicons name="git-merge" size={22} color={colors.primary} /></TouchableOpacity>}</View>
+                 <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>{cleanProgression.filter((item: any) => item.type === 'test').map((item: any, i: number) => renderTestCard(item, i))}</View>
                </View>
-             ) : 
-             activeTab === 'progress' ? (
+             ) : activeTab === 'progress' ? (
                 <View>
-                  {/* BARRA DE BÚSQUEDA */}
-                  <View style={{ marginBottom: 15 }}>
-                    <TextInput 
-                      style={[styles.searchBar, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                      placeholder="Buscar ejercicio o test..." 
-                      placeholderTextColor={colors.textSecondary} 
-                      value={searchQuery} 
-                      onChangeText={setSearchQuery} 
-                    />
-                  </View>
-
-                  {/* FILA DE CHIPS/FILTROS */}
+                  <View style={{ marginBottom: 15 }}><TextInput style={[styles.searchBar, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} placeholder="Buscar ejercicio o test..." placeholderTextColor={colors.textSecondary} value={searchQuery} onChangeText={setSearchQuery} /></View>
                   <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterChipsContainer}>
-                    <TouchableOpacity
-                      style={[
-                        styles.filterChip,
-                        { borderColor: colors.border, backgroundColor: hideEmpty ? colors.primary + '20' : colors.surface }
-                      ]}
-                      onPress={() => setHideEmpty(!hideEmpty)}
-                    >
-                      <Ionicons name={hideEmpty ? "eye-off" : "eye"} size={14} color={hideEmpty ? colors.primary : colors.textSecondary} />
-                      <Text style={[styles.filterChipText, { color: hideEmpty ? colors.primary : colors.textSecondary }]}>
-                        {hideEmpty ? 'Ocultando 0kg' : 'Mostrando Todo'}
-                      </Text>
-                    </TouchableOpacity>
-                    
+                    <TouchableOpacity style={[styles.filterChip, { borderColor: colors.border, backgroundColor: hideEmpty ? colors.primary + '20' : colors.surface }]} onPress={() => setHideEmpty(!hideEmpty)}><Ionicons name={hideEmpty ? "eye-off" : "eye"} size={14} color={hideEmpty ? colors.primary : colors.textSecondary} /><Text style={[styles.filterChipText, { color: hideEmpty ? colors.primary : colors.textSecondary }]}>{hideEmpty ? 'Ocultando 0kg' : 'Mostrando Todo'}</Text></TouchableOpacity>
                     <View style={{ width: 1, backgroundColor: colors.border, marginHorizontal: 4, marginVertical: 6 }} />
-
-                    {['all', 'ejercicio', 'test'].map((cat) => {
-                      const isActive = filterCategory === cat;
-                      let label = 'Todos';
-                      if (cat === 'ejercicio') label = 'Fuerza';
-                      if (cat === 'test') label = 'Tests';
-
-                      return (
-                        <TouchableOpacity
-                          key={cat}
-                          style={[
-                            styles.filterChip,
-                            { 
-                              borderColor: isActive ? colors.primary : colors.border, 
-                              backgroundColor: isActive ? colors.primary : colors.surface 
-                            }
-                          ]}
-                          onPress={() => setFilterCategory(cat as any)}
-                        >
-                          <Text style={[
-                            styles.filterChipText, 
-                            { color: isActive ? '#FFF' : colors.textSecondary, fontWeight: isActive ? '800' : '600' }
-                          ]}>
-                            {label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
+                    {['all', 'ejercicio', 'test'].map((cat) => (
+                      <TouchableOpacity key={cat} style={[styles.filterChip, { borderColor: filterCategory === cat ? colors.primary : colors.border, backgroundColor: filterCategory === cat ? colors.primary : colors.surface }]} onPress={() => setFilterCategory(cat as any)}><Text style={[styles.filterChipText, { color: filterCategory === cat ? '#FFF' : colors.textSecondary, fontWeight: filterCategory === cat ? '800' : '600' }]}>{cat === 'all' ? 'Todos' : cat === 'ejercicio' ? 'Fuerza' : 'Tests'}</Text></TouchableOpacity>
+                    ))}
                   </ScrollView>
-
-                  {filteredProgression.length === 0 ? (
-                    <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 40, paddingHorizontal: 20 }}>
-                      No hay datos que coincidan con tus filtros actuales.
-                    </Text>
-                  ) : (
-                    filteredProgression.map((item: any, i: number) => {
-                      return (
-                        <View key={item.id} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                          <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.id ? null : item.id)} style={styles.progHeader}>
-                            <View style={{flex:1}}>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                                <Text style={[styles.progName, {color: colors.textPrimary}]}>{item.name}</Text>
-                                <View style={{ backgroundColor: item.type === 'test' ? colors.primary + '20' : '#E2E8F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                  <Text style={{ fontSize: 9, fontWeight: '800', color: item.type === 'test' ? colors.primary : '#64748B' }}>
-                                    {item.type.toUpperCase()}
-                                  </Text>
-                                </View>
-                                {item.mergedSources && item.mergedSources.length > 0 && (
-                                  <View style={{ backgroundColor: colors.warning + '20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                    <Text style={{ fontSize: 9, fontWeight: '800', color: colors.warning }}>FUSIONADO</Text>
-                                  </View>
-                                )}
-                              </View>
-                              <Text style={{color: colors.primary, fontWeight:'700'}}>PR: {item.maxW} {item.unit}</Text>
-                            </View>
-                            
-                            <View style={{ flexDirection: 'row', gap: 10 }}>
-                              {item.type === 'ejercicio' && isTrainer && (
-                                <TouchableOpacity style={{ padding: 5 }} onPress={(e) => { e.stopPropagation(); openDictModal(item.name); }}>
-                                  <Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/>
-                                </TouchableOpacity>
-                              )}
-                            </View>
-
-                          </TouchableOpacity>
-                          {selectedExercise === item.id && (
-                            <View style={{padding: 15, borderTopWidth: 1, borderTopColor: colors.border}}>
-                              {renderChart(item.history, item.unit)}
-                              {item.mergedSources && item.mergedSources.length > 0 && (
-                                <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>
-                                  Incluye datos absorbidos de: {item.mergedSources.join(', ')}
-                                </Text>
-                              )}
-                            </View>
-                          )}
-                        </View>
-                      );
-                    })
-                  )}
+                  {filteredProgression.map((item: any) => (
+                    <View key={item.id} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                      <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.id ? null : item.id)} style={styles.progHeader}>
+                        <View style={{flex:1}}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}><Text style={[styles.progName, {color: colors.textPrimary}]}>{item.name}</Text><View style={{ backgroundColor: item.type === 'test' ? colors.primary + '20' : '#E2E8F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}><Text style={{ fontSize: 9, fontWeight: '800', color: item.type === 'test' ? colors.primary : '#64748B' }}>{item.type.toUpperCase()}</Text></View></View><Text style={{color: colors.primary, fontWeight:'700'}}>PR: {item.maxW} {item.unit}</Text></View>
+                        {item.type === 'ejercicio' && isTrainer && <TouchableOpacity style={{ padding: 5 }} onPress={(e) => { e.stopPropagation(); openDictModal(item.name); }}><Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/></TouchableOpacity>}
+                      </TouchableOpacity>
+                      {selectedExercise === item.id && <View style={{padding: 15, borderTopWidth: 1, borderTopColor: colors.border}}>{renderChart(item.history, item.unit)}</View>}
+                    </View>
+                  ))}
                 </View>
-             ) : activeTab === 'body' ? renderBodyMap() : renderFeedbackTab()}
+             ) : activeTab === 'body' ? renderBodyMap() : <View>{(workoutHistory.filter(w => w.completed && w.completion_data?.exercise_results?.some((ex:any) => ex.coach_note)).map((w, i) => w.completion_data.exercise_results.filter((ex:any) => ex.coach_note).map((ex:any, j:number) => (<View key={`${i}-${j}`} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: colors.warning + '40' }]}><Text style={{ color: colors.textSecondary, fontSize: 12 }}>{w.date}</Text><Text style={{ color: colors.textPrimary, fontWeight: '800' }}>{ex.name}</Text><Text style={{ color: colors.textPrimary, fontStyle: 'italic' }}>"{ex.coach_note}"</Text></View>))))}</View>}
           </ScrollView>
         </View>
 
-        <Modal visible={showPicker} transparent animationType="slide">
-          <TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}>
-            <View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}>
-              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text>
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {athletes.map(a => (
-                  <TouchableOpacity 
-                    key={a.id} 
-                    style={[styles.athleteItem, { borderBottomColor: colors.border }]} 
-                    onPress={() => { handleSelectAthlete(a); setShowPicker(false); }}
-                  >
-                    <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </TouchableOpacity>
-        </Modal>
+        {/* Modales (Athlete Picker, Merge, Dict) */}
+        <Modal visible={showPicker} transparent animationType="slide"><TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}><View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}><Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text><ScrollView>{athletes.map(a => (<TouchableOpacity key={a.id} style={[styles.athleteItem, { borderBottomColor: colors.border }]} onPress={() => { handleSelectAthlete(a); setShowPicker(false); }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text></TouchableOpacity>))}</ScrollView></View></TouchableOpacity></Modal>
+        
+        <Modal visible={showMergeModal} transparent animationType="slide"><View style={styles.modalOverlay}><View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>{!mergeTargetItem ? (<><Text style={styles.modalTitle}>1. Test Principal</Text><ScrollView>{Object.values(rawItems).sort((a: any, b: any) => a.name.localeCompare(b.name)).map((item: any) => (<TouchableOpacity key={item.id} style={[styles.dictSelectBtn, { borderColor: colors.border, marginBottom: 10 }]} onPress={() => setMergeTargetItem(item)}><Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{item.name} ({item.type.toUpperCase()})</Text></TouchableOpacity>))}</ScrollView></>) : (<><Text style={styles.modalTitle}>2. Unificar con {mergeTargetItem.name}</Text><ScrollView>{Object.values(rawItems).filter((r: any) => r.id !== mergeTargetItem.id).map((r: any) => (<TouchableOpacity key={r.id} style={[styles.dictSelectBtn, { borderColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary : colors.border, backgroundColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary + '10' : 'transparent', marginBottom: 10 }]} onPress={() => toggleMerge(r.id)}><Text style={{ color: colors.textPrimary }}>{r.name}</Text></TouchableOpacity>))}</ScrollView><TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={() => setShowMergeModal(false)}><Text style={{ color: '#FFF', fontWeight: '800' }}>TERMINAR</Text></TouchableOpacity></>)}<TouchableOpacity onPress={() => setShowMergeModal(false)} style={{marginTop:15, alignItems:'center'}}><Text style={{color:colors.textSecondary}}>Cancelar</Text></TouchableOpacity></View></View></Modal>
 
-        <Modal visible={showMergeModal} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
-              {!mergeTargetItem ? (
-                <>
-                  <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>1. Test Principal</Text>
-                  <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 20 }}>Selecciona el test o ejercicio de <Text style={{fontWeight: 'bold', color: colors.primary}}>destino</Text>:</Text>
-                  
-                  <ScrollView showsVerticalScrollIndicator={false}>
-                    {Object.values(rawItems)
-                      .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                      .map((item: any) => (
-                        <TouchableOpacity 
-                          key={item.id} 
-                          style={[styles.dictSelectBtn, { borderColor: colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]} 
-                          onPress={() => setMergeTargetItem(item)}
-                        >
-                          <View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                              <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>{item.name}</Text>
-                              <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '700' }}>({item.type.toUpperCase()})</Text>
-                            </View>
-                          </View>
-                          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-                        </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                  <TouchableOpacity style={{ marginTop: 20, alignItems: 'center', padding: 15 }} onPress={() => setShowMergeModal(false)}>
-                    <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 16 }}>Cancelar</Text>
-                  </TouchableOpacity>
-                </>
-              ) : (
-                <>
-                  <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 5 }}>2. Unificar con...</Text>
-                  <Text style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 20 }}>
-                    Selecciona qué históricos sumar a <Text style={{fontWeight: 'bold', color: colors.primary}}>{mergeTargetItem.name}</Text>:
-                  </Text>
-                  
-                  <ScrollView showsVerticalScrollIndicator={false}>
-                    {Object.values(rawItems)
-                      .filter((rawItem: any) => rawItem.id !== mergeTargetItem.id)
-                      .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                      .map((rawItem: any) => {
-                        const isMergedIntoCurrent = mergeMap[rawItem.id] === mergeTargetItem.id;
-                        
-                        return (
-                          <TouchableOpacity 
-                            key={rawItem.id} 
-                            style={[
-                              styles.dictSelectBtn, 
-                              { borderColor: colors.border, marginBottom: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, 
-                              isMergedIntoCurrent && { backgroundColor: colors.primary + '15', borderColor: colors.primary }
-                            ]} 
-                            onPress={() => toggleMerge(rawItem.id)}
-                          >
-                            <View>
-                              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>{rawItem.name}</Text>
-                                <Text style={{ fontSize: 9, color: colors.textSecondary, fontWeight: '700' }}>({rawItem.type.toUpperCase()})</Text>
-                              </View>
-                              <Text style={{ fontSize: 12, color: colors.textSecondary }}>PR Actual: {rawItem.maxW} {rawItem.unit}</Text>
-                            </View>
-                            
-                            {isMergedIntoCurrent ? (
-                              <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
-                            ) : (
-                              <Ionicons name="add-circle-outline" size={24} color={colors.textSecondary} />
-                            )}
-                          </TouchableOpacity>
-                        );
-                    })}
-                  </ScrollView>
-                  
-                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
-                    <TouchableOpacity style={{ flex: 1, padding: 15, alignItems: 'center' }} onPress={() => setMergeTargetItem(null)}>
-                      <Text style={{ color: colors.textSecondary, fontWeight: '800', fontSize: 16 }}>Volver</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={{ flex: 1, padding: 15, alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12 }} onPress={() => setShowMergeModal(false)}>
-                      <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Terminar</Text>
-                    </TouchableOpacity>
-                  </View>
-                </>
-              )}
-            </View>
-          </View>
-        </Modal>
-
-        <Modal visible={showDictModal} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-              <Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary, marginBottom: 15 }}>Editar Diccionario: {dictTargetExercise}</Text>
-              <ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
-                {ALL_MUSCLES.map(m => (
-                  <TouchableOpacity key={m} style={[styles.dictSelectBtn, { borderColor: colors.border, padding: 12 }, dictSelectedMuscles.includes(m) && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => toggleDictMuscle(m)}>
-                    <Text style={{ color: dictSelectedMuscles.includes(m) ? '#FFF' : colors.textPrimary, fontWeight: '600' }}>{m}</Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={saveDictMuscles}><Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR CAMBIOS</Text></TouchableOpacity>
-              <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setShowDictModal(false)}><Text style={{ color: colors.textSecondary }}>Cancelar</Text></TouchableOpacity>
-            </View>
-          </View>
-        </Modal>
+        <Modal visible={showDictModal} transparent animationType="slide"><View style={styles.modalOverlay}><View style={[styles.modalContent, { backgroundColor: colors.surface }]}><Text style={styles.modalTitle}>Editar Diccionario: {dictTargetExercise}</Text><ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{ALL_MUSCLES.map(m => (<TouchableOpacity key={m} style={[styles.dictSelectBtn, { borderColor: colors.border, backgroundColor: dictSelectedMuscles.includes(m) ? colors.primary : 'transparent' }]} onPress={() => toggleDictMuscle(m)}><Text style={{ color: dictSelectedMuscles.includes(m) ? '#FFF' : colors.textPrimary }}>{m}</Text></TouchableOpacity>))}</ScrollView><TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={saveDictMuscles}><Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR</Text></TouchableOpacity></View></View></Modal>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
 
-const shadowStyle = Platform.select({
-  ios: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-  },
-  android: {
-    elevation: 4,
-  },
-}) || {};
-
 const styles = StyleSheet.create({
-  summaryBoard: { flexDirection: 'row', borderRadius: 20, padding: 20, marginBottom: 20, alignItems: 'center', justifyContent: 'space-around', ...shadowStyle },
-  summaryItem: { alignItems: 'center' },
-  summaryValue: { fontSize: 24, fontWeight: '900', marginTop: 5 },
-  summaryLabel: { fontSize: 12, fontWeight: '600', marginTop: 2 },
-  summaryDivider: { width: 1, height: '80%', backgroundColor: 'rgba(0,0,0,0.1)' },
   container: { flex: 1 },
-  mainWrapper: { flex: 1, width: '100%' },
+  mainWrapper: { flex: 1 },
   desktopWrapper: { maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
   headerTitle: { fontSize: 24, fontWeight: '900' },
   iconBtn: { width: 45, height: 45, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   tabsContainerDesktop: { gap: 10, flex: 1 },
   tabsContainerMobile: { gap: 8, paddingRight: 20 },
-  tabButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)', justifyContent: 'center' },
+  tabButton: { paddingHorizontal: 16, paddingVertical: 12, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
   tabButtonText: { fontSize: 11, fontWeight: '800' },
-  mergeGlobalBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 15, borderRadius: 16, borderWidth: 1, marginBottom: 20, borderStyle: 'dashed' },
-  bodyTabWrapper: { flex: 1 },
-  timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 30 },
-  timeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
-  desktopBodyLayout: { flexDirection: 'row', gap: 30, alignItems: 'flex-start' },
-  silhouettesWrapper: { flex: 1.5, alignItems: 'center', justifyContent: 'center' },
-  bodyContainer: { flexDirection: 'row', justifyContent: 'center', gap: 30 },
-  bodySide: { alignItems: 'center' },
-  bodySideLabel: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
-  dataWrapper: { flex: 1, gap: 20 },
-  cardTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
-  legendCard: { padding: 20, borderRadius: 20, borderWidth: 1, ...shadowStyle },
-  legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { width: 14, height: 14, borderRadius: 4 },
-  legendText: { fontSize: 12, fontWeight: '700', color: '#666' },
-  muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1, ...shadowStyle },
-  muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  summaryBoard: { flexDirection: 'row', borderRadius: 20, padding: 20, marginBottom: 20, justifyContent: 'space-around' },
+  summaryItem: { alignItems: 'center' },
+  summaryValue: { fontSize: 24, fontWeight: '900' },
+  summaryLabel: { fontSize: 12, color: '#888' },
+  summaryDivider: { width: 1, backgroundColor: 'rgba(0,0,0,0.1)' },
+  
+  // Estilos Cuerpo - UNIFICADOS
+  bodyMainContainer: { flex: 1 },
+  timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 20 },
   timeFilterContainerMobile: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
+  timeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
   timeBtnMobile: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  desktopBodyLayout: { flexDirection: 'row', gap: 20 },
+  mobileBodyLayout: { flexDirection: 'column' },
+  silhouettesWrapper: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginBottom: 20 },
+  bodySide: { alignItems: 'center' },
+  bodySideLabel: { fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 },
+  dataWrapper: { flex: 1, gap: 15 },
+  legendCard: { padding: 15, borderRadius: 15, borderWidth: 1 },
+  legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  dot: { width: 12, height: 12, borderRadius: 3 },
+  legendText: { fontSize: 10, fontWeight: '700' },
+  muscleCard: { padding: 15, borderRadius: 15, borderWidth: 1 },
+  muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   
-  // NUEVOS ESTILOS PARA LOS BOTONES DE GIRAR EL CUERPO
-  flipBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, marginBottom: 25 },
-  flipBtnMobile: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
-  
-  bodySideLabelMobile: { fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
-  legendRowMobile: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 25, justifyContent: 'center' },
-  legendItemMobile: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  dotMobile: { width: 12, height: 12, borderRadius: 3 },
-  legendTextMobile: { fontSize: 10, fontWeight: '600', color: '#888' },
-  topMusclesCardMobile: { padding: 15, borderRadius: 20, borderWidth: 1, ...shadowStyle },
-  topMuscleItemMobile: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 20, ...shadowStyle },
-  measurementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
+  measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  measurementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   measureBadge: { flex: 1, minWidth: '45%', padding: 12, borderRadius: 14, borderWidth: 1 },
-  testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15, ...shadowStyle },
-  testName: { fontSize: 18, fontWeight: '800' },
-  testValue: { fontSize: 26, fontWeight: '900' },
-  sideLabel: { fontSize: 10, fontWeight: '900', color: '#888' },
-  progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden', ...shadowStyle },
-  progHeader: { flexDirection: 'row', padding: 18, alignItems: 'center' },
-  progName: { fontSize: 16, fontWeight: '800' },
-  searchBar: { padding: 14, borderRadius: 12, borderWidth: 1 },
-  
-  filterChipsContainer: { flexDirection: 'row', gap: 8, marginBottom: 25, paddingBottom: 5 },
-  filterChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, gap: 6 },
-  filterChipText: { fontSize: 12, fontWeight: '600' },
-  
-  feedbackCard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 15, ...shadowStyle },
+  cardTitle: { fontSize: 16, fontWeight: '800', marginBottom: 10 },
+  testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
+  testName: { fontSize: 16, fontWeight: '800' },
+  testValue: { fontSize: 22, fontWeight: '900' },
+  sideLabel: { fontSize: 9, color: '#888' },
+  progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 12 },
+  progHeader: { flexDirection: 'row', padding: 15, alignItems: 'center' },
+  progName: { fontSize: 15, fontWeight: '700' },
+  searchBar: { padding: 12, borderRadius: 12, borderWidth: 1 },
+  filterChipsContainer: { flexDirection: 'row', gap: 8, marginBottom: 20 },
+  filterChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, gap: 5 },
+  filterChipText: { fontSize: 11 },
+  feedbackCard: { padding: 15, borderRadius: 15, borderWidth: 1, marginBottom: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
-  dictSelectBtn: { padding: 16, borderRadius: 12, borderWidth: 1 },
-  confirmBtn: { padding: 18, borderRadius: 15, alignItems: 'center', marginTop: 30 },
-  
+  modalContent: { padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25 },
+  modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
+  dictSelectBtn: { padding: 12, borderRadius: 10, borderWidth: 1 },
+  confirmBtn: { padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 20 },
   modalOverlayPicker: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContentPicker: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30, maxHeight: '80%' },
-  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 },
-  modalTitle: { fontSize: 20, fontWeight: '900', marginBottom: 20 }
+  modalContentPicker: { padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25, maxHeight: '70%' },
+  athleteItem: { paddingVertical: 15, borderBottomWidth: 1 }
 });
