@@ -90,7 +90,7 @@ export default function EditWorkoutScreen() {
             setHiitBlocks(w.exercises.map((b: any) => ({ 
               ...b, 
               _key: Math.random().toString(), 
-              exercises: b.hiit_exercises.map((e: any) => ({...e, _key: Math.random().toString(), sets: e.sets || '1'})) // Inicializa sets si no existía
+              exercises: b.hiit_exercises.map((e: any) => ({...e, _key: Math.random().toString(), sets: e.sets || '1'})) 
             })));
           } else {
             setWorkoutType('traditional');
@@ -232,9 +232,15 @@ export default function EditWorkoutScreen() {
       payloadData.exercises = hiitBlocks.map(block => ({
         is_hiit_block: true, name: block.name, sets: block.sets, rest_exercise: block.rest_exercise,
         rest_block: block.rest_block, rest_between_blocks: block.rest_between_blocks, 
-        hiit_exercises: block.exercises.filter((e: any) => e.name.trim()).map((e: any) => ({ 
-          name: e.name, sets: e.sets, duration_reps: e.duration_reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url 
-        }))
+        hiit_exercises: block.exercises.filter((e: any) => e.name.trim()).map((e: any) => {
+          let dReps = e.duration_reps ? e.duration_reps.trim() : '';
+          // Aquí también añadimos la 'r' automáticamente al guardar
+          if (/^\d+$/.test(dReps)) dReps += 'r';
+          
+          return { 
+            name: e.name, sets: e.sets, duration_reps: dReps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url 
+          };
+        })
       })).filter(b => b.hiit_exercises.length > 0);
     }
 
