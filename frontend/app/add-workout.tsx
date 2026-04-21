@@ -36,7 +36,7 @@ const normalizeName = (name: string) => {
   return n;
 };
 
-// Lector de CSV robusto (ignora comas dentro de comillas)
+// Lector de CSV robusto
 const parseCSV = (str: string) => {
   const arr: string[][] = [];
   let quote = false;
@@ -304,9 +304,15 @@ export default function AddWorkoutScreen() {
       payloadData.exercises = hiitBlocks.map(block => ({
         is_hiit_block: true, name: block.name, sets: block.sets, rest_exercise: block.rest_exercise,
         rest_block: block.rest_block, rest_between_blocks: block.rest_between_blocks, 
-        hiit_exercises: block.exercises.filter((e: any) => e.name.trim()).map((e: any) => ({ 
-          name: e.name, sets: e.sets, duration_reps: e.duration_reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url 
-        }))
+        hiit_exercises: block.exercises.filter((e: any) => e.name.trim()).map((e: any) => {
+          let dReps = e.duration_reps ? e.duration_reps.trim() : '';
+          // Magia aquí: si se introduce solo un número, le añadimos 'r' automáticamente.
+          if (/^\d+$/.test(dReps)) dReps += 'r';
+          
+          return { 
+            name: e.name, sets: e.sets, duration_reps: dReps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url 
+          };
+        })
       })).filter(b => b.hiit_exercises.length > 0);
     }
 
