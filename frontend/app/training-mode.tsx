@@ -80,6 +80,14 @@ const formatGlobalTime = (totalSeconds: number): string => {
   return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
 };
 
+// Ayudante para asegurar que si hay "15" en repeticiones viejas, lo trate como "15r" y no como 15 segundos
+const normalizeHiitReps = (val: string | number | undefined | null) => {
+  if (!val) return '';
+  let str = String(val).trim();
+  if (/^\d+$/.test(str)) return str + 'r';
+  return str;
+};
+
 const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
   return (
@@ -134,7 +142,6 @@ export default function TrainingModeScreen() {
 
   const [isPaused, setIsPaused] = useState(false);
   
-  // --- MODO FATIGA ALTA (SUPERVIVENCIA) ---
   const [isFatigueMode, setIsFatigueMode] = useState(false);
 
   const [globalSeconds, setGlobalSeconds] = useState(0);
@@ -179,7 +186,7 @@ export default function TrainingModeScreen() {
     if (!reps) return null;
     return String(reps).replace(/\d+/g, (match) => {
       const num = parseInt(match, 10);
-      if (num <= 3) return match; // No recortar fuerza máxima
+      if (num <= 3) return match; 
       return Math.max(1, Math.floor(num * 0.8)).toString();
     });
   };
@@ -455,6 +462,7 @@ export default function TrainingModeScreen() {
     return () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); };
   }, [isWorking, workTargetTime]);
 
+  // Manejo del trabajo - Tradicional
   useEffect(() => {
     if (finished || workout?.completed) return;
     if (!isHiit && workout && !isResting && !isPrep && !showIndicationsModal) {
@@ -472,12 +480,17 @@ export default function TrainingModeScreen() {
     }
   }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode]);
 
+  // Manejo del trabajo - HIIT
   useEffect(() => {
     if (finished || workout?.completed) return;
     if (isHiit && workout && hiitPhase === 'work' && !isResting && !isPrep && !showIndicationsModal) {
       const b = workout.exercises[hiitBlockIdx]; if (!b) return;
       const ex = b.hiit_exercises[hiitExIdx]; 
-      let dur = parseTimeToSeconds(ex?.duration_reps || ex?.duration);
+      
+      // PRIORIDAD ABSOLUTA AL CAMPO "TIEMPO" (duration). 
+      // Si el tiempo es 0, miramos si las repeticiones son en realidad tiempo oculto.
+      let dur = parseTimeToSeconds(ex?.duration);
+      if (dur === 0) dur = parseTimeToSeconds(normalizeHiitReps(ex?.duration_reps));
 
       if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
 
@@ -881,18 +894,28 @@ const handleRecordVideoOptions = (key: string) => {
           </Text>
           {block.hiit_exercises?.map((ex: any, eIdx: number) => {
             const hasSets = ex.sets && parseInt(ex.sets) > 1;
-            const displayDur = isFatigueMode ? adjustDurationStr(ex.duration_reps || ex.duration) : (ex.duration_reps || ex.duration);
+            
+            const normReps = normalizeHiitReps(ex.duration_reps);
+            let finalTime = ex.duration;
+            if (isFatigueMode && finalTime) finalTime = adjustDurationStr(finalTime);
+
+            let displayDur = '';
+            if (normReps && finalTime) displayDur = `${normReps} / ${finalTime}`;
+            else displayDur = normReps || finalTime || '-';
+            
+            const notesText = ex.exercise_notes || ex.notes || ex.observations || ex.observaciones;
+
             return (
               <View key={eIdx} style={{ paddingLeft: 10, marginBottom: 8 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                   <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '500' }}>• {ex.name}</Text>
                   <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 10 }}>
-                    {hasSets ? `${ex.sets}x ` : ''}{displayDur || '-'}
+                    {hasSets ? `${ex.sets}x ` : ''}{displayDur}
                   </Text>
                 </View>
-                {ex.exercise_notes ? (
+                {notesText ? (
                   <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 2, marginLeft: 10 }}>
-                    Nota: {ex.exercise_notes}
+                    Nota: {notesText}
                   </Text>
                 ) : null}
               </View>
@@ -904,6 +927,8 @@ const handleRecordVideoOptions = (key: string) => {
       return workout.exercises.map((ex: any, idx: number) => {
         const displayReps = isFatigueMode ? adjustReps(ex.reps) : ex.reps;
         const displayDur = isFatigueMode ? adjustDurationStr(ex.duration) : ex.duration;
+        const notesText = ex.exercise_notes || ex.notes || ex.observations || ex.observaciones;
+
         return (
           <View key={idx} style={{ marginBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 8 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -919,7 +944,7 @@ const handleRecordVideoOptions = (key: string) => {
                 ) : null}
               </View>
             </View>
-            {ex.exercise_notes && <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>Nota: {ex.exercise_notes}</Text>}
+            {notesText && <Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic', marginTop: 4 }}>Nota: {notesText}</Text>}
           </View>
         );
       });
@@ -1132,12 +1157,11 @@ const handleRecordVideoOptions = (key: string) => {
         hiit_exercises: b.hiit_exercises.map((e: any) => ({
           ...e,
           duration: adjustDurationStr(e.duration),
-          duration_reps: adjustDurationStr(e.duration_reps)
+          duration_reps: normalizeHiitReps(e.duration_reps)
         }))
       };
     }
 
-    // EXTRAEMOS LA INFO PARA PASARLE LAS REPS Y SERIES CORRECTAMENTE
     const currentEx = displayBlock.hiit_exercises[hiitExIdx];
     const hasMultipleSets = parseInt(currentEx?.sets) > 1;
     let timerExName = hasMultipleSets ? `${currentEx?.name} (Serie ${hiitExSet}/${currentEx?.sets})` : currentEx?.name || 'HIIT';
@@ -1149,8 +1173,10 @@ const handleRecordVideoOptions = (key: string) => {
       else if (hiitPhase === 'rest_next_block') { const nextBlock = workout.exercises[hiitBlockIdx + 1]; timerExName = `Siguiente: ${nextBlock?.name}`; }
     } else if (isPrep) { timerExName = `Prep: ${currentEx?.name}`; }
 
-    // Obtenemos los datos para cuando no hay tiempo ('A TU RITMO')
-    const displayHiitReps = currentEx?.duration_reps || currentEx?.duration;
+    const normReps = normalizeHiitReps(currentEx?.duration_reps);
+    let displayHiitReps = '';
+    if (normReps && currentEx?.duration) displayHiitReps = `${normReps} / ${currentEx.duration}`;
+    else displayHiitReps = normReps || currentEx?.duration;
 
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -1178,7 +1204,7 @@ const handleRecordVideoOptions = (key: string) => {
               prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} 
               restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} 
               exName={timerExName} colors={colors} isHiit={isHiit} 
-              reps={displayHiitReps} sets={currentEx?.sets} // <-- NUEVAS PROPS AÑADIDAS
+              reps={displayHiitReps} sets={currentEx?.sets} 
               onTogglePause={togglePause} onStopPrep={() => { stopPrepTimer(); startWorkTimerAfterPrep(); }} 
               onSkipRest={skipHiitRest} onResetWork={resetWorkTimer} onResetRest={resetRestTimer} 
               onComplete={advanceHiit} onSkip={skipHiitEx} 
@@ -1212,6 +1238,10 @@ const handleRecordVideoOptions = (key: string) => {
     const isLandmineExercise = /landmine/i.test(ex?.name || '');
 
     const displayReps = isFatigueMode ? adjustReps(ex.reps) : ex.reps;
+
+    // ALIAS PARA MODO FUERZA
+    const vidUrl = ex.video_url || ex.link || ex.url;
+    const notesText = ex.exercise_notes || ex.notes || ex.observations || ex.observaciones;
 
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -1249,7 +1279,7 @@ const handleRecordVideoOptions = (key: string) => {
             />
             
             <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{ex.video_url && <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
+              <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{vidUrl && <TouchableOpacity onPress={() => Linking.openURL(vidUrl)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
               
               <View style={styles.compactDetailsGrid}>
                 {['sets', 'reps', 'weight', 'duration', 'rest'].map(k => {
@@ -1268,11 +1298,11 @@ const handleRecordVideoOptions = (key: string) => {
                 })}
               </View>
               
-              {ex.exercise_notes && (
+              {notesText && (
                  <View style={{ padding: 16, paddingTop: 0, backgroundColor: colors.surface }}>
                     <View style={{ flexDirection: 'row', backgroundColor: colors.background, padding: 10, borderRadius: 8 }}>
                        <Ionicons name="information-circle" size={18} color={colors.textSecondary} />
-                       <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginLeft: 8, flex: 1 }}>{ex.exercise_notes}</Text>
+                       <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginLeft: 8, flex: 1 }}>{notesText}</Text>
                     </View>
                  </View>
               )}
