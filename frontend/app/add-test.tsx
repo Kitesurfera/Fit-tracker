@@ -330,7 +330,7 @@ export default function AddTestScreen() {
                 <TextInput
                   testID="test-unit-input"
                   style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
-                  value={unit} onChangeText={setUnit} placeholder="kg/cm"
+                  value={unit} onChangeText={setUnit} placeholder="kg/cm/N"
                   placeholderTextColor={colors.textSecondary}
                 />
               </View>
