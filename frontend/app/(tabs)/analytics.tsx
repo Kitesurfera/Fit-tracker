@@ -71,9 +71,7 @@ export default function AnalyticsScreen() {
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
   
-  // <-- ESTADO PARA EL SELECTOR DE DEPORTISTAS -->
   const [showPicker, setShowPicker] = useState(false);
-
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [selectedTestKey, setSelectedTestKey] = useState<string | null>(null); 
   const [searchQuery, setSearchQuery] = useState('');
@@ -82,6 +80,7 @@ export default function AnalyticsScreen() {
   const [filterCategory, setFilterCategory] = useState<'all' | 'ejercicio' | 'test'>('all');
   
   const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(1);
+  const [bodySideView, setBodySideView] = useState<'front' | 'back'>('front'); // ESTADO PARA GIRAR EL CUERPO
   
   const [showDictModal, setShowDictModal] = useState(false);
   const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
@@ -494,8 +493,20 @@ export default function AnalyticsScreen() {
           <View style={styles.desktopBodyLayout}>
             <View style={styles.silhouettesWrapper}>
               <View style={styles.bodyContainer}>
-                <View style={styles.bodySide}><Text style={styles.bodySideLabel}>FRONTAL</Text><Body data={bodyData} gender="female" side="front" scale={1.4} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} /></View>
-                <View style={styles.bodySide}><Text style={styles.bodySideLabel}>DORSAL</Text><Body data={bodyData} gender="female" side="back" scale={1.4} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} /></View>
+                {/* AHORA SOLO MOSTRAMOS UNA SILUETA CON BOTÓN DE GIRAR */}
+                <View style={styles.bodySide}>
+                  <TouchableOpacity 
+                    style={[styles.flipBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]} 
+                    onPress={() => setBodySideView(prev => prev === 'front' ? 'back' : 'front')}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="sync-outline" size={18} color={colors.primary} />
+                    <Text style={[styles.bodySideLabel, { marginBottom: 0, color: colors.textPrimary }]}>
+                      VISTA {bodySideView === 'front' ? 'FRONTAL' : 'DORSAL'}
+                    </Text>
+                  </TouchableOpacity>
+                  <Body data={bodyData} gender="female" side={bodySideView} scale={1.4} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+                </View>
               </View>
             </View>
             <View style={styles.dataWrapper}>
@@ -533,10 +544,23 @@ export default function AnalyticsScreen() {
             </TouchableOpacity>
           ))}
         </View>
-        <View style={styles.dualBodyContainerMobile}>
-          <View style={styles.bodyWrapperMobile}><Text style={styles.bodySideLabelMobile}>FRONTAL</Text><Body data={bodyData} gender="female" side="front" scale={0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} /></View>
-          <View style={styles.bodyWrapperMobile}><Text style={styles.bodySideLabelMobile}>DORSAL</Text><Body data={bodyData} gender="female" side="back" scale={0.9} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} /></View>
+
+        {/* AHORA SOLO MOSTRAMOS UNA SILUETA CON BOTÓN DE GIRAR */}
+        <View style={{ alignItems: 'center', marginBottom: 25 }}>
+          <TouchableOpacity 
+            style={[styles.flipBtnMobile, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]} 
+            onPress={() => setBodySideView(prev => prev === 'front' ? 'back' : 'front')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="sync-outline" size={16} color={colors.primary} />
+            <Text style={[styles.bodySideLabelMobile, { marginBottom: 0, color: colors.textPrimary }]}>
+              VISTA {bodySideView === 'front' ? 'FRONTAL' : 'DORSAL'}
+            </Text>
+          </TouchableOpacity>
+          {/* Hemos subido la escala de 0.9 a 1.1 para que se vea más grande y claro al tener todo el ancho */}
+          <Body data={bodyData} gender="female" side={bodySideView} scale={1.1} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
         </View>
+
         <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15, textAlign: 'center' }}>Distribución de Carga</Text>
         <View style={styles.legendRowMobile}>
           <View style={styles.legendItemMobile}><View style={[styles.dotMobile, { backgroundColor: '#E2E8F0' }]} /><Text style={styles.legendTextMobile}>0%</Text></View>
@@ -575,7 +599,6 @@ export default function AnalyticsScreen() {
               {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>Vista Entrenador</Text>}
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              {/* <-- BOTÓN DE SELECCIÓN DE DEPORTISTA --> */}
               {isTrainer && (
                 <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
                   <Ionicons name="people" size={22} color={colors.primary} />
@@ -736,7 +759,6 @@ export default function AnalyticsScreen() {
           </ScrollView>
         </View>
 
-        {/* <-- MODAL SELECTOR DE DEPORTISTA --> */}
         <Modal visible={showPicker} transparent animationType="slide">
           <TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}>
             <View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}>
@@ -756,7 +778,6 @@ export default function AnalyticsScreen() {
           </TouchableOpacity>
         </Modal>
 
-        {/* OTROS MODALES DE LA PANTALLA... */}
         <Modal visible={showMergeModal} transparent animationType="slide">
           <View style={styles.modalOverlay}>
             <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
@@ -901,7 +922,7 @@ const styles = StyleSheet.create({
   silhouettesWrapper: { flex: 1.5, alignItems: 'center', justifyContent: 'center' },
   bodyContainer: { flexDirection: 'row', justifyContent: 'center', gap: 30 },
   bodySide: { alignItems: 'center' },
-  bodySideLabel: { fontSize: 11, fontWeight: '900', color: '#888', marginBottom: 20, letterSpacing: 1 },
+  bodySideLabel: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
   dataWrapper: { flex: 1, gap: 20 },
   cardTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
   legendCard: { padding: 20, borderRadius: 20, borderWidth: 1, ...shadowStyle },
@@ -913,9 +934,12 @@ const styles = StyleSheet.create({
   muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   timeFilterContainerMobile: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
   timeBtnMobile: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
-  dualBodyContainerMobile: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 25 },
-  bodyWrapperMobile: { alignItems: 'center', flex: 1 },
-  bodySideLabelMobile: { fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 },
+  
+  // NUEVOS ESTILOS PARA LOS BOTONES DE GIRAR EL CUERPO
+  flipBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20, borderWidth: 1, marginBottom: 25 },
+  flipBtnMobile: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
+  
+  bodySideLabelMobile: { fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
   legendRowMobile: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 25, justifyContent: 'center' },
   legendItemMobile: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   dotMobile: { width: 12, height: 12, borderRadius: 3 },
@@ -944,8 +968,8 @@ const styles = StyleSheet.create({
   dictSelectBtn: { padding: 16, borderRadius: 12, borderWidth: 1 },
   confirmBtn: { padding: 18, borderRadius: 15, alignItems: 'center', marginTop: 30 },
   
-  // <-- ESTILOS DEL SELECTOR DE DEPORTISTAS -->
   modalOverlayPicker: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContentPicker: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30, maxHeight: '80%' },
-  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
+  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 },
+  modalTitle: { fontSize: 20, fontWeight: '900', marginBottom: 20 }
 });
