@@ -9,6 +9,7 @@ interface HiitCardProps {
   hiitExIdx: number;
   hiitExSet: number;
   hiitBlockIdx: number;
+  hiitSide?: number;
   colors: any;
   hiitLogs: Record<string, any>;
   setHiitLogs: React.Dispatch<React.SetStateAction<Record<string, any>>>;
@@ -21,7 +22,7 @@ interface HiitCardProps {
 }
 
 export default function HiitCard({
-  currentBlock, hiitRound, hiitPhase, hiitExIdx, hiitExSet, hiitBlockIdx, colors,
+  currentBlock, hiitRound, hiitPhase, hiitExIdx, hiitExSet, hiitBlockIdx, hiitSide = 1, colors,
   hiitLogs, setHiitLogs, recordedVideos, handleRecordVideoOptions, videoUploading, renderVideoPlayer,
   onAdvanceHiit, onSkipHiitEx
 }: HiitCardProps) {
@@ -57,14 +58,23 @@ export default function HiitCard({
                 
                 <View style={{ flex: 1, paddingRight: 10 }}>
                   <Text style={[styles.hiitExName, { fontSize: dynamicFontName, color: isCurrent ? colors.textPrimary : colors.textSecondary, fontWeight: isCurrent ? '800' : '600' }]}>{ex.name}</Text>
-                  {totalSets > 1 && (
-                    <Text style={{ fontSize: 12, color: isCurrent ? colors.primary : colors.textSecondary, fontWeight: '700', marginTop: 3 }}>
-                      {isCurrent ? `▶ Serie ${hiitExSet} de ${totalSets}` : `⏱ ${totalSets} series`}
-                    </Text>
-                  )}
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 4 }}>
+                    {totalSets > 1 && (
+                      <Text style={{ fontSize: 12, color: isCurrent ? colors.primary : colors.textSecondary, fontWeight: '700' }}>
+                        {isCurrent ? `▶ Serie ${hiitExSet} de ${totalSets}` : `⏱ ${totalSets} series`}
+                      </Text>
+                    )}
+                    {ex.is_unilateral && (
+                      <Text style={{ fontSize: 12, color: colors.warning, fontWeight: '800' }}>
+                        {isCurrent ? `(Lado ${hiitSide})` : `(Unilateral)`}
+                      </Text>
+                    )}
+                  </View>
                 </View>
 
-                <Text style={[styles.hiitExDur, { fontSize: dynamicFontDur, color: isCurrent ? colors.primary : colors.textSecondary, fontWeight: '800' }]}>{ex.duration_reps || ex.duration}</Text>
+                {!!(ex.duration_reps || ex.duration) && (
+                  <Text style={[styles.hiitExDur, { fontSize: dynamicFontDur, color: isCurrent ? colors.primary : colors.textSecondary, fontWeight: '800' }]}>{ex.duration_reps || ex.duration}</Text>
+                )}
               </View>
               
               {isCurrent && (
