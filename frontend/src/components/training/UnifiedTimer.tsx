@@ -6,7 +6,7 @@ import Svg, { Circle } from 'react-native-svg';
 export default function UnifiedTimer({ 
   isPrep, isResting, isWorking, isPaused, prepSeconds, restSeconds, workSeconds, 
   restTotalSeconds, workTotalSeconds, exName, colors, isHiit,
-  sets, reps, // <-- NUEVAS PROPS AÑADIDAS AQUÍ
+  sets, reps,
   onTogglePause, onStopPrep, onSkipRest, onResetWork, onResetRest,
   onComplete, onSkip
 }: any) {
@@ -60,7 +60,6 @@ export default function UnifiedTimer({
           </>
         ) : (
           <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 20 }}>
-            {/* <-- AQUÍ SUSTITUIMOS LA MANCUERNA POR LAS SERIES Y REPS --> */}
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 15 }}>
               <View style={{ alignItems: 'center', paddingHorizontal: 15 }}>
                 <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' }}>Series</Text>
