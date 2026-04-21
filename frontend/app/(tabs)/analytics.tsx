@@ -398,53 +398,94 @@ export default function AnalyticsScreen() {
     const addToBody = (muscle: string, slugs: string[]) => { const s = heatMap[muscle] || 0; if (s > 0) { const p = (s / totalSets) * 100; slugs.forEach(slug => bodyData.push({ slug, intensity: mapIntensity(p) })); } };
     addToBody('Pecho', ['chest']); addToBody('Espalda', ['trapezius', 'upper-back', 'lower-back']); addToBody('Cuádriceps', ['quadriceps']); addToBody('Isquiotibiales', ['hamstring']); addToBody('Glúteo', ['gluteal']); addToBody('Hombro', ['front-deltoids', 'back-deltoids']); addToBody('Bíceps', ['biceps']); addToBody('Tríceps', ['triceps']); addToBody('Core', ['abs', 'obliques']); addToBody('Gemelos', ['calves']); addToBody('Antebrazos', ['forearm']); addToBody('Aductores', ['adductor']); addToBody('Abductores', ['abductors']);
 
+    if (isDesktop) {
+      return (
+        <View style={styles.bodyTabWrapper}>
+          <View style={styles.timeFilterContainer}>
+            {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
+              <TouchableOpacity key={f.v} style={[styles.timeBtn, bodyTimeFilter === f.v && {backgroundColor: colors.primary}]} onPress={() => setBodyTimeFilter(f.v as any)}>
+                <Text style={{color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700'}}>{f.l}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={styles.desktopBodyLayout}>
+            <View style={styles.silhouettesWrapper}>
+              <View style={styles.bodySide}>
+                <Text style={styles.bodySideLabel}>FRONTAL</Text>
+                <Body data={bodyData} gender="female" side="front" scale={1.4} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+              </View>
+              <View style={styles.bodySide}>
+                <Text style={styles.bodySideLabel}>DORSAL</Text>
+                <Body data={bodyData} gender="female" side="back" scale={1.4} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+              </View>
+            </View>
+            <View style={styles.dataWrapper}>
+              <View style={[styles.legendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Leyenda de % Series</Text>
+                <View style={styles.legendGrid}>
+                  {['0%', '0-20%', '20-40%', '40-50%', '50%+'].map((l, i) => (
+                    <View key={l} style={styles.legendItem}>
+                      <View style={[styles.dot, { backgroundColor: ['#E2E8F0', '#3B82F6', '#FBBF24', '#F97316', '#EF4444'][i] }]} />
+                      <Text style={styles.legendText}>{l}</Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+              <View style={[styles.muscleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Reparto Muscular</Text>
+                {sortedMuscles.map(([m, s]) => {
+                  const p = totalSets > 0 ? (s / totalSets) * 100 : 0;
+                  return (
+                    <View key={m} style={styles.muscleRow}><Text style={{ color: colors.textPrimary, fontWeight: '500' }}>{m}</Text><View style={{ alignItems: 'flex-end' }}><Text style={{ color: colors.primary, fontWeight: '800' }}>{p.toFixed(1)}%</Text><Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text></View></View>
+                  );
+                })}
+              </View>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
     return (
-      <View style={styles.bodyMainContainer}>
-        {/* Filtro de tiempo compartido */}
-        <View style={isDesktop ? styles.timeFilterContainer : styles.timeFilterContainerMobile}>
+      <View style={{ paddingBottom: 100 }}>
+        <View style={styles.timeFilterContainerMobile}>
           {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
-            <TouchableOpacity key={f.v} style={[isDesktop ? styles.timeBtn : styles.timeBtnMobile, bodyTimeFilter === f.v && {backgroundColor: colors.primary}]} onPress={() => setBodyTimeFilter(f.v as any)}>
-              <Text style={{color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700'}}>{f.l}</Text>
+            <TouchableOpacity key={f.v} style={[styles.timeBtnMobile, bodyTimeFilter === f.v && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.v as any)}>
+              <Text style={{ color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700', fontSize: 13 }}>{f.l}</Text>
             </TouchableOpacity>
           ))}
         </View>
 
-        <View style={isDesktop ? styles.desktopBodyLayout : styles.mobileBodyLayout}>
-          {/* Siluetas - RENDERIZADAS UNA SOLA VEZ */}
-          <View style={styles.silhouettesWrapper}>
-            <View style={styles.bodySide}>
-              <Text style={styles.bodySideLabel}>FRONTAL</Text>
-              <Body data={bodyData} gender="female" side="front" scale={isDesktop ? 1.4 : 0.85} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-            </View>
-            <View style={styles.bodySide}>
-              <Text style={styles.bodySideLabel}>DORSAL</Text>
-              <Body data={bodyData} gender="female" side="back" scale={isDesktop ? 1.4 : 0.85} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-            </View>
+        <View style={styles.dualBodyContainerMobile}>
+          <View style={styles.bodyWrapperMobile}>
+            <Text style={styles.bodySideLabelMobile}>FRONTAL</Text>
+            <Body data={bodyData} gender="female" side="front" scale={0.85} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
           </View>
+          <View style={styles.bodyWrapperMobile}>
+            <Text style={styles.bodySideLabelMobile}>DORSAL</Text>
+            <Body data={bodyData} gender="female" side="back" scale={0.85} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+          </View>
+        </View>
 
-          {/* Datos y Leyenda */}
-          <View style={styles.dataWrapper}>
-            <View style={[styles.legendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Leyenda de % Series</Text>
-              <View style={styles.legendGrid}>
-                {['0%', '0-20%', '20-40%', '40-50%', '50%+'].map((l, i) => (
-                  <View key={l} style={styles.legendItem}>
-                    <View style={[styles.dot, { backgroundColor: ['#E2E8F0', '#3B82F6', '#FBBF24', '#F97316', '#EF4444'][i] }]} />
-                    <Text style={styles.legendText}>{l}</Text>
-                  </View>
-                ))}
+        <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15, textAlign: 'center', marginTop: 10 }}>Distribución de Carga</Text>
+        <View style={styles.legendRowMobile}>
+          {['0%', '0-20%', '20-40%', '40-50%', '50%+'].map((l, i) => (
+            <View key={l} style={styles.legendItemMobile}>
+              <View style={[styles.dotMobile, { backgroundColor: ['#E2E8F0', '#3B82F6', '#FBBF24', '#F97316', '#EF4444'][i] }]} />
+              <Text style={styles.legendTextMobile}>{l}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={[styles.topMusclesCardMobile, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+          {sortedMuscles.map(([m, s], i) => {
+            const p = totalSets > 0 ? ((s / totalSets) * 100) : 0;
+            return (
+              <View key={m} style={styles.topMuscleItemMobile}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: colors.textSecondary, width: 25, fontWeight: '800' }}>{i + 1}</Text><Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600' }}>{m}</Text></View>
+                <View style={{ alignItems: 'flex-end' }}><Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '800' }}>{p.toFixed(1)}%</Text><Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text></View>
               </View>
-            </View>
-            <View style={[styles.muscleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Reparto Muscular</Text>
-              {sortedMuscles.map(([m, s]) => {
-                const p = totalSets > 0 ? (s / totalSets) * 100 : 0;
-                return (
-                  <View key={m} style={styles.muscleRow}><Text style={{ color: colors.textPrimary, fontWeight: '500' }}>{m}</Text><View style={{ alignItems: 'flex-end' }}><Text style={{ color: colors.primary, fontWeight: '800' }}>{p.toFixed(1)}%</Text><Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text></View></View>
-                );
-              })}
-            </View>
-          </View>
+            );
+          })}
         </View>
       </View>
     );
@@ -480,7 +521,8 @@ export default function AnalyticsScreen() {
             {loading && !refreshing ? <ActivityIndicator color={colors.primary} size="large" style={{ marginTop: 40 }}/> : 
              activeTab === 'summary' ? (
                <View>
-                 {renderPerformanceSummary()}{renderMeasurementsCard()}
+                 {renderPerformanceSummary()}
+                 {renderMeasurementsCard()}
                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, marginTop: 10 }}><Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Histórico de Tests</Text>{isTrainer && <TouchableOpacity onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}><Ionicons name="git-merge" size={22} color={colors.primary} /></TouchableOpacity>}</View>
                  <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>{cleanProgression.filter((item: any) => item.type === 'test').map((item: any, i: number) => renderTestCard(item, i))}</View>
                </View>
@@ -536,48 +578,58 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 12, color: '#888' },
   summaryDivider: { width: 1, backgroundColor: 'rgba(0,0,0,0.1)' },
   
-  // Estilos Cuerpo - UNIFICADOS
-  bodyMainContainer: { flex: 1 },
-  timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 20 },
-  timeFilterContainerMobile: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
+  // ESTILOS DE ESCRITORIO
+  bodyTabWrapper: { flex: 1 },
+  timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 30 },
   timeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
-  timeBtnMobile: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
-  desktopBodyLayout: { flexDirection: 'row', gap: 20 },
-  mobileBodyLayout: { flexDirection: 'column' },
-  silhouettesWrapper: { flexDirection: 'row', justifyContent: 'center', gap: 20, marginBottom: 20 },
+  desktopBodyLayout: { flexDirection: 'row', gap: 30, alignItems: 'flex-start' },
+  silhouettesWrapper: { flex: 1.5, flexDirection: 'row', justifyContent: 'center', gap: 30 },
   bodySide: { alignItems: 'center' },
-  bodySideLabel: { fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 },
-  dataWrapper: { flex: 1, gap: 15 },
-  legendCard: { padding: 15, borderRadius: 15, borderWidth: 1 },
-  legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
-  dot: { width: 12, height: 12, borderRadius: 3 },
-  legendText: { fontSize: 10, fontWeight: '700' },
-  muscleCard: { padding: 15, borderRadius: 15, borderWidth: 1 },
-  muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  bodySideLabel: { fontSize: 11, fontWeight: '900', color: '#888', marginBottom: 20, letterSpacing: 1 },
+  dataWrapper: { flex: 1, gap: 20 },
+  legendCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  dot: { width: 14, height: 14, borderRadius: 4 },
+  legendText: { fontSize: 12, fontWeight: '700', color: '#666' },
+  muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
+  muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   
-  measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1 },
-  measurementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  // ESTILOS DE MÓVIL
+  timeFilterContainerMobile: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
+  timeBtnMobile: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  dualBodyContainerMobile: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 25 },
+  bodyWrapperMobile: { alignItems: 'center', flex: 1 },
+  bodySideLabelMobile: { fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 },
+  legendRowMobile: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 25, justifyContent: 'center' },
+  legendItemMobile: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dotMobile: { width: 12, height: 12, borderRadius: 3 },
+  legendTextMobile: { fontSize: 10, fontWeight: '600', color: '#888' },
+  topMusclesCardMobile: { padding: 15, borderRadius: 20, borderWidth: 1 },
+  topMuscleItemMobile: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+
+  measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
+  measurementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
   measureBadge: { flex: 1, minWidth: '45%', padding: 12, borderRadius: 14, borderWidth: 1 },
-  cardTitle: { fontSize: 16, fontWeight: '800', marginBottom: 10 },
+  cardTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
   testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
-  testName: { fontSize: 16, fontWeight: '800' },
-  testValue: { fontSize: 22, fontWeight: '900' },
-  sideLabel: { fontSize: 9, color: '#888' },
-  progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 12 },
-  progHeader: { flexDirection: 'row', padding: 15, alignItems: 'center' },
-  progName: { fontSize: 15, fontWeight: '700' },
-  searchBar: { padding: 12, borderRadius: 12, borderWidth: 1 },
-  filterChipsContainer: { flexDirection: 'row', gap: 8, marginBottom: 20 },
-  filterChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, gap: 5 },
-  filterChipText: { fontSize: 11 },
-  feedbackCard: { padding: 15, borderRadius: 15, borderWidth: 1, marginBottom: 10 },
+  testName: { fontSize: 18, fontWeight: '800' },
+  testValue: { fontSize: 26, fontWeight: '900' },
+  sideLabel: { fontSize: 10, fontWeight: '900', color: '#888' },
+  progCard: { borderRadius: 20, borderWidth: 1, marginBottom: 15, overflow: 'hidden' },
+  progHeader: { flexDirection: 'row', padding: 18, alignItems: 'center' },
+  progName: { fontSize: 16, fontWeight: '800' },
+  searchBar: { padding: 14, borderRadius: 12, borderWidth: 1 },
+  filterChipsContainer: { flexDirection: 'row', gap: 8, marginBottom: 25, paddingBottom: 5 },
+  filterChip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1, gap: 6 },
+  filterChipText: { fontSize: 12, fontWeight: '600' },
+  feedbackCard: { padding: 18, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25 },
-  modalTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
-  dictSelectBtn: { padding: 12, borderRadius: 10, borderWidth: 1 },
-  confirmBtn: { padding: 15, borderRadius: 12, alignItems: 'center', marginTop: 20 },
+  modalContent: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
+  modalTitle: { fontSize: 20, fontWeight: '900', marginBottom: 20 },
+  dictSelectBtn: { padding: 16, borderRadius: 12, borderWidth: 1 },
+  confirmBtn: { padding: 18, borderRadius: 15, alignItems: 'center', marginTop: 30 },
   modalOverlayPicker: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContentPicker: { padding: 25, borderTopLeftRadius: 25, borderTopRightRadius: 25, maxHeight: '70%' },
-  athleteItem: { paddingVertical: 15, borderBottomWidth: 1 }
+  modalContentPicker: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30, maxHeight: '80%' },
+  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
 });
