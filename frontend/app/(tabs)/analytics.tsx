@@ -317,6 +317,29 @@ export default function AnalyticsScreen() {
     );
   };
 
+  // Función añadida: Renderiza la tarjeta de mediciones
+  const renderMeasurementsCard = () => {
+    const measurementKeys = Object.keys(latestMeasurements);
+    if (measurementKeys.length === 0) return null;
+    return (
+      <View style={[styles.measurementsContainer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Últimas Mediciones</Text>
+        <View style={styles.measurementsGrid}>
+          {measurementKeys.map(key => {
+            const m = latestMeasurements[key];
+            return (
+              <View key={key} style={[styles.measureBadge, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4, fontWeight: '700' }}>{m.custom_name || m.test_name}</Text>
+                <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>{m.value} <Text style={{fontSize: 12, color: colors.textSecondary}}>{m.unit}</Text></Text>
+                <Text style={{ fontSize: 10, color: colors.textSecondary, marginTop: 4 }}>{m.date}</Text>
+              </View>
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
   const renderChart = (history: any[], unit: string) => {
     const data = [...history].sort((a, b) => a.date.localeCompare(b.date));
     if (data.length === 0) return null;
