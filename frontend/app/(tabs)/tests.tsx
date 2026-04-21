@@ -425,7 +425,7 @@ export default function TestsScreen() {
                   <View style={{ width: 80 }}>
                     <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>UNIDAD</Text>
                     <View style={{ gap: 5, marginBottom: 20 }}>
-                      {['kg', 'cm', 'seg', 'reps'].map(u => (
+                      {['kg', 'cm', 'seg', 'reps', 'N'].map(u => (
                         <TouchableOpacity 
                           key={u} 
                           style={[styles.chipSelect, { borderColor: colors.border, paddingVertical: 6 }, formData.unit === u && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
