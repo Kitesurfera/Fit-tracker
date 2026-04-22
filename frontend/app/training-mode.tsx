@@ -156,7 +156,7 @@ export default function TrainingModeScreen() {
   const [restTargetTime, setTargetTime] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [restTotalSeconds, setRestTotalSeconds] = useState(1);
-  const [isResting, setIsWorkingRest] = useState(false); // Renamed internally or aliased for isResting
+  const [isResting, setIsWorkingRest] = useState(false); 
   const [isRestingStatus, setIsResting] = useState(false);
   const [restType, setRestType] = useState<'set' | 'exercise' | null>(null);
   const restIntervalRef = useRef<any>(null);
@@ -855,19 +855,29 @@ export default function TrainingModeScreen() {
                   </View>
                 )}
 
-                <View style={{ alignItems: 'center', marginVertical: 30 }}>
-                   <Text style={{ fontSize: 40, fontWeight: '900', color: colors.primary, marginBottom: 5 }}>
-                     {calculateTotalWeight().toFixed(1)} <Text style={{ fontSize: 20, color: colors.textSecondary }}>kg</Text>
+                <View style={{ alignItems: 'center', marginTop: 10, marginBottom: 40 }}>
+                   <Text style={{ fontSize: 48, fontWeight: '900', color: colors.primary, marginBottom: 5 }}>
+                     {calculateTotalWeight().toFixed(1)} <Text style={{ fontSize: 24, color: colors.textSecondary }}>kg</Text>
                    </Text>
-                   {(isLandmineMode || isAutoLandmine) && <Text style={{ color: colors.warning, fontWeight: '700', fontSize: 12, marginBottom: 15 }}>CARGA EFECTIVA</Text>}
+                   {(isLandmineMode || isAutoLandmine) && <Text style={{ color: colors.warning, fontWeight: '700', fontSize: 12, marginBottom: 20 }}>CARGA EFECTIVA</Text>}
 
-                   <View style={styles.barSleeveContainer}>
-                      <View style={[styles.barSleeve, { backgroundColor: '#CBD5E1' }]} />
-                      {platesOnBar.length === 0 && <Text style={{ position: 'absolute', color: '#94A3B8', fontSize: 12, top: -25 }}>Vacía</Text>}
-                      <View style={styles.stackedPlatesContainer}>
+                   <View style={[styles.barSleeveContainer, { marginTop: 20 }]}>
+                      {/* Realismo de la barra */}
+                      <View style={{ position: 'absolute', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', zIndex: 1 }}>
+                         <View style={{ height: 16, width: '10%', backgroundColor: '#64748B' }} /> {/* Eje de la barra */}
+                         <View style={{ height: 32, width: 14, backgroundColor: '#475569', borderRadius: 3 }} /> {/* Tope / Collarín */}
+                         <View style={{ height: 22, width: '60%', backgroundColor: '#CBD5E1', borderTopRightRadius: 6, borderBottomRightRadius: 6, overflow: 'hidden' }}> {/* Manga donde van los discos */}
+                            <View style={{ width: '100%', height: 2, backgroundColor: '#FFFFFF', opacity: 0.6, marginTop: 3 }} />
+                            <View style={{ width: '100%', height: 2, backgroundColor: '#000000', opacity: 0.1, marginTop: 12 }} />
+                         </View>
+                      </View>
+
+                      {platesOnBar.length === 0 && <Text style={{ position: 'absolute', color: '#64748B', fontSize: 13, top: -30, fontWeight: '700', zIndex: 0 }}>Barra vacía</Text>}
+                      
+                      <View style={[styles.stackedPlatesContainer, { zIndex: 2, marginLeft: '5%' }]}>
                         {platesOnBar.map((weight, index) => {
                           const height = 120 + (weight * 2);
-                          const width = weight > 10 ? 25 : 15;
+                          const width = weight > 10 ? 24 : 16;
                           return (
                             <TouchableOpacity 
                               key={`${weight}-${index}`} 
@@ -882,7 +892,7 @@ export default function TrainingModeScreen() {
                         })}
                       </View>
                    </View>
-                   <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 15 }}>Toca un disco en la barra para quitarlo</Text>
+                   <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 30 }}>Toca un disco en la barra para quitarlo</Text>
                 </View>
 
                 <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>TOCA PARA AÑADIR DISCOS (1 LADO)</Text>
@@ -1336,12 +1346,35 @@ export default function TrainingModeScreen() {
               <View style={styles.setsGrid}>{s.map((st, i) => ( <View key={i} style={[styles.setCircle, { borderColor: colors.border }, st === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }, st === 'skipped' && { backgroundColor: colors.error, borderColor: colors.error }]}>{st === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : <Text style={{ color: colors.textSecondary }}>{i + 1}</Text>}</View> ))}</View>
               <TouchableOpacity style={[styles.recordBtn, { marginTop: 20, borderColor: colors.border }]} onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text></TouchableOpacity>
             </View>
+
+            {/* ZONA DE INPUTS MEJORADA (Se ha quitado el gap y añadido márgenes seguros, y el value con fallback '|| ""') */}
             <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
-               <View style={{ flexDirection: 'row', gap: 10 }}>
-                 <TextInput style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder="Kilos" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={logs[currentExIndex]?.weight} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} />
-                 <TextInput style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} placeholder="Reps" placeholderTextColor={colors.textSecondary} keyboardType="numeric" value={logs[currentExIndex]?.reps} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], reps: t}}))} />
+               <View style={{ flexDirection: 'row', width: '100%' }}>
+                 <TextInput 
+                    style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary, marginRight: 6 }]} 
+                    placeholder="Kilos" 
+                    placeholderTextColor={colors.textSecondary} 
+                    keyboardType="numeric" 
+                    value={logs[currentExIndex]?.weight || ''} 
+                    onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} 
+                 />
+                 <TextInput 
+                    style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary, marginLeft: 6 }]} 
+                    placeholder="Reps" 
+                    placeholderTextColor={colors.textSecondary} 
+                    keyboardType="numeric" 
+                    value={logs[currentExIndex]?.reps || ''} 
+                    onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], reps: t}}))} 
+                 />
                </View>
-               <TextInput style={[styles.logInput, { borderColor: colors.border, marginTop: 10, minHeight: 60, backgroundColor: colors.background, color: colors.textPrimary }]} multiline placeholder="Anotaciones de la serie..." placeholderTextColor={colors.textSecondary} value={logs[currentExIndex]?.note} onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} />
+               <TextInput 
+                  style={[styles.logInput, { borderColor: colors.border, marginTop: 12, minHeight: 60, backgroundColor: colors.background, color: colors.textPrimary, width: '100%' }]} 
+                  multiline 
+                  placeholder="Anotaciones de la serie..." 
+                  placeholderTextColor={colors.textSecondary} 
+                  value={logs[currentExIndex]?.note || ''} 
+                  onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} 
+               />
             </View>
           </ScrollView>
           
@@ -1381,10 +1414,10 @@ const styles = StyleSheet.create({
   painButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, painButtonText: { fontSize: 13, fontWeight: '600' },
   
   barTypeBtn: { paddingVertical: 8, paddingHorizontal: 16, borderWidth: 2, borderRadius: 12 },
-  barSleeveContainer: { height: 60, width: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
+  barSleeveContainer: { height: 180, width: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
   barSleeve: { position: 'absolute', height: 20, width: '100%', borderRadius: 4 },
-  stackedPlatesContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', zIndex: 2 },
-  stackedPlate: { borderRadius: 4, marginHorizontal: 1, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 2, elevation: 3 },
+  stackedPlatesContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  stackedPlate: { borderRadius: 4, marginHorizontal: 1, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 3, elevation: 4 },
   legendPlate: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 2 },
   fatigueToggle: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.03)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', marginBottom: 10, justifyContent: 'center' },
   fatigueToggleActive: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#EF4444' }
