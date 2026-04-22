@@ -31,6 +31,11 @@ export default function SettingsScreen() {
   const [savingMeasures, setSavingMeasures] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [soundsEnabled, setSoundsEnabled] = useState(true);
+  
+  // --- ESTADOS DE SPOTIFY ---
+  const [showSpotify, setShowSpotify] = useState(false);
+  const [spotifyUrl, setSpotifyUrl] = useState('');
+  const [savingSpotify, setSavingSpotify] = useState(false);
 
   // Cargar preferencias al entrar
   useEffect(() => {
@@ -39,6 +44,12 @@ export default function SettingsScreen() {
     });
     AsyncStorage.getItem('sounds_enabled').then(val => {
       if (val === 'false') setSoundsEnabled(false);
+    });
+    AsyncStorage.getItem('show_spotify_widget').then(val => {
+      if (val === 'true') setShowSpotify(true);
+    });
+    AsyncStorage.getItem('spotify_url').then(val => {
+      if (val) setSpotifyUrl(val);
     });
   }, []);
 
@@ -51,6 +62,25 @@ export default function SettingsScreen() {
   const toggleSounds = async (value: boolean) => {
     setSoundsEnabled(value);
     await AsyncStorage.setItem('sounds_enabled', value ? 'true' : 'false');
+  };
+
+  const toggleSpotify = async (value: boolean) => {
+    setShowSpotify(value);
+    await AsyncStorage.setItem('show_spotify_widget', value ? 'true' : 'false');
+  };
+
+  const handleSaveSpotifyUrl = async () => {
+    if (!spotifyUrl.trim()) return;
+    setSavingSpotify(true);
+    try {
+      await AsyncStorage.setItem('spotify_url', spotifyUrl.trim());
+      if (Platform.OS === 'web') window.alert("¡Playlist guardada!");
+      else Alert.alert("Éxito", "¡Playlist de Spotify guardada correctamente!");
+    } catch (e) {
+      console.log(e);
+    } finally {
+      setSavingSpotify(false);
+    }
   };
 
   const togglePush = async (value: boolean) => {
@@ -241,6 +271,41 @@ export default function SettingsScreen() {
               </View>
               <Switch value={soundsEnabled} onValueChange={toggleSounds} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
             </View>
+          </View>
+
+          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>MÚSICA (SPOTIFY)</Text>
+          <View style={[styles.cardList, { backgroundColor: colors.surface }]}>
+            <View style={styles.settingRowAction}>
+              <View style={styles.settingIconText}>
+                <View style={[styles.iconBox, { backgroundColor: '#1DB95415' }]}><Ionicons name="logo-spotify" size={20} color="#1DB954" /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Reproductor de Spotify</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Mostrar widget durante la sesión</Text>
+                </View>
+              </View>
+              <Switch value={showSpotify} onValueChange={toggleSpotify} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
+            </View>
+
+            {showSpotify && (
+              <>
+                <View style={[styles.divider, { backgroundColor: colors.border, marginLeft: 0 }]} />
+                <View style={{ padding: 16 }}>
+                  <Text style={[styles.inputLabel, { color: colors.textSecondary, marginBottom: 8 }]}>ENLACE DE TU PLAYLIST (URL)</Text>
+                  <TextInput 
+                    style={[styles.measureInput, { color: colors.textPrimary, backgroundColor: colors.background, borderColor: colors.border, marginBottom: 10 }]} 
+                    value={spotifyUrl} 
+                    onChangeText={setSpotifyUrl} 
+                    placeholder="Ej: https://open.spotify.com/playlist/..." 
+                    placeholderTextColor={colors.textSecondary} 
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  <TouchableOpacity style={[styles.saveProfileBtn, { backgroundColor: colors.primary, marginTop: 0 }]} onPress={handleSaveSpotifyUrl} disabled={savingSpotify}>
+                    {savingSpotify ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.saveProfileBtnText}>Guardar Playlist</Text>}
+                  </TouchableOpacity>
+                </View>
+              </>
+            )}
           </View>
 
           {isAthlete ? (
