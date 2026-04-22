@@ -367,7 +367,7 @@ export default function TrainingModeScreen() {
               const savedVideos: Record<string, string> = {}; 
               if (!isWorkoutHiit) {
                 const loadedLogs: Record<number, any> = {};
-                const loadedSets: Record<number, SetStatus[]> = {};
+                const loadedSets: Record<number, SetStatus[]>();
                 currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
                   loadedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '' };
                   if (res.recorded_video_url) savedVideos[idx.toString()] = res.recorded_video_url;
@@ -670,17 +670,120 @@ export default function TrainingModeScreen() {
     };
   };
 
-  const handleFinish = async () => { 
-    if (workout.completed) { router.back(); return; } 
-    if (!stableWorkoutId) return; 
-    stopAllTimers(); 
-    const data = buildCompletionData(); 
-    try { 
-      const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises }; 
-      if (observations.trim()) update.observations = observations.trim(); 
-      await api.updateWorkout(stableWorkoutId, update); 
-      router.back(); 
-    } catch (e) { Alert.alert("Error", "No se pudo guardar el entrenamiento."); } 
+  const sendWhatsAppMessage = async (cd: any) => {
+    const firstName = user?.name?.split(' ')[0] || 'Atleta';
+    const todayLabel = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    let fatigue = '?';
+    let sleep = '?';
+    let soreness = '?';
+    let discomfortsText = '';
+
+    try {
+      // Obtenemos el wellness del día directamente para replicar la estructura de Home
+      const summary = await api.getSummary();
+      const latestWellness = summary?.latest_wellness || {};
+      fatigue = latestWellness.fatigue || '?';
+      sleep = latestWellness.sleep_quality || '?';
+      soreness = latestWellness.soreness || '?';
+      
+      const discomfortsObj = latestWellness.discomforts || {};
+      const discomfortsEntries = Object.entries(discomfortsObj);
+      if (discomfortsEntries.length > 0) {
+        discomfortsText = '\n\n  🤕 *Molestias Diarias:*\n' + discomfortsEntries.map(([k, v]) => `     - ${k}: ${String(v).toUpperCase()}`).join('\n');
+      }
+    } catch (e) {
+      console.log(e);
+    }
+
+    const trained = '✅ Completada';
+    const workoutName = ` (${workout.title})`;
+
+    let trainingDetails = '';
+    if (cd.duration_seconds) {
+      const m = Math.floor(cd.duration_seconds / 60);
+      const s = cd.duration_seconds % 60;
+      trainingDetails += `\n   - ⏱ Tiempo: ${m}m ${s}s`;
+    }
+    if (cd.rpe) trainingDetails += `\n   - 📊 RPE: ${cd.rpe}/10`;
+    if (cd.fatigue_mode_used) trainingDetails += `\n   - ⚠️ Supervivencia: Activado (desde ${cd.fatigue_mode_start_ex || 'inicio'})`;
+
+    let totalSkipped = 0;
+    let hasVideos = false;
+    let hasExerciseNotes = false;
+
+    if (cd.exercise_results) {
+      cd.exercise_results.forEach((ex: any) => {
+        totalSkipped += (ex.skipped_sets || 0);
+        if (ex.recorded_video_url) hasVideos = true;
+        if (ex.athlete_note && String(ex.athlete_note).trim() !== '') hasExerciseNotes = true;
+      });
+    }
+
+    if (cd.hiit_results) {
+      cd.hiit_results.forEach((b: any) => {
+        b.hiit_exercises?.forEach((ex:any) => {
+          totalSkipped += (ex.skipped_rounds || 0);
+          if (ex.recorded_video_url) hasVideos = true;
+          if (ex.athlete_note && String(ex.athlete_note).trim() !== '') hasExerciseNotes = true;
+        });
+      });
+    }
+
+    if (totalSkipped > 0) trainingDetails += `\n   - ⏭ Saltos: ${totalSkipped} series/rondas omitidas`;
+    if (hasVideos) trainingDetails += `\n   - 📹 Vídeos de técnica guardados`;
+    if (hasExerciseNotes) trainingDetails += `\n   - 📝 Notas por ejercicio añadidas`;
+    if (observations) trainingDetails += `\n   - 📋 Obs: "${observations}"`;
+
+    const sessionSoreJoints = cd.sore_joints || [];
+    let sessionDiscomfortsText = sessionSoreJoints.length > 0
+      ? `\n\n  ⚠️ *Sobrecarga Post-Sesión:*\n     - Zonas: ${sessionSoreJoints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}`
+      : `\n\n  ✅ *Sin molestias tras el entreno.*`;
+
+    // Replicamos la misma estructura exacta del Home
+    const message = `🏋️‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Wellness:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` +
+                    discomfortsText +
+                    `\n🏋️‍♀️ *Entrenamiento:*\n   - Hoy: ${trained}${workoutName}` +
+                    trainingDetails +
+                    sessionDiscomfortsText;
+
+    Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
+  };
+
+  const handleFinish = async () => {
+    if (workout.completed) { router.back(); return; }
+    if (!stableWorkoutId) return;
+    
+    stopAllTimers();
+    const data = buildCompletionData();
+    
+    try {
+      const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises };
+      if (observations.trim()) update.observations = observations.trim();
+      await api.updateWorkout(stableWorkoutId, update);
+      
+      if (Platform.OS === 'web') {
+        const send = window.confirm("¡Buen trabajo! ¿Quieres enviar el resumen de la sesión por WhatsApp a tu entrenador?");
+        if (send) {
+          await sendWhatsAppMessage(data);
+        }
+        router.back();
+      } else {
+        Alert.alert(
+          "¡Buen trabajo!",
+          "¿Quieres enviar el resumen de la sesión por WhatsApp a tu entrenador?",
+          [
+            { text: "No", style: "cancel", onPress: () => router.back() },
+            { text: "Sí", onPress: async () => {
+                await sendWhatsAppMessage(data);
+                router.back();
+            }}
+          ]
+        );
+      }
+    } catch (e) { 
+      Alert.alert("Error", "No se pudo guardar el entrenamiento."); 
+    }
   };
 
   const addPlate = (weight: number) => {
@@ -753,8 +856,8 @@ export default function TrainingModeScreen() {
         // Si se está activando por primera vez, guardamos en qué ejercicio estábamos
         if (!isFatigueMode && !fatigueModeTriggeredEx) {
            const exName = isHiit
-              ? workout?.exercises?.[hiitBlockIdx]?.name || 'HIIT'
-              : workout?.exercises?.[currentExIndex]?.name || 'Inicio';
+             ? workout?.exercises?.[hiitBlockIdx]?.name || 'HIIT'
+             : workout?.exercises?.[currentExIndex]?.name || 'Inicio';
            setFatigueModeTriggeredEx(exName);
         }
       }}
