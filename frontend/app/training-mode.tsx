@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Video, ResizeMode, Audio } from 'expo-av';
+import { Video, ResizeMode, Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeepAwake } from 'expo-keep-awake';
@@ -227,7 +227,15 @@ export default function TrainingModeScreen() {
 
     async function initAudio() {
       try {
-        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true, staysActiveInBackground: true, shouldDuckAndroid: true, playThroughEarpieceAndroid: false });
+        await Audio.setAudioModeAsync({ 
+          playsInSilentModeIOS: true, 
+          staysActiveInBackground: true, 
+          shouldDuckAndroid: true,
+          interruptionModeIOS: InterruptionModeIOS.DuckOthers,
+          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
+          playThroughEarpieceAndroid: false 
+        });
+
         const { sound: beep } = await Audio.Sound.createAsync(require('../assets/beep.mp3'));
         const { sound: finish } = await Audio.Sound.createAsync(require('../assets/finish.mp3'));
         beepSoundRef.current = beep; finishSoundRef.current = finish;
