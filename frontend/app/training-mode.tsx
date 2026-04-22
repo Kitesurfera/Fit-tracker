@@ -367,7 +367,7 @@ export default function TrainingModeScreen() {
               const savedVideos: Record<string, string> = {}; 
               if (!isWorkoutHiit) {
                 const loadedLogs: Record<number, any> = {};
-                const loadedSets: Record<number, SetStatus[]>();
+                const loadedSets: Record<number, SetStatus[]> = {};
                 currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
                   loadedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '' };
                   if (res.recorded_video_url) savedVideos[idx.toString()] = res.recorded_video_url;
