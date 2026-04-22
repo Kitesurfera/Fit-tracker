@@ -77,7 +77,7 @@ export default function AddWorkoutScreen() {
   });
 
   const [exercises, setExercises] = useState<any[]>([
-    { _key: '1', name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '' }
+    { _key: '1', name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '', is_unilateral: false }
   ]);
 
   const [hiitBlocks, setHiitBlocks] = useState<any[]>([
@@ -109,10 +109,10 @@ export default function AddWorkoutScreen() {
     });
   }, [params.athlete_id]);
 
-  const updateExercise = (index: number, field: string, value: string) => {
+  const updateExercise = (index: number, field: string, value: any) => {
     const updated = [...exercises]; updated[index] = { ...updated[index], [field]: value }; setExercises(updated);
   };
-  const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '' }]);
+  const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '', is_unilateral: false }]);
   const removeExercise = (index: number) => setExercises(exercises.filter((_, i) => i !== index));
   
   const moveExerciseUp = (index: number) => {
@@ -175,7 +175,7 @@ export default function AddWorkoutScreen() {
     const updated = [...hiitBlocks]; [updated[bIndex].exercises[eIndex + 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex + 1]]; setHiitBlocks(updated);
   };
 
-  const handleCSVUpload = async () => { /* Original intacto */
+  const handleCSVUpload = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel'] });
       if (result.canceled || !result.assets) return;
@@ -187,7 +187,16 @@ export default function AddWorkoutScreen() {
 
       if (workoutType === 'traditional') {
         const newExercises = rows.slice(1).map(row => ({
-          _key: Math.random().toString(), name: row[0]?.trim() || '', sets: row[1]?.trim() || '', reps: row[2]?.trim() || '', duration: row[3]?.trim() || '', rest: row[4]?.trim() || '', rest_exercise: row[5]?.trim() || '', video_url: row[6]?.trim() || '', exercise_notes: row[7]?.trim() || ''
+          _key: Math.random().toString(), 
+          name: row[0]?.trim() || '', 
+          sets: row[1]?.trim() || '', 
+          reps: row[2]?.trim() || '', 
+          duration: row[3]?.trim() || '', 
+          rest: row[4]?.trim() || '', 
+          rest_exercise: row[5]?.trim() || '', 
+          video_url: row[6]?.trim() || '', 
+          exercise_notes: row[7]?.trim() || '',
+          is_unilateral: ['si', 'sí', 'true', '1'].includes((row[8] || '').trim().toLowerCase())
         })).filter(e => e.name);
         if (newExercises.length > 0) setExercises(newExercises);
       } else {
@@ -204,7 +213,14 @@ export default function AddWorkoutScreen() {
           }
           if (row[5]?.trim()) {
             blocks[currentBlockIndex].exercises.push({
-              _key: Math.random().toString(), name: row[5]?.trim(), sets: row[6]?.trim() || '1', duration_reps: row[7]?.trim() || '', duration: row[8]?.trim() || '', video_url: row[9]?.trim() || '', exercise_notes: row[10]?.trim() || '', is_unilateral: false
+              _key: Math.random().toString(), 
+              name: row[5]?.trim(), 
+              sets: row[6]?.trim() || '1', 
+              duration_reps: row[7]?.trim() || '', 
+              duration: row[8]?.trim() || '', 
+              video_url: row[9]?.trim() || '', 
+              exercise_notes: row[10]?.trim() || '', 
+              is_unilateral: ['si', 'sí', 'true', '1'].includes((row[11] || '').trim().toLowerCase())
             });
           }
         });
@@ -241,7 +257,7 @@ export default function AddWorkoutScreen() {
     }
   };
 
-  const saveMappingsAndContinue = async () => { /* Original intacto */
+  const saveMappingsAndContinue = async () => {
     try {
       const stored = await AsyncStorage.getItem('custom_muscle_map');
       const currentMap = stored ? JSON.parse(stored) : {};
@@ -280,7 +296,8 @@ export default function AddWorkoutScreen() {
     if (workoutType === 'traditional') {
       payloadData.exercises = exercises.filter(e => e.name.trim()).map(ex => ({
         name: ex.name, sets: ex.sets, reps: ex.reps, duration: ex.duration, weight: ex.weight,
-        rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes
+        rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes,
+        is_unilateral: !!ex.is_unilateral
       }));
     } else {
       payloadData.exercises = hiitBlocks.map(block => ({
@@ -352,6 +369,27 @@ export default function AddWorkoutScreen() {
             <TouchableOpacity style={[styles.typeBtn, workoutType === 'hiit' && { backgroundColor: colors.error || '#EF4444' }]} onPress={() => setWorkoutType('hiit')}><Text style={{ color: workoutType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito HIIT</Text></TouchableOpacity>
           </View>
 
+          {/* Sección Integrada CSV */}
+          <View style={[styles.csvSection, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>IMPORTAR DESDE CSV</Text>
+              <TouchableOpacity style={[styles.csvBtn, { backgroundColor: colors.primary }]} onPress={handleCSVUpload}>
+                <Ionicons name="document-text" size={16} color="#FFF" />
+                <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Subir CSV</Text>
+              </TouchableOpacity>
+            </View>
+            <View style={{ backgroundColor: 'rgba(0,0,0,0.03)', padding: 10, borderRadius: 8 }}>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700', marginBottom: 4 }}>
+                {workoutType === 'traditional' ? 'Formato Columnas (Fuerza):' : 'Formato Columnas (HIIT):'}
+              </Text>
+              <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic' }}>
+                {workoutType === 'traditional'
+                  ? '1. Nombre | 2. Series | 3. Reps | 4. Duración (s) | 5. Desc. Serie | 6. Desc. Ejercicio | 7. URL Vídeo | 8. Notas | 9. Unilateral (Sí/No)'
+                  : '1. Nom. Bloque | 2. Vueltas | 3. Desc. Ex | 4. Desc. Vuelta | 5. Desc. Bloques | 6. Nom. Ejercicio | 7. Series Ex | 8. Reps/Dur | 9. Tiempo | 10. Vídeo | 11. Notas | 12. Unilateral (Sí/No)'}
+              </Text>
+            </View>
+          </View>
+
           {workoutType === 'hiit' && (
             <View style={[styles.section, { padding: 12, backgroundColor: colors.surfaceHighlight, borderRadius: 12, borderWidth: 1, borderColor: colors.border }]}>
               <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 8 }]}>AJUSTES GLOBALES DEL CIRCUITO (OCULTAR/MOSTRAR)</Text>
@@ -398,6 +436,15 @@ export default function AddWorkoutScreen() {
                       </View>
                     </View>
                   </View>
+
+                  {/* Toggle Unilateral para ejercicios tradicionales */}
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 0.5, borderColor: colors.border }}>
+                    <TouchableOpacity onPress={() => updateExercise(i, 'is_unilateral', !ex.is_unilateral)} style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                      <Ionicons name={ex.is_unilateral ? "checkbox" : "square-outline"} size={18} color={ex.is_unilateral ? colors.primary : colors.textSecondary} />
+                      <Text style={{color: ex.is_unilateral ? colors.primary : colors.textSecondary, fontSize: 12, fontWeight: '700'}}>Unilateral (Doble Temporizador)</Text>
+                    </TouchableOpacity>
+                  </View>
+
                   <View style={[styles.mediaContainer, { borderTopColor: colors.border }]}>
                     <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
                     <TextInput style={[styles.urlInput, { color: colors.textPrimary }]} value={ex.video_url} onChangeText={v => updateExercise(i, 'video_url', v)} placeholder="URL de YouTube (opcional)" placeholderTextColor="rgba(150, 150, 150, 0.5)" autoCapitalize="none" />
@@ -588,5 +635,7 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
   musclePill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
-  saveBtnBig: { paddingVertical: 16, borderRadius: 15, alignItems: 'center' }
+  saveBtnBig: { paddingVertical: 16, borderRadius: 15, alignItems: 'center' },
+  csvSection: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
+  csvBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }
 });
