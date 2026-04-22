@@ -308,46 +308,55 @@ export default function HomeScreen() {
 
   const handleShareStatus = () => {
     const latestWellness = summary?.latest_wellness || {};
+    const todayWorkout = workouts.find(w => w.date === todayStr);
+
     const fatigue = latestWellness.fatigue || '?';
     const sleep = latestWellness.sleep_quality || '?';
     const soreness = latestWellness.soreness || '?';
-    const todayWorkout = workouts.find(w => w.date === todayStr);
     const trained = todayWorkout ? (todayWorkout.completed ? '✅ Completada' : '❌ Pendiente') : 'Libre / Descanso';
     const workoutName = todayWorkout ? ` (${todayWorkout.title})` : '';
-    
-    let rpeText = '';
-    if (todayWorkout?.completed && todayWorkout.completion_data?.rpe) { 
-      rpeText = `\n   - RPE: ${todayWorkout.completion_data.rpe}/10`; 
-    }
-    
     const activeMicroText = activeMicro ? `${activeMicro.nombre} [${activeMicro.tipo}]` : 'Planificación Libre';
     const phaseText = phaseInfo ? phaseInfo.name : 'Sin registro';
-    
+
     const discomfortsObj = latestWellness.discomforts || {};
     const discomfortsEntries = Object.entries(discomfortsObj);
     let discomfortsText = '';
-    if (discomfortsEntries.length > 0) { 
-      discomfortsText = '\n\n   🤕 *Molestias Diarias:*\n' + discomfortsEntries.map(([k, v]) => `      - ${k}: ${String(v).toUpperCase()}`).join('\n'); 
+    if (discomfortsEntries.length > 0) {
+      discomfortsText = '\n\n  🤕 *Molestias Diarias:*\n' + discomfortsEntries.map(([k, v]) => `     - ${k}: ${String(v).toUpperCase()}`).join('\n');
     }
 
-    const lastCompletedWorkout = workouts.find(w => w.completed);
-    const sessionSoreJoints = lastCompletedWorkout?.completion_data?.sore_joints || [];
-    let sessionDiscomfortsText = '';
-    
-    if (sessionSoreJoints.length > 0) {
-      const translatedJoints = sessionSoreJoints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ');
-      sessionDiscomfortsText = `\n\n   ⚠️ *Sobrecarga de Sesión:*\n      - Zonas: ${translatedJoints}`;
-    } else if (lastCompletedWorkout) {
-      sessionDiscomfortsText = `\n\n   ✅ *Sobrecarga de Sesión:*\n      - Ninguna, sin dolor tras el entreno.`;
+    let trainingDetails = '';
+    if (todayWorkout?.completed && todayWorkout.completion_data) {
+       const cd = todayWorkout.completion_data;
+
+       if (cd.duration_seconds) {
+         const m = Math.floor(cd.duration_seconds / 60);
+         const s = cd.duration_seconds % 60;
+         trainingDetails += `\n   - ⏱ Tiempo: ${m}m ${s}s`;
+       }
+       if (cd.rpe) trainingDetails += `\n   - 📊 RPE: ${cd.rpe}/10`;
+       if (cd.fatigue_mode_used) trainingDetails += `\n   - ⚠️ Supervivencia: Activado (desde ${cd.fatigue_mode_start_ex || 'inicio'})`;
+
+       let totalSkipped = 0;
+       if (cd.exercise_results) cd.exercise_results.forEach((ex: any) => totalSkipped += (ex.skipped_sets || 0));
+       if (cd.hiit_results) cd.hiit_results.forEach((b: any) => b.hiit_exercises?.forEach((ex:any) => totalSkipped += (ex.skipped_rounds || 0)));
+       if (totalSkipped > 0) trainingDetails += `\n   - ⏭ Saltos: ${totalSkipped} series/rondas omitidas`;
+
+       if (todayWorkout.observations) trainingDetails += `\n   - 📝 Obs: "${todayWorkout.observations}"`;
     }
 
-    const message = `🏄‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Físico:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` + 
-                    (isFemale ? `   - Fase ciclo: ${phaseText}\n` : '') + 
-                    `\n🏋️‍♀️ *Entrenamiento:*\n   - Fase: ${activeMicroText}\n   - Hoy: ${trained}${workoutName}` + 
-                    rpeText +
-                    discomfortsText + 
+    const sessionSoreJoints = todayWorkout?.completion_data?.sore_joints || [];
+    let sessionDiscomfortsText = sessionSoreJoints.length > 0
+      ? `\n\n  ⚠️ *Sobrecarga Post-Sesión:*\n     - Zonas: ${sessionSoreJoints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}`
+      : (todayWorkout?.completed ? `\n\n  ✅ *Sin molestias tras el entreno.*` : '');
+
+    const message = `🏄‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Wellness:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` +
+                    (isFemale ? `   - Fase ciclo: ${phaseText}\n` : '') +
+                    discomfortsText +
+                    `\n🏋️‍♀️ *Entrenamiento:*\n   - Fase: ${activeMicroText}\n   - Hoy: ${trained}${workoutName}` +
+                    trainingDetails +
                     sessionDiscomfortsText;
-                    
+
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
 
