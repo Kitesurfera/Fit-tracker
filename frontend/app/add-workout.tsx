@@ -390,9 +390,21 @@ export default function AddWorkoutScreen() {
     }
 
     setSaving(true);
-    try { await api.createWorkout(payloadData); router.back(); } 
+    try { 
+      await api.createWorkout(payloadData); 
+      handleClose(); // Usamos la misma función segura para cerrar tras guardar
+    } 
     catch (e: any) { setError(e.message || 'Error al guardar'); } 
     finally { setSaving(false); }
+  };
+
+  // ✅ Nueva función segura para cerrar la pantalla
+  const handleClose = () => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace('/'); 
+    }
   };
 
   const toggleConfig = (key: keyof typeof hiitConfig) => {
@@ -403,7 +415,10 @@ export default function AddWorkoutScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, width: '100%' }}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
+          {/* ✅ Corrección 1: Usamos handleClose aquí */}
+          <TouchableOpacity onPress={handleClose} style={styles.headerBtn}>
+            <Ionicons name="close" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nueva Sesión</Text>
           <TouchableOpacity onPress={handleSave} style={styles.headerBtn} disabled={saving}>{saving ? <ActivityIndicator color={colors.primary} size="small" /> : <Text style={[styles.saveText, { color: colors.primary }]}>Guardar</Text>}</TouchableOpacity>
         </View>
@@ -655,7 +670,15 @@ export default function AddWorkoutScreen() {
             <TouchableOpacity style={[styles.saveBtnBig, { backgroundColor: colors.primary }]} onPress={saveMappingsAndContinue}>
               <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>GUARDAR Y CONTINUAR</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={executeSave} style={{ marginTop: 15 }}>
+            
+            {/* ✅ Corrección 2: Asegurarnos de cerrar el modal antes de seguir */}
+            <TouchableOpacity 
+               onPress={() => {
+                  setShowMapModal(false);
+                  executeSave();
+               }} 
+               style={{ marginTop: 15 }}
+            >
               <Text style={{ color: colors.textSecondary, textAlign: 'center', fontWeight: '600' }}>Ignorar y continuar sin mapear</Text>
             </TouchableOpacity>
           </View>
