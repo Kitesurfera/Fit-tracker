@@ -8,6 +8,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
@@ -175,6 +177,53 @@ export default function AddWorkoutScreen() {
     const updated = [...hiitBlocks]; [updated[bIndex].exercises[eIndex + 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex + 1]]; setHiitBlocks(updated);
   };
 
+  const downloadCSVTemplate = async () => {
+    let csvContent = "";
+    let fileName = "";
+
+    // Añadimos el BOM (Byte Order Mark) para que Excel reconozca los acentos correctamente.
+    const BOM = "\uFEFF"; 
+
+    if (workoutType === 'traditional') {
+      csvContent = BOM + 
+        "Nombre,Series,Reps,Duración (s),Desc. Serie,Desc. Ejercicio,URL Vídeo,Notas,Unilateral (Sí/No)\n" +
+        "Sentadilla,4,10,,2m,1m,,Mantener espalda recta,No\n" +
+        "Zancadas Búlgaras,3,12,,,1m,,,Sí";
+      fileName = "Plantilla_Fuerza_FitTracker.csv";
+    } else {
+      csvContent = BOM + 
+        "Nom. Bloque,Vueltas,Desc. Ex,Desc. Vuelta,Desc. Bloques,Nom. Ejercicio,Series Ex,Reps/Dur,Tiempo,Vídeo,Notas,Unilateral (Sí/No)\n" +
+        "Bloque 1,3,15s,60s,120s,Burpees,1,15,45s,,,No\n" +
+        "Bloque 1,3,15s,60s,120s,Jumping Jacks,1,,45s,,,No\n" +
+        "Bloque 2,4,10s,30s,60s,Flexiones,1,10,30s,,,No\n" +
+        "Bloque 2,4,10s,30s,60s,Plancha lateral,1,,30s,,,Sí";
+      fileName = "Plantilla_HIIT_FitTracker.csv";
+    }
+
+    if (Platform.OS === 'web') {
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      try {
+        const fileUri = FileSystem.documentDirectory + fileName;
+        await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(fileUri);
+        } else {
+          Alert.alert("Aviso", "No se puede compartir o guardar el archivo en este dispositivo.");
+        }
+      } catch (error) {
+        Alert.alert("Error", "No se pudo generar la plantilla.");
+      }
+    }
+  };
+
   const handleCSVUpload = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel'] });
@@ -205,7 +254,7 @@ export default function AddWorkoutScreen() {
         let currentBlockIndex = -1;
         rows.slice(1).forEach(row => {
           const bName = row[0]?.trim();
-          if (!bName) return;
+          if (!bName) return; // Si la línea está vacía o sin bloque, se salta
           if (bName !== currentBlockName) {
             currentBlockName = bName;
             blocks.push({ _key: Math.random().toString(), name: bName, sets: row[1]?.trim() || '1', rest_exercise: row[2]?.trim() || '', rest_block: row[3]?.trim() || '', rest_between_blocks: row[4]?.trim() || '', exercises: [] });
@@ -373,16 +422,24 @@ export default function AddWorkoutScreen() {
           <View style={[styles.csvSection, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>IMPORTAR DESDE CSV</Text>
-              <TouchableOpacity style={[styles.csvBtn, { backgroundColor: colors.primary }]} onPress={handleCSVUpload}>
-                <Ionicons name="document-text" size={16} color="#FFF" />
-                <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Subir CSV</Text>
-              </TouchableOpacity>
+              
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={[styles.csvBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]} onPress={downloadCSVTemplate}>
+                  <Ionicons name="download-outline" size={16} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Plantilla</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.csvBtn, { backgroundColor: colors.primary }]} onPress={handleCSVUpload}>
+                  <Ionicons name="document-text" size={16} color="#FFF" />
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Subir</Text>
+                </TouchableOpacity>
+              </View>
+
             </View>
             <View style={{ backgroundColor: 'rgba(0,0,0,0.03)', padding: 10, borderRadius: 8 }}>
               <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700', marginBottom: 4 }}>
                 {workoutType === 'traditional' ? 'Formato Columnas (Fuerza):' : 'Formato Columnas (HIIT):'}
               </Text>
-              <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic' }}>
+              <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic', lineHeight: 16 }}>
                 {workoutType === 'traditional'
                   ? '1. Nombre | 2. Series | 3. Reps | 4. Duración (s) | 5. Desc. Serie | 6. Desc. Ejercicio | 7. URL Vídeo | 8. Notas | 9. Unilateral (Sí/No)'
                   : '1. Nom. Bloque | 2. Vueltas | 3. Desc. Ex | 4. Desc. Vuelta | 5. Desc. Bloques | 6. Nom. Ejercicio | 7. Series Ex | 8. Reps/Dur | 9. Tiempo | 10. Vídeo | 11. Notas | 12. Unilateral (Sí/No)'}
