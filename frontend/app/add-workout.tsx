@@ -194,9 +194,9 @@ export default function AddWorkoutScreen() {
       csvContent = BOM + 
         "Nom. Bloque,Vueltas,Desc. Ex,Desc. Vuelta,Desc. Bloques,Nom. Ejercicio,Series Ex,Reps/Dur,Tiempo,Vídeo,Notas,Unilateral (Sí/No)\n" +
         "Bloque 1,3,15s,60s,120s,Burpees,1,15,45s,,,No\n" +
-        "Bloque 1,3,15s,60s,120s,Jumping Jacks,1,,45s,,,No\n" +
+        ",,,,,Jumping Jacks,1,,45s,,,No\n" +
         "Bloque 2,4,10s,30s,60s,Flexiones,1,10,30s,,,No\n" +
-        "Bloque 2,4,10s,30s,60s,Plancha lateral,1,,30s,,,Sí";
+        ",,,,,Plancha lateral,1,,30s,,,Sí";
       fileName = "Plantilla_HIIT_FitTracker.csv";
     }
 
@@ -252,18 +252,44 @@ export default function AddWorkoutScreen() {
         const blocks: any[] = [];
         let currentBlockName = null;
         let currentBlockIndex = -1;
+        
         rows.slice(1).forEach(row => {
+          // Saltar filas completamente vacías
+          if (!row.some(cell => cell?.trim())) return;
+
           const bName = row[0]?.trim();
-          if (!bName) return; // Si la línea está vacía o sin bloque, se salta
-          if (bName !== currentBlockName) {
+          
+          if (bName && bName !== currentBlockName) {
             currentBlockName = bName;
-            blocks.push({ _key: Math.random().toString(), name: bName, sets: row[1]?.trim() || '1', rest_exercise: row[2]?.trim() || '', rest_block: row[3]?.trim() || '', rest_between_blocks: row[4]?.trim() || '', exercises: [] });
+            blocks.push({ 
+              _key: Math.random().toString(), 
+              name: bName, 
+              sets: row[1]?.trim() || '1', 
+              rest_exercise: row[2]?.trim() || '', 
+              rest_block: row[3]?.trim() || '', 
+              rest_between_blocks: row[4]?.trim() || '', 
+              exercises: [] 
+            });
             currentBlockIndex++;
           }
-          if (row[5]?.trim()) {
+
+          // Si empezamos un CSV con la celda de Nom. Bloque vacía, creamos un bloque por defecto
+          if (currentBlockIndex === -1) {
+            currentBlockName = "Bloque 1";
+            blocks.push({ 
+              _key: Math.random().toString(), 
+              name: currentBlockName, 
+              sets: '1', rest_exercise: '', rest_block: '', rest_between_blocks: '', 
+              exercises: [] 
+            });
+            currentBlockIndex++;
+          }
+
+          const exName = row[5]?.trim();
+          if (exName) {
             blocks[currentBlockIndex].exercises.push({
               _key: Math.random().toString(), 
-              name: row[5]?.trim(), 
+              name: exName, 
               sets: row[6]?.trim() || '1', 
               duration_reps: row[7]?.trim() || '', 
               duration: row[8]?.trim() || '', 
