@@ -350,7 +350,7 @@ export default function HomeScreen() {
       ? `\n\n  ⚠️ *Sobrecarga Post-Sesión:*\n     - Zonas: ${sessionSoreJoints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}`
       : (todayWorkout?.completed ? `\n\n  ✅ *Sin molestias tras el entreno.*` : '');
 
-    const message = `🏄‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Wellness:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` +
+    const message = `🏋️‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Wellness:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` +
                     (isFemale ? `   - Fase ciclo: ${phaseText}\n` : '') +
                     discomfortsText +
                     `\n🏋️‍♀️ *Entrenamiento:*\n   - Fase: ${activeMicroText}\n   - Hoy: ${trained}${workoutName}` +
