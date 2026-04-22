@@ -143,6 +143,7 @@ export default function TrainingModeScreen() {
   const [isPaused, setIsPaused] = useState(false);
   
   const [isFatigueMode, setIsFatigueMode] = useState(false);
+  const [fatigueModeTriggeredEx, setFatigueModeTriggeredEx] = useState<string | null>(null);
 
   const [globalSeconds, setGlobalSeconds] = useState(0);
   const globalTimerRef = useRef<any>(null);
@@ -155,7 +156,8 @@ export default function TrainingModeScreen() {
   const [restTargetTime, setTargetTime] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [restTotalSeconds, setRestTotalSeconds] = useState(1);
-  const [isResting, setIsResting] = useState(false);
+  const [isResting, setIsWorkingRest] = useState(false); // Renamed internally or aliased for isResting
+  const [isRestingStatus, setIsResting] = useState(false);
   const [restType, setRestType] = useState<'set' | 'exercise' | null>(null);
   const restIntervalRef = useRef<any>(null);
 
@@ -260,7 +262,7 @@ export default function TrainingModeScreen() {
     if (isPaused) {
       setIsPaused(false);
       if (isPrep && prepSeconds > 0) setPrepTargetTime(Date.now() + prepSeconds * 1000);
-      if (isResting && restSeconds > 0) setTargetTime(Date.now() + restSeconds * 1000);
+      if (isRestingStatus && restSeconds > 0) setTargetTime(Date.now() + restSeconds * 1000);
       if (isWorking && workTotalSeconds > 0 && workSeconds > 0) setWorkTargetTime(Date.now() + workSeconds * 1000);
     } else {
       setIsPaused(true);
@@ -320,10 +322,10 @@ export default function TrainingModeScreen() {
 
   useEffect(() => { if (isPrep && prepSeconds > 0 && prepSeconds <= 3 && !isPaused) playSound('beep'); }, [prepSeconds, isPrep, isPaused]);
   useEffect(() => { if (isWorking && workSeconds > 0 && workSeconds <= 5 && !isPaused) playSound('beep'); }, [workSeconds, isWorking, isPaused]);
-  useEffect(() => { if (isResting && restSeconds > 0 && restSeconds <= 5 && !isPaused) playSound('beep'); }, [restSeconds, isResting, isPaused]);
+  useEffect(() => { if (isRestingStatus && restSeconds > 0 && restSeconds <= 5 && !isPaused) playSound('beep'); }, [restSeconds, isRestingStatus, isPaused]);
 
   useEffect(() => {
-    if (showIndicationsModal || !workout || isResting || finished || workout.completed || isPrep) return;
+    if (showIndicationsModal || !workout || isRestingStatus || finished || workout.completed || isPrep) return;
     let text = ""; let id = "";
     if (isHiit) {
       const b = workout.exercises[hiitBlockIdx]; const ex = b?.hiit_exercises?.[hiitExIdx];
@@ -343,7 +345,7 @@ export default function TrainingModeScreen() {
       }
     }
     if (text && lastAnnouncedRef.current !== id) { announce(text); lastAnnouncedRef.current = id; }
-  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, hiitExSet, hiitSide, tradSide, isResting, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
+  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, hiitExSet, hiitSide, tradSide, isRestingStatus, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
 
   useEffect(() => {
     let isMounted = true;
@@ -439,7 +441,7 @@ export default function TrainingModeScreen() {
   }, [isPrep, prepTargetTime]);
 
   useEffect(() => {
-    if (isResting && restTargetTime) {
+    if (isRestingStatus && restTargetTime) {
       restIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
         if (remaining <= 0) { 
@@ -451,7 +453,7 @@ export default function TrainingModeScreen() {
       }, 1000);
     }
     return () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); };
-  }, [isResting, restTargetTime]);
+  }, [isRestingStatus, restTargetTime]);
 
   useEffect(() => {
     if (isWorking && workTargetTime) {
@@ -466,7 +468,7 @@ export default function TrainingModeScreen() {
 
   useEffect(() => {
     if (finished || workout?.completed) return;
-    if (!isHiit && workout && !isResting && !isPrep && !showIndicationsModal) {
+    if (!isHiit && workout && !isRestingStatus && !isPrep && !showIndicationsModal) {
       const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending');
       if (next !== -1) {
         const ex = workout.exercises[currentExIndex]; 
@@ -478,11 +480,11 @@ export default function TrainingModeScreen() {
         }
       } else { stopWorkTimer(); }
     }
-  }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode, tradSide]);
+  }, [currentExIndex, setsStatus, isRestingStatus, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode, tradSide]);
 
   useEffect(() => {
     if (finished || workout?.completed) return;
-    if (isHiit && workout && hiitPhase === 'work' && !isResting && !isPrep && !showIndicationsModal) {
+    if (isHiit && workout && hiitPhase === 'work' && !isRestingStatus && !isPrep && !showIndicationsModal) {
       const b = workout.exercises[hiitBlockIdx]; if (!b) return;
       const ex = b.hiit_exercises[hiitExIdx]; 
       
@@ -494,11 +496,11 @@ export default function TrainingModeScreen() {
          handleStartWork(dur, ex.name + (ex.is_unilateral ? (hiitSide === 1 ? ' (Lado 1)' : ' (Lado 2)') : '')); 
       }
     }
-  }, [hiitBlockIdx, hiitExIdx, hiitExSet, hiitSide, hiitPhase, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode]);
+  }, [hiitBlockIdx, hiitExIdx, hiitExSet, hiitSide, hiitPhase, isRestingStatus, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode]);
 
   useEffect(() => {
     if (finished || workout?.completed) return;
-    if (!isResting && workout && !showIndicationsModal && !isPaused) {
+    if (!isRestingStatus && workout && !showIndicationsModal && !isPaused) {
       if (isHiit) {
         if (hiitPhase === 'rest_set') { setHiitPhase('work'); setHiitExSet(prev => prev + 1); setHiitSide(1); }
         else if (hiitPhase === 'rest_ex') { setHiitPhase('work'); setHiitExIdx(prev => prev + 1); setHiitExSet(1); setHiitSide(1); } 
@@ -506,7 +508,7 @@ export default function TrainingModeScreen() {
         else if (hiitPhase === 'rest_next_block') { setHiitPhase('work'); setHiitExIdx(0); setHiitExSet(1); setHiitSide(1); setHiitRound(1); setHiitBlockIdx(prev => prev + 1); }
       } else { if (restType === 'exercise') { autoAdvance(currentExIndex); setRestType(null); } }
     }
-  }, [isResting, showIndicationsModal, finished, workout, isPaused]);
+  }, [isRestingStatus, showIndicationsModal, finished, workout, isPaused]);
 
   const advanceHiitLogic = (skipEx = false) => {
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -642,8 +644,30 @@ export default function TrainingModeScreen() {
   };
 
   const buildCompletionData = () => {
-    if (isHiit) { return { duration_seconds: globalSeconds, rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, hiit_completed: true, hiit_results: (workout.exercises || []).map((b: any, bIdx: number) => ({ ...b, hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ ...ex, skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0, recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '' })) })) }; }
-    return { duration_seconds: globalSeconds, rpe, sleep_quality: sleepQuality, sleep_hours: sleepHours, sore_joints: soreJoints, exercise_results: (workout.exercises || []).map((ex: any, i: number) => { const s = setsStatus[i] || []; return { exercise_index: i, name: ex.name, total_sets: parseInt(ex.sets) || 1, completed_sets: s.filter(item => item === 'completed').length, skipped_sets: s.filter(item => item === 'skipped').length, set_details: s.map((status, si) => ({ set: si + 1, status })), logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', athlete_note: logs[i]?.note || '', recorded_video_url: recordedVideos[i.toString()] || '' }; }), };
+    const common = {
+      duration_seconds: globalSeconds,
+      rpe,
+      sleep_quality: sleepQuality,
+      sleep_hours: sleepHours,
+      sore_joints: soreJoints,
+      fatigue_mode_used: isFatigueMode || !!fatigueModeTriggeredEx,
+      fatigue_mode_start_ex: fatigueModeTriggeredEx,
+    };
+
+    if (isHiit) { 
+      return { 
+        ...common,
+        hiit_completed: true, 
+        hiit_results: (workout.exercises || []).map((b: any, bIdx: number) => ({ ...b, hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ ...ex, skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0, recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '' })) })) 
+      }; 
+    }
+    return { 
+      ...common,
+      exercise_results: (workout.exercises || []).map((ex: any, i: number) => { 
+        const s = setsStatus[i] || []; 
+        return { exercise_index: i, name: ex.name, total_sets: parseInt(ex.sets) || 1, completed_sets: s.filter(item => item === 'completed').length, skipped_sets: s.filter(item => item === 'skipped').length, set_details: s.map((status, si) => ({ set: si + 1, status })), logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', athlete_note: logs[i]?.note || '', recorded_video_url: recordedVideos[i.toString()] || '' }; 
+      }), 
+    };
   };
 
   const handleFinish = async () => { 
@@ -725,6 +749,14 @@ export default function TrainingModeScreen() {
       onPress={() => {
         if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setIsFatigueMode(!isFatigueMode);
+        
+        // Si se está activando por primera vez, guardamos en qué ejercicio estábamos
+        if (!isFatigueMode && !fatigueModeTriggeredEx) {
+           const exName = isHiit
+              ? workout?.exercises?.[hiitBlockIdx]?.name || 'HIIT'
+              : workout?.exercises?.[currentExIndex]?.name || 'Inicio';
+           setFatigueModeTriggeredEx(exName);
+        }
       }}
     >
       <Ionicons name={isFatigueMode ? "battery-dead" : "battery-half"} size={20} color={isFatigueMode ? "#EF4444" : colors.textSecondary} />
@@ -1151,7 +1183,7 @@ export default function TrainingModeScreen() {
     if (currentEx?.is_unilateral) timerExName += hiitSide === 1 ? ' (Lado 1)' : ' (Lado 2)';
     if (hasMultipleSets) timerExName += ` (Serie ${hiitExSet}/${currentEx?.sets})`;
     
-    if (isResting) {
+    if (isRestingStatus) {
       if (hiitPhase === 'rest_set') { timerExName = `Siguiente: ${currentEx?.name} (Serie ${hiitExSet + 1})`; } 
       else if (hiitPhase === 'rest_ex') { timerExName = `Siguiente: ${displayBlock.hiit_exercises[hiitExIdx + 1]?.name}`; } 
       else if (hiitPhase === 'rest_block') { timerExName = `Siguiente: ${displayBlock.hiit_exercises[0]?.name} (Vuelta ${hiitRound + 1})`; } 
@@ -1188,7 +1220,7 @@ export default function TrainingModeScreen() {
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             {renderFatigueToggle()}
             <UnifiedTimer 
-              isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} 
+              isPrep={isPrep} isResting={isRestingStatus} isWorking={isWorking} isPaused={isPaused} 
               prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} 
               restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} 
               exName={timerExName} colors={colors} isHiit={isHiit} 
@@ -1214,7 +1246,7 @@ export default function TrainingModeScreen() {
 
     let displayExName = ex?.name;
     if (ex?.is_unilateral) displayExName += tradSide === 1 ? ' (Lado 1)' : ' (Lado 2)';
-    if (isResting) {
+    if (isRestingStatus) {
       if (restType === 'exercise' && currentExIndex < workout.exercises.length - 1) { displayExName = `Siguiente: ${workout.exercises[currentExIndex + 1]?.name}`; } 
       else { const comp = s.filter(x => x === 'completed').length; displayExName = `Siguiente: ${ex?.name} (Serie ${comp + 1})`; }
     } else if (isPrep) { displayExName = `Prep: ${ex?.name}`; }
@@ -1224,8 +1256,6 @@ export default function TrainingModeScreen() {
     const showCalculatorButton = isBarbellLift && !isDumbbellOrKettlebell;
     const isLandmineExercise = /landmine/i.test(ex?.name || '');
 
-    // Quitamos la lógica de doblar visualmente las repeticiones y la duración,
-    // ya que ahora literalmente ejecutas el cronómetro dos veces.
     let displayReps = ex.reps;
     if (isFatigueMode) displayReps = adjustReps(displayReps);
 
@@ -1260,7 +1290,7 @@ export default function TrainingModeScreen() {
             {renderFatigueToggle()}
             
             <UnifiedTimer 
-              isPrep={isPrep} isResting={isResting} isWorking={isWorking} isPaused={isPaused} 
+              isPrep={isPrep} isResting={isRestingStatus} isWorking={isWorking} isPaused={isPaused} 
               prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} 
               restTotalSeconds={restTotalSeconds} workTotalSeconds={workTotalSeconds} 
               exName={displayExName} colors={colors} isHiit={false} 
