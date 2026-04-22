@@ -112,6 +112,7 @@ export default function TrainingModeScreen() {
   
   const [currentExIndex, setCurrentExIndex] = useState(0);
   const [setsStatus, setSetsStatus] = useState<Record<number, SetStatus[]>>({});
+  const [tradSide, setTradSide] = useState<1 | 2>(1); 
   
   const [logs, setLogs] = useState<Record<number, {weight: string, reps: string, note?: string, coach_note?: string}>>({});
   const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string}>>({});
@@ -282,7 +283,7 @@ export default function TrainingModeScreen() {
   };
 
   const handleStartWork = (dur: number, name?: string) => {
-    const isFirst = (!isHiit && currentExIndex === 0 && setsStatus[0]?.findIndex(s => s === 'pending') === 0) ||
+    const isFirst = (!isHiit && currentExIndex === 0 && setsStatus[0]?.findIndex(s => s === 'pending') === 0 && tradSide === 1) ||
                     (isHiit && hiitBlockIdx === 0 && hiitExIdx === 0 && hiitRound === 1 && hiitExSet === 1 && hiitSide === 1);
 
     if (isFirst || !justFinishedRestRef.current) {
@@ -332,10 +333,17 @@ export default function TrainingModeScreen() {
       }
     } else {
       const ex = workout.exercises[currentExIndex];
-      if (ex) { const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next !== -1) { id = `trad-${currentExIndex}`; text = ex.name; } }
+      if (ex) { 
+        const s = setsStatus[currentExIndex] || []; 
+        const next = s.findIndex(i => i === 'pending'); 
+        if (next !== -1) { 
+          id = `trad-${currentExIndex}-${next}-${tradSide}`; 
+          text = ex.name + (ex.is_unilateral ? (tradSide === 1 ? ' Lado uno' : ' Lado dos') : ''); 
+        } 
+      }
     }
     if (text && lastAnnouncedRef.current !== id) { announce(text); lastAnnouncedRef.current = id; }
-  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, hiitExSet, hiitSide, isResting, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
+  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, hiitExSet, hiitSide, tradSide, isResting, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
 
   useEffect(() => {
     let isMounted = true;
@@ -464,12 +472,13 @@ export default function TrainingModeScreen() {
         const ex = workout.exercises[currentExIndex]; 
         let dur = parseTimeToSeconds(ex?.duration);
         if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
+        
         if (!isWorking && workTargetTime === null && workSeconds === 0) { 
-          handleStartWork(dur, ex.name); 
+          handleStartWork(dur, ex.name + (ex.is_unilateral ? (tradSide === 1 ? ' (Lado 1)' : ' (Lado 2)') : '')); 
         }
       } else { stopWorkTimer(); }
     }
-  }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode]);
+  }, [currentExIndex, setsStatus, isResting, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode, tradSide]);
 
   useEffect(() => {
     if (finished || workout?.completed) return;
@@ -554,12 +563,23 @@ export default function TrainingModeScreen() {
   const skipTradRest = () => { stopAllTimers(); justFinishedRestRef.current = true; };
 
   const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => { setSetsStatus(prev => { const updated = { ...prev }; updated[exIdx] = [...(prev[exIdx] || [])]; updated[exIdx][setIdx] = status; return updated; }); };
-  const autoAdvance = (exIdx: number) => { stopAllTimers(); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else { Speech.stop(); setTimeout(() => setFinished(true), 400); } };
+  const autoAdvance = (exIdx: number) => { stopAllTimers(); setTradSide(1); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else { Speech.stop(); setTimeout(() => setFinished(true), 400); } };
 
   const completeSet = () => {
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const exercises = workout.exercises || []; const currentEx = exercises[currentExIndex]; const s = setsStatus[currentExIndex] || [];
     const next = s.findIndex(i => i === 'pending'); if (next === -1) return;
+
+    // Tradicional Unilateral Logic:
+    if (currentEx?.is_unilateral && tradSide === 1) {
+      setTradSide(2);
+      let dur = parseTimeToSeconds(currentEx?.duration);
+      if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
+      startPrepTimer(dur, `${currentEx.name} (Lado 2)`);
+      return;
+    }
+
+    setTradSide(1); // Reset
     updateSetStatus(currentExIndex, next, 'completed');
     const rem = s.filter((item, i) => i !== next && item === 'pending').length;
     if (rem === 0) {
@@ -572,8 +592,8 @@ export default function TrainingModeScreen() {
     }
   };
 
-  const skipSet = () => { stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
-  const skipEntireExercise = () => { stopAllTimers(); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
+  const skipSet = () => { stopAllTimers(); setTradSide(1); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
+  const skipEntireExercise = () => { stopAllTimers(); setTradSide(1); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
   const handleRecordVideoOptions = (key: string) => { 
     if (Platform.OS === 'web') { 
@@ -900,14 +920,18 @@ export default function TrainingModeScreen() {
       ));
     } else {
       return workout.exercises.map((ex: any, idx: number) => {
-        const displayReps = isFatigueMode ? adjustReps(ex.reps) : ex.reps;
-        const displayDur = isFatigueMode ? adjustDurationStr(ex.duration) : ex.duration;
+        let displayReps = ex.reps;
+        if (isFatigueMode) displayReps = adjustReps(displayReps);
+
+        let displayDur = ex.duration;
+        if (isFatigueMode) displayDur = adjustDurationStr(displayDur);
+
         const notesText = ex.exercise_notes || ex.notes || ex.observations || ex.observaciones;
         return (
           <View key={idx} style={{ marginBottom: 12, borderBottomWidth: 1, borderBottomColor: colors.border, paddingBottom: 8 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={{ color: colors.textPrimary, flex: 1, fontWeight: '600', paddingRight: 10 }}>
-                <Text style={{ color: colors.textSecondary }}>{idx + 1}.</Text> {ex.name}
+                <Text style={{ color: colors.textSecondary }}>{idx + 1}.</Text> {ex.name} {ex.is_unilateral && '(Uni)'}
               </Text>
               <View style={{ alignItems: 'flex-end' }}>
                 {(ex.sets && displayReps) ? <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>{ex.sets} x {displayReps}</Text> : null}
@@ -953,7 +977,7 @@ export default function TrainingModeScreen() {
         const vid = recordedVideos[i.toString()];
         return (
           <View key={i} style={[styles.summaryCard, { backgroundColor: colors.surfaceHighlight }]}>
-            <Text style={{ fontWeight: '900', color: colors.textPrimary, fontSize: 15 }}>{i + 1}. {ex.name}</Text>
+            <Text style={{ fontWeight: '900', color: colors.textPrimary, fontSize: 15 }}>{i + 1}. {ex.name} {ex.is_unilateral && '(Uni)'}</Text>
             <View style={{ flexDirection: 'row', gap: 15, marginTop: 8, flexWrap: 'wrap' }}>
               <Text style={{ color: colors.success, fontSize: 14, fontWeight: '700' }}>✓ {comp} series</Text>
               {skip > 0 && <Text style={{ color: colors.error, fontSize: 14, fontWeight: '700' }}>⏭ {skip} saltadas</Text>}
@@ -1189,6 +1213,7 @@ export default function TrainingModeScreen() {
     const s = setsStatus[currentExIndex] || []; const prog = ((currentExIndex) / workout.exercises.length) * 100;
 
     let displayExName = ex?.name;
+    if (ex?.is_unilateral) displayExName += tradSide === 1 ? ' (Lado 1)' : ' (Lado 2)';
     if (isResting) {
       if (restType === 'exercise' && currentExIndex < workout.exercises.length - 1) { displayExName = `Siguiente: ${workout.exercises[currentExIndex + 1]?.name}`; } 
       else { const comp = s.filter(x => x === 'completed').length; displayExName = `Siguiente: ${ex?.name} (Serie ${comp + 1})`; }
@@ -1199,7 +1224,13 @@ export default function TrainingModeScreen() {
     const showCalculatorButton = isBarbellLift && !isDumbbellOrKettlebell;
     const isLandmineExercise = /landmine/i.test(ex?.name || '');
 
-    const displayReps = isFatigueMode ? adjustReps(ex.reps) : ex.reps;
+    // Quitamos la lógica de doblar visualmente las repeticiones y la duración,
+    // ya que ahora literalmente ejecutas el cronómetro dos veces.
+    let displayReps = ex.reps;
+    if (isFatigueMode) displayReps = adjustReps(displayReps);
+
+    let displayDur = ex.duration;
+    if (isFatigueMode) displayDur = adjustDurationStr(displayDur);
 
     const vidUrl = ex.video_url || ex.link || ex.url;
     const notesText = ex.exercise_notes || ex.notes || ex.observations || ex.observaciones;
@@ -1246,10 +1277,12 @@ export default function TrainingModeScreen() {
                 {['sets', 'reps', 'weight', 'duration', 'rest'].map(k => {
                   let val = ex[k];
                   if (!val) return null;
+                  
                   if (isFatigueMode) {
                     if (k === 'reps') val = adjustReps(val);
                     if (k === 'duration') val = adjustDurationStr(val);
                   }
+                  
                   return (
                     <View key={k} style={styles.compactDetailItem}>
                       <Text style={[styles.compactDetailLabel, { color: colors.textSecondary }]}>{k === 'sets' ? 'Series' : k === 'weight' ? 'Kg' : k === 'rest' ? 'Desc.' : k}</Text>
@@ -1294,7 +1327,7 @@ export default function TrainingModeScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else { Speech.stop(); setFinished(true); } }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
+          <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); setTradSide(1); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else { Speech.stop(); setFinished(true); } }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
         </KeyboardAvoidingView>
         {renderVideoModal()}{renderIndicationsModal()}{renderPlateCalculatorModal()}
       </SafeAreaView>
