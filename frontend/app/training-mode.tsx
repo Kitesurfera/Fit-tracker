@@ -173,6 +173,10 @@ export default function TrainingModeScreen() {
   const [voiceEnabled, setVoiceEnabled] = useState(true);
   const [soundsEnabled, setSoundsEnabled] = useState(true);
 
+  // --- NUEVOS ESTADOS PARA SPOTIFY ---
+  const [showSpotify, setShowSpotify] = useState(false);
+  const [spotifyUrl, setSpotifyUrl] = useState('');
+
   const lastAnnouncedRef = useRef<string>('');
   const justFinishedRestRef = useRef(false);
 
@@ -204,9 +208,24 @@ export default function TrainingModeScreen() {
     useCallback(() => {
       const loadPreferences = async () => {
         try {
-          const [v, s] = await Promise.all([ AsyncStorage.getItem('voice_enabled'), AsyncStorage.getItem('sounds_enabled') ]);
+          const [v, s, showSp, spUrl] = await Promise.all([ 
+            AsyncStorage.getItem('voice_enabled'), 
+            AsyncStorage.getItem('sounds_enabled'),
+            AsyncStorage.getItem('show_spotify_widget'),
+            AsyncStorage.getItem('spotify_url')
+          ]);
           setVoiceEnabled(v !== 'false'); 
           setSoundsEnabled(s !== 'false'); 
+          setShowSpotify(showSp === 'true');
+          
+          if (spUrl) {
+            // Formatear la URL normal a URL de incrustación (Embed)
+            let formattedUrl = spUrl;
+            if (!formattedUrl.includes('/embed/')) {
+              formattedUrl = formattedUrl.replace('spotify.com/', 'spotify.com/embed/');
+            }
+            setSpotifyUrl(formattedUrl);
+          }
         } catch (e) { console.log("⚠️ Error cargando preferencias:", e); }
       };
       loadPreferences();
@@ -1181,6 +1200,36 @@ export default function TrainingModeScreen() {
     setSoreJoints(prev => prev.includes(slug) ? prev.filter(j => j !== slug) : [...prev, slug]); 
   };
 
+  // --- FUNCIÓN PARA PINTAR EL WIDGET DE SPOTIFY ---
+  const renderSpotifyWidget = () => {
+    if (!showSpotify || !spotifyUrl) return null;
+    
+    if (Platform.OS === 'web') {
+      return (
+        <View style={{ marginTop: 16, borderRadius: 12, overflow: 'hidden' }}>
+          <iframe 
+            src={spotifyUrl} 
+            width="100%" 
+            height="152" 
+            frameBorder="0" 
+            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
+            loading="lazy"
+          />
+        </View>
+      );
+    }
+
+    // Fallback por si lo abres alguna vez en la App nativa sin tener instalado WebView
+    return (
+      <View style={{ height: 152, width: '100%', marginTop: 16, backgroundColor: colors.surfaceHighlight, borderRadius: 12, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
+         <Ionicons name="logo-spotify" size={32} color="#1DB954" style={{ marginBottom: 10 }} />
+         <Text style={{ color: colors.textSecondary, textAlign: 'center', fontSize: 12 }}>
+           El reproductor de Spotify web está activo. (En la app móvil de Android/iOS requeriría instalar el paquete react-native-webview).
+         </Text>
+      </View>
+    );
+  };
+
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={{ color: colors.textPrimary }}>No encontrado.</Text></SafeAreaView>;
 
@@ -1340,6 +1389,7 @@ export default function TrainingModeScreen() {
 
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             {renderFatigueToggle()}
+            
             <UnifiedTimer 
               isPrep={isPrep} isResting={isRestingStatus} isWorking={isWorking} isPaused={isPaused} 
               prepSeconds={prepSeconds} restSeconds={restSeconds} workSeconds={workSeconds} 
@@ -1352,6 +1402,9 @@ export default function TrainingModeScreen() {
             />
             
             <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} hiitSide={hiitSide} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
+            
+            {/* WIDGET DE SPOTIFY AQUÍ AL FINAL (HIIT) */}
+            {renderSpotifyWidget()}
           </ScrollView>
           <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
             <Ionicons name="list" size={24} color="#FFF" />
@@ -1458,7 +1511,7 @@ export default function TrainingModeScreen() {
               <TouchableOpacity style={[styles.recordBtn, { marginTop: 20, borderColor: colors.border }]} onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text></TouchableOpacity>
             </View>
 
-            {/* ZONA DE INPUTS MEJORADA (Se ha quitado el gap y añadido márgenes seguros, y el value con fallback '|| ""') */}
+            {/* ZONA DE INPUTS MEJORADA */}
             <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
                <View style={{ flexDirection: 'row', width: '100%' }}>
                  <TextInput 
@@ -1487,6 +1540,9 @@ export default function TrainingModeScreen() {
                   onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} 
                />
             </View>
+
+            {/* WIDGET DE SPOTIFY AQUÍ AL FINAL (TRADICIONAL) */}
+            {renderSpotifyWidget()}
           </ScrollView>
           
           <View style={{ position: 'absolute', right: 20, bottom: 100, gap: 15 }}>
