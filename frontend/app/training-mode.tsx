@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Video, ResizeMode, Audio, InterruptionModeIOS, InterruptionModeAndroid } from 'expo-av';
+import { Video, ResizeMode } from 'expo-av';
 import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeepAwake } from 'expo-keep-awake';
@@ -167,15 +167,7 @@ export default function TrainingModeScreen() {
   const [isWorking, setIsWorking] = useState(false);
   const workIntervalRef = useRef<any>(null);
 
-  const beepSoundRef = useRef<Audio.Sound | null>(null);
-  const finishSoundRef = useRef<Audio.Sound | null>(null);
-  
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [soundsEnabled, setSoundsEnabled] = useState(true);
-
-  // --- NUEVOS ESTADOS PARA SPOTIFY ---
-  const [showSpotify, setShowSpotify] = useState(false);
-  const [spotifyUrl, setSpotifyUrl] = useState('');
 
   const lastAnnouncedRef = useRef<string>('');
   const justFinishedRestRef = useRef(false);
@@ -208,24 +200,8 @@ export default function TrainingModeScreen() {
     useCallback(() => {
       const loadPreferences = async () => {
         try {
-          const [v, s, showSp, spUrl] = await Promise.all([ 
-            AsyncStorage.getItem('voice_enabled'), 
-            AsyncStorage.getItem('sounds_enabled'),
-            AsyncStorage.getItem('show_spotify_widget'),
-            AsyncStorage.getItem('spotify_url')
-          ]);
+          const v = await AsyncStorage.getItem('voice_enabled');
           setVoiceEnabled(v !== 'false'); 
-          setSoundsEnabled(s !== 'false'); 
-          setShowSpotify(showSp === 'true');
-          
-          if (spUrl) {
-            // Formatear la URL normal a URL de incrustación (Embed)
-            let formattedUrl = spUrl;
-            if (!formattedUrl.includes('/embed/')) {
-              formattedUrl = formattedUrl.replace('spotify.com/', 'spotify.com/embed/');
-            }
-            setSpotifyUrl(formattedUrl);
-          }
         } catch (e) { console.log("⚠️ Error cargando preferencias:", e); }
       };
       loadPreferences();
@@ -236,54 +212,15 @@ export default function TrainingModeScreen() {
     if (!voiceEnabled || finished || workout?.completed) return; 
     try {
       Speech.stop(); 
-      Speech.speak(text, { language: 'es-ES', rate: 0.95 });
+      Speech.speak(text, { language: 'es-ES', rate: 1.0 });
     } catch (e) { console.log("⚠️ Error Speech:", e); }
   };
 
   useEffect(() => {
-    let beepSound: Audio.Sound | null = null;
-    let finishSound: Audio.Sound | null = null;
-
-    async function initAudio() {
-      try {
-        await Audio.setAudioModeAsync({ 
-          playsInSilentModeIOS: true, 
-          staysActiveInBackground: true, 
-          shouldDuckAndroid: true,
-          interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-          interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-          playThroughEarpieceAndroid: false 
-        });
-
-        const { sound: beep } = await Audio.Sound.createAsync(require('../assets/beep.mp3'));
-        const { sound: finish } = await Audio.Sound.createAsync(require('../assets/finish.mp3'));
-        beepSoundRef.current = beep; finishSoundRef.current = finish;
-        beepSound = beep; finishSound = finish;
-      } catch (e) { console.log("Error cargando audios:", e); }
-    }
-    initAudio();
-
     return () => {
-      if (beepSound) beepSound.unloadAsync();
-      if (finishSound) finishSound.unloadAsync();
       try { Speech.stop(); } catch(e) {} 
     };
   }, []);
-
-  const playSound = async (type: 'beep' | 'finish') => {
-    if (!soundsEnabled || finished) return;
-    try {
-      if (Platform.OS !== 'web') {
-        if (type === 'beep') { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {}); } 
-        else { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {}); }
-      }
-      const soundObj = type === 'beep' ? beepSoundRef.current : finishSoundRef.current;
-      if (soundObj) {
-        await soundObj.setPositionAsync(0);
-        await soundObj.playAsync(); 
-      }
-    } catch (error) { console.log("Error al reproducir audio:", error); }
-  };
 
   const togglePause = () => {
     if (isPaused) {
@@ -324,7 +261,8 @@ export default function TrainingModeScreen() {
       setWorkSeconds(dur);
       if (dur > 0) setWorkTargetTime(Date.now() + dur * 1000);
       else setWorkTargetTime(null);
-      if (name) announce(`A por ello: ${name}`);
+      if (name) announce(`Trabajo. ${name}`);
+      else announce("Trabajo");
     }
     justFinishedRestRef.current = false;
   };
@@ -333,6 +271,7 @@ export default function TrainingModeScreen() {
     setIsWorking(true); setIsPaused(false);
     if (workTotalSeconds > 0) { setWorkTargetTime(Date.now() + workTotalSeconds * 1000); } 
     else { setWorkTargetTime(null); }
+    announce("Trabajo");
   };
 
   const startRestTimer = (seconds: number, nextExName?: string) => {
@@ -347,9 +286,27 @@ export default function TrainingModeScreen() {
 
   const handleWorkComplete = () => { stopWorkTimer(); if (isHiit) advanceHiitLogic(); else completeSet(); };
 
-  useEffect(() => { if (isPrep && prepSeconds > 0 && prepSeconds <= 3 && !isPaused) playSound('beep'); }, [prepSeconds, isPrep, isPaused]);
-  useEffect(() => { if (isWorking && workSeconds > 0 && workSeconds <= 5 && !isPaused) playSound('beep'); }, [workSeconds, isWorking, isPaused]);
-  useEffect(() => { if (isRestingStatus && restSeconds > 0 && restSeconds <= 5 && !isPaused) playSound('beep'); }, [restSeconds, isRestingStatus, isPaused]);
+  // --- Cuentas Regresivas ---
+  useEffect(() => { 
+    if (isPrep && prepSeconds > 0 && prepSeconds <= 3 && !isPaused) {
+      announce(prepSeconds.toString());
+      if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    } 
+  }, [prepSeconds, isPrep, isPaused]);
+
+  useEffect(() => { 
+    if (isWorking && workSeconds > 0 && workSeconds <= 3 && !isPaused) {
+      announce(workSeconds.toString());
+      if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    } 
+  }, [workSeconds, isWorking, isPaused]);
+
+  useEffect(() => { 
+    if (isRestingStatus && restSeconds > 0 && restSeconds <= 3 && !isPaused) {
+      announce(restSeconds.toString());
+      if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    } 
+  }, [restSeconds, isRestingStatus, isPaused]);
 
   useEffect(() => {
     if (showIndicationsModal || !workout || isRestingStatus || finished || workout.completed || isPrep) return;
@@ -460,7 +417,10 @@ export default function TrainingModeScreen() {
     if (isPrep && prepTargetTime) {
       prepIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((prepTargetTime - Date.now()) / 1000);
-        if (remaining <= 0) { playSound('finish'); stopPrepTimer(); startWorkTimerAfterPrep(); } 
+        if (remaining <= 0) { 
+          if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
+          stopPrepTimer(); startWorkTimerAfterPrep(); 
+        } 
         else { setPrepSeconds(remaining); }
       }, 1000);
     }
@@ -472,7 +432,7 @@ export default function TrainingModeScreen() {
       restIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
         if (remaining <= 0) { 
-          playSound('finish'); 
+          if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
           justFinishedRestRef.current = true;
           stopRestTimer(); 
         } 
@@ -486,7 +446,11 @@ export default function TrainingModeScreen() {
     if (isWorking && workTargetTime) {
       workIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((workTargetTime - Date.now()) / 1000);
-        if (remaining <= 0) { playSound('finish'); handleWorkComplete(); } 
+        if (remaining <= 0) { 
+          announce("Descanso");
+          if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
+          handleWorkComplete(); 
+        } 
         else { setWorkSeconds(remaining); }
       }, 1000);
     }
@@ -707,7 +671,6 @@ export default function TrainingModeScreen() {
     let discomfortsText = '';
 
     try {
-      // Obtenemos el wellness del día directamente para replicar la estructura de Home
       const summary = await api.getSummary();
       const latestWellness = summary?.latest_wellness || {};
       fatigue = latestWellness.fatigue || '?';
@@ -767,7 +730,6 @@ export default function TrainingModeScreen() {
       ? `\n\n  ⚠️ *Sobrecarga Post-Sesión:*\n     - Zonas: ${sessionSoreJoints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}`
       : `\n\n  ✅ *Sin molestias tras el entreno.*`;
 
-    // Replicamos la misma estructura exacta del Home
     const message = `🏋️‍♀️ *Status Diario de ${firstName}*\n📅 ${todayLabel}\n\n🔋 *Estado Wellness:*\n   - Fatiga: ${fatigue}/5\n   - Sueño: ${sleep}/5\n   - Agujetas: ${soreness}/5\n` +
                     discomfortsText +
                     `\n🏋️‍♀️ *Entrenamiento:*\n   - Hoy: ${trained}${workoutName}` +
@@ -880,7 +842,6 @@ export default function TrainingModeScreen() {
         if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         setIsFatigueMode(!isFatigueMode);
         
-        // Si se está activando por primera vez, guardamos en qué ejercicio estábamos
         if (!isFatigueMode && !fatigueModeTriggeredEx) {
            const exName = isHiit
              ? workout?.exercises?.[hiitBlockIdx]?.name || 'HIIT'
@@ -992,11 +953,10 @@ export default function TrainingModeScreen() {
                    {(isLandmineMode || isAutoLandmine) && <Text style={{ color: colors.warning, fontWeight: '700', fontSize: 12, marginBottom: 20 }}>CARGA EFECTIVA</Text>}
 
                    <View style={[styles.barSleeveContainer, { marginTop: 20 }]}>
-                      {/* Realismo de la barra */}
                       <View style={{ position: 'absolute', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', width: '100%', zIndex: 1 }}>
-                         <View style={{ height: 16, width: '10%', backgroundColor: '#64748B' }} /> {/* Eje de la barra */}
-                         <View style={{ height: 32, width: 14, backgroundColor: '#475569', borderRadius: 3 }} /> {/* Tope / Collarín */}
-                         <View style={{ height: 22, width: '60%', backgroundColor: '#CBD5E1', borderTopRightRadius: 6, borderBottomRightRadius: 6, overflow: 'hidden' }}> {/* Manga donde van los discos */}
+                         <View style={{ height: 16, width: '10%', backgroundColor: '#64748B' }} />
+                         <View style={{ height: 32, width: 14, backgroundColor: '#475569', borderRadius: 3 }} />
+                         <View style={{ height: 22, width: '60%', backgroundColor: '#CBD5E1', borderTopRightRadius: 6, borderBottomRightRadius: 6, overflow: 'hidden' }}>
                             <View style={{ width: '100%', height: 2, backgroundColor: '#FFFFFF', opacity: 0.6, marginTop: 3 }} />
                             <View style={{ width: '100%', height: 2, backgroundColor: '#000000', opacity: 0.1, marginTop: 12 }} />
                          </View>
@@ -1200,59 +1160,6 @@ export default function TrainingModeScreen() {
     setSoreJoints(prev => prev.includes(slug) ? prev.filter(j => j !== slug) : [...prev, slug]); 
   };
 
-  // --- FUNCIÓN PARA PINTAR EL WIDGET DE SPOTIFY ---
-  const renderSpotifyWidget = () => {
-    if (!showSpotify || !spotifyUrl) return null;
-    
-    // Extraemos la URL original (sin el "/embed") para que el botón abra la app nativa correctamente
-    const rawUrl = spotifyUrl.replace('/embed', '');
-
-    if (Platform.OS === 'web') {
-      return (
-        <View style={{ marginTop: 16, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.surfaceHighlight, paddingBottom: 12 }}>
-          <iframe 
-            src={spotifyUrl} 
-            width="100%" 
-            height="152" 
-            frameBorder="0" 
-            allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
-            loading="lazy"
-          />
-          <TouchableOpacity 
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 12, gap: 8 }}
-            onPress={() => Linking.openURL(rawUrl)}
-          >
-            <Ionicons name="open-outline" size={18} color="#1DB954" />
-            <Text style={{ color: '#1DB954', fontWeight: '800', fontSize: 14 }}>
-              Abrir en la app de Spotify (Canciones completas)
-            </Text>
-          </TouchableOpacity>
-        </View>
-      );
-    }
-
-    // Fallback para cuando pases la app a móvil nativo (iOS/Android)
-    return (
-      <View style={{ marginTop: 16, backgroundColor: colors.surfaceHighlight, borderRadius: 12, padding: 16 }}>
-         <TouchableOpacity 
-            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 }}
-            onPress={() => Linking.openURL(rawUrl)}
-          >
-           <Ionicons name="logo-spotify" size={32} color="#1DB954" />
-           <View style={{ flex: 1 }}>
-             <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 15 }}>
-               Escuchar en Spotify
-             </Text>
-             <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
-               Abre la app nativa para canciones completas
-             </Text>
-           </View>
-           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-         </TouchableOpacity>
-      </View>
-    );
-  };
-
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
   if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={{ color: colors.textPrimary }}>No encontrado.</Text></SafeAreaView>;
 
@@ -1425,9 +1332,6 @@ export default function TrainingModeScreen() {
             />
             
             <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} hiitSide={hiitSide} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
-            
-            {/* WIDGET DE SPOTIFY AQUÍ AL FINAL (HIIT) */}
-            {renderSpotifyWidget()}
           </ScrollView>
           <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
             <Ionicons name="list" size={24} color="#FFF" />
@@ -1534,7 +1438,6 @@ export default function TrainingModeScreen() {
               <TouchableOpacity style={[styles.recordBtn, { marginTop: 20, borderColor: colors.border }]} onPress={() => handleRecordVideoOptions(currentExIndex.toString())}><Ionicons name="videocam" size={20} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text></TouchableOpacity>
             </View>
 
-            {/* ZONA DE INPUTS MEJORADA */}
             <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
                <View style={{ flexDirection: 'row', width: '100%' }}>
                  <TextInput 
@@ -1563,9 +1466,6 @@ export default function TrainingModeScreen() {
                   onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} 
                />
             </View>
-
-            {/* WIDGET DE SPOTIFY AQUÍ AL FINAL (TRADICIONAL) */}
-            {renderSpotifyWidget()}
           </ScrollView>
           
           <View style={{ position: 'absolute', right: 20, bottom: 100, gap: 15 }}>
@@ -1602,7 +1502,6 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 },
   floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 },
   painButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, painButtonText: { fontSize: 13, fontWeight: '600' },
-  
   barTypeBtn: { paddingVertical: 8, paddingHorizontal: 16, borderWidth: 2, borderRadius: 12 },
   barSleeveContainer: { height: 180, width: '100%', alignItems: 'center', justifyContent: 'center', flexDirection: 'row' },
   barSleeve: { position: 'absolute', height: 20, width: '100%', borderRadius: 4 },
