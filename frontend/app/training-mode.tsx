@@ -205,7 +205,7 @@ export default function TrainingModeScreen() {
     }, [])
   );
 
-  // --- SINTETIZADOR WEB AUDIO API POTENCIADO ---
+  // --- SINTETIZADOR WEB AUDIO API EXTREMO (CORTA LA MÚSICA) ---
   const playTimerSound = (type: 'short' | 'long' | 'double') => {
     if (!timerSoundsEnabled || finished) return;
 
@@ -224,36 +224,54 @@ export default function TrainingModeScreen() {
       const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
       if (!AudioContext) return;
       const ctx = new AudioContext();
-      
-      // Añadimos parámetro de forma de onda (waveType)
-      const playOsc = (freq: number, startTime: number, duration: number, waveType: OscillatorType = 'triangle') => {
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        
-        osc.type = waveType; // 'triangle' y 'square' cortan la música mucho mejor que 'sine'
-        osc.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
-        
-        // Subimos el volumen inicial al 100% (1.0)
-        gain.gain.setValueAtTime(1.0, ctx.currentTime + startTime);
-        // Lo mantenemos fuerte casi hasta el final
-        gain.gain.setValueAtTime(1.0, ctx.currentTime + startTime + duration - 0.05);
-        // Fade out ultra rápido al final para que no haga "pop"
-        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + startTime + duration);
-        
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        
-        osc.start(ctx.currentTime + startTime);
-        osc.stop(ctx.currentTime + startTime + duration);
+
+      // Función para crear sonidos "penetrantes" usando múltiples osciladores a la vez
+      const playPiercingBeep = (baseFreq: number, typeStr: OscillatorType, startTime: number, duration: number, isSweep: boolean = false) => {
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator(); // Segundo oscilador para crear "batido" o vibración
+        const gainNode = ctx.createGain();
+
+        osc1.type = typeStr;
+        osc2.type = typeStr;
+
+        if (isSweep) {
+          // Efecto silbato/alarma: Hace un barrido rápido hacia arriba (imposible de ignorar)
+          osc1.frequency.setValueAtTime(baseFreq - 300, ctx.currentTime + startTime);
+          osc1.frequency.linearRampToValueAtTime(baseFreq + 300, ctx.currentTime + startTime + duration);
+          osc2.frequency.setValueAtTime(baseFreq - 280, ctx.currentTime + startTime);
+          osc2.frequency.linearRampToValueAtTime(baseFreq + 320, ctx.currentTime + startTime + duration);
+        } else {
+          // Desafinación intencionada para que el sonido no se camufle con la melodía de Spotify
+          osc1.frequency.setValueAtTime(baseFreq, ctx.currentTime + startTime);
+          osc2.frequency.setValueAtTime(baseFreq + 15, ctx.currentTime + startTime); 
+        }
+
+        // Volumen máximo instantáneo y corte abrupto
+        gainNode.gain.setValueAtTime(0, ctx.currentTime + startTime);
+        gainNode.gain.linearRampToValueAtTime(1.0, ctx.currentTime + startTime + 0.01);
+        gainNode.gain.setValueAtTime(1.0, ctx.currentTime + startTime + duration - 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
+
+        osc1.connect(gainNode);
+        osc2.connect(gainNode);
+        gainNode.connect(ctx.destination);
+
+        osc1.start(ctx.currentTime + startTime);
+        osc2.start(ctx.currentTime + startTime);
+        osc1.stop(ctx.currentTime + startTime + duration);
+        osc2.stop(ctx.currentTime + startTime + duration);
       };
 
       if (type === 'short') {
-        playOsc(800, 0, 0.15, 'triangle');     // 3, 2, 1 (Más limpio pero agudo)
+        // 3, 2, 1: Agudo, cuadrado y disonante
+        playPiercingBeep(1000, 'square', 0, 0.15);
       } else if (type === 'long') {
-        playOsc(1200, 0, 0.4, 'square');       // TRABAJO (Agudo y ruidoso, imposible no escucharlo)
+        // TRABAJO: Efecto silbato agudo (Sweep) con ondas de sierra (muy agresivo)
+        playPiercingBeep(1400, 'sawtooth', 0, 0.5, true);
       } else if (type === 'double') {
-        playOsc(400, 0, 0.15, 'square');       // DESCANSO (Doble toque más grave y percusivo)
-        playOsc(400, 0.25, 0.15, 'square');
+        // DESCANSO: Dos pitidos graves y roncos (Buzzer de estadio)
+        playPiercingBeep(300, 'sawtooth', 0, 0.15);
+        playPiercingBeep(300, 'sawtooth', 0.25, 0.15);
       }
     } catch (e) {
       console.log("Error Web Audio API:", e);
