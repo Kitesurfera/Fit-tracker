@@ -205,12 +205,11 @@ export default function TrainingModeScreen() {
     }, [])
   );
 
-  // --- SINTETIZADOR WEB AUDIO API ---
+  // --- SINTETIZADOR WEB AUDIO API POTENCIADO ---
   const playTimerSound = (type: 'short' | 'long' | 'double') => {
     if (!timerSoundsEnabled || finished) return;
 
     if (Platform.OS !== 'web') {
-      // Fallback para móvil nativo si lo llegas a compilar en la AppStore/PlayStore
       if (type === 'double') {
          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(()=>{});
       } else if (type === 'long') {
@@ -226,15 +225,19 @@ export default function TrainingModeScreen() {
       if (!AudioContext) return;
       const ctx = new AudioContext();
       
-      const playOsc = (freq: number, startTime: number, duration: number) => {
+      // Añadimos parámetro de forma de onda (waveType)
+      const playOsc = (freq: number, startTime: number, duration: number, waveType: OscillatorType = 'triangle') => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
         
-        osc.type = 'sine';
+        osc.type = waveType; // 'triangle' y 'square' cortan la música mucho mejor que 'sine'
         osc.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
         
-        // Suave fade out para evitar chasquidos (click pops)
-        gain.gain.setValueAtTime(0.5, ctx.currentTime + startTime);
+        // Subimos el volumen inicial al 100% (1.0)
+        gain.gain.setValueAtTime(1.0, ctx.currentTime + startTime);
+        // Lo mantenemos fuerte casi hasta el final
+        gain.gain.setValueAtTime(1.0, ctx.currentTime + startTime + duration - 0.05);
+        // Fade out ultra rápido al final para que no haga "pop"
         gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + startTime + duration);
         
         osc.connect(gain);
@@ -245,12 +248,12 @@ export default function TrainingModeScreen() {
       };
 
       if (type === 'short') {
-        playOsc(800, 0, 0.15);     // 3, 2, 1
+        playOsc(800, 0, 0.15, 'triangle');     // 3, 2, 1 (Más limpio pero agudo)
       } else if (type === 'long') {
-        playOsc(1200, 0, 0.4);     // TRABAJO (Agudo y largo)
+        playOsc(1200, 0, 0.4, 'square');       // TRABAJO (Agudo y ruidoso, imposible no escucharlo)
       } else if (type === 'double') {
-        playOsc(600, 0, 0.1);      // DESCANSO (Doble grave rápido)
-        playOsc(600, 0.2, 0.1);
+        playOsc(400, 0, 0.15, 'square');       // DESCANSO (Doble toque más grave y percusivo)
+        playOsc(400, 0.25, 0.15, 'square');
       }
     } catch (e) {
       console.log("Error Web Audio API:", e);
