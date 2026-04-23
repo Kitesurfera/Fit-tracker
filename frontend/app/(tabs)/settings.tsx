@@ -30,26 +30,11 @@ export default function SettingsScreen() {
   });
   const [savingMeasures, setSavingMeasures] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
-  const [soundsEnabled, setSoundsEnabled] = useState(true);
-  
-  // --- ESTADOS DE SPOTIFY ---
-  const [showSpotify, setShowSpotify] = useState(false);
-  const [spotifyUrl, setSpotifyUrl] = useState('');
-  const [savingSpotify, setSavingSpotify] = useState(false);
 
   // Cargar preferencias al entrar
   useEffect(() => {
     AsyncStorage.getItem('voice_enabled').then(val => {
       if (val === 'false') setVoiceEnabled(false);
-    });
-    AsyncStorage.getItem('sounds_enabled').then(val => {
-      if (val === 'false') setSoundsEnabled(false);
-    });
-    AsyncStorage.getItem('show_spotify_widget').then(val => {
-      if (val === 'true') setShowSpotify(true);
-    });
-    AsyncStorage.getItem('spotify_url').then(val => {
-      if (val) setSpotifyUrl(val);
     });
   }, []);
 
@@ -57,30 +42,6 @@ export default function SettingsScreen() {
   const toggleVoice = async (value: boolean) => {
     setVoiceEnabled(value);
     await AsyncStorage.setItem('voice_enabled', value ? 'true' : 'false');
-  };
-
-  const toggleSounds = async (value: boolean) => {
-    setSoundsEnabled(value);
-    await AsyncStorage.setItem('sounds_enabled', value ? 'true' : 'false');
-  };
-
-  const toggleSpotify = async (value: boolean) => {
-    setShowSpotify(value);
-    await AsyncStorage.setItem('show_spotify_widget', value ? 'true' : 'false');
-  };
-
-  const handleSaveSpotifyUrl = async () => {
-    if (!spotifyUrl.trim()) return;
-    setSavingSpotify(true);
-    try {
-      await AsyncStorage.setItem('spotify_url', spotifyUrl.trim());
-      if (Platform.OS === 'web') window.alert("¡Playlist guardada!");
-      else Alert.alert("Éxito", "¡Playlist de Spotify guardada correctamente!");
-    } catch (e) {
-      console.log(e);
-    } finally {
-      setSavingSpotify(false);
-    }
   };
 
   const togglePush = async (value: boolean) => {
@@ -147,8 +108,8 @@ export default function SettingsScreen() {
     try {
       await Share.share({
         message: '¡Únete a Fit Tracker y entrena conmigo! Regístrate aquí: https://fit-tracker-azure-iota.vercel.app/',
-        url: 'https://fit-tracker-azure-iota.vercel.app/', // Específico para iOS
-        title: 'Fit Tracker App' // Específico para Android
+        url: 'https://fit-tracker-azure-iota.vercel.app/', 
+        title: 'Fit Tracker App'
       });
     } catch (error: any) {
       console.error('Error al compartir:', error.message);
@@ -258,54 +219,6 @@ export default function SettingsScreen() {
               </View>
               <Switch value={voiceEnabled} onValueChange={toggleVoice} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
             </View>
-
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-            <View style={styles.settingRowAction}>
-              <View style={styles.settingIconText}>
-                <View style={[styles.iconBox, { backgroundColor: '#F59E0B15' }]}><Ionicons name="musical-notes" size={20} color="#F59E0B" /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Sonidos de Entreno</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Pitidos de timer y descanso</Text>
-                </View>
-              </View>
-              <Switch value={soundsEnabled} onValueChange={toggleSounds} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
-            </View>
-          </View>
-
-          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>MÚSICA (SPOTIFY)</Text>
-          <View style={[styles.cardList, { backgroundColor: colors.surface }]}>
-            <View style={styles.settingRowAction}>
-              <View style={styles.settingIconText}>
-                <View style={[styles.iconBox, { backgroundColor: '#1DB95415' }]}><Ionicons name="logo-spotify" size={20} color="#1DB954" /></View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Reproductor de Spotify</Text>
-                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Mostrar widget durante la sesión</Text>
-                </View>
-              </View>
-              <Switch value={showSpotify} onValueChange={toggleSpotify} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
-            </View>
-
-            {showSpotify && (
-              <>
-                <View style={[styles.divider, { backgroundColor: colors.border, marginLeft: 0 }]} />
-                <View style={{ padding: 16 }}>
-                  <Text style={[styles.inputLabel, { color: colors.textSecondary, marginBottom: 8 }]}>ENLACE DE TU PLAYLIST (URL)</Text>
-                  <TextInput 
-                    style={[styles.measureInput, { color: colors.textPrimary, backgroundColor: colors.background, borderColor: colors.border, marginBottom: 10 }]} 
-                    value={spotifyUrl} 
-                    onChangeText={setSpotifyUrl} 
-                    placeholder="Ej: https://open.spotify.com/playlist/..." 
-                    placeholderTextColor={colors.textSecondary} 
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                  />
-                  <TouchableOpacity style={[styles.saveProfileBtn, { backgroundColor: colors.primary, marginTop: 0 }]} onPress={handleSaveSpotifyUrl} disabled={savingSpotify}>
-                    {savingSpotify ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.saveProfileBtnText}>Guardar Playlist</Text>}
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
           </View>
 
           {isAthlete ? (
@@ -363,36 +276,30 @@ const styles = StyleSheet.create({
   backBtn: { width: 40, height: 40, justifyContent: 'center' },
   headerTitle: { fontSize: 22, fontWeight: '900' },
   content: { paddingHorizontal: 20, paddingTop: 10 },
-  
   profileHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 25, paddingHorizontal: 10 },
   avatarCircle: { width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
   avatarText: { fontSize: 28, fontWeight: '900', color: '#FFF' },
   profileTextWrapper: { marginLeft: 20, flex: 1 },
   profileName: { fontSize: 22, fontWeight: '800', marginBottom: 4 },
   roleText: { fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
-  
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 12, letterSpacing: 1.5, marginLeft: 12 },
   card: { borderRadius: 20, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   cardList: { borderRadius: 20, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 },
   divider: { height: 1, marginLeft: 65, opacity: 0.3 },
-  
   inputRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10 },
   input: { flex: 1, fontSize: 16, fontWeight: '600', paddingVertical: 12 },
   saveProfileBtn: { marginTop: 15, paddingVertical: 12, borderRadius: 12, alignItems: 'center' },
   saveProfileBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
-  
   inputLabel: { fontSize: 12, fontWeight: '800' },
   measureInput: { borderRadius: 12, borderWidth: 1, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15, fontWeight: '600', marginBottom: 15 },
   saveBtn: { paddingVertical: 16, borderRadius: 14, alignItems: 'center' },
   saveBtnText: { fontWeight: '800', fontSize: 15 },
   measureRow: { flexDirection: 'row', gap: 15 },
   measureCol: { flex: 1 },
-  
   settingRowAction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 },
   settingIconText: { flexDirection: 'row', alignItems: 'center', gap: 16, flex: 1 },
   iconBox: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   settingText: { fontSize: 15, fontWeight: '700' },
-  
   themeBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 14 },
   themeBtnText: { fontSize: 11, fontWeight: '800', marginTop: 6, textTransform: 'uppercase' }
 });
