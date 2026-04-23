@@ -1204,9 +1204,12 @@ export default function TrainingModeScreen() {
   const renderSpotifyWidget = () => {
     if (!showSpotify || !spotifyUrl) return null;
     
+    // Extraemos la URL original (sin el "/embed") para que el botón abra la app nativa correctamente
+    const rawUrl = spotifyUrl.replace('/embed', '');
+
     if (Platform.OS === 'web') {
       return (
-        <View style={{ marginTop: 16, borderRadius: 12, overflow: 'hidden' }}>
+        <View style={{ marginTop: 16, borderRadius: 12, overflow: 'hidden', backgroundColor: colors.surfaceHighlight, paddingBottom: 12 }}>
           <iframe 
             src={spotifyUrl} 
             width="100%" 
@@ -1215,17 +1218,37 @@ export default function TrainingModeScreen() {
             allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" 
             loading="lazy"
           />
+          <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginTop: 12, gap: 8 }}
+            onPress={() => Linking.openURL(rawUrl)}
+          >
+            <Ionicons name="open-outline" size={18} color="#1DB954" />
+            <Text style={{ color: '#1DB954', fontWeight: '800', fontSize: 14 }}>
+              Abrir en la app de Spotify (Canciones completas)
+            </Text>
+          </TouchableOpacity>
         </View>
       );
     }
 
-    // Fallback por si lo abres alguna vez en la App nativa sin tener instalado WebView
+    // Fallback para cuando pases la app a móvil nativo (iOS/Android)
     return (
-      <View style={{ height: 152, width: '100%', marginTop: 16, backgroundColor: colors.surfaceHighlight, borderRadius: 12, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-         <Ionicons name="logo-spotify" size={32} color="#1DB954" style={{ marginBottom: 10 }} />
-         <Text style={{ color: colors.textSecondary, textAlign: 'center', fontSize: 12 }}>
-           El reproductor de Spotify web está activo. (En la app móvil de Android/iOS requeriría instalar el paquete react-native-webview).
-         </Text>
+      <View style={{ marginTop: 16, backgroundColor: colors.surfaceHighlight, borderRadius: 12, padding: 16 }}>
+         <TouchableOpacity 
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12 }}
+            onPress={() => Linking.openURL(rawUrl)}
+          >
+           <Ionicons name="logo-spotify" size={32} color="#1DB954" />
+           <View style={{ flex: 1 }}>
+             <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 15 }}>
+               Escuchar en Spotify
+             </Text>
+             <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+               Abre la app nativa para canciones completas
+             </Text>
+           </View>
+           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+         </TouchableOpacity>
       </View>
     );
   };
