@@ -9,7 +9,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode } from 'expo-av';
-import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
@@ -167,9 +166,7 @@ export default function TrainingModeScreen() {
   const [isWorking, setIsWorking] = useState(false);
   const workIntervalRef = useRef<any>(null);
 
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
-
-  const lastAnnouncedRef = useRef<string>('');
+  const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
   const justFinishedRestRef = useRef(false);
 
   const [showPlateCalculator, setShowPlateCalculator] = useState(false);
@@ -200,27 +197,65 @@ export default function TrainingModeScreen() {
     useCallback(() => {
       const loadPreferences = async () => {
         try {
-          const v = await AsyncStorage.getItem('voice_enabled');
-          setVoiceEnabled(v !== 'false'); 
+          const s = await AsyncStorage.getItem('timer_sounds_enabled');
+          setTimerSoundsEnabled(s !== 'false'); 
         } catch (e) { console.log("⚠️ Error cargando preferencias:", e); }
       };
       loadPreferences();
     }, [])
   );
 
-  const announce = async (text: string) => {
-    if (!voiceEnabled || finished || workout?.completed) return; 
-    try {
-      Speech.stop(); 
-      Speech.speak(text, { language: 'es-ES', rate: 1.0 });
-    } catch (e) { console.log("⚠️ Error Speech:", e); }
-  };
+  // --- SINTETIZADOR WEB AUDIO API ---
+  const playTimerSound = (type: 'short' | 'long' | 'double') => {
+    if (!timerSoundsEnabled || finished) return;
 
-  useEffect(() => {
-    return () => {
-      try { Speech.stop(); } catch(e) {} 
-    };
-  }, []);
+    if (Platform.OS !== 'web') {
+      // Fallback para móvil nativo si lo llegas a compilar en la AppStore/PlayStore
+      if (type === 'double') {
+         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(()=>{});
+      } else if (type === 'long') {
+         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
+      } else {
+         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(()=>{});
+      }
+      return;
+    }
+
+    try {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      
+      const playOsc = (freq: number, startTime: number, duration: number) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
+        
+        // Suave fade out para evitar chasquidos (click pops)
+        gain.gain.setValueAtTime(0.5, ctx.currentTime + startTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + startTime + duration);
+        
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.start(ctx.currentTime + startTime);
+        osc.stop(ctx.currentTime + startTime + duration);
+      };
+
+      if (type === 'short') {
+        playOsc(800, 0, 0.15);     // 3, 2, 1
+      } else if (type === 'long') {
+        playOsc(1200, 0, 0.4);     // TRABAJO (Agudo y largo)
+      } else if (type === 'double') {
+        playOsc(600, 0, 0.1);      // DESCANSO (Doble grave rápido)
+        playOsc(600, 0.2, 0.1);
+      }
+    } catch (e) {
+      console.log("Error Web Audio API:", e);
+    }
+  };
 
   const togglePause = () => {
     if (isPaused) {
@@ -241,19 +276,17 @@ export default function TrainingModeScreen() {
   const stopRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setTargetTime(null); setRestSeconds(0); setIsResting(false); setIsPaused(false); };
   const stopAllTimers = () => { stopPrepTimer(); stopWorkTimer(); stopRestTimer(); setIsPaused(false); };
 
-  const startPrepTimer = (workDur: number, exName?: string) => {
+  const startPrepTimer = (workDur: number) => {
     stopAllTimers(); setIsPrep(true); setPrepSeconds(5); setPrepTargetTime(Date.now() + 5000);
     setWorkTotalSeconds(workDur); setWorkSeconds(workDur);
-    if (exName) announce(`Siguiente: ${exName}. Prepárate.`);
-    else announce("Prepárate.");
   };
 
-  const handleStartWork = (dur: number, name?: string) => {
+  const handleStartWork = (dur: number) => {
     const isFirst = (!isHiit && currentExIndex === 0 && setsStatus[0]?.findIndex(s => s === 'pending') === 0 && tradSide === 1) ||
                     (isHiit && hiitBlockIdx === 0 && hiitExIdx === 0 && hiitRound === 1 && hiitExSet === 1 && hiitSide === 1);
 
     if (isFirst || !justFinishedRestRef.current) {
-      startPrepTimer(dur, name);
+      startPrepTimer(dur);
     } else {
       stopAllTimers();
       setIsWorking(true);
@@ -261,8 +294,7 @@ export default function TrainingModeScreen() {
       setWorkSeconds(dur);
       if (dur > 0) setWorkTargetTime(Date.now() + dur * 1000);
       else setWorkTargetTime(null);
-      if (name) announce(`Trabajo. ${name}`);
-      else announce("Trabajo");
+      playTimerSound('long'); // Comienza el trabajo
     }
     justFinishedRestRef.current = false;
   };
@@ -271,14 +303,13 @@ export default function TrainingModeScreen() {
     setIsWorking(true); setIsPaused(false);
     if (workTotalSeconds > 0) { setWorkTargetTime(Date.now() + workTotalSeconds * 1000); } 
     else { setWorkTargetTime(null); }
-    announce("Trabajo");
+    playTimerSound('long'); // Comienza el trabajo tras la prep
   };
 
-  const startRestTimer = (seconds: number, nextExName?: string) => {
+  const startRestTimer = (seconds: number) => {
     stopAllTimers(); setTargetTime(Date.now() + seconds * 1000);
     setRestSeconds(seconds); setRestTotalSeconds(seconds); setIsResting(true);
-    if (nextExName) announce(`Descanso. Siguiente: ${nextExName}`);
-    else announce("Descanso.");
+    playTimerSound('double'); // Comienza el descanso
   };
 
   const resetWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setIsPaused(false); setWorkTargetTime(Date.now() + workTotalSeconds * 1000); setWorkSeconds(workTotalSeconds); setIsWorking(true); };
@@ -286,50 +317,27 @@ export default function TrainingModeScreen() {
 
   const handleWorkComplete = () => { stopWorkTimer(); if (isHiit) advanceHiitLogic(); else completeSet(); };
 
-  // --- Cuentas Regresivas ---
+  // --- DISPARADORES DE PITIDOS "3, 2, 1" ---
   useEffect(() => { 
     if (isPrep && prepSeconds > 0 && prepSeconds <= 3 && !isPaused) {
-      announce(prepSeconds.toString());
+      playTimerSound('short');
       if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     } 
   }, [prepSeconds, isPrep, isPaused]);
 
   useEffect(() => { 
     if (isWorking && workSeconds > 0 && workSeconds <= 3 && !isPaused) {
-      announce(workSeconds.toString());
+      playTimerSound('short');
       if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     } 
   }, [workSeconds, isWorking, isPaused]);
 
   useEffect(() => { 
     if (isRestingStatus && restSeconds > 0 && restSeconds <= 3 && !isPaused) {
-      announce(restSeconds.toString());
+      playTimerSound('short');
       if (Platform.OS !== 'web') Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
     } 
   }, [restSeconds, isRestingStatus, isPaused]);
-
-  useEffect(() => {
-    if (showIndicationsModal || !workout || isRestingStatus || finished || workout.completed || isPrep) return;
-    let text = ""; let id = "";
-    if (isHiit) {
-      const b = workout.exercises[hiitBlockIdx]; const ex = b?.hiit_exercises?.[hiitExIdx];
-      if (ex) { 
-        id = `hiit-${hiitBlockIdx}-${hiitRound}-${hiitExIdx}-${hiitExSet}-${hiitSide}`; 
-        text = ex.name + (parseInt(ex.sets) > 1 ? ` serie ${hiitExSet}` : '') + (ex.is_unilateral ? (hiitSide === 1 ? ' Lado uno' : ' Lado dos') : ''); 
-      }
-    } else {
-      const ex = workout.exercises[currentExIndex];
-      if (ex) { 
-        const s = setsStatus[currentExIndex] || []; 
-        const next = s.findIndex(i => i === 'pending'); 
-        if (next !== -1) { 
-          id = `trad-${currentExIndex}-${next}-${tradSide}`; 
-          text = ex.name + (ex.is_unilateral ? (tradSide === 1 ? ' Lado uno' : ' Lado dos') : ''); 
-        } 
-      }
-    }
-    if (text && lastAnnouncedRef.current !== id) { announce(text); lastAnnouncedRef.current = id; }
-  }, [currentExIndex, hiitBlockIdx, hiitExIdx, hiitRound, hiitExSet, hiitSide, tradSide, isRestingStatus, isPrep, showIndicationsModal, setsStatus, workout, isHiit, finished]);
 
   useEffect(() => {
     let isMounted = true;
@@ -418,7 +426,6 @@ export default function TrainingModeScreen() {
       prepIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((prepTargetTime - Date.now()) / 1000);
         if (remaining <= 0) { 
-          if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
           stopPrepTimer(); startWorkTimerAfterPrep(); 
         } 
         else { setPrepSeconds(remaining); }
@@ -432,7 +439,6 @@ export default function TrainingModeScreen() {
       restIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((restTargetTime - Date.now()) / 1000);
         if (remaining <= 0) { 
-          if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
           justFinishedRestRef.current = true;
           stopRestTimer(); 
         } 
@@ -447,8 +453,6 @@ export default function TrainingModeScreen() {
       workIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((workTargetTime - Date.now()) / 1000);
         if (remaining <= 0) { 
-          announce("Descanso");
-          if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
           handleWorkComplete(); 
         } 
         else { setWorkSeconds(remaining); }
@@ -467,7 +471,7 @@ export default function TrainingModeScreen() {
         if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
         
         if (!isWorking && workTargetTime === null && workSeconds === 0) { 
-          handleStartWork(dur, ex.name + (ex.is_unilateral ? (tradSide === 1 ? ' (Lado 1)' : ' (Lado 2)') : '')); 
+          handleStartWork(dur); 
         }
       } else { stopWorkTimer(); }
     }
@@ -484,7 +488,7 @@ export default function TrainingModeScreen() {
       if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
 
       if (!isWorking && workTargetTime === null && workSeconds === 0) { 
-         handleStartWork(dur, ex.name + (ex.is_unilateral ? (hiitSide === 1 ? ' (Lado 1)' : ' (Lado 2)') : '')); 
+         handleStartWork(dur); 
       }
     }
   }, [hiitBlockIdx, hiitExIdx, hiitExSet, hiitSide, hiitPhase, isRestingStatus, workout, isHiit, isPrep, isWorking, workTargetTime, workSeconds, showIndicationsModal, finished, isFatigueMode]);
@@ -512,7 +516,7 @@ export default function TrainingModeScreen() {
       let dur = parseTimeToSeconds(ex?.duration);
       if (dur === 0) dur = parseTimeToSeconds(normalizeHiitReps(ex?.duration_reps));
       if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
-      startPrepTimer(dur, `${ex.name} (Lado 2)`);
+      startPrepTimer(dur);
       return;
     }
 
@@ -524,23 +528,23 @@ export default function TrainingModeScreen() {
 
     if (!skipEx && hiitExSet < totalExSets) {
       const rest = parseTimeToSeconds(b.rest_exercise);
-      if (rest > 0) { startRestTimer(rest, `${ex.name} (Serie ${hiitExSet + 1})`); setHiitPhase('rest_set'); }
+      if (rest > 0) { startRestTimer(rest); setHiitPhase('rest_set'); }
       else { setHiitExSet(hiitExSet + 1); setHiitPhase('work'); }
     } else if (hiitExIdx < totalEx - 1) {
       const rest = parseTimeToSeconds(b.rest_exercise);
-      if (rest > 0) { startRestTimer(rest, b.hiit_exercises[hiitExIdx + 1].name); setHiitPhase('rest_ex'); } 
+      if (rest > 0) { startRestTimer(rest); setHiitPhase('rest_ex'); } 
       else { setHiitExIdx(hiitExIdx + 1); setHiitExSet(1); setHiitPhase('work'); }
     } else {
       if (hiitRound < totalRounds) {
         const rest = parseTimeToSeconds(b.rest_block);
-        if (rest > 0) { startRestTimer(rest, b.hiit_exercises[0].name); setHiitPhase('rest_block'); } 
+        if (rest > 0) { startRestTimer(rest); setHiitPhase('rest_block'); } 
         else { setHiitRound(hiitRound + 1); setHiitExIdx(0); setHiitExSet(1); setHiitPhase('work'); }
       } else {
         if (hiitBlockIdx < workout.exercises.length - 1) {
           const rest = parseTimeToSeconds(b.rest_between_blocks);
-          if (rest > 0) { startRestTimer(rest, workout.exercises[hiitBlockIdx + 1].hiit_exercises[0].name); setHiitPhase('rest_next_block'); } 
+          if (rest > 0) { startRestTimer(rest); setHiitPhase('rest_next_block'); } 
           else { setHiitBlockIdx(hiitBlockIdx + 1); setHiitRound(1); setHiitExIdx(0); setHiitExSet(1); setHiitPhase('work'); }
-        } else { Speech.stop(); setFinished(true); }
+        } else { setFinished(true); }
       }
     }
   };
@@ -556,19 +560,18 @@ export default function TrainingModeScreen() {
   const skipTradRest = () => { stopAllTimers(); justFinishedRestRef.current = true; };
 
   const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => { setSetsStatus(prev => { const updated = { ...prev }; updated[exIdx] = [...(prev[exIdx] || [])]; updated[exIdx][setIdx] = status; return updated; }); };
-  const autoAdvance = (exIdx: number) => { stopAllTimers(); setTradSide(1); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else { Speech.stop(); setTimeout(() => setFinished(true), 400); } };
+  const autoAdvance = (exIdx: number) => { stopAllTimers(); setTradSide(1); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else { setTimeout(() => setFinished(true), 400); } };
 
   const completeSet = () => {
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const exercises = workout.exercises || []; const currentEx = exercises[currentExIndex]; const s = setsStatus[currentExIndex] || [];
     const next = s.findIndex(i => i === 'pending'); if (next === -1) return;
 
-    // Tradicional Unilateral Logic:
     if (currentEx?.is_unilateral && tradSide === 1) {
       setTradSide(2);
       let dur = parseTimeToSeconds(currentEx?.duration);
       if (isFatigueMode && dur > 0) dur = Math.max(1, Math.floor(dur * 0.8));
-      startPrepTimer(dur, `${currentEx.name} (Lado 2)`);
+      startPrepTimer(dur);
       return;
     }
 
@@ -577,11 +580,11 @@ export default function TrainingModeScreen() {
     const rem = s.filter((item, i) => i !== next && item === 'pending').length;
     if (rem === 0) {
       const rest = parseTimeToSeconds(currentEx?.rest_exercise);
-      if (rest > 0 && currentExIndex < exercises.length - 1) { startRestTimer(rest, exercises[currentExIndex + 1].name); setRestType('exercise'); } 
+      if (rest > 0 && currentExIndex < exercises.length - 1) { startRestTimer(rest); setRestType('exercise'); } 
       else { autoAdvance(currentExIndex); }
     } else {
       const rest = parseTimeToSeconds(currentEx?.rest);
-      if (rest > 0) { startRestTimer(rest, currentEx.name); setRestType('set'); }
+      if (rest > 0) { startRestTimer(rest); setRestType('set'); }
     }
   };
 
@@ -1480,7 +1483,7 @@ export default function TrainingModeScreen() {
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); setTradSide(1); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else { Speech.stop(); setFinished(true); } }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
+          <View style={[styles.bottomNav, { backgroundColor: colors.surface, borderTopColor: colors.border }]}><TouchableOpacity onPress={() => { if(currentExIndex>0) { stopAllTimers(); setCurrentExIndex(currentExIndex-1); } }}><Text style={{ color: colors.textPrimary, fontWeight: '600' }}>Anterior</Text></TouchableOpacity><TouchableOpacity onPress={() => { stopAllTimers(); setTradSide(1); if(currentExIndex < workout.exercises.length-1) setCurrentExIndex(currentExIndex+1); else { setFinished(true); } }}><Text style={{ color: colors.primary, fontWeight: '700' }}>{currentExIndex < workout.exercises.length - 1 ? 'Siguiente' : 'Terminar'}</Text></TouchableOpacity></View>
         </KeyboardAvoidingView>
         {renderVideoModal()}{renderIndicationsModal()}{renderPlateCalculatorModal()}
       </SafeAreaView>
