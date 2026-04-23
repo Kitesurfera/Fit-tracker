@@ -29,19 +29,19 @@ export default function SettingsScreen() {
     weight: '', shoulders: '', chest: '', arm: '', thigh: ''
   });
   const [savingMeasures, setSavingMeasures] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
 
   // Cargar preferencias al entrar
   useEffect(() => {
-    AsyncStorage.getItem('voice_enabled').then(val => {
-      if (val === 'false') setVoiceEnabled(false);
+    AsyncStorage.getItem('timer_sounds_enabled').then(val => {
+      if (val === 'false') setTimerSoundsEnabled(false);
     });
   }, []);
 
   // --- FUNCIONES ---
-  const toggleVoice = async (value: boolean) => {
-    setVoiceEnabled(value);
-    await AsyncStorage.setItem('voice_enabled', value ? 'true' : 'false');
+  const toggleTimerSounds = async (value: boolean) => {
+    setTimerSoundsEnabled(value);
+    await AsyncStorage.setItem('timer_sounds_enabled', value ? 'true' : 'false');
   };
 
   const togglePush = async (value: boolean) => {
@@ -210,15 +210,21 @@ export default function SettingsScreen() {
               <Switch value={pushEnabled} onValueChange={togglePush} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
             </View>
 
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-
-            <View style={styles.settingRowAction}>
-              <View style={styles.settingIconText}>
-                <View style={[styles.iconBox, { backgroundColor: '#10B98115' }]}><Ionicons name="volume-high" size={20} color="#10B981" /></View>
-                <View style={{ flex: 1 }}><Text style={[styles.settingText, { color: colors.textPrimary }]}>Asistente de Voz</Text></View>
-              </View>
-              <Switch value={voiceEnabled} onValueChange={toggleVoice} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
-            </View>
+            {isAthlete && (
+              <>
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                <View style={styles.settingRowAction}>
+                  <View style={styles.settingIconText}>
+                    <View style={[styles.iconBox, { backgroundColor: '#10B98115' }]}><Ionicons name="volume-high" size={20} color="#10B981" /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.settingText, { color: colors.textPrimary }]}>Pitidos de Entreno</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Avisos de 3, 2, 1, Trabajo y Descanso</Text>
+                    </View>
+                  </View>
+                  <Switch value={timerSoundsEnabled} onValueChange={toggleTimerSounds} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
+                </View>
+              </>
+            )}
           </View>
 
           {isAthlete ? (
