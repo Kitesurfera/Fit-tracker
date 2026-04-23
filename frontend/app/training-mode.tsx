@@ -53,6 +53,23 @@ const PLATE_COLORS: Record<number, string> = {
   5: '#FFFFFF', 2.5: '#000000', 1.25: '#6B7280'
 };
 
+// --- SINGLETON AUDIO CONTEXT (Evita el crash de memoria y los bloqueos de Autoplay) ---
+let sharedAudioCtx: AudioContext | null = null;
+const getWebAudioCtx = () => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
+  const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+  if (!AudioContextClass) return null;
+  
+  if (!sharedAudioCtx) {
+    sharedAudioCtx = new AudioContextClass();
+  }
+  // Si el navegador lo ha suspendido (Autoplay Policy), lo despertamos
+  if (sharedAudioCtx.state === 'suspended') {
+    sharedAudioCtx.resume();
+  }
+  return sharedAudioCtx;
+};
+
 const parseTimeToSeconds = (timeStr: string | number | undefined | null): number => {
   if (!timeStr) return 0;
   const str = String(timeStr).toLowerCase().trim();
@@ -202,10 +219,24 @@ export default function TrainingModeScreen() {
         } catch (e) { console.log("⚠️ Error cargando preferencias:", e); }
       };
       loadPreferences();
+      
+      // Despertar el contexto de audio nativo al montar la pantalla si estamos en web
+      if (Platform.OS === 'web') {
+        const unlockAudioOnInteraction = () => {
+          getWebAudioCtx();
+          document.removeEventListener('touchstart', unlockAudioOnInteraction);
+          document.removeEventListener('click', unlockAudioOnInteraction);
+        };
+        document.addEventListener('touchstart', unlockAudioOnInteraction);
+        document.addEventListener('click', unlockAudioOnInteraction);
+        return () => {
+          document.removeEventListener('touchstart', unlockAudioOnInteraction);
+          document.removeEventListener('click', unlockAudioOnInteraction);
+        };
+      }
     }, [])
   );
 
-  // --- SINTETIZADOR WEB AUDIO API EXTREMO (CORTA LA MÚSICA) ---
   const playTimerSound = (type: 'short' | 'long' | 'double') => {
     if (!timerSoundsEnabled || finished) return;
 
@@ -221,32 +252,27 @@ export default function TrainingModeScreen() {
     }
 
     try {
-      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioContext) return;
-      const ctx = new AudioContext();
+      const ctx = getWebAudioCtx();
+      if (!ctx) return;
 
-      // Función para crear sonidos "penetrantes" usando múltiples osciladores a la vez
       const playPiercingBeep = (baseFreq: number, typeStr: OscillatorType, startTime: number, duration: number, isSweep: boolean = false) => {
         const osc1 = ctx.createOscillator();
-        const osc2 = ctx.createOscillator(); // Segundo oscilador para crear "batido" o vibración
+        const osc2 = ctx.createOscillator();
         const gainNode = ctx.createGain();
 
         osc1.type = typeStr;
         osc2.type = typeStr;
 
         if (isSweep) {
-          // Efecto silbato/alarma: Hace un barrido rápido hacia arriba (imposible de ignorar)
           osc1.frequency.setValueAtTime(baseFreq - 300, ctx.currentTime + startTime);
           osc1.frequency.linearRampToValueAtTime(baseFreq + 300, ctx.currentTime + startTime + duration);
           osc2.frequency.setValueAtTime(baseFreq - 280, ctx.currentTime + startTime);
           osc2.frequency.linearRampToValueAtTime(baseFreq + 320, ctx.currentTime + startTime + duration);
         } else {
-          // Desafinación intencionada para que el sonido no se camufle con la melodía de Spotify
           osc1.frequency.setValueAtTime(baseFreq, ctx.currentTime + startTime);
           osc2.frequency.setValueAtTime(baseFreq + 15, ctx.currentTime + startTime); 
         }
 
-        // Volumen máximo instantáneo y corte abrupto
         gainNode.gain.setValueAtTime(0, ctx.currentTime + startTime);
         gainNode.gain.linearRampToValueAtTime(1.0, ctx.currentTime + startTime + 0.01);
         gainNode.gain.setValueAtTime(1.0, ctx.currentTime + startTime + duration - 0.02);
@@ -263,15 +289,12 @@ export default function TrainingModeScreen() {
       };
 
       if (type === 'short') {
-        // 3, 2, 1: Agudo, cuadrado y disonante
-        playPiercingBeep(1000, 'square', 0, 0.15);
+        playPiercingBeep(1000, 'square', 0, 0.15); // 3, 2, 1
       } else if (type === 'long') {
-        // TRABAJO: Efecto silbato agudo (Sweep) con ondas de sierra (muy agresivo)
-        playPiercingBeep(1400, 'sawtooth', 0, 0.5, true);
+        playPiercingBeep(1400, 'sawtooth', 0, 0.5, true); // TRABAJO
       } else if (type === 'double') {
-        // DESCANSO: Dos pitidos graves y roncos (Buzzer de estadio)
-        playPiercingBeep(300, 'sawtooth', 0, 0.15);
-        playPiercingBeep(300, 'sawtooth', 0.25, 0.15);
+        playPiercingBeep(300, 'sawtooth', 0, 0.15); // DESCANSO 1
+        playPiercingBeep(300, 'sawtooth', 0.25, 0.15); // DESCANSO 2
       }
     } catch (e) {
       console.log("Error Web Audio API:", e);
@@ -279,6 +302,9 @@ export default function TrainingModeScreen() {
   };
 
   const togglePause = () => {
+    // Intentar despertar audio en cualquier interacción
+    if (Platform.OS === 'web') getWebAudioCtx();
+    
     if (isPaused) {
       setIsPaused(false);
       if (isPrep && prepSeconds > 0) setPrepTargetTime(Date.now() + prepSeconds * 1000);
@@ -315,7 +341,7 @@ export default function TrainingModeScreen() {
       setWorkSeconds(dur);
       if (dur > 0) setWorkTargetTime(Date.now() + dur * 1000);
       else setWorkTargetTime(null);
-      playTimerSound('long'); // Comienza el trabajo
+      playTimerSound('long'); 
     }
     justFinishedRestRef.current = false;
   };
@@ -324,21 +350,25 @@ export default function TrainingModeScreen() {
     setIsWorking(true); setIsPaused(false);
     if (workTotalSeconds > 0) { setWorkTargetTime(Date.now() + workTotalSeconds * 1000); } 
     else { setWorkTargetTime(null); }
-    playTimerSound('long'); // Comienza el trabajo tras la prep
+    playTimerSound('long'); 
   };
 
   const startRestTimer = (seconds: number) => {
     stopAllTimers(); setTargetTime(Date.now() + seconds * 1000);
     setRestSeconds(seconds); setRestTotalSeconds(seconds); setIsResting(true);
-    playTimerSound('double'); // Comienza el descanso
+    playTimerSound('double'); 
   };
 
   const resetWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setIsPaused(false); setWorkTargetTime(Date.now() + workTotalSeconds * 1000); setWorkSeconds(workTotalSeconds); setIsWorking(true); };
   const resetRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setIsPaused(false); setTargetTime(Date.now() + restTotalSeconds * 1000); setRestSeconds(restTotalSeconds); setIsResting(true); };
 
-  const handleWorkComplete = () => { stopWorkTimer(); if (isHiit) advanceHiitLogic(); else completeSet(); };
+  const handleWorkComplete = () => { 
+    if (Platform.OS === 'web') getWebAudioCtx(); 
+    stopWorkTimer(); 
+    if (isHiit) advanceHiitLogic(); 
+    else completeSet(); 
+  };
 
-  // --- DISPARADORES DE PITIDOS "3, 2, 1" ---
   useEffect(() => { 
     if (isPrep && prepSeconds > 0 && prepSeconds <= 3 && !isPaused) {
       playTimerSound('short');
@@ -531,7 +561,6 @@ export default function TrainingModeScreen() {
     const b = workout.exercises[hiitBlockIdx]; 
     const ex = b.hiit_exercises[hiitExIdx];
     
-    // Unilateral check (Lado 1 a Lado 2)
     if (!skipEx && ex.is_unilateral && hiitSide === 1) {
       setHiitSide(2);
       let dur = parseTimeToSeconds(ex?.duration);
@@ -541,7 +570,7 @@ export default function TrainingModeScreen() {
       return;
     }
 
-    setHiitSide(1); // Reset para el siguiente 
+    setHiitSide(1);
 
     const totalEx = b.hiit_exercises.length; 
     const totalRounds = parseInt(b.sets) || 1;
@@ -572,18 +601,20 @@ export default function TrainingModeScreen() {
 
   const advanceHiit = () => advanceHiitLogic(false);
   const skipHiitEx = () => { 
+    if (Platform.OS === 'web') getWebAudioCtx();
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); 
     setHiitSkipped(prev => ({ ...prev, [`${hiitBlockIdx}-${hiitExIdx}`]: (prev[`${hiitBlockIdx}-${hiitExIdx}`] || 0) + 1 })); 
     advanceHiitLogic(true); 
   };
   
-  const skipHiitRest = () => { stopAllTimers(); justFinishedRestRef.current = true; };
-  const skipTradRest = () => { stopAllTimers(); justFinishedRestRef.current = true; };
+  const skipHiitRest = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); justFinishedRestRef.current = true; };
+  const skipTradRest = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); justFinishedRestRef.current = true; };
 
   const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => { setSetsStatus(prev => { const updated = { ...prev }; updated[exIdx] = [...(prev[exIdx] || [])]; updated[exIdx][setIdx] = status; return updated; }); };
   const autoAdvance = (exIdx: number) => { stopAllTimers(); setTradSide(1); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else { setTimeout(() => setFinished(true), 400); } };
 
   const completeSet = () => {
+    if (Platform.OS === 'web') getWebAudioCtx();
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const exercises = workout.exercises || []; const currentEx = exercises[currentExIndex]; const s = setsStatus[currentExIndex] || [];
     const next = s.findIndex(i => i === 'pending'); if (next === -1) return;
@@ -596,7 +627,7 @@ export default function TrainingModeScreen() {
       return;
     }
 
-    setTradSide(1); // Reset
+    setTradSide(1);
     updateSetStatus(currentExIndex, next, 'completed');
     const rem = s.filter((item, i) => i !== next && item === 'pending').length;
     if (rem === 0) {
@@ -609,8 +640,8 @@ export default function TrainingModeScreen() {
     }
   };
 
-  const skipSet = () => { stopAllTimers(); setTradSide(1); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
-  const skipEntireExercise = () => { stopAllTimers(); setTradSide(1); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
+  const skipSet = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); setTradSide(1); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
+  const skipEntireExercise = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); setTradSide(1); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
   const handleRecordVideoOptions = (key: string) => { 
     if (Platform.OS === 'web') { 
