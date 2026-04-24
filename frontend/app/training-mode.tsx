@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   ActivityIndicator, Linking, TextInput, Alert, Platform, Modal, Dimensions,
-  UIManager, LayoutAnimation, KeyboardAvoidingView
+  UIManager, LayoutAnimation, KeyboardAvoidingView, AppState
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -63,7 +63,6 @@ const getWebAudioCtx = () => {
   if (!sharedAudioCtx) {
     sharedAudioCtx = new AudioContextClass();
   }
-  // Si el navegador lo ha suspendido (Autoplay Policy), lo despertamos
   if (sharedAudioCtx.state === 'suspended') {
     sharedAudioCtx.resume();
   }
@@ -186,6 +185,10 @@ export default function TrainingModeScreen() {
   const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
   const justFinishedRestRef = useRef(false);
 
+  // --- APPSTATE SYNC: Referencias para controlar el segundo plano ---
+  const appState = useRef(AppState.currentState);
+  const backgroundTimeRef = useRef<number | null>(null);
+
   const [showPlateCalculator, setShowPlateCalculator] = useState(false);
   const [platesOnBar, setPlatesOnBar] = useState<number[]>([]);
   const [barWeight, setBarWeight] = useState(20);
@@ -220,7 +223,6 @@ export default function TrainingModeScreen() {
       };
       loadPreferences();
       
-      // Despertar el contexto de audio nativo al montar la pantalla si estamos en web
       if (Platform.OS === 'web') {
         const unlockAudioOnInteraction = () => {
           getWebAudioCtx();
@@ -237,6 +239,39 @@ export default function TrainingModeScreen() {
     }, [])
   );
 
+  // --- APPSTATE SYNC: Efecto para recalcular tiempos ---
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', nextAppState => {
+      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+        // La app vuelve al primer plano
+        if (backgroundTimeRef.current && !isPaused && !finished) {
+          const timeAway = Math.floor((Date.now() - backgroundTimeRef.current) / 1000);
+          
+          // Actualizamos el tiempo global
+          setGlobalSeconds(prev => prev + timeAway);
+
+          // Ajustamos los cronómetros activos para que descuenten el tiempo fuera
+          if (isPrep && prepSeconds > 0) {
+            setPrepSeconds(prev => Math.max(1, prev - timeAway));
+          } else if (isWorking && workSeconds > 0) {
+            setWorkSeconds(prev => Math.max(1, prev - timeAway));
+          } else if (isRestingStatus && restSeconds > 0) {
+            setRestSeconds(prev => Math.max(1, prev - timeAway));
+          }
+        }
+      } else if (nextAppState === 'background') {
+        // La app se va al fondo o se bloquea la pantalla
+        backgroundTimeRef.current = Date.now();
+      }
+      appState.current = nextAppState;
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isPaused, finished, isPrep, prepSeconds, isWorking, workSeconds, isRestingStatus, restSeconds]);
+
+  // --- SINTETIZADOR DE PITIDOS CLÁSICOS ---
   const playTimerSound = (type: 'short' | 'long' | 'double') => {
     if (!timerSoundsEnabled || finished) return;
 
@@ -255,27 +290,22 @@ export default function TrainingModeScreen() {
       const ctx = getWebAudioCtx();
       if (!ctx) return;
 
-      const playPiercingBeep = (baseFreq: number, typeStr: OscillatorType, startTime: number, duration: number, isSweep: boolean = false) => {
+      const playClassicBeep = (freq: number, startTime: number, duration: number) => {
         const osc1 = ctx.createOscillator();
-        const osc2 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator(); 
         const gainNode = ctx.createGain();
 
-        osc1.type = typeStr;
-        osc2.type = typeStr;
+        // Mezcla limpia: Triángulo para el cuerpo del sonido, Senoidal para darle brillo
+        osc1.type = 'triangle';
+        osc2.type = 'sine';
 
-        if (isSweep) {
-          osc1.frequency.setValueAtTime(baseFreq - 300, ctx.currentTime + startTime);
-          osc1.frequency.linearRampToValueAtTime(baseFreq + 300, ctx.currentTime + startTime + duration);
-          osc2.frequency.setValueAtTime(baseFreq - 280, ctx.currentTime + startTime);
-          osc2.frequency.linearRampToValueAtTime(baseFreq + 320, ctx.currentTime + startTime + duration);
-        } else {
-          osc1.frequency.setValueAtTime(baseFreq, ctx.currentTime + startTime);
-          osc2.frequency.setValueAtTime(baseFreq + 15, ctx.currentTime + startTime); 
-        }
+        osc1.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
+        osc2.frequency.setValueAtTime(freq * 2, ctx.currentTime + startTime);
 
+        // Volumen moderado (75%) y ataque/salida limpios
         gainNode.gain.setValueAtTime(0, ctx.currentTime + startTime);
-        gainNode.gain.linearRampToValueAtTime(1.0, ctx.currentTime + startTime + 0.01);
-        gainNode.gain.setValueAtTime(1.0, ctx.currentTime + startTime + duration - 0.02);
+        gainNode.gain.linearRampToValueAtTime(0.75, ctx.currentTime + startTime + 0.01);
+        gainNode.gain.setValueAtTime(0.75, ctx.currentTime + startTime + duration - 0.02);
         gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
 
         osc1.connect(gainNode);
@@ -289,12 +319,12 @@ export default function TrainingModeScreen() {
       };
 
       if (type === 'short') {
-        playPiercingBeep(1000, 'square', 0, 0.15); // 3, 2, 1
+        playClassicBeep(800, 0, 0.15); // 3, 2, 1
       } else if (type === 'long') {
-        playPiercingBeep(1400, 'sawtooth', 0, 0.5, true); // TRABAJO
+        playClassicBeep(1200, 0, 0.5); // TRABAJO
       } else if (type === 'double') {
-        playPiercingBeep(300, 'sawtooth', 0, 0.15); // DESCANSO 1
-        playPiercingBeep(300, 'sawtooth', 0.25, 0.15); // DESCANSO 2
+        playClassicBeep(400, 0, 0.15); // DESCANSO 1
+        playClassicBeep(400, 0.25, 0.15); // DESCANSO 2
       }
     } catch (e) {
       console.log("Error Web Audio API:", e);
@@ -302,7 +332,6 @@ export default function TrainingModeScreen() {
   };
 
   const togglePause = () => {
-    // Intentar despertar audio en cualquier interacción
     if (Platform.OS === 'web') getWebAudioCtx();
     
     if (isPaused) {
