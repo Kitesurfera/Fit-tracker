@@ -53,18 +53,21 @@ const PLATE_COLORS: Record<number, string> = {
   5: '#FFFFFF', 2.5: '#000000', 1.25: '#6B7280'
 };
 
-// --- SINGLETON AUDIO CONTEXT (Evita el crash de memoria y los bloqueos de Autoplay) ---
+// --- SINGLETON AUDIO CONTEXT REFORZADO ---
 let sharedAudioCtx: AudioContext | null = null;
 const getWebAudioCtx = () => {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
   if (!AudioContextClass) return null;
   
-  if (!sharedAudioCtx) {
+  // Si no existe o el SO lo ha matado (closed), creamos uno nuevo
+  if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
     sharedAudioCtx = new AudioContextClass();
   }
+  
+  // Si el SO lo ha puesto a dormir (suspended), intentamos despertarlo
   if (sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume();
+    sharedAudioCtx.resume().catch(() => {});
   }
   return sharedAudioCtx;
 };
@@ -185,7 +188,7 @@ export default function TrainingModeScreen() {
   const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
   const justFinishedRestRef = useRef(false);
 
-  // --- APPSTATE SYNC: Referencias para controlar el segundo plano ---
+  // --- APPSTATE SYNC ---
   const appState = useRef(AppState.currentState);
   const backgroundTimeRef = useRef<number | null>(null);
 
@@ -239,18 +242,30 @@ export default function TrainingModeScreen() {
     }, [])
   );
 
-  // --- APPSTATE SYNC: Efecto para recalcular tiempos ---
+  // --- APPSTATE SYNC: RECALCULO DE TIEMPOS Y REACTIVACIÓN DE AUDIO ---
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-        // La app vuelve al primer plano
+        
+        // AL VOLVER DE SEGUNDO PLANO: Forzamos la escucha táctil para reactivar el sonido
+        if (Platform.OS === 'web') {
+          getWebAudioCtx(); // Intentamos despertar inmediatamente
+          
+          const unlockOnNextTap = () => {
+            getWebAudioCtx();
+            document.removeEventListener('touchstart', unlockOnNextTap);
+            document.removeEventListener('click', unlockOnNextTap);
+          };
+          document.addEventListener('touchstart', unlockOnNextTap);
+          document.addEventListener('click', unlockOnNextTap);
+        }
+
+        // RECALCULAR TIEMPOS
         if (backgroundTimeRef.current && !isPaused && !finished) {
           const timeAway = Math.floor((Date.now() - backgroundTimeRef.current) / 1000);
           
-          // Actualizamos el tiempo global
           setGlobalSeconds(prev => prev + timeAway);
 
-          // Ajustamos los cronómetros activos para que descuenten el tiempo fuera
           if (isPrep && prepSeconds > 0) {
             setPrepSeconds(prev => Math.max(1, prev - timeAway));
           } else if (isWorking && workSeconds > 0) {
@@ -260,7 +275,6 @@ export default function TrainingModeScreen() {
           }
         }
       } else if (nextAppState === 'background') {
-        // La app se va al fondo o se bloquea la pantalla
         backgroundTimeRef.current = Date.now();
       }
       appState.current = nextAppState;
@@ -295,14 +309,12 @@ export default function TrainingModeScreen() {
         const osc2 = ctx.createOscillator(); 
         const gainNode = ctx.createGain();
 
-        // Mezcla limpia: Triángulo para el cuerpo del sonido, Senoidal para darle brillo
         osc1.type = 'triangle';
         osc2.type = 'sine';
 
         osc1.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
         osc2.frequency.setValueAtTime(freq * 2, ctx.currentTime + startTime);
 
-        // Volumen moderado (75%) y ataque/salida limpios
         gainNode.gain.setValueAtTime(0, ctx.currentTime + startTime);
         gainNode.gain.linearRampToValueAtTime(0.75, ctx.currentTime + startTime + 0.01);
         gainNode.gain.setValueAtTime(0.75, ctx.currentTime + startTime + duration - 0.02);
