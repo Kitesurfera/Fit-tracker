@@ -185,10 +185,11 @@ export default function CalendarScreen() {
     refreshAthleteData(athlete);
   };
 
-  const handleSaveTechnicalSession = async (dates: string[]) => {
+const handleSaveTechnicalSession = async (dates: string[]) => {
     setUpdating(true);
     try {
-      if (api.updateAthlete) {
+      // 👇 AÑADE "isTrainer &&" EN ESTA LÍNEA 👇
+      if (isTrainer && api.updateAthlete) {
         await api.updateAthlete(selectedAthlete.id, { technical_sessions: dates });
       } else if (api.updateProfile) {
         await api.updateProfile({ technical_sessions: dates });
