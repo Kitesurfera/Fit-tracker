@@ -15,12 +15,12 @@ const DAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
 
 const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
-  'kite': { icon: 'kitesurfing', lib: 'MaterialCommunity' },
+  'kite': { icon: 'kitesurfing', lib: 'MaterialCommunityIcons' },
   'football': { icon: 'football', lib: 'Ionicons' },
-  'volleyball': { icon: 'volleyball', lib: 'MaterialCommunity' },
+  'volleyball': { icon: 'volleyball', lib: 'MaterialCommunityIcons' },
   'tennis': { icon: 'tennisball', lib: 'Ionicons' },
   'gym': { icon: 'barbell', lib: 'Ionicons' },
-  'surf': { icon: 'surfing', lib: 'MaterialCommunity' },
+  'surf': { icon: 'surfing', lib: 'MaterialCommunityIcons' },
   'bike': { icon: 'bicycle', lib: 'Ionicons' },
 };
 
@@ -95,17 +95,53 @@ export default function CalendarScreen() {
   const isTrainer = user?.role === 'trainer';
   const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
 
-  useEffect(() => { 
-    if (!authLoading && user) init(); 
-  }, [authLoading, user?.id]);
+  // Variable robusta para saber si el atleta tiene el deporte extra activado
+  const isExtraSportEnabled = selectedAthlete?.has_extra_sport === true || selectedAthlete?.has_extra_sport === 1 || selectedAthlete?.has_extra_sport === 'true';
 
+  // OBTENER DATOS FRESCOS CADA VEZ QUE SE ENTRA A LA PANTALLA
   useFocusEffect(
     useCallback(() => {
-      if (selectedAthlete) {
-        if (workouts.length === 0) setUpdating(true); 
-        refreshAthleteData(selectedAthlete);
-      }
-    }, [selectedAthlete])
+      let isActive = true;
+
+      const loadFreshData = async () => {
+        if (authLoading || !user) return;
+        
+        try {
+          let currentAthlete = selectedAthlete;
+
+          if (isTrainer) {
+            const data = await api.getAthletes();
+            const freshAthletes = Array.isArray(data) ? data : [];
+            if (isActive) setAthletes(freshAthletes);
+            
+            if (!currentAthlete && freshAthletes.length > 0) {
+              currentAthlete = freshAthletes[0];
+            } else if (currentAthlete) {
+              const updated = freshAthletes.find((a: any) => a.id === currentAthlete.id);
+              if (updated) currentAthlete = updated;
+            }
+            if (isActive) setSelectedAthlete(currentAthlete);
+          } else {
+            currentAthlete = user;
+            if (isActive) setSelectedAthlete(currentAthlete);
+          }
+
+          if (currentAthlete && isActive) {
+             await refreshAthleteData(currentAthlete);
+          }
+        } catch (e) { 
+          console.log("Error inicializando:", e); 
+        } finally { 
+          if (isActive) setLoading(false); 
+        }
+      };
+
+      loadFreshData();
+
+      return () => {
+        isActive = false;
+      };
+    }, [authLoading, user?.id, isTrainer, selectedAthlete?.id])
   );
 
   useEffect(() => {
@@ -115,22 +151,6 @@ export default function CalendarScreen() {
       setSportSessions([]);
     }
   }, [selectedAthlete]);
-
-  const init = async () => {
-    try {
-      if (isTrainer) {
-        const data = await api.getAthletes();
-        setAthletes(Array.isArray(data) ? data : []);
-        if (data && data.length > 0 && !selectedAthlete) handleSelectAthlete(data[0]);
-      } else {
-        handleSelectAthlete(user);
-      }
-    } catch (e) { 
-      console.log("Error inicializando:", e); 
-    } finally { 
-      setLoading(false); 
-    }
-  };
 
   const refreshAthleteData = async (athlete: any) => {
     try {
@@ -578,12 +598,12 @@ export default function CalendarScreen() {
         <View style={{flexDirection:'row', gap: 10, marginLeft: 10}}>
           {workoutToCopy && <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: (colors.error || '#EF4444') + '20' }]}><Ionicons name="close" size={22} color={colors.error || '#EF4444'} /></TouchableOpacity>}
           
-          {selectedAthlete?.has_extra_sport && (
+          {isExtraSportEnabled && (
             <TouchableOpacity onPress={() => setShowSportModal(true)} style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}>
                {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
-                   <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon} size={22} color={colors.primary} />
+                   <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={22} color={colors.primary} />
                ) : (
-                   <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon} size={22} color={colors.primary} />
+                   <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={22} color={colors.primary} />
                )}
             </TouchableOpacity>
           )}
@@ -697,9 +717,9 @@ export default function CalendarScreen() {
                           {hasTechnical && (
                              <View style={{ position: 'absolute', top: 4, left: 4 }}>
                                {sportInfo.lib === 'Ionicons' ? (
-                                 <Ionicons name={sportInfo.icon} size={10} color={colors.textPrimary} />
+                                 <Ionicons name={sportInfo.icon as any} size={10} color={colors.textPrimary} />
                                ) : (
-                                 <MaterialCommunityIcons name={sportInfo.icon} size={10} color={colors.textPrimary} />
+                                 <MaterialCommunityIcons name={sportInfo.icon as any} size={10} color={colors.textPrimary} />
                                )}
                              </View>
                           )}
