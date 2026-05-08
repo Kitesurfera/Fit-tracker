@@ -134,6 +134,7 @@ class AthleteUpdate(BaseModel):
     is_bleeding: Optional[bool] = None      
     has_extra_sport: Optional[bool] = None
     sport_icon: Optional[str] = None
+    technical_sessions: Optional[List[str]] = None
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
@@ -149,6 +150,7 @@ class ProfileUpdate(BaseModel):
     is_bleeding: Optional[bool] = None      
     has_extra_sport: Optional[bool] = None
     sport_icon: Optional[str] = None
+    technical_sessions: Optional[List[str]] = None
 
 class CycleUpdate(BaseModel):
     macro_ciclo: str
@@ -438,7 +440,8 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         # 4. LIMPIEZA DE LA RESPUESTA
         raw_text = response.text.strip()
         if raw_text.startswith("```"):
-            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+            raw_text = raw_text.replace("
+```json", "").replace("```", "").strip()
         
         return json.loads(raw_text)
         
