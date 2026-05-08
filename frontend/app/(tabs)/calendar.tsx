@@ -91,6 +91,9 @@ export default function CalendarScreen() {
   const [isChatVisible, setChatVisible] = useState(false);
   const [showSportModal, setShowSportModal] = useState(false);
   const [sportSessions, setSportSessions] = useState<string[]>([]);
+  const [sportModalTab, setSportModalTab] = useState<'single' | 'range'>('single');
+  const [rangeStart, setRangeStart] = useState('');
+  const [rangeEnd, setRangeEnd] = useState('');
 
   const isTrainer = user?.role === 'trainer';
   const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
@@ -199,6 +202,33 @@ export default function CalendarScreen() {
     } finally {
       setUpdating(false);
     }
+  };
+
+  const handleSaveDateRange = () => {
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(rangeStart) || !dateRegex.test(rangeEnd)) {
+      if (Platform.OS === 'web') window.alert("Usa el formato AAAA-MM-DD");
+      else Alert.alert("Error", "Usa el formato AAAA-MM-DD");
+      return;
+    }
+    if (rangeStart > rangeEnd) {
+      if (Platform.OS === 'web') window.alert("La fecha de inicio debe ser anterior a la de fin");
+      else Alert.alert("Error", "La fecha de inicio debe ser anterior a la de fin");
+      return;
+    }
+
+    const start = new Date(rangeStart);
+    const end = new Date(rangeEnd);
+    const newDates = new Set(sportSessions);
+
+    let curr = new Date(start);
+    while (curr <= end) {
+      const localStr = getLocalDateStr(curr);
+      if (localStr) newDates.add(localStr);
+      curr.setDate(curr.getDate() + 1);
+    }
+
+    handleSaveTechnicalSession(Array.from(newDates));
   };
 
   const startCopyWorkout = (workout: any) => {
@@ -599,7 +629,12 @@ export default function CalendarScreen() {
           {workoutToCopy && <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: (colors.error || '#EF4444') + '20' }]}><Ionicons name="close" size={22} color={colors.error || '#EF4444'} /></TouchableOpacity>}
           
           {isExtraSportEnabled && (
-            <TouchableOpacity onPress={() => setShowSportModal(true)} style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}>
+            <TouchableOpacity onPress={() => {
+                setSportModalTab('single');
+                setRangeStart(selectedDate);
+                setRangeEnd(selectedDate);
+                setShowSportModal(true);
+            }} style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}>
                {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
                    <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={22} color={colors.primary} />
                ) : (
@@ -834,26 +869,55 @@ export default function CalendarScreen() {
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Sesión de Competición / Deporte</Text>
-            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center' }}>Registra tus sesiones técnicas para ayudar a calcular tu fatiga general.</Text>
+            <Text style={{ color: colors.textSecondary, marginBottom: 15, textAlign: 'center' }}>Registra tus sesiones técnicas para ayudar a calcular tu fatiga general.</Text>
 
-            <Text style={{color: colors.textPrimary, marginBottom: 20, fontWeight: '700'}}>Día seleccionado: {selectedDate.split('-').reverse().join('/')}</Text>
+            {/* PESTAÑAS INTUITIVAS */}
+            <View style={{flexDirection: 'row', backgroundColor: colors.surfaceHighlight, borderRadius: 10, padding: 4, marginBottom: 20, width: '100%'}}>
+               <TouchableOpacity style={{flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: sportModalTab === 'single' ? colors.primary : 'transparent', borderRadius: 8}} onPress={() => setSportModalTab('single')}>
+                  <Text style={{fontWeight: '700', color: sportModalTab === 'single' ? '#FFF' : colors.textSecondary}}>Día Único</Text>
+               </TouchableOpacity>
+               <TouchableOpacity style={{flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: sportModalTab === 'range' ? colors.primary : 'transparent', borderRadius: 8}} onPress={() => setSportModalTab('range')}>
+                  <Text style={{fontWeight: '700', color: sportModalTab === 'range' ? '#FFF' : colors.textSecondary}}>Varios Días</Text>
+               </TouchableOpacity>
+            </View>
 
-            <TouchableOpacity 
-              style={[styles.modalBtn, { backgroundColor: colors.primary, width: '100%', marginBottom: 10 }]}
-              onPress={() => {
-                const newSessions = sportSessions.includes(selectedDate) 
-                  ? sportSessions.filter(d => d !== selectedDate)
-                  : [...sportSessions, selectedDate];
-                handleSaveTechnicalSession(newSessions);
-              }}
-            >
-              <Text style={{ color: '#FFF', fontWeight: '800' }}>
-                {sportSessions.includes(selectedDate) ? "Desmarcar registro de este día" : "Registrar entreno en este día"}
-              </Text>
-            </TouchableOpacity>
+            {sportModalTab === 'single' ? (
+                <>
+                  <Text style={{color: colors.textPrimary, marginBottom: 20, fontWeight: '700'}}>Día seleccionado: {selectedDate.split('-').reverse().join('/')}</Text>
+                  <TouchableOpacity 
+                    style={[styles.modalBtn, { backgroundColor: colors.primary, width: '100%', marginBottom: 10, flex: 0 }]}
+                    onPress={() => {
+                      const newSessions = sportSessions.includes(selectedDate) 
+                        ? sportSessions.filter(d => d !== selectedDate)
+                        : [...sportSessions, selectedDate];
+                      handleSaveTechnicalSession(newSessions);
+                    }}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: '800', paddingVertical: 4 }}>
+                      {sportSessions.includes(selectedDate) ? "Desmarcar registro de este día" : "Registrar entreno en este día"}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+            ) : (
+                <>
+                  <View style={{flexDirection: 'row', gap: 10, width: '100%', marginBottom: 20}}>
+                      <View style={{flex: 1}}>
+                          <Text style={[styles.label, {color: colors.textSecondary}]}>Inicio</Text>
+                          <TextInput style={[styles.input, {color: colors.textPrimary, borderColor: colors.border}]} value={rangeStart} onChangeText={setRangeStart} placeholder="AAAA-MM-DD" placeholderTextColor={colors.textSecondary} />
+                      </View>
+                      <View style={{flex: 1}}>
+                          <Text style={[styles.label, {color: colors.textSecondary}]}>Fin</Text>
+                          <TextInput style={[styles.input, {color: colors.textPrimary, borderColor: colors.border}]} value={rangeEnd} onChangeText={setRangeEnd} placeholder="AAAA-MM-DD" placeholderTextColor={colors.textSecondary} />
+                      </View>
+                  </View>
+                  <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary, width: '100%', marginBottom: 10, flex: 0 }]} onPress={handleSaveDateRange}>
+                      <Text style={{ color: '#FFF', fontWeight: '800', paddingVertical: 4 }}>Añadir Rango de Fechas</Text>
+                  </TouchableOpacity>
+                </>
+            )}
 
-            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight, width: '100%' }]} onPress={() => setShowSportModal(false)}>
-              <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Cerrar</Text>
+            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight, width: '100%', flex: 0 }]} onPress={() => setShowSportModal(false)}>
+              <Text style={{ color: colors.textPrimary, fontWeight: '700', paddingVertical: 4 }}>Cerrar</Text>
             </TouchableOpacity>
           </View>
         </View>
