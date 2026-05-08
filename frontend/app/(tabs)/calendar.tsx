@@ -49,7 +49,7 @@ export default function CalendarScreen() {
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => {
     const d = new Date(now);
     const day = d.getDay() || 7; 
-    d.setDate(d.getDate() - day + 1); // Lunes de la semana actual
+    d.setDate(d.getDate() - day + 1);
     return d;
   });
   
@@ -77,8 +77,13 @@ export default function CalendarScreen() {
   const [skipWorkoutId, setSkipWorkoutId] = useState<string | null>(null);
   const [skipReason, setSkipReason] = useState('');
 
-  // <-- ESTADO PARA EL MODAL DE IA -->
   const [isChatVisible, setChatVisible] = useState(false);
+
+  // --- ESTADOS MODAL DEPORTE ---
+  const [showSportModal, setShowSportModal] = useState(false);
+  const [selectedSportDates, setSelectedSportDates] = useState<string[]>([]);
+  const [sportModalMonth, setSportModalMonth] = useState(now.getMonth());
+  const [sportModalYear, setSportModalYear] = useState(now.getFullYear());
 
   const isTrainer = user?.role === 'trainer';
   const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
@@ -318,6 +323,55 @@ export default function CalendarScreen() {
     return days;
   }, [currentMonth, currentYear]);
 
+  // LOGICA PARA EL MODAL DEL DEPORTE (MINI CALENDARIO)
+  const changeSportModalMonth = (dir: number) => {
+    if (dir === -1) { if (sportModalMonth === 0) { setSportModalMonth(11); setSportModalYear(sportModalYear - 1); } else setSportModalMonth(sportModalMonth - 1); } 
+    else { if (sportModalMonth === 11) { setSportModalMonth(0); setSportModalYear(sportModalYear + 1); } else setSportModalMonth(sportModalMonth + 1); }
+  };
+
+  const sportModalDaysInMonth = useMemo(() => {
+    const firstDay = new Date(sportModalYear, sportModalMonth, 1);
+    const lastDay = new Date(sportModalYear, sportModalMonth + 1, 0).getDate();
+    let startDay = firstDay.getDay() - 1;
+    if (startDay < 0) startDay = 6; 
+    const days = [];
+    for (let i = 0; i < startDay; i++) days.push(null);
+    for (let i = 1; i <= lastDay; i++) days.push(i);
+    return days;
+  }, [sportModalMonth, sportModalYear]);
+
+  const toggleSportDate = (dateStr: string) => {
+    setSelectedSportDates(prev => 
+      prev.includes(dateStr) ? prev.filter(d => d !== dateStr) : [...prev, dateStr]
+    );
+  };
+
+  const handleSaveSportSessions = async () => {
+    if (selectedSportDates.length === 0) {
+      setShowSportModal(false);
+      return;
+    }
+    setUpdating(true);
+    try {
+      await Promise.all(selectedSportDates.map(date => 
+        api.postWellness ? api.postWellness({ athlete_id: selectedAthlete.id, date, is_sport_session: true, sleep_quality: 3, stress_level: 3, muscle_soreness: 3, energy_level: 3 }) : Promise.resolve()
+      ));
+      
+      if (Platform.OS === 'web') window.alert("¡Sesiones deportivas registradas!");
+      else Alert.alert("Éxito", "Sesiones deportivas añadidas al calendario.");
+      
+      setShowSportModal(false);
+      setSelectedSportDates([]);
+      refreshAthleteData(selectedAthlete);
+    } catch (e) {
+      console.error(e);
+      if (Platform.OS === 'web') window.alert("Ocurrió un error al guardar las sesiones.");
+      else Alert.alert("Error", "No se pudieron guardar las sesiones deportivas.");
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const cycleData = useMemo(() => {
     try {
       if (!isFemale) return null;
@@ -406,14 +460,22 @@ export default function CalendarScreen() {
   const monthStatusMap = useMemo(() => {
     const map: Record<string, any> = {};
     Object.keys(periodDays).forEach(dateStr => {
-      if (!map[dateStr]) map[dateStr] = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriod: false, periodType: null };
+      if (!map[dateStr]) map[dateStr] = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriod: false, periodType: null, isSportSession: false };
       map[dateStr].isPeriod = true; map[dateStr].periodType = periodDays[dateStr].type;
+    });
+
+    wellnessHistory?.forEach(w => {
+      const dateStr = extractDateString(w.date);
+      if (dateStr) {
+        if (!map[dateStr]) map[dateStr] = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriod: false, periodType: null, isSportSession: false };
+        if (w.is_sport_session) map[dateStr].isSportSession = true;
+      }
     });
 
     workouts?.forEach(w => {
       const dateStr = extractDateString(w.date);
       if (dateStr) {
-        if (!map[dateStr]) map[dateStr] = { hasWorkout: false, isCompleted: true, phaseColor: null, isPeriod: false, periodType: null };
+        if (!map[dateStr]) map[dateStr] = { hasWorkout: false, isCompleted: true, phaseColor: null, isPeriod: false, periodType: null, isSportSession: false };
         map[dateStr].hasWorkout = true;
         map[dateStr].isCompleted = map[dateStr].isCompleted && w.completed; 
       }
@@ -429,7 +491,7 @@ export default function CalendarScreen() {
             let curr = new Date(start); const endDate = new Date(end);
             while (curr <= endDate) {
               const dStr = getLocalDateStr(curr);
-              if (!map[dStr]) map[dStr] = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriod: false, periodType: null };
+              if (!map[dStr]) map[dStr] = { hasWorkout: false, isCompleted: false, phaseColor: null, isPeriod: false, periodType: null, isSportSession: false };
               map[dStr].phaseColor = m.color || macro.color || colors.primary;
               curr.setDate(curr.getDate() + 1);
             }
@@ -438,7 +500,7 @@ export default function CalendarScreen() {
       });
     }
     return map;
-  }, [workouts, macros, periodDays, colors.primary]);
+  }, [workouts, macros, periodDays, wellnessHistory, colors.primary]);
 
   const getDayStatus = useCallback((day: number | null) => {
     if (!day) return null;
@@ -538,6 +600,7 @@ export default function CalendarScreen() {
 
         <View style={{flexDirection:'row', gap: 10, marginLeft: 10}}>
           {workoutToCopy && <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: (colors.error || '#EF4444') + '20' }]}><Ionicons name="close" size={22} color={colors.error || '#EF4444'} /></TouchableOpacity>}
+          {selectedAthlete?.sport_icon && <TouchableOpacity onPress={() => setShowSportModal(true)} style={[styles.iconBtn, { backgroundColor: colors.primary + '20' }]}><Ionicons name={selectedAthlete.sport_icon as any} size={22} color={colors.primary} /></TouchableOpacity>}
           {isFemale && <TouchableOpacity onPress={openCycleSettings} style={[styles.iconBtn, { backgroundColor: '#FEE2E2' }]}><Ionicons name="water" size={22} color="#EF4444" /></TouchableOpacity>}
           {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.iconBtn}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
           <TouchableOpacity onPress={() => { setUpdating(true); refreshAthleteData(selectedAthlete); }} disabled={updating} style={styles.iconBtn}>
@@ -636,6 +699,7 @@ export default function CalendarScreen() {
                           <Text style={[styles.dayText, { color: colors.textPrimary }, status?.phaseColor && { color: status.phaseColor, fontWeight: '800' }, status?.isPeriod && { color: '#EF4444', fontWeight: '900' }, isSelected && { color: status?.phaseColor || colors.primary, fontWeight: '900' }, isToday && !isSelected && { color: colors.error || '#EF4444', fontWeight: '900' }]}>{day}</Text>
                           {status?.hasWorkout && status?.isCompleted && <Ionicons name="checkmark-circle" size={12} color={colors.success || '#10B981'} style={{ position: 'absolute', top: 2, right: 2 }} />}
                           {status?.isPeriod && <Ionicons name="water" size={10} color="#EF4444" style={{ position: 'absolute', bottom: 2, right: 4 }} />}
+                          {status?.isSportSession && selectedAthlete?.sport_icon && <Ionicons name={selectedAthlete.sport_icon as any} size={11} color={colors.textPrimary} style={{ position: 'absolute', top: 3, left: 4 }} />}
                         </>
                       )}
                     </TouchableOpacity>
@@ -740,7 +804,56 @@ export default function CalendarScreen() {
         </>
       )}
 
-      {/* --- MODALES DE CONFIGURACIÓN --- */}
+      {/* --- MODAL REGISTRO DEPORTE --- */}
+      <Modal visible={showSportModal} transparent animationType="fade">
+        <View style={styles.modalOverlayCenter}>
+          <View style={[styles.modalContentInfo, { backgroundColor: colors.surface, paddingHorizontal: 15 }]}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, width: '100%', justifyContent: 'center' }}>
+              <View style={[styles.phaseIconBadge, { backgroundColor: colors.primary + '20', marginRight: 10 }]}><Ionicons name={selectedAthlete?.sport_icon || 'trophy'} size={24} color={colors.primary} /></View>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Registrar Sesiones</Text>
+            </View>
+            <Text style={{ color: colors.textSecondary, textAlign: 'center', marginBottom: 15, fontSize: 13 }}>
+              Selecciona los días en los que has entrenado {selectedAthlete?.sport || 'tu deporte'} o competido.
+            </Text>
+
+            <View style={[styles.monthSelector, { width: '100%', marginVertical: 10 }]}>
+              <TouchableOpacity onPress={() => changeSportModalMonth(-1)}><Ionicons name="chevron-back" size={24} color={colors.textPrimary}/></TouchableOpacity>
+              <Text style={[styles.monthLabel, { color: colors.textPrimary, fontSize: 16 }]}>{MONTHS[sportModalMonth]} {sportModalYear}</Text>
+              <TouchableOpacity onPress={() => changeSportModalMonth(1)}><Ionicons name="chevron-forward" size={24} color={colors.textPrimary}/></TouchableOpacity>
+            </View>
+
+            <View style={{ width: '100%', paddingHorizontal: 10 }}>
+              <View style={styles.weekDays}>{DAYS.map(d => <Text key={d} style={[styles.weekDayText, { color: colors.textSecondary }]}>{d}</Text>)}</View>
+              <View style={styles.daysGrid}>
+                {sportModalDaysInMonth.map((day, i) => {
+                  const dateStr = day ? `${sportModalYear}-${String(sportModalMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
+                  const isSelected = dateStr && selectedSportDates.includes(dateStr);
+                  
+                  return (
+                    <TouchableOpacity 
+                       key={i} 
+                       style={[styles.dayCell, isSelected && { backgroundColor: colors.primary, borderRadius: 12 }]} 
+                       onPress={() => dateStr && toggleSportDate(dateStr)} 
+                       disabled={!day}
+                    >
+                      {day && <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && { color: '#FFF', fontWeight: '900' }]}>{day}</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 25, paddingHorizontal: 10 }}>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => { setShowSportModal(false); setSelectedSportDates([]); }}><Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Cancelar</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleSaveSportSessions} disabled={updating}>
+                {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '700' }}>Guardar ({selectedSportDates.length})</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- RESTO DE MODALES EXISTENTES (Skip, Picker, Cycle, MicroInfo) --- */}
       <Modal visible={showSkipModal} transparent animationType="fade">
         <View style={styles.modalOverlayCenter}>
           <View style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
