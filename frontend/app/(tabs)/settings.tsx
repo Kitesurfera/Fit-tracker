@@ -4,13 +4,23 @@ import {
   Platform, Alert, ScrollView, Linking, ActivityIndicator, KeyboardAvoidingView, Switch, Share
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
 import { getWebPushSubscription, testNotification } from '../../src/notifications';
+
+const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
+  'kite': { icon: 'kitesurfing', lib: 'MaterialCommunity' },
+  'football': { icon: 'football', lib: 'Ionicons' },
+  'volleyball': { icon: 'volleyball', lib: 'MaterialCommunity' },
+  'tennis': { icon: 'tennisball', lib: 'Ionicons' },
+  'gym': { icon: 'barbell', lib: 'Ionicons' },
+  'surf': { icon: 'surfing', lib: 'MaterialCommunity' },
+  'bike': { icon: 'bicycle', lib: 'Ionicons' },
+};
 
 export default function SettingsScreen() {
   const { colors, themeMode, changeTheme } = useTheme();
@@ -258,6 +268,32 @@ export default function SettingsScreen() {
                   <Ionicons name="share-social" size={20} color="#FFF" />
                   <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Compartir Enlace</Text>
                 </TouchableOpacity>
+              </View>
+            </>
+          )}
+
+          {/* LIBRERIA DE ICONOS (SOLO ENTRENADOR) */}
+          {!isAthlete && (
+            <>
+              <Text style={[styles.sectionTitle, { marginTop: 25 }]}>LIBRERÍA DE ICONOS DEPORTIVOS</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface }]}>
+                <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 13 }}>
+                  Estos iconos aparecen en la esquina superior izquierda del calendario cuando un atleta registra una sesión técnica o competición.
+                </Text>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 15 }}>
+                  {Object.entries(SPORT_ICON_MAP).map(([key, value]) => (
+                    <View key={key} style={{ alignItems: 'center', width: '20%' }}>
+                      <View style={{ width: 40, height: 40, borderRadius: 10, backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: colors.border }}>
+                         {value.lib === 'Ionicons' ? (
+                           <Ionicons name={value.icon as any} size={20} color={colors.textPrimary} />
+                         ) : (
+                           <MaterialCommunityIcons name={value.icon as any} size={20} color={colors.textPrimary} />
+                         )}
+                      </View>
+                      <Text style={{ fontSize: 9, color: colors.textSecondary, marginTop: 4, textTransform: 'uppercase' }}>{key}</Text>
+                    </View>
+                  ))}
+                </View>
               </View>
             </>
           )}
