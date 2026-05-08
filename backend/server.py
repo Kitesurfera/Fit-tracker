@@ -122,9 +122,9 @@ class AthleteCreate(BaseModel):
     sport_icon: Optional[str] = "kite"
 
 class AthleteUpdate(BaseModel):
-    name: str
+    name: Optional[str] = None
     email: Optional[str] = None
-    gender: str
+    gender: Optional[str] = None
     password: Optional[str] = None
     sport: Optional[str] = None
     phone: Optional[str] = None 
