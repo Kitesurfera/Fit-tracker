@@ -2,13 +2,15 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView,
-  Alert, Linking
+  Alert, Linking, Switch
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
+
+const SPORT_ICONS = ['trophy', 'paper-plane', 'football', 'basketball', 'baseball', 'tennisball', 'bicycle', 'walk', 'barbell', 'snow', 'water', 'boat', 'body'];
 
 export default function AddAthleteScreen() {
   const { colors } = useTheme();
@@ -21,12 +23,15 @@ export default function AddAthleteScreen() {
   const [phone, setPhone] = useState('');
   const [gender, setGender] = useState('Femenino');
   
+  const [hasSport, setHasSport] = useState(false);
+  const [sportIcon, setSportIcon] = useState('trophy');
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const notifyAthlete = (method: 'whatsapp' | 'email') => {
     const loginUrl = "https://fit-tracker-azure-iota.vercel.app/";
-    const text = `¡Hola ${name}! He creado tu perfil de entrenamiento en Fit Tracker. Puedes iniciar sesión aquí: ${loginUrl}\n\nTu Email: ${email}\nTu Contraseña: ${password}`;
+    const text = `¡Hola ${name}! He creado tu perfil de entrenamiento en AM Coaching. Puedes iniciar sesión aquí: ${loginUrl}\n\nTu Email: ${email}\nTu Contraseña: ${password}`;
 
     if (method === 'whatsapp' && phone) {
       const cleanPhone = phone.replace(/\D/g, '');
@@ -45,7 +50,10 @@ export default function AddAthleteScreen() {
     }
     setSubmitting(true);
     try {
-      await api.createAthlete({ name, email, password, sport, phone, gender });
+      await api.createAthlete({ 
+        name, email, password, sport, phone, gender, 
+        sport_icon: hasSport ? sportIcon : null 
+      });
       
       if (Platform.OS === 'web') {
         const wantsToNotify = window.confirm("Deportista creado con éxito. ¿Quieres avisarle por email/WhatsApp con sus claves?");
@@ -121,8 +129,31 @@ export default function AddAthleteScreen() {
           <InputField label="Contraseña" value={password} onChangeText={setPassword}
             placeholder="Min. 4 caracteres" testID="athlete-password-input" required secureTextEntry />
 
-          <InputField label="Deporte" value={sport} onChangeText={setSport}
-            placeholder="Ej: Kitesurf Freestyle" testID="athlete-sport-input" />
+          <View style={styles.field}>
+             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+               <Text style={[styles.label, { color: colors.textSecondary }]}>¿Compite o entrena su deporte?</Text>
+               <Switch value={hasSport} onValueChange={setHasSport} trackColor={{ false: colors.border, true: colors.primary }} />
+             </View>
+             {hasSport && (
+                <View style={{ backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
+                  <InputField label="Nombre del Deporte" value={sport} onChangeText={setSport} placeholder="Ej: Kitesurf Freestyle" />
+                  <Text style={[styles.label, { color: colors.textSecondary, marginTop: 15, marginBottom: 10 }]}>Icono para el calendario</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                      {SPORT_ICONS.map(icon => (
+                        <TouchableOpacity 
+                          key={icon} 
+                          onPress={() => setSportIcon(icon)} 
+                          style={[styles.iconPickerBtn, { borderColor: colors.border, backgroundColor: colors.surface }, sportIcon === icon && { borderColor: colors.primary, backgroundColor: colors.primary + '20' }]}
+                        >
+                          <Ionicons name={icon as any} size={24} color={sportIcon === icon ? colors.primary : colors.textSecondary} />
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+             )}
+          </View>
 
           <InputField label="Teléfono (WhatsApp)" value={phone} onChangeText={setPhone}
             placeholder="Ej: +34 600 000 000" testID="athlete-phone-input" keyboardType="phone-pad" />
@@ -180,5 +211,6 @@ const styles = StyleSheet.create({
   submitBtn: { borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8 },
   submitText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
   genderRow: { flexDirection: 'row', gap: 10 },
-  genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }
+  genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
+  iconPickerBtn: { width: 50, height: 50, borderRadius: 25, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }
 });
