@@ -6,11 +6,19 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 
-const SPORT_ICONS = ['trophy', 'paper-plane', 'football', 'basketball', 'baseball', 'tennisball', 'bicycle', 'walk', 'barbell', 'snow', 'water', 'boat', 'body'];
+const SPORT_ICONS = [
+  { id: 'kite', icon: 'kitesurfing', lib: 'MaterialCommunityIcons' },
+  { id: 'football', icon: 'football', lib: 'Ionicons' },
+  { id: 'volleyball', icon: 'volleyball', lib: 'MaterialCommunityIcons' },
+  { id: 'tennis', icon: 'tennisball', lib: 'Ionicons' },
+  { id: 'gym', icon: 'barbell', lib: 'Ionicons' },
+  { id: 'surf', icon: 'surfing', lib: 'MaterialCommunityIcons' },
+  { id: 'bike', icon: 'bicycle', lib: 'Ionicons' },
+];
 
 export default function AddAthleteScreen() {
   const { colors } = useTheme();
@@ -23,15 +31,16 @@ export default function AddAthleteScreen() {
   const [phone, setPhone] = useState('');
   const [gender, setGender] = useState('Femenino');
   
-  const [hasSport, setHasSport] = useState(false);
-  const [sportIcon, setSportIcon] = useState('trophy');
+  // Nuevos campos para el icono de deporte
+  const [hasExtraSport, setHasExtraSport] = useState(false);
+  const [selectedSportIcon, setSelectedSportIcon] = useState('kite');
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const notifyAthlete = (method: 'whatsapp' | 'email') => {
     const loginUrl = "https://fit-tracker-azure-iota.vercel.app/";
-    const text = `¡Hola ${name}! He creado tu perfil de entrenamiento en AM Coaching. Puedes iniciar sesión aquí: ${loginUrl}\n\nTu Email: ${email}\nTu Contraseña: ${password}`;
+    const text = `¡Hola ${name}! He creado tu perfil de entrenamiento en Fit Tracker. Puedes iniciar sesión aquí: ${loginUrl}\n\nTu Email: ${email}\nTu Contraseña: ${password}`;
 
     if (method === 'whatsapp' && phone) {
       const cleanPhone = phone.replace(/\D/g, '');
@@ -51,33 +60,23 @@ export default function AddAthleteScreen() {
     setSubmitting(true);
     try {
       await api.createAthlete({ 
-        name, email, password, sport, phone, gender, 
-        sport_icon: hasSport ? sportIcon : null 
+        name, email, password, sport, phone, gender,
+        has_extra_sport: hasExtraSport,
+        sport_icon: selectedSportIcon 
       });
       
       if (Platform.OS === 'web') {
-        const wantsToNotify = window.confirm("Deportista creado con éxito. ¿Quieres avisarle por email/WhatsApp con sus claves?");
+        const wantsToNotify = window.confirm("Deportista creado con éxito. ¿Quieres avisarle?");
         if (wantsToNotify) {
           if (phone) notifyAthlete('whatsapp');
           else notifyAthlete('email');
-        } else {
-          router.back();
-        }
+        } else { router.back(); }
       } else {
-        const buttons: any[] = [
-          { text: "No, volver", style: "cancel", onPress: () => router.back() },
-          { text: "Por Email", onPress: () => notifyAthlete('email') }
-        ];
-
-        if (phone) {
-          buttons.push({ text: "Por WhatsApp", onPress: () => notifyAthlete('whatsapp') });
-        }
-
-        Alert.alert(
-          "¡Deportista Creado!",
-          "¿Quieres enviarle un mensaje automático con el enlace de la app y sus claves de acceso?",
-          buttons
-        );
+        Alert.alert("¡Deportista Creado!", "¿Avisar al deportista?", [
+          { text: "No", style: "cancel", onPress: () => router.back() },
+          { text: "WhatsApp", onPress: () => notifyAthlete('whatsapp') },
+          { text: "Email", onPress: () => notifyAthlete('email') }
+        ]);
       }
     } catch (e: any) {
       setError(e.message);
@@ -86,107 +85,71 @@ export default function AddAthleteScreen() {
     }
   };
 
-  const InputField = ({ label, value, onChangeText, placeholder, testID, required, ...props }: any) => (
-    <View style={styles.field}>
-      <Text style={[styles.label, { color: colors.textSecondary }]}>
-        {label}{required ? '' : ' (opcional)'}
-      </Text>
-      <TextInput
-        testID={testID}
-        style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-        value={value}
-        onChangeText={onChangeText}
-        placeholder={placeholder}
-        placeholderTextColor={colors.textSecondary}
-        {...props}
-      />
-    </View>
-  );
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => router.back()} testID="close-add-athlete" activeOpacity={0.7} style={styles.headerBtn}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
             <Ionicons name="close" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nuevo Deportista</Text>
           <View style={styles.headerBtn} />
         </View>
-        <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
-          <View style={[styles.infoBox, { backgroundColor: colors.primary + '10' }]}>
-            <Ionicons name="information-circle-outline" size={18} color={colors.primary} />
-            <Text style={[styles.infoText, { color: colors.primary }]}>
-              El deportista podrá iniciar sesión con el email y contraseña que definas aquí.
-            </Text>
-          </View>
 
-          <InputField label="Nombre" value={name} onChangeText={setName}
-            placeholder="Nombre completo" testID="athlete-name-input" required autoCapitalize="words" />
-          <InputField label="Email" value={email} onChangeText={setEmail}
-            placeholder="email@ejemplo.com" testID="athlete-email-input" required
-            keyboardType="email-address" autoCapitalize="none" />
-          <InputField label="Contraseña" value={password} onChangeText={setPassword}
-            placeholder="Min. 4 caracteres" testID="athlete-password-input" required secureTextEntry />
+        <ScrollView contentContainerStyle={styles.form}>
+          <View style={styles.field}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Nombre</Text>
+            <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]} value={name} onChangeText={setName} placeholder="Nombre completo" placeholderTextColor={colors.textSecondary} />
+          </View>
 
           <View style={styles.field}>
-             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-               <Text style={[styles.label, { color: colors.textSecondary }]}>¿Compite o entrena su deporte?</Text>
-               <Switch value={hasSport} onValueChange={setHasSport} trackColor={{ false: colors.border, true: colors.primary }} />
-             </View>
-             {hasSport && (
-                <View style={{ backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
-                  <InputField label="Nombre del Deporte" value={sport} onChangeText={setSport} placeholder="Ej: Kitesurf Freestyle" />
-                  <Text style={[styles.label, { color: colors.textSecondary, marginTop: 15, marginBottom: 10 }]}>Icono para el calendario</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                    <View style={{ flexDirection: 'row', gap: 10 }}>
-                      {SPORT_ICONS.map(icon => (
-                        <TouchableOpacity 
-                          key={icon} 
-                          onPress={() => setSportIcon(icon)} 
-                          style={[styles.iconPickerBtn, { borderColor: colors.border, backgroundColor: colors.surface }, sportIcon === icon && { borderColor: colors.primary, backgroundColor: colors.primary + '20' }]}
-                        >
-                          <Ionicons name={icon as any} size={24} color={sportIcon === icon ? colors.primary : colors.textSecondary} />
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  </ScrollView>
-                </View>
-             )}
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Email</Text>
+            <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]} value={email} onChangeText={setEmail} placeholder="email@ejemplo.com" autoCapitalize="none" />
           </View>
-
-          <InputField label="Teléfono (WhatsApp)" value={phone} onChangeText={setPhone}
-            placeholder="Ej: +34 600 000 000" testID="athlete-phone-input" keyboardType="phone-pad" />
 
           <View style={styles.field}>
-            <Text style={[styles.label, { color: colors.textSecondary }]}>Género</Text>
-            <View style={styles.genderRow}>
-              {['Masculino', 'Femenino'].map(g => (
-                <TouchableOpacity 
-                  key={g} 
-                  style={[styles.genderBtn, { borderColor: colors.border }, gender === g && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
-                  onPress={() => setGender(g)}
-                >
-                  <Text style={{ color: gender === g ? '#FFF' : colors.textPrimary, fontWeight: '700' }}>{g}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>Contraseña</Text>
+            <TextInput style={[styles.input, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]} value={password} onChangeText={setPassword} secureTextEntry placeholder="Mín. 4 caracteres" />
           </View>
 
-          {error ? (
-            <View style={[styles.errorBox, { backgroundColor: colors.error + '12' }]}>
-              <Text style={[styles.errorText, { color: colors.error }]}>{error}</Text>
+          {/* SECCIÓN DE DEPORTE ESPECÍFICO */}
+          <View style={[styles.sportToggleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flex: 1, pr: 10 }}>
+                <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Deporte / Competición</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Permite al atleta registrar sesiones técnicas.</Text>
+              </View>
+              <Switch value={hasExtraSport} onValueChange={setHasExtraSport} trackColor={{ false: colors.border, true: colors.primary }} />
             </View>
-          ) : null}
 
-          <TouchableOpacity
-            testID="create-athlete-submit"
-            style={[styles.submitBtn, { backgroundColor: colors.primary }]}
-            onPress={handleCreate} disabled={submitting} activeOpacity={0.7}
-          >
-            {submitting ? <ActivityIndicator color="#FFF" /> : (
-              <Text style={styles.submitText}>Crear deportista</Text>
+            {hasExtraSport && (
+              <View style={{ marginTop: 15 }}>
+                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>Icono para el calendario</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+                  {SPORT_ICONS.map((item) => (
+                    <TouchableOpacity 
+                      key={item.id} 
+                      onPress={() => setSelectedSportIcon(item.id)}
+                      style={[
+                        styles.iconCircle, 
+                        { borderColor: colors.border },
+                        selectedSportIcon === item.id && { backgroundColor: colors.primary, borderColor: colors.primary }
+                      ]}
+                    >
+                      {item.lib === 'Ionicons' ? (
+                        <Ionicons name={item.icon as any} size={20} color={selectedSportIcon === item.id ? '#FFF' : colors.textPrimary} />
+                      ) : (
+                        <MaterialCommunityIcons name={item.icon as any} size={20} color={selectedSportIcon === item.id ? '#FFF' : colors.textPrimary} />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
             )}
+          </View>
+
+          <TouchableOpacity style={[styles.submitBtn, { backgroundColor: colors.primary }]} onPress={handleCreate} disabled={submitting}>
+            {submitting ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitText}>Crear deportista</Text>}
           </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -204,13 +167,8 @@ const styles = StyleSheet.create({
   field: { gap: 8 },
   label: { fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   input: { borderRadius: 10, padding: 14, fontSize: 16, borderWidth: 1 },
-  infoBox: { flexDirection: 'row', alignItems: 'center', gap: 10, padding: 14, borderRadius: 10 },
-  infoText: { fontSize: 14, flex: 1, lineHeight: 20 },
-  errorBox: { borderRadius: 10, padding: 12 },
-  errorText: { fontSize: 14, textAlign: 'center' },
+  sportToggleCard: { padding: 16, borderRadius: 15, borderWidth: 1, marginTop: 10 },
+  iconCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   submitBtn: { borderRadius: 10, padding: 16, alignItems: 'center', marginTop: 8 },
-  submitText: { color: '#FFF', fontSize: 16, fontWeight: '600' },
-  genderRow: { flexDirection: 'row', gap: 10 },
-  genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 },
-  iconPickerBtn: { width: 50, height: 50, borderRadius: 25, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }
+  submitText: { color: '#FFF', fontSize: 16, fontWeight: '600' }
 });
