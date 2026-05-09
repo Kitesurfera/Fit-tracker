@@ -220,6 +220,11 @@ class GeminiChatRequest(BaseModel):
     chatHistory: list = []
     athlete_id: Optional[str] = None
 
+class PillCreate(BaseModel):
+    name: str
+    is_hiit: bool
+    exercises: list
+
 # --- AUTH HELPERS ---
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -273,6 +278,29 @@ def send_web_push(subscription_info: dict, title: str, message: str):
     except Exception as e:
         logger.error(f"Fallo enviando web push: {str(e)}")
         return False
+
+# --- RUTAS DE PÍLDORAS (PREHAB/ACTIVACIÓN) ---
+@api_router.post("/pills")
+async def create_pill(data: PillCreate, user=Depends(get_current_user)):
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    pill = data.dict()
+    pill.update({"id": str(uuid.uuid4()), "trainer_id": user['id'], "created_at": datetime.now(timezone.utc).isoformat()})
+    await db.pills.insert_one(pill)
+    pill.pop('_id', None)
+    return {"status": "success", "pill": pill}
+
+@api_router.get("/pills")
+async def get_pills(user=Depends(get_current_user)):
+    # Los entrenadores ven las suyas, los atletas ven las de su entrenador
+    target_trainer_id = user['id'] if user['role'] == 'trainer' else user.get('trainer_id')
+    pills = await db.pills.find({"trainer_id": target_trainer_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
+    return pills
+
+@api_router.delete("/pills/{pill_id}")
+async def delete_pill(pill_id: str, user=Depends(get_current_user)):
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    await db.pills.delete_one({"id": pill_id, "trainer_id": user['id']})
+    return {"status": "success"}
 
 # --- RUTAS DE MACHINE LEARNING (CEREBRO IA) ---
 @api_router.get("/brain/memory")
@@ -440,7 +468,8 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         # 4. LIMPIEZA DE LA RESPUESTA
         raw_text = response.text.strip()
         if raw_text.startswith("```"):
-            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+            raw_text = raw_text.replace("
+```json", "").replace("```", "").strip()
         
         return json.loads(raw_text)
         
