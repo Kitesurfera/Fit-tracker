@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { router } from 'expo-router';
 import { syncManager } from './offline';
 
-const BACKEND_URL = "https://fit-tracker-backend-rtx2.onrender.com";
+const BACKEND_URL = "[https://fit-tracker-backend-rtx2.onrender.com](https://fit-tracker-backend-rtx2.onrender.com)";
 
 const getAuthHeaders = async () => {
   try {
@@ -23,7 +23,6 @@ const authFetch = async (url: string, options?: RequestInit) => {
   try {
     res = await fetch(url, options);
   } catch (e) {
-    // Fallo puro de red (sin WiFi o backend caído)
     throw new Error('NETWORK_ERROR');
   }
   
@@ -50,7 +49,6 @@ const authFetch = async (url: string, options?: RequestInit) => {
   return res;
 };
 
-// Helper para saber cuándo tirar de Caché/Cola Offline
 const shouldFallbackToOffline = (error: any) => {
   return error.message === 'NETWORK_ERROR' || error.message === 'SERVER_ERROR';
 };
@@ -271,6 +269,31 @@ export const api = {
       }
       throw e;
     }
+  },
+
+  // --- PÍLDORAS (PREHAB/ACTIVACIÓN) ---
+  getPills: async () => {
+    const headers = await getAuthHeaders();
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/pills`, { headers });
+      return await res.json();
+    } catch (e) {
+      return [];
+    }
+  },
+
+  createPill: async (data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/pills`, {
+      method: 'POST', headers, body: JSON.stringify(data),
+    });
+    return await res.json();
+  },
+
+  deletePill: async (id: string) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/pills/${id}`, { method: 'DELETE', headers });
+    return await res.json();
   },
 
   // --- PERIODIZACIÓN ---
