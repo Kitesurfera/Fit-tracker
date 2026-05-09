@@ -5,7 +5,7 @@ import {
   KeyboardAvoidingView, Alert
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
@@ -17,6 +17,17 @@ import { LineChart } from 'react-native-chart-kit';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isDesktop = SCREEN_WIDTH > 768;
 const MAX_CONTENT_WIDTH = 1200;
+
+// Mapa de iconos dinámico para deportes
+const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
+  'kite': { icon: 'kitesurfing', lib: 'MaterialCommunityIcons' },
+  'football': { icon: 'football', lib: 'Ionicons' },
+  'volleyball': { icon: 'volleyball', lib: 'MaterialCommunityIcons' },
+  'tennis': { icon: 'tennisball', lib: 'Ionicons' },
+  'gym': { icon: 'barbell', lib: 'Ionicons' },
+  'surf': { icon: 'surfing', lib: 'MaterialCommunityIcons' },
+  'bike': { icon: 'bicycle', lib: 'Ionicons' },
+};
 
 const TEST_TRANSLATIONS: Record<string, string> = {
   squat_rm: 'Sentadilla RM', bench_rm: 'Press Banca RM', deadlift_rm: 'Peso Muerto RM',
@@ -61,13 +72,16 @@ export default function AnalyticsScreen() {
   const params = useLocalSearchParams();
   const isTrainer = user?.role === 'trainer';
 
-  const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'workload' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
   const [customExerciseMuscles, setCustomExerciseMuscles] = useState<Record<string, string[]>>({});
   const [mergeMap, setMergeMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  
   const [testHistory, setTestHistory] = useState<any[]>([]);
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
+  const [wellnessHistory, setWellnessHistory] = useState<any[]>([]);
+  
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
   
@@ -111,12 +125,14 @@ export default function AnalyticsScreen() {
     if (!athleteId) return;
     setLoading(true);
     try {
-      const [ts, wk] = await Promise.all([
+      const [ts, wk, wl] = await Promise.all([
         api.getTests({ athlete_id: athleteId }).catch(() => []),
-        api.getWorkouts({ athlete_id: athleteId }).catch(() => [])
+        api.getWorkouts({ athlete_id: athleteId }).catch(() => []),
+        api.getWellnessHistory(athleteId).catch(() => [])
       ]);
       setTestHistory(Array.isArray(ts) ? [...ts].sort((a,b) => b.date.localeCompare(a.date)) : []);
       setWorkoutHistory(Array.isArray(wk) ? wk : []);
+      setWellnessHistory(Array.isArray(wl) ? wl : (wl?.data || []));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -317,7 +333,6 @@ export default function AnalyticsScreen() {
     );
   };
 
-  // Función añadida: Renderiza la tarjeta de mediciones
   const renderMeasurementsCard = () => {
     const measurementKeys = Object.keys(latestMeasurements);
     if (measurementKeys.length === 0) return null;
@@ -335,6 +350,99 @@ export default function AnalyticsScreen() {
               </View>
             );
           })}
+        </View>
+      </View>
+    );
+  };
+
+  const renderWorkloadDashboard = () => {
+    const daysToMap = 14;
+    const targetAthlete = selectedAthlete || user;
+    const waterSessions = targetAthlete?.technical_sessions || [];
+    
+    // Obtenemos el icono dinámico del atleta actual
+    const sportIconKey = targetAthlete?.sport_icon || 'kite';
+    const sportInfo = SPORT_ICON_MAP[sportIconKey] || SPORT_ICON_MAP['kite'];
+
+    const labels: string[] = [];
+    const fatigueData: number[] = [];
+    const sorenessData: number[] = [];
+    const activityGrid: { date: string, gym: boolean, water: boolean }[] = [];
+
+    for (let i = daysToMap - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = getLocalDateStr(d);
+      
+      labels.push(`${d.getDate()}/${d.getMonth() + 1}`);
+      
+      const well = wellnessHistory.find(w => w.date === dateStr);
+      fatigueData.push(well ? well.fatigue || 0 : 0);
+      sorenessData.push(well ? well.soreness || well.muscle_soreness || 0 : 0);
+
+      const hasGym = workoutHistory.some(w => w.date === dateStr && w.completed);
+      const hasWater = waterSessions.includes(dateStr);
+      activityGrid.push({ date: dateStr, gym: hasGym, water: hasWater });
+    }
+
+    const chartWidth = isDesktop ? MAX_CONTENT_WIDTH - 80 : SCREEN_WIDTH - 40;
+
+    return (
+      <View style={{ marginBottom: 30 }}>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 5 }]}>Estrés Físico y Técnica</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 20 }}>Cruza tus niveles de dolor y fatiga con tus sesiones de gimnasio y específicas de los últimos 14 días.</Text>
+
+        <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 15 }]}>
+          <View style={{ flexDirection: 'row', gap: 15, marginBottom: 10, justifyContent: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' }}/><Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Fatiga General</Text></View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#F59E0B' }}/><Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Agujetas / Dolor</Text></View>
+          </View>
+          
+          <LineChart
+            data={{
+              labels,
+              datasets: [
+                { data: fatigueData, color: () => '#EF4444', strokeWidth: 3 },
+                { data: sorenessData, color: () => '#F59E0B', strokeWidth: 3 }
+              ]
+            }}
+            width={chartWidth - 30}
+            height={200}
+            fromZero
+            yAxisInterval={1}
+            chartConfig={{
+              backgroundColor: colors.surface, backgroundGradientFrom: colors.surface, backgroundGradientTo: colors.surface,
+              decimalPlaces: 0, color: (opacity = 1) => colors.border, labelColor: () => colors.textSecondary,
+              propsForDots: { r: "4", strokeWidth: "2", stroke: colors.surface }
+            }}
+            bezier
+            style={{ borderRadius: 16, marginVertical: 8, alignSelf: 'center' }}
+          />
+
+          <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center', letterSpacing: 1 }}>REGISTRO DE SESIONES</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+               <View style={{ flexDirection: 'row', gap: 6, paddingBottom: 10, alignItems: 'center' }}>
+                 {activityGrid.map((day, i) => (
+                   <View key={i} style={{ alignItems: 'center', width: Math.max(30, (chartWidth - 60) / 14) }}>
+                      <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 8 }}>{labels[i]}</Text>
+                      <View style={{ height: 28, justifyContent: 'center' }}>
+                        {day.gym ? <Ionicons name="barbell" size={18} color={colors.primary} /> : <Text style={{ color: colors.border }}>-</Text>}
+                      </View>
+                      <View style={{ height: 28, justifyContent: 'center' }}>
+                        {day.water ? (
+                           sportInfo.lib === 'Ionicons' ? (
+                             <Ionicons name={sportInfo.icon as any} size={20} color="#0EA5E9" />
+                           ) : (
+                             <MaterialCommunityIcons name={sportInfo.icon as any} size={20} color="#0EA5E9" />
+                           )
+                        ) : <Text style={{ color: colors.border }}>-</Text>}
+                      </View>
+                   </View>
+                 ))}
+               </View>
+            </ScrollView>
+          </View>
         </View>
       </View>
     );
@@ -532,9 +640,11 @@ export default function AnalyticsScreen() {
 
           <View style={{ paddingHorizontal: isDesktop ? 25 : 20, marginBottom: 15 }}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={isDesktop ? styles.tabsContainerDesktop : styles.tabsContainerMobile}>
-              {['summary', 'progress', 'body', 'feedback'].map(tab => (
+              {['summary', 'progress', 'body', 'workload', 'feedback'].map(tab => (
                 <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && { backgroundColor: colors.primary }]} onPress={() => setActiveTab(tab as any)}>
-                  <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>{tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'body' ? 'CUERPO' : 'FEEDBACK'}</Text>
+                  <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>
+                    {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'body' ? 'CUERPO' : tab === 'workload' ? 'CARGA Y FATIGA' : 'FEEDBACK'}
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -569,6 +679,8 @@ export default function AnalyticsScreen() {
                     </View>
                   ))}
                 </View>
+             ) : activeTab === 'workload' ? (
+                renderWorkloadDashboard()
              ) : activeTab === 'body' ? renderBodyMap() : <View>{(workoutHistory.filter(w => w.completed && w.completion_data?.exercise_results?.some((ex:any) => ex.coach_note)).map((w, i) => w.completion_data.exercise_results.filter((ex:any) => ex.coach_note).map((ex:any, j:number) => (<View key={`${i}-${j}`} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: colors.warning + '40' }]}><Text style={{ color: colors.textSecondary, fontSize: 12 }}>{w.date}</Text><Text style={{ color: colors.textPrimary, fontWeight: '800' }}>{ex.name}</Text><Text style={{ color: colors.textPrimary, fontStyle: 'italic' }}>"{ex.coach_note}"</Text></View>))))}</View>}
           </ScrollView>
         </View>
@@ -601,7 +713,6 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 12, color: '#888' },
   summaryDivider: { width: 1, backgroundColor: 'rgba(0,0,0,0.1)' },
   
-  // ESTILOS DE ESCRITORIO
   bodyTabWrapper: { flex: 1 },
   timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 30 },
   timeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
@@ -618,7 +729,6 @@ const styles = StyleSheet.create({
   muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
   muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   
-  // ESTILOS DE MÓVIL
   timeFilterContainerMobile: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
   timeBtnMobile: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
   dualBodyContainerMobile: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 25 },
