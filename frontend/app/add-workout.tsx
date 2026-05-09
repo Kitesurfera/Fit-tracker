@@ -73,7 +73,6 @@ export default function AddWorkoutScreen() {
 
   const [workoutType, setWorkoutType] = useState<'traditional' | 'hiit'>('traditional');
 
-  // Configuración global del HIIT (Toggles de visibilidad)
   const [hiitConfig, setHiitConfig] = useState({
     reps: true, duration: true, restEx: true, restSet: true, restBlock: true
   });
@@ -94,6 +93,12 @@ export default function AddWorkoutScreen() {
   const [unknownExercises, setUnknownExercises] = useState<string[]>([]);
   const [exerciseMappings, setExerciseMappings] = useState<Record<string, string[]>>({});
 
+  // Estados Píldoras
+  const [pills, setPills] = useState<any[]>([]);
+  const [showPillModal, setShowPillModal] = useState(false);
+  const [showSavePillModal, setShowSavePillModal] = useState(false);
+  const [newPillName, setNewPillName] = useState('');
+
   useEffect(() => {
     if (params.athlete_id) {
       api.getPeriodizationTree(params.athlete_id).then((tree) => {
@@ -109,6 +114,8 @@ export default function AddWorkoutScreen() {
     AsyncStorage.getItem('custom_muscle_map').then(res => {
       if (res) setCustomMap(JSON.parse(res));
     });
+
+    api.getPills().then(setPills).catch(console.log);
   }, [params.athlete_id]);
 
   const updateExercise = (index: number, field: string, value: any) => {
@@ -177,11 +184,82 @@ export default function AddWorkoutScreen() {
     const updated = [...hiitBlocks]; [updated[bIndex].exercises[eIndex + 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex + 1]]; setHiitBlocks(updated);
   };
 
+  // --- LOGICA DE PÍLDORAS ---
+  const handleSavePill = async () => {
+    if (!newPillName.trim()) { Alert.alert("Error", "Ponle un nombre a la píldora"); return; }
+    
+    const exercisesToSave = workoutType === 'traditional'
+        ? exercises.filter(e => e.name.trim())
+        : hiitBlocks.filter(b => b.exercises.some((e:any) => e.name.trim()));
+
+    if (exercisesToSave.length === 0) {
+        Alert.alert("Error", "Añade al menos un ejercicio antes de guardar."); return;
+    }
+
+    const data = {
+        name: newPillName.trim(),
+        is_hiit: workoutType === 'hiit',
+        exercises: exercisesToSave
+    };
+
+    try {
+        await api.createPill(data);
+        Alert.alert("Éxito", "Píldora guardada correctamente");
+        setShowSavePillModal(false);
+        setNewPillName('');
+        api.getPills().then(setPills);
+    } catch (e: any) {
+        Alert.alert("Error", e.message);
+    }
+  };
+
+  const injectPill = (pill: any) => {
+    if (workoutType === 'traditional') {
+        if (pill.is_hiit) {
+            Alert.alert("Aviso", "Esta píldora es de formato circuito. Se ha insertado como ejercicios sueltos de fuerza.");
+            const flatExercises = pill.exercises.flatMap((b: any) =>
+                b.exercises.map((e: any) => ({
+                    _key: Math.random().toString(), name: e.name, sets: e.sets, reps: e.duration_reps || '', duration: e.duration || '', weight: '', rest: '', rest_exercise: '', video_url: e.video_url || '', exercise_notes: e.exercise_notes || '', is_unilateral: e.is_unilateral || false
+                }))
+            );
+            setExercises([...exercises.filter(e => e.name), ...flatExercises]);
+        } else {
+            const newExs = pill.exercises.map((e: any) => ({...e, _key: Math.random().toString()}));
+            setExercises([...exercises.filter(e => e.name), ...newExs]);
+        }
+    } else {
+        if (pill.is_hiit) {
+            const newBlocks = pill.exercises.map((b: any) => ({
+                ...b, _key: Math.random().toString(),
+                exercises: b.exercises.map((e: any) => ({...e, _key: Math.random().toString()}))
+            }));
+            setHiitBlocks([...hiitBlocks.filter(b => b.exercises.some(e => e.name)), ...newBlocks]);
+        } else {
+            const newBlock = {
+                _key: Math.random().toString(), name: `Píldora: ${pill.name}`, sets: '1', rest_exercise: '0', rest_block: '0', rest_between_blocks: '60',
+                exercises: pill.exercises.map((e: any) => ({
+                    _key: Math.random().toString(), name: e.name, sets: e.sets, duration_reps: e.reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url, is_unilateral: e.is_unilateral || false
+                }))
+            };
+            setHiitBlocks([...hiitBlocks.filter(b => b.exercises.some(e => e.name)), newBlock]);
+        }
+    }
+    setShowPillModal(false);
+  };
+
+  const handleDeletePill = async (pillId: string) => {
+      try {
+          await api.deletePill(pillId);
+          api.getPills().then(setPills);
+      } catch(e:any) {
+          Alert.alert("Error", e.message);
+      }
+  };
+  // -------------------------
+
   const downloadCSVTemplate = async () => {
     let csvContent = "";
     let fileName = "";
-
-    // Añadimos el BOM (Byte Order Mark) para que Excel reconozca los acentos correctamente.
     const BOM = "\uFEFF"; 
 
     if (workoutType === 'traditional') {
@@ -254,7 +332,6 @@ export default function AddWorkoutScreen() {
         let currentBlockIndex = -1;
         
         rows.slice(1).forEach(row => {
-          // Saltar filas completamente vacías
           if (!row.some(cell => cell?.trim())) return;
 
           const bName = row[0]?.trim();
@@ -273,7 +350,6 @@ export default function AddWorkoutScreen() {
             currentBlockIndex++;
           }
 
-          // Si empezamos un CSV con la celda de Nom. Bloque vacía, creamos un bloque por defecto
           if (currentBlockIndex === -1) {
             currentBlockName = "Bloque 1";
             blocks.push({ 
@@ -392,13 +468,12 @@ export default function AddWorkoutScreen() {
     setSaving(true);
     try { 
       await api.createWorkout(payloadData); 
-      handleClose(); // Usamos la misma función segura para cerrar tras guardar
+      handleClose(); 
     } 
     catch (e: any) { setError(e.message || 'Error al guardar'); } 
     finally { setSaving(false); }
   };
 
-  // ✅ Nueva función segura para cerrar la pantalla
   const handleClose = () => {
     if (router.canGoBack()) {
       router.back();
@@ -415,7 +490,6 @@ export default function AddWorkoutScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, width: '100%' }}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          {/* ✅ Corrección 1: Usamos handleClose aquí */}
           <TouchableOpacity onPress={handleClose} style={styles.headerBtn}>
             <Ionicons name="close" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
@@ -459,7 +533,7 @@ export default function AddWorkoutScreen() {
             <TouchableOpacity style={[styles.typeBtn, workoutType === 'hiit' && { backgroundColor: colors.error || '#EF4444' }]} onPress={() => setWorkoutType('hiit')}><Text style={{ color: workoutType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito HIIT</Text></TouchableOpacity>
           </View>
 
-          {/* Sección Integrada CSV */}
+          {/* SECCIÓN CSV */}
           <View style={[styles.csvSection, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>IMPORTAR DESDE CSV</Text>
@@ -474,17 +548,23 @@ export default function AddWorkoutScreen() {
                   <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Subir</Text>
                 </TouchableOpacity>
               </View>
-
             </View>
-            <View style={{ backgroundColor: 'rgba(0,0,0,0.03)', padding: 10, borderRadius: 8 }}>
-              <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700', marginBottom: 4 }}>
-                {workoutType === 'traditional' ? 'Formato Columnas (Fuerza):' : 'Formato Columnas (HIIT):'}
-              </Text>
-              <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic', lineHeight: 16 }}>
-                {workoutType === 'traditional'
-                  ? '1. Nombre | 2. Series | 3. Reps | 4. Duración (s) | 5. Desc. Serie | 6. Desc. Ejercicio | 7. URL Vídeo | 8. Notas | 9. Unilateral (Sí/No)'
-                  : '1. Nom. Bloque | 2. Vueltas | 3. Desc. Ex | 4. Desc. Vuelta | 5. Desc. Bloques | 6. Nom. Ejercicio | 7. Series Ex | 8. Reps/Dur | 9. Tiempo | 10. Vídeo | 11. Notas | 12. Unilateral (Sí/No)'}
-              </Text>
+          </View>
+
+          {/* SECCIÓN PÍLDORAS */}
+          <View style={[styles.csvSection, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border, marginTop: -10 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>PÍLDORAS (ACTIVACIÓN/PREHAB)</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <TouchableOpacity style={[styles.csvBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]} onPress={() => setShowSavePillModal(true)}>
+                  <Ionicons name="save-outline" size={16} color={colors.primary} />
+                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Guardar Base</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.csvBtn, { backgroundColor: colors.primary }]} onPress={() => setShowPillModal(true)}>
+                  <Ionicons name="flask" size={16} color="#FFF" />
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Inyectar</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
 
@@ -535,7 +615,6 @@ export default function AddWorkoutScreen() {
                     </View>
                   </View>
 
-                  {/* Toggle Unilateral para ejercicios tradicionales */}
                   <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderTopWidth: 0.5, borderColor: colors.border }}>
                     <TouchableOpacity onPress={() => updateExercise(i, 'is_unilateral', !ex.is_unilateral)} style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
                       <Ionicons name={ex.is_unilateral ? "checkbox" : "square-outline"} size={18} color={ex.is_unilateral ? colors.primary : colors.textSecondary} />
@@ -645,6 +724,7 @@ export default function AddWorkoutScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* MODAL MAPA MUSCULAR */}
       <Modal visible={showMapModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
@@ -671,15 +751,68 @@ export default function AddWorkoutScreen() {
               <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>GUARDAR Y CONTINUAR</Text>
             </TouchableOpacity>
             
-            {/* ✅ Corrección 2: Asegurarnos de cerrar el modal antes de seguir */}
             <TouchableOpacity 
                onPress={() => {
-                  setShowMapModal(false);
-                  executeSave();
+                 setShowMapModal(false);
+                 executeSave();
                }} 
                style={{ marginTop: 15 }}
             >
               <Text style={{ color: colors.textSecondary, textAlign: 'center', fontWeight: '600' }}>Ignorar y continuar sin mapear</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL INYECTAR PÍLDORA */}
+      <Modal visible={showPillModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Mis Píldoras 💊</Text>
+              <TouchableOpacity onPress={() => setShowPillModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+            </View>
+            {pills.length === 0 ? (
+                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 20 }}>No tienes píldoras guardadas. Crea una base de ejercicios y dale a "Guardar Base".</Text>
+            ) : (
+                <ScrollView style={{ flexShrink: 1 }}>
+                {pills.map(p => (
+                    <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 15, borderWidth: 1, borderColor: colors.border, borderRadius: 12, marginBottom: 10 }}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16 }}>{p.name}</Text>
+                            <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>{p.is_hiit ? 'Formato Circuito' : 'Formato Fuerza'} • {p.exercises?.length || 0} bloques/ejercicios</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 10 }}>
+                            <TouchableOpacity onPress={() => handleDeletePill(p.id)} style={{ padding: 8, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 8 }}>
+                                <Ionicons name="trash" size={18} color="#EF4444" />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => injectPill(p)} style={{ padding: 8, backgroundColor: colors.primary, borderRadius: 8 }}>
+                                <Ionicons name="add" size={18} color="#FFF" />
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                ))}
+                </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* MODAL GUARDAR PÍLDORA */}
+      <Modal visible={showSavePillModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Guardar Base 💾</Text>
+              <TouchableOpacity onPress={() => setShowSavePillModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+            </View>
+            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 14 }}>Guarda los ejercicios actuales como una píldora para poder inyectarlos rápidamente en futuros entrenamientos.</Text>
+            <TextInput 
+                style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border, marginBottom: 20 }]} 
+                value={newPillName} onChangeText={setNewPillName} placeholder="Nombre de la píldora (ej: Activación Core)" placeholderTextColor="rgba(150, 150, 150, 0.5)" autoFocus
+            />
+            <TouchableOpacity style={[styles.saveBtnBig, { backgroundColor: colors.primary }]} onPress={handleSavePill}>
+              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>GUARDAR PÍLDORA</Text>
             </TouchableOpacity>
           </View>
         </View>
