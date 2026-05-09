@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
-  ActivityIndicator, Dimensions, Modal, TextInput, Platform,
-  KeyboardAvoidingView, Alert
+  ActivityIndicator, Modal, TextInput, Platform,
+  KeyboardAvoidingView, Alert, useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -14,8 +14,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Body from 'react-native-body-highlighter';
 import { LineChart } from 'react-native-chart-kit';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const isDesktop = SCREEN_WIDTH > 768;
 const MAX_CONTENT_WIDTH = 1200;
 
 // Mapa de iconos dinámico para deportes
@@ -71,6 +69,10 @@ export default function AnalyticsScreen() {
   const { user } = useAuth();
   const params = useLocalSearchParams();
   const isTrainer = user?.role === 'trainer';
+  
+  // Responsive hooks
+  const { width: SCREEN_WIDTH } = useWindowDimensions();
+  const isDesktop = SCREEN_WIDTH > 768;
 
   const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'workload' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
   const [customExerciseMuscles, setCustomExerciseMuscles] = useState<Record<string, string[]>>({});
@@ -144,7 +146,7 @@ export default function AnalyticsScreen() {
     loadAthleteData(athlete.id);
   };
 
-const onRefresh = async () => { 
+  const onRefresh = async () => { 
     setRefreshing(true); 
     if (isTrainer) {
       const aths = await api.getAthletes().catch(() => []);
@@ -154,9 +156,9 @@ const onRefresh = async () => {
         if (updated) setSelectedAthlete(updated);
       }
     }
-    
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
+
   const exportToCSV = () => {
     let csvContent = "Fecha,Atleta,Categoria,Ejercicio/Test,Carga/Valor,Unidad,Series Completadas,RPE,Calidad Sueno,Molestias\n";
     const athleteName = selectedAthlete?.name || user?.name || 'Yo';
@@ -368,7 +370,6 @@ const onRefresh = async () => {
     const targetAthlete = selectedAthlete || user;
     const waterSessions = targetAthlete?.technical_sessions || [];
     
-    // Obtenemos el icono dinámico del atleta actual
     const sportIconKey = targetAthlete?.sport_icon || 'kite';
     const sportInfo = SPORT_ICON_MAP[sportIconKey] || SPORT_ICON_MAP['kite'];
 
@@ -393,15 +394,15 @@ const onRefresh = async () => {
       activityGrid.push({ date: dateStr, gym: hasGym, water: hasWater });
     }
 
-    const chartWidth = isDesktop ? MAX_CONTENT_WIDTH - 80 : SCREEN_WIDTH - 40;
+    const chartWidth = Math.min(SCREEN_WIDTH - 60, MAX_CONTENT_WIDTH - 80);
 
     return (
       <View style={{ marginBottom: 30 }}>
         <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 5 }]}>Estrés Físico y Técnica</Text>
         <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 20 }}>Cruza tus niveles de dolor y fatiga con tus sesiones de gimnasio y específicas de los últimos 14 días.</Text>
 
-        <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 15 }]}>
-          <View style={{ flexDirection: 'row', gap: 15, marginBottom: 10, justifyContent: 'center' }}>
+        <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 20 }]}>
+          <View style={{ flexDirection: 'row', gap: 15, marginBottom: 15, justifyContent: 'center' }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' }}/><Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Fatiga General</Text></View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#F59E0B' }}/><Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Agujetas / Dolor</Text></View>
           </View>
@@ -414,7 +415,7 @@ const onRefresh = async () => {
                 { data: sorenessData, color: () => '#F59E0B', strokeWidth: 3 }
               ]
             }}
-            width={chartWidth - 30}
+            width={chartWidth}
             height={200}
             fromZero
             yAxisInterval={1}
@@ -427,9 +428,9 @@ const onRefresh = async () => {
             style={{ borderRadius: 16, marginVertical: 8, alignSelf: 'center' }}
           />
 
-          <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
-            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center', letterSpacing: 1 }}>REGISTRO DE SESIONES</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={{ marginTop: 20, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 15, textAlign: 'center', letterSpacing: 1 }}>REGISTRO DE SESIONES</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{flexGrow: 1, justifyContent: 'center'}}>
                <View style={{ flexDirection: 'row', gap: 6, paddingBottom: 10, alignItems: 'center' }}>
                  {activityGrid.map((day, i) => (
                    <View key={i} style={{ alignItems: 'center', width: Math.max(30, (chartWidth - 60) / 14) }}>
@@ -468,7 +469,10 @@ const onRefresh = async () => {
     ] : [
       { data: slicedData.map(d => d.val || 0), color: (opacity = 1) => colors.primary, strokeWidth: 3 }
     ];
-    const chartWidth = isDesktop ? (MAX_CONTENT_WIDTH / 2) - 80 : SCREEN_WIDTH - 80;
+    
+    const containerWidth = isDesktop ? Math.min(SCREEN_WIDTH, MAX_CONTENT_WIDTH) / 2 : SCREEN_WIDTH;
+    const chartWidth = containerWidth - 90;
+
     return (
       <View style={{ alignItems: 'center', marginTop: 10 }}>
         {isBilateral && (
@@ -537,94 +541,65 @@ const onRefresh = async () => {
     const addToBody = (muscle: string, slugs: string[]) => { const s = heatMap[muscle] || 0; if (s > 0) { const p = (s / totalSets) * 100; slugs.forEach(slug => bodyData.push({ slug, intensity: mapIntensity(p) })); } };
     addToBody('Pecho', ['chest']); addToBody('Espalda', ['trapezius', 'upper-back', 'lower-back']); addToBody('Cuádriceps', ['quadriceps']); addToBody('Isquiotibiales', ['hamstring']); addToBody('Glúteo', ['gluteal']); addToBody('Hombro', ['front-deltoids', 'back-deltoids']); addToBody('Bíceps', ['biceps']); addToBody('Tríceps', ['triceps']); addToBody('Core', ['abs', 'obliques']); addToBody('Gemelos', ['calves']); addToBody('Antebrazos', ['forearm']); addToBody('Aductores', ['adductor']); addToBody('Abductores', ['abductors']);
 
-    if (isDesktop) {
-      return (
-        <View style={styles.bodyTabWrapper}>
-          <View style={styles.timeFilterContainer}>
+    return (
+      <View style={{ paddingBottom: 100 }}>
+        
+        {/* Controles de Filtros */}
+        <View style={isDesktop ? styles.timeFilterContainer : { flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+          <View style={styles.segmentedControl}>
             {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
-              <TouchableOpacity key={f.v} style={[styles.timeBtn, bodyTimeFilter === f.v && {backgroundColor: colors.primary}]} onPress={() => setBodyTimeFilter(f.v as any)}>
-                <Text style={{color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700'}}>{f.l}</Text>
+              <TouchableOpacity key={f.v} style={[styles.segmentBtn, bodyTimeFilter === f.v && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.v as any)}>
+                <Text style={{ color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700', fontSize: 13 }}>{f.l}</Text>
               </TouchableOpacity>
             ))}
           </View>
-          <View style={styles.desktopBodyLayout}>
-            <View style={styles.silhouettesWrapper}>
-              <View style={styles.bodySide}>
-                <Text style={styles.bodySideLabel}>FRONTAL</Text>
-                <Body data={bodyData} gender="female" side="front" scale={1.4} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-              </View>
-              <View style={styles.bodySide}>
-                <Text style={styles.bodySideLabel}>DORSAL</Text>
-                <Body data={bodyData} gender="female" side="back" scale={1.4} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+        </View>
+
+        <View style={isDesktop ? styles.desktopBodyLayout : { flexDirection: 'column' }}>
+          
+          {/* Silueta Unificada */}
+          <View style={isDesktop ? styles.silhouettesWrapper : { alignItems: 'center', marginBottom: 25 }}>
+            <View style={{ alignItems: 'center', justifyContent: 'center', height: isDesktop ? 450 : 350 }}>
+              {/* Llamamos al Body UNA sola vez, ya que contiene ambas siluetas */}
+              <Body data={bodyData} gender="female" scale={isDesktop ? 1.3 : 0.8} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
+            </View>
+          </View>
+
+          {/* Datos y Leyenda */}
+          <View style={isDesktop ? styles.dataWrapper : { width: '100%' }}>
+            
+            <View style={[styles.legendCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 20 }]}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary, textAlign: isDesktop ? 'left' : 'center' }]}>Distribución de Carga</Text>
+              <View style={[styles.legendGrid, !isDesktop && { justifyContent: 'center' }]}>
+                {['0%', '0-20%', '20-40%', '40-50%', '50%+'].map((l, i) => (
+                  <View key={l} style={styles.legendItem}>
+                    <View style={[styles.dot, { backgroundColor: ['#E2E8F0', '#3B82F6', '#FBBF24', '#F97316', '#EF4444'][i] }]} />
+                    <Text style={styles.legendText}>{l}</Text>
+                  </View>
+                ))}
               </View>
             </View>
-            <View style={styles.dataWrapper}>
-              <View style={[styles.legendCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Leyenda de % Series</Text>
-                <View style={styles.legendGrid}>
-                  {['0%', '0-20%', '20-40%', '40-50%', '50%+'].map((l, i) => (
-                    <View key={l} style={styles.legendItem}>
-                      <View style={[styles.dot, { backgroundColor: ['#E2E8F0', '#3B82F6', '#FBBF24', '#F97316', '#EF4444'][i] }]} />
-                      <Text style={styles.legendText}>{l}</Text>
+
+            <View style={[styles.muscleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Reparto Muscular</Text>
+              {sortedMuscles.map(([m, s], i) => {
+                const p = totalSets > 0 ? ((s / totalSets) * 100) : 0;
+                return (
+                  <View key={m} style={styles.muscleRow}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={{ color: colors.textSecondary, width: 25, fontWeight: '800' }}>{i + 1}</Text>
+                      <Text style={{ color: colors.textPrimary, fontWeight: '600', fontSize: 14 }}>{m}</Text>
                     </View>
-                  ))}
-                </View>
-              </View>
-              <View style={[styles.muscleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Reparto Muscular</Text>
-                {sortedMuscles.map(([m, s]) => {
-                  const p = totalSets > 0 ? (s / totalSets) * 100 : 0;
-                  return (
-                    <View key={m} style={styles.muscleRow}><Text style={{ color: colors.textPrimary, fontWeight: '500' }}>{m}</Text><View style={{ alignItems: 'flex-end' }}><Text style={{ color: colors.primary, fontWeight: '800' }}>{p.toFixed(1)}%</Text><Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text></View></View>
-                  );
-                })}
-              </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      <Text style={{ color: colors.primary, fontWeight: '800' }}>{p.toFixed(1)}%</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text>
+                    </View>
+                  </View>
+                );
+              })}
             </View>
-          </View>
-        </View>
-      );
-    }
 
-    return (
-      <View style={{ paddingBottom: 100 }}>
-        <View style={styles.timeFilterContainerMobile}>
-          {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
-            <TouchableOpacity key={f.v} style={[styles.timeBtnMobile, bodyTimeFilter === f.v && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.v as any)}>
-              <Text style={{ color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700', fontSize: 13 }}>{f.l}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <View style={styles.dualBodyContainerMobile}>
-          <View style={styles.bodyWrapperMobile}>
-            <Text style={styles.bodySideLabelMobile}>FRONTAL</Text>
-            <Body data={bodyData} gender="female" side="front" scale={0.85} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
           </View>
-          <View style={styles.bodyWrapperMobile}>
-            <Text style={styles.bodySideLabelMobile}>DORSAL</Text>
-            <Body data={bodyData} gender="female" side="back" scale={0.85} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-          </View>
-        </View>
-
-        <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 15, textAlign: 'center', marginTop: 10 }}>Distribución de Carga</Text>
-        <View style={styles.legendRowMobile}>
-          {['0%', '0-20%', '20-40%', '40-50%', '50%+'].map((l, i) => (
-            <View key={l} style={styles.legendItemMobile}>
-              <View style={[styles.dotMobile, { backgroundColor: ['#E2E8F0', '#3B82F6', '#FBBF24', '#F97316', '#EF4444'][i] }]} />
-              <Text style={styles.legendTextMobile}>{l}</Text>
-            </View>
-          ))}
-        </View>
-        <View style={[styles.topMusclesCardMobile, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-          {sortedMuscles.map(([m, s], i) => {
-            const p = totalSets > 0 ? ((s / totalSets) * 100) : 0;
-            return (
-              <View key={m} style={styles.topMuscleItemMobile}>
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}><Text style={{ color: colors.textSecondary, width: 25, fontWeight: '800' }}>{i + 1}</Text><Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600' }}>{m}</Text></View>
-                <View style={{ alignItems: 'flex-end' }}><Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '800' }}>{p.toFixed(1)}%</Text><Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text></View>
-              </View>
-            );
-          })}
         </View>
       </View>
     );
@@ -665,7 +640,9 @@ const onRefresh = async () => {
                  {renderPerformanceSummary()}
                  {renderMeasurementsCard()}
                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, marginTop: 10 }}><Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Histórico de Tests</Text>{isTrainer && <TouchableOpacity onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}><Ionicons name="git-merge" size={22} color={colors.primary} /></TouchableOpacity>}</View>
-                 <View style={isDesktop ? { flexDirection: 'row', flexWrap: 'wrap', gap: 15 } : {}}>{cleanProgression.filter((item: any) => item.type === 'test').map((item: any, i: number) => renderTestCard(item, i))}</View>
+                 <View style={{ flexDirection: isDesktop ? 'row' : 'column', flexWrap: 'wrap', gap: 15, justifyContent: 'space-between' }}>
+                    {cleanProgression.filter((item: any) => item.type === 'test').map((item: any, i: number) => renderTestCard(item, i))}
+                 </View>
                </View>
              ) : activeTab === 'progress' ? (
                 <View>
@@ -707,7 +684,7 @@ const onRefresh = async () => {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   mainWrapper: { flex: 1 },
-  desktopWrapper: { maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center' },
+  desktopWrapper: { maxWidth: MAX_CONTENT_WIDTH, alignSelf: 'center', width: '100%' },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 20 },
   headerTitle: { fontSize: 24, fontWeight: '900' },
   iconBtn: { width: 45, height: 45, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
@@ -721,37 +698,24 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 12, color: '#888' },
   summaryDivider: { width: 1, backgroundColor: 'rgba(0,0,0,0.1)' },
   
-  bodyTabWrapper: { flex: 1 },
-  timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 30 },
-  timeBtn: { paddingHorizontal: 20, paddingVertical: 10, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)' },
+  // Elementos unificados Body/Filtros
+  segmentedControl: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, width: '100%' },
+  segmentBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
+  timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 30 },
   desktopBodyLayout: { flexDirection: 'row', gap: 30, alignItems: 'flex-start' },
-  silhouettesWrapper: { flex: 1.5, flexDirection: 'row', justifyContent: 'center', gap: 30 },
-  bodySide: { alignItems: 'center' },
-  bodySideLabel: { fontSize: 11, fontWeight: '900', color: '#888', marginBottom: 20, letterSpacing: 1 },
-  dataWrapper: { flex: 1, gap: 20 },
+  silhouettesWrapper: { flex: 1.5, alignItems: 'center' },
+  dataWrapper: { flex: 1 },
   legendCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
   legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 14, height: 14, borderRadius: 4 },
   legendText: { fontSize: 12, fontWeight: '700', color: '#666' },
   muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
-  muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  
-  timeFilterContainerMobile: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, marginBottom: 15 },
-  timeBtnMobile: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
-  dualBodyContainerMobile: { flexDirection: 'row', justifyContent: 'center', gap: 10, marginBottom: 25 },
-  bodyWrapperMobile: { alignItems: 'center', flex: 1 },
-  bodySideLabelMobile: { fontSize: 10, fontWeight: '900', color: '#888', marginBottom: 10 },
-  legendRowMobile: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 25, justifyContent: 'center' },
-  legendItemMobile: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  dotMobile: { width: 12, height: 12, borderRadius: 3 },
-  legendTextMobile: { fontSize: 10, fontWeight: '600', color: '#888' },
-  topMusclesCardMobile: { padding: 15, borderRadius: 20, borderWidth: 1 },
-  topMuscleItemMobile: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
 
   measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
   measurementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
-  measureBadge: { flex: 1, minWidth: '45%', padding: 12, borderRadius: 14, borderWidth: 1 },
+  measureBadge: { flex: 1, minWidth: '45%', padding: 15, borderRadius: 16, borderWidth: 1 },
   cardTitle: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
   testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 15 },
   testName: { fontSize: 18, fontWeight: '800' },
