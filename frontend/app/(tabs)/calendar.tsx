@@ -188,11 +188,12 @@ export default function CalendarScreen() {
 const handleSaveTechnicalSession = async (dates: string[]) => {
     setUpdating(true);
     try {
-      // 👇 AÑADE "isTrainer &&" EN ESTA LÍNEA 👇
       if (isTrainer && api.updateAthlete) {
         await api.updateAthlete(selectedAthlete.id, { technical_sessions: dates });
       } else if (api.updateProfile) {
         await api.updateProfile({ technical_sessions: dates });
+        // 👇 SOLUCIÓN: Sincronizamos el contexto global para no perder los datos al navegar
+        if (updateUser) updateUser({ technical_sessions: dates });
       }
       setSportSessions(dates);
       setSelectedAthlete((prev: any) => ({ ...prev, technical_sessions: dates }));
