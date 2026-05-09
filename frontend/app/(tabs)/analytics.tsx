@@ -144,11 +144,19 @@ export default function AnalyticsScreen() {
     loadAthleteData(athlete.id);
   };
 
-  const onRefresh = () => { 
+const onRefresh = async () => { 
     setRefreshing(true); 
+    if (isTrainer) {
+      const aths = await api.getAthletes().catch(() => []);
+      setAthletes(aths);
+      if (selectedAthlete) {
+        const updated = aths.find((a: any) => a.id === selectedAthlete.id);
+        if (updated) setSelectedAthlete(updated);
+      }
+    }
+    
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
   };
-
   const exportToCSV = () => {
     let csvContent = "Fecha,Atleta,Categoria,Ejercicio/Test,Carga/Valor,Unidad,Series Completadas,RPE,Calidad Sueno,Molestias\n";
     const athleteName = selectedAthlete?.name || user?.name || 'Yo';
