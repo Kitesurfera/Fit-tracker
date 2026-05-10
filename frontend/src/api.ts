@@ -79,7 +79,14 @@ export const api = {
     });
     return res.json();
   },
-
+  
+  analyzeAnalytics: async (data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/brain/analyze-analytics`, {
+      method: 'POST', headers, body: JSON.stringify(data),
+    });
+    return res.json();
+  },
   // --- NOTIFICACIONES PUSH Y RECORDATORIOS ---
   scheduleDailyWellnessReminder: async () => {
     try {
