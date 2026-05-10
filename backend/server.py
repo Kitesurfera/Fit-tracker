@@ -89,6 +89,13 @@ async def ping():
 api_router = APIRouter(prefix="/api")
 
 # --- MODELOS PYDANTIC ---
+class AnalyticsAnalyzeRequest(BaseModel):
+    athlete_name: str
+    fatigue_data: list
+    soreness_data: list
+    recent_workouts_count: int
+    recent_prs: list
+    
 class WellnessCreate(BaseModel):
     fatigue: int
     stress: int
@@ -485,6 +492,60 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         
     except Exception as e:
         logger.error(f"Error general en endpoint IA: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error conectando con la IA: {str(e)}")
+
+ @api_router.post("/brain/analyze-analytics")
+async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_current_user)):
+    global COOLDOWN_PRO_UNTIL
+    if not GEMINI_API_KEY:
+        raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
+        
+    try:
+        system_prompt = f"""
+        Eres un preparador físico de élite analizando los datos recientes de {data.athlete_name}.
+        Analiza estos datos con un tono muy profesional, directo y científico.
+        
+        Datos de los últimos 14 días:
+        - Curva de Fatiga (0-5): {data.fatigue_data}
+        - Curva de Agujetas/Dolor (0-5): {data.soreness_data}
+        - Entrenamientos (últimos 30d): {data.recent_workouts_count}
+        - Mejores marcas recientes (PRs): {', '.join(data.recent_prs) if data.recent_prs else 'Ninguno registrado'}
+        
+        RESPONDE ÚNICAMENTE CON JSON PURO USANDO ESTA ESTRUCTURA EXACTA:
+        {{
+            "workload_analysis": "Párrafo analizando la tendencia de su fatiga y dolor en estos 14 días. ¿Hay riesgo de sobreentrenamiento o está asimilando bien las cargas?",
+            "progress_analysis": "Párrafo evaluando su constancia ({data.recent_workouts_count} sesiones) y su evolución en las marcas (PRs).",
+            "recommendations": ["Tip técnico 1", "Tip técnico 2", "Tip técnico 3"]
+        }}
+        """
+
+        model_pro_id = "models/gemini-3.1-pro-preview"
+        model_flash_id = "models/gemini-2.5-flash"
+        
+        intentar_pro = time.time() > COOLDOWN_PRO_UNTIL
+        modelo_actual_id = model_pro_id if intentar_pro else model_flash_id
+
+        try:
+            model = genai.GenerativeModel(model_name=modelo_actual_id)
+            model.generation_config = {"response_mime_type": "application/json"}
+            response = model.generate_content(system_prompt)
+        except Exception as e:
+            if intentar_pro and ("429" in str(e) or "Quota" in str(e) or isinstance(e, ResourceExhausted)):
+                COOLDOWN_PRO_UNTIL = time.time() + 60
+                model_fallback = genai.GenerativeModel(model_name=model_flash_id)
+                model_fallback.generation_config = {"response_mime_type": "application/json"}
+                response = model_fallback.generate_content(system_prompt)
+            else:
+                raise e
+
+        raw_text = response.text.strip()
+        if raw_text.startswith("```"):
+            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+        
+        return json.loads(raw_text)
+        
+    except Exception as e:
+        logger.error(f"Error en analíticas IA: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error conectando con la IA: {str(e)}")
 
 # --- RUTAS DE WELLNESS ---
