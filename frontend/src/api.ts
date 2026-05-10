@@ -305,6 +305,14 @@ export const api = {
     return await res.json();
   },
 
+  updatePill: async (id: string, data: any) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/pills/${id}`, {
+      method: 'PUT', headers, body: JSON.stringify(data),
+    });
+    return await res.json();
+  },
+
   deletePill: async (id: string) => {
     const headers = await getAuthHeaders();
     const res = await authFetch(`${BACKEND_URL}/api/pills/${id}`, { method: 'DELETE', headers });
