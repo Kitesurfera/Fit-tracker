@@ -296,6 +296,17 @@ async def get_pills(user=Depends(get_current_user)):
     pills = await db.pills.find({"trainer_id": target_trainer_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
     return pills
 
+@api_router.put("/pills/{pill_id}")
+async def update_pill(pill_id: str, data: PillCreate, user=Depends(get_current_user)):
+    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    update_data = data.dict()
+    # Actualizamos los campos recibidos sin modificar el owner (trainer_id)
+    await db.pills.update_one(
+        {"id": pill_id, "trainer_id": user['id']},
+        {"$set": update_data}
+    )
+    return {"status": "success"}
+
 @api_router.delete("/pills/{pill_id}")
 async def delete_pill(pill_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
