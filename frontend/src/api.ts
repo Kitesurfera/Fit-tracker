@@ -3,7 +3,7 @@ import { Platform } from 'react-native';
 import { router } from 'expo-router';
 import { syncManager } from './offline';
 
-const BACKEND_URL = "https://fit-tracker-backend-rtx2.onrender.com";
+const BACKEND_URL = "[https://fit-tracker-backend-rtx2.onrender.com](https://fit-tracker-backend-rtx2.onrender.com)";
 
 const getAuthHeaders = async () => {
   try {
@@ -82,8 +82,6 @@ export const api = {
 
   // --- NOTIFICACIONES PUSH Y RECORDATORIOS ---
   scheduleDailyWellnessReminder: async () => {
-    // Función restaurada para evitar el crash de TypeError. 
-    // Si usabas expo-notifications, la lógica completa iba aquí.
     try {
         console.log("Wellness reminder check OK.");
         return true;
@@ -287,8 +285,14 @@ export const api = {
     const headers = await getAuthHeaders();
     try {
       const res = await authFetch(`${BACKEND_URL}/api/pills`, { headers });
-      return await res.json();
+      const data = await res.json();
+      await syncManager.cacheData('pills_cache', data);
+      return data;
     } catch (e) {
+      if (shouldFallbackToOffline(e)) {
+        const cached = await syncManager.getCachedData('pills_cache');
+        return cached || [];
+      }
       return [];
     }
   },
