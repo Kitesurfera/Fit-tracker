@@ -44,6 +44,7 @@ export default function SettingsScreen() {
   // --- GESTOR DE PÍLDORAS ---
   const [pills, setPills] = useState<any[]>([]);
   const [showPillBuilder, setShowPillBuilder] = useState(false);
+  const [editingPillId, setEditingPillId] = useState<string | null>(null);
   const [pillName, setPillName] = useState('');
   const [pillType, setPillType] = useState<'traditional' | 'hiit'>('traditional');
   const [pillExs, setPillExs] = useState<any[]>([{ _key: '1', name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
@@ -146,11 +147,48 @@ export default function SettingsScreen() {
   };
 
   // --- LOGICA BUILDER PILDORAS ---
-  const openPillBuilder = () => {
+  const openNewPillBuilder = () => {
+    setEditingPillId(null);
     setPillName('');
     setPillType('traditional');
     setPillExs([{ _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
     setPillBlocks([{ _key: Math.random().toString(), name: 'Bloque 1', sets: '1', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
+    setShowPillBuilder(true);
+  };
+
+  const openEditPillBuilder = (pill: any) => {
+    setEditingPillId(pill.id);
+    setPillName(pill.name);
+    setPillType(pill.is_hiit ? 'hiit' : 'traditional');
+    
+    if (pill.is_hiit) {
+      const blocks = pill.exercises.map((b: any) => ({
+        _key: Math.random().toString(),
+        name: b.name || '',
+        sets: b.sets || '1',
+        exercises: (b.hiit_exercises || b.exercises || []).map((e: any) => ({
+          _key: Math.random().toString(),
+          name: e.name || '',
+          duration_reps: e.duration_reps || '',
+          duration: e.duration || '',
+          video_url: e.video_url || '',
+          is_unilateral: !!e.is_unilateral
+        }))
+      }));
+      setPillBlocks(blocks.length > 0 ? blocks : [{ _key: Math.random().toString(), name: 'Bloque 1', sets: '1', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
+    } else {
+      const exs = pill.exercises.map((e: any) => ({
+        _key: Math.random().toString(),
+        name: e.name || '',
+        sets: e.sets || '',
+        reps: e.reps || '',
+        duration: e.duration || '',
+        video_url: e.video_url || '',
+        is_unilateral: !!e.is_unilateral
+      }));
+      setPillExs(exs.length > 0 ? exs : [{ _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
+    }
+    
     setShowPillBuilder(true);
   };
 
@@ -159,14 +197,14 @@ export default function SettingsScreen() {
     
     let exercisesToSave = [];
     
-    // Normalizamos los datos de la misma forma que en AddWorkout / EditWorkout
+    // Normalizamos los datos
     if (pillType === 'traditional') {
         exercisesToSave = pillExs.filter(e => e.name.trim()).map(e => ({
             name: e.name, 
             sets: e.sets, 
             reps: e.reps, 
             duration: e.duration, 
-            weight: '', // Rellenamos campos vacíos para evitar undefined
+            weight: '',
             rest: '', 
             rest_exercise: '', 
             video_url: e.video_url, 
@@ -178,12 +216,12 @@ export default function SettingsScreen() {
             is_hiit_block: true, 
             name: block.name, 
             sets: block.sets, 
-            rest_exercise: '0', // Valores por defecto seguros
+            rest_exercise: '0', 
             rest_block: '0', 
             rest_between_blocks: '60',
             hiit_exercises: block.exercises.filter((e:any) => e.name.trim()).map((e:any) => ({
                 name: e.name, 
-                sets: '1', // Los ejercicios de HIIT dentro de una píldora suelen ser de 1 serie por vuelta
+                sets: '1',
                 duration_reps: e.duration_reps, 
                 duration: e.duration, 
                 exercise_notes: '', 
@@ -197,7 +235,14 @@ export default function SettingsScreen() {
 
     setSavingPill(true);
     try {
-        await api.createPill({ name: pillName.trim(), is_hiit: pillType === 'hiit', exercises: exercisesToSave });
+        const payload = { name: pillName.trim(), is_hiit: pillType === 'hiit', exercises: exercisesToSave };
+        
+        if (editingPillId) {
+            await api.updatePill(editingPillId, payload);
+        } else {
+            await api.createPill(payload);
+        }
+        
         setShowPillBuilder(false);
         loadPills();
     } catch (e: any) { Alert.alert("Error", e.message); } 
@@ -305,15 +350,20 @@ export default function SettingsScreen() {
                           <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14 }}>{p.name}</Text>
                           <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{p.is_hiit ? 'Formato Circuito' : 'Formato Fuerza'} • {p.exercises?.length || 0} bloques/ej.</Text>
                         </View>
-                        <TouchableOpacity onPress={() => handleDeletePill(p.id)} style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}>
-                          <Ionicons name="trash" size={16} color="#EF4444" />
-                        </TouchableOpacity>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <TouchableOpacity onPress={() => openEditPillBuilder(p)} style={{ padding: 6, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 6 }}>
+                            <Ionicons name="pencil" size={16} color="#3B82F6" />
+                          </TouchableOpacity>
+                          <TouchableOpacity onPress={() => handleDeletePill(p.id)} style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}>
+                            <Ionicons name="trash" size={16} color="#EF4444" />
+                          </TouchableOpacity>
+                        </View>
                       </View>
                     ))}
                   </View>
                 )}
                 
-                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: 12 }]} onPress={openPillBuilder}>
+                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: 12 }]} onPress={openNewPillBuilder}>
                   <Ionicons name="add" size={18} color="#FFF" />
                   <Text style={[styles.saveBtnText, { color: '#FFF', fontSize: 13 }]}>Crear Nueva Píldora</Text>
                 </TouchableOpacity>
@@ -389,7 +439,9 @@ export default function SettingsScreen() {
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={[styles.modalContent, { backgroundColor: colors.surface, height: '90%' }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Constructor de Píldoras</Text>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>
+                {editingPillId ? 'Editar Píldora' : 'Constructor de Píldoras'}
+              </Text>
               <TouchableOpacity onPress={() => setShowPillBuilder(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
             </View>
 
@@ -460,7 +512,7 @@ export default function SettingsScreen() {
             </ScrollView>
 
             <TouchableOpacity style={[styles.saveBtnBig, { backgroundColor: colors.primary, marginTop: 10 }]} onPress={handleSavePill} disabled={savingPill}>
-              {savingPill ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>GUARDAR PÍLDORA</Text>}
+              {savingPill ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>{editingPillId ? 'GUARDAR CAMBIOS' : 'GUARDAR PÍLDORA'}</Text>}
             </TouchableOpacity>
           </KeyboardAvoidingView>
         </View>
