@@ -103,7 +103,7 @@ export default function EditWorkoutScreen() {
             setHiitBlocks(w.exercises.map((b: any) => ({ 
               ...b, 
               _key: Math.random().toString(), 
-              exercises: b.hiit_exercises.map((e: any) => ({...e, _key: Math.random().toString(), sets: e.sets || '1', is_unilateral: !!e.is_unilateral})) 
+              exercises: (b.hiit_exercises || b.exercises || []).map((e: any) => ({...e, _key: Math.random().toString(), sets: e.sets || '1', is_unilateral: !!e.is_unilateral})) 
             })));
           } else {
             setWorkoutType('traditional');
@@ -125,7 +125,7 @@ export default function EditWorkoutScreen() {
   const updateExercise = (index: number, field: string, value: string) => {
     const updated = [...exercises]; updated[index] = { ...updated[index], [field]: value }; setExercises(updated);
   };
-  const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '' }]);
+  const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '', is_unilateral: false }]);
   const removeExercise = (index: number) => setExercises(exercises.filter((_, i) => i !== index));
   
   const moveExerciseUp = (index: number) => {
@@ -188,13 +188,26 @@ export default function EditWorkoutScreen() {
     const updated = [...hiitBlocks]; [updated[bIndex].exercises[eIndex + 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex + 1]]; setHiitBlocks(updated);
   };
 
-  // --- LÓGICA DE PÍLDORAS ---
+  // --- LÓGICA DE PÍLDORAS CORREGIDA ---
   const handleSavePill = async () => {
     if (!newPillName.trim()) { Alert.alert("Error", "Ponle un nombre a la píldora"); return; }
     
-    const exercisesToSave = workoutType === 'traditional'
-        ? exercises.filter(e => e.name.trim())
-        : hiitBlocks.filter(b => b.exercises.some((e:any) => e.name.trim()));
+    let exercisesToSave = [];
+    
+    if (workoutType === 'traditional') {
+        exercisesToSave = exercises.filter(e => e.name.trim()).map(e => ({
+            name: e.name, sets: e.sets, reps: e.reps, duration: e.duration, weight: e.weight,
+            rest: e.rest, rest_exercise: e.rest_exercise, video_url: e.video_url, exercise_notes: e.exercise_notes, is_unilateral: !!e.is_unilateral
+        }));
+    } else {
+        // Aseguramos que el esquema se guarda con hiit_exercises para ser compatible con la BD
+        exercisesToSave = hiitBlocks.filter(b => b.exercises.some((e:any) => e.name.trim())).map(block => ({
+            is_hiit_block: true, name: block.name, sets: block.sets, rest_exercise: block.rest_exercise, rest_block: block.rest_block, rest_between_blocks: block.rest_between_blocks,
+            hiit_exercises: block.exercises.filter((e:any) => e.name.trim()).map((e:any) => ({
+                name: e.name, sets: e.sets, duration_reps: e.duration_reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url, is_unilateral: !!e.is_unilateral
+            }))
+        }));
+    }
 
     if (exercisesToSave.length === 0) {
         Alert.alert("Error", "Añade al menos un ejercicio antes de guardar."); return;
@@ -222,8 +235,8 @@ export default function EditWorkoutScreen() {
         if (pill.is_hiit) {
             Alert.alert("Aviso", "Esta píldora es de formato circuito. Se ha insertado como ejercicios sueltos de fuerza.");
             const flatExercises = pill.exercises.flatMap((b: any) =>
-                b.exercises.map((e: any) => ({
-                    _key: Math.random().toString(), name: e.name, sets: e.sets, reps: e.duration_reps || '', duration: e.duration || '', weight: '', rest: '', rest_exercise: '', video_url: e.video_url || '', exercise_notes: e.exercise_notes || '', is_unilateral: e.is_unilateral || false
+                (b.hiit_exercises || b.exercises || []).map((e: any) => ({
+                    _key: Math.random().toString(), name: e.name, sets: e.sets || '1', reps: e.duration_reps || '', duration: e.duration || '', weight: '', rest: '', rest_exercise: '', video_url: e.video_url || '', exercise_notes: e.exercise_notes || '', is_unilateral: e.is_unilateral || false
                 }))
             );
             setExercises([...exercises.filter(e => e.name), ...flatExercises]);
@@ -235,9 +248,9 @@ export default function EditWorkoutScreen() {
         if (pill.is_hiit) {
             const newBlocks = pill.exercises.map((b: any) => ({
                 ...b, _key: Math.random().toString(),
-                exercises: b.exercises.map((e: any) => ({...e, _key: Math.random().toString()}))
+                exercises: (b.hiit_exercises || b.exercises || []).map((e: any) => ({...e, _key: Math.random().toString()}))
             }));
-            setHiitBlocks([...hiitBlocks.filter(b => b.exercises.some(e => e.name)), ...newBlocks]);
+            setHiitBlocks([...hiitBlocks.filter(b => b.exercises.some((e:any) => e.name)), ...newBlocks]);
         } else {
             const newBlock = {
                 _key: Math.random().toString(), name: `Píldora: ${pill.name}`, sets: '1', rest_exercise: '0', rest_block: '0', rest_between_blocks: '60',
@@ -245,7 +258,7 @@ export default function EditWorkoutScreen() {
                     _key: Math.random().toString(), name: e.name, sets: e.sets, duration_reps: e.reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url, is_unilateral: e.is_unilateral || false
                 }))
             };
-            setHiitBlocks([...hiitBlocks.filter(b => b.exercises.some(e => e.name)), newBlock]);
+            setHiitBlocks([...hiitBlocks.filter(b => b.exercises.some((e:any) => e.name)), newBlock]);
         }
     }
     setShowPillModal(false);
@@ -327,7 +340,7 @@ export default function EditWorkoutScreen() {
     if (workoutType === 'traditional') {
       payloadData.exercises = exercises.filter(e => e.name.trim()).map(ex => ({
         name: ex.name, sets: ex.sets, reps: ex.reps, duration: ex.duration, weight: ex.weight,
-        rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes
+        rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes, is_unilateral: !!ex.is_unilateral
       }));
     } else {
       payloadData.exercises = hiitBlocks.map(block => ({
@@ -472,6 +485,12 @@ export default function EditWorkoutScreen() {
                   <View style={[styles.mediaContainer, { borderTopColor: colors.border }]}>
                     <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
                     <TextInput style={[styles.urlInput, { color: colors.textPrimary }]} value={ex.video_url} onChangeText={v => updateExercise(i, 'video_url', v)} placeholder="URL de YouTube (opcional)" placeholderTextColor="rgba(150, 150, 150, 0.5)" autoCapitalize="none" />
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', paddingLeft: 12, paddingBottom: 10, borderTopWidth: 0.5, borderTopColor: colors.border, marginTop: 4, paddingTop: 10 }}>
+                     <TouchableOpacity onPress={() => updateExercise(i, 'is_unilateral', !ex.is_unilateral)} style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
+                        <Ionicons name={ex.is_unilateral ? "checkbox" : "square-outline"} size={18} color={ex.is_unilateral ? colors.primary : colors.textSecondary} />
+                        <Text style={{color: ex.is_unilateral ? colors.primary : colors.textSecondary, fontSize: 12, fontWeight: '700'}}>Unilateral (Doble Temporizador)</Text>
+                     </TouchableOpacity>
                   </View>
                   <View style={[styles.notesContainer, { borderTopColor: colors.border }]}>
                     <TextInput style={[styles.notesInput, { color: colors.textPrimary }]} value={ex.exercise_notes} onChangeText={v => updateExercise(i, 'exercise_notes', v)} placeholder="Añadir observaciones..." placeholderTextColor="rgba(150, 150, 150, 0.5)" />
