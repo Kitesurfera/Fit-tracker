@@ -13,6 +13,8 @@ import { useAuth } from '../../src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Body from 'react-native-body-highlighter';
 import { LineChart } from 'react-native-chart-kit';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 const MAX_CONTENT_WIDTH = 1200;
 
@@ -79,6 +81,7 @@ export default function AnalyticsScreen() {
   const [mergeMap, setMergeMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   
   const [testHistory, setTestHistory] = useState<any[]>([]);
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
@@ -157,51 +160,6 @@ export default function AnalyticsScreen() {
       }
     }
     loadAthleteData(isTrainer ? selectedAthlete?.id : user?.id); 
-  };
-
-  const exportToCSV = () => {
-    let csvContent = "Fecha,Atleta,Categoria,Ejercicio/Test,Carga/Valor,Unidad,Series Completadas,RPE,Calidad Sueno,Molestias\n";
-    const athleteName = selectedAthlete?.name || user?.name || 'Yo';
-
-    workoutHistory.forEach(w => {
-      if (!w.completed) return;
-      const rpe = w.completion_data?.rpe || '';
-      const sleep = w.completion_data?.sleep_quality || '';
-      const sore = (w.completion_data?.sore_joints || []).join(' | ');
-
-      w.completion_data?.exercise_results?.forEach((r: any) => {
-        if (r.completed_sets > 0) {
-          const val = r.logged_weight || '';
-          csvContent += `${w.date},${athleteName},Fuerza,${r.name},${val},kg,${r.completed_sets}/${r.total_sets},${rpe},${sleep},${sore}\n`;
-        }
-      });
-
-      w.completion_data?.hiit_results?.forEach((b: any) => {
-         b.hiit_exercises?.forEach((ex: any) => {
-            csvContent += `${w.date},${athleteName},HIIT,${ex.name},,,1,${rpe},${sleep},${sore}\n`;
-         });
-      });
-    });
-
-    testHistory.forEach(t => {
-      const rawName = t.custom_name || TEST_TRANSLATIONS[t.test_name] || t.test_name;
-      const val = t.value || Math.max(parseFloat(t.value_left || 0), parseFloat(t.value_right || 0));
-      csvContent += `${t.date},${athleteName},Test,${rawName},${val},${t.unit || ''},,,,, \n`;
-    });
-
-    if (Platform.OS === 'web') {
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement("a");
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute("download", `Analiticas_${athleteName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      Alert.alert("Aviso", "La descarga CSV está habilitada al usar la App desde el navegador web.");
-    }
   };
 
   const getMusclesForExercise = useCallback((exerciseName: string) => {
@@ -321,16 +279,225 @@ export default function AnalyticsScreen() {
     return result;
   }, [cleanProgression, searchQuery, hideEmpty, filterCategory]);
 
-  const renderPerformanceSummary = () => {
+  const recentWorkoutsCount = useMemo(() => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const limitDateStr = getLocalDateStr(thirtyDaysAgo);
-    const recentWorkouts = workoutHistory.filter(w => w.completed && w.date >= limitDateStr);
+    return workoutHistory.filter(w => w.completed && w.date >= limitDateStr).length;
+  }, [workoutHistory]);
+
+  const workloadData = useMemo(() => {
+    const daysToMap = 14;
+    const labels: string[] = [];
+    const fatigueData: number[] = [];
+    const sorenessData: number[] = [];
+
+    for (let i = daysToMap - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = getLocalDateStr(d);
+      
+      labels.push(`${d.getDate()}/${d.getMonth() + 1}`);
+      const well = wellnessHistory.find(w => w.date === dateStr);
+      fatigueData.push(well ? well.fatigue || 0 : 0);
+      sorenessData.push(well ? well.soreness || well.muscle_soreness || 0 : 0);
+    }
+    return { labels, fatigueData, sorenessData };
+  }, [wellnessHistory]);
+
+  // --- NUEVA LÓGICA DE EXPORTACIÓN A PDF CON IA ---
+  const exportToPDF = async () => {
+    setIsGeneratingPDF(true);
+    try {
+      const athleteName = selectedAthlete?.name || user?.name || 'Deportista';
+      
+      // 1. Recopilar Récords (PRs) más top
+      const topPRs = cleanProgression
+        .filter((item: any) => item.maxW > 0)
+        .sort((a: any, b: any) => b.maxW - a.maxW)
+        .slice(0, 5)
+        .map((item: any) => `${item.name}: ${item.maxW}${item.unit}`);
+
+      // 2. Pedir Análisis a Gemini
+      let aiAnalysis = {
+        workload_analysis: "Datos insuficientes para análisis.",
+        progress_analysis: "Sigue registrando entrenamientos para ver tu evolución.",
+        recommendations: ["Mantén la constancia.", "Registra tu fatiga diariamente."]
+      };
+      
+      try {
+        if (api.analyzeAnalytics) {
+            aiAnalysis = await api.analyzeAnalytics({
+                athlete_name: athleteName,
+                fatigue_data: workloadData.fatigueData,
+                soreness_data: workloadData.sorenessData,
+                recent_workouts_count: recentWorkoutsCount,
+                recent_prs: topPRs
+            });
+        }
+      } catch (e) { console.log("Aviso: Error generando IA, usando template base."); }
+
+      // 3. Generar HTML con Chart.js incrustado
+      const htmlContent = `
+      <html>
+        <head>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
+          <script src="[https://cdn.jsdelivr.net/npm/chart.js](https://cdn.jsdelivr.net/npm/chart.js)"></script>
+          <style>
+            @import url('[https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap)');
+            body { font-family: 'Inter', sans-serif; padding: 40px; color: #1e293b; background-color: #f8fafc; }
+            .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #3b82f6; padding-bottom: 20px; }
+            h1 { font-size: 32px; font-weight: 900; margin: 0; color: #0f172a; text-transform: uppercase; letter-spacing: -1px; }
+            .subtitle { color: #64748b; font-size: 16px; margin-top: 5px; }
+            
+            .section { background: #fff; padding: 25px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 30px; }
+            h2 { font-size: 20px; font-weight: 800; color: #3b82f6; margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; }
+            
+            .stats-grid { display: flex; gap: 15px; margin-bottom: 20px; }
+            .stat-box { flex: 1; background: #f1f5f9; padding: 15px; border-radius: 12px; text-align: center; }
+            .stat-value { font-size: 28px; font-weight: 900; color: #0f172a; }
+            .stat-label { font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; }
+
+            .text-content { font-size: 15px; line-height: 1.6; color: #334155; }
+            .recommendation-list { margin: 0; padding-left: 20px; }
+            .recommendation-list li { margin-bottom: 8px; }
+
+            .chart-container { width: 100%; height: 300px; position: relative; margin-top: 20px; }
+            
+            .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #94a3b8; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Rendimiento Técnico</h1>
+            <div class="subtitle">Reporte de Inteligencia Deportiva: ${athleteName} • ${getLocalDateStr(new Date())}</div>
+          </div>
+
+          <div class="section">
+            <h2>Resumen General</h2>
+            <div class="stats-grid">
+              <div class="stat-box">
+                <div class="stat-value">${recentWorkoutsCount}</div>
+                <div class="stat-label">Sesiones (30d)</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-value">${topPRs.length}</div>
+                <div class="stat-label">Récords Activos</div>
+              </div>
+            </div>
+            <div class="text-content">
+              <strong>Análisis de Evolución:</strong><br/>
+              ${aiAnalysis.progress_analysis}
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Carga, Fatiga y Recuperación (Últimos 14 días)</h2>
+            <div class="text-content" style="margin-bottom: 15px;">
+              <strong>Estado Actual del SNC:</strong><br/>
+              ${aiAnalysis.workload_analysis}
+            </div>
+            
+            <div class="chart-container">
+              <canvas id="workloadChart"></canvas>
+            </div>
+          </div>
+
+          <div class="section">
+            <h2>Recomendaciones Técnicas del Coach IA</h2>
+            <div class="text-content">
+              <ul class="recommendation-list">
+                ${aiAnalysis.recommendations.map((r: string) => `<li>${r}</li>`).join('')}
+              </ul>
+            </div>
+          </div>
+          
+          ${topPRs.length > 0 ? `
+          <div class="section">
+            <h2>Top Récords Personales</h2>
+            <div class="text-content">
+              <ul class="recommendation-list">
+                ${topPRs.map((pr: string) => `<li><strong>${pr.split(':')[0]}</strong>: ${pr.split(':')[1]}</li>`).join('')}
+              </ul>
+            </div>
+          </div>
+          ` : ''}
+
+          <div class="footer">
+            Generado automáticamente por Fit Tracker App.
+          </div>
+
+          <script>
+            const ctx = document.getElementById('workloadChart').getContext('2d');
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: ${JSON.stringify(workloadData.labels)},
+                    datasets: [
+                        {
+                            label: 'Fatiga General',
+                            data: ${JSON.stringify(workloadData.fatigueData)},
+                            borderColor: '#EF4444',
+                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            borderWidth: 3,
+                            tension: 0.4,
+                            fill: true
+                        },
+                        {
+                            label: 'Agujetas / Dolor',
+                            data: ${JSON.stringify(workloadData.sorenessData)},
+                            borderColor: '#F59E0B',
+                            backgroundColor: 'transparent',
+                            borderWidth: 3,
+                            borderDash: [5, 5],
+                            tension: 0.4
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: { beginAtZero: true, max: 5, ticks: { stepSize: 1 } }
+                    },
+                    plugins: {
+                        legend: { position: 'bottom' }
+                    },
+                    animation: { duration: 0 } // Desactivar animación para que se renderice al instante en el PDF
+                }
+            });
+          </script>
+        </body>
+      </html>
+      `;
+
+      // 4. Crear PDF e invocar el menú de compartir
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      
+      if (Platform.OS === 'web') {
+         // Para web descargamos usando un enlace
+         const link = document.createElement('a');
+         link.href = uri;
+         link.download = `Reporte_${athleteName.replace(/\s+/g, '_')}.pdf`;
+         link.click();
+      } else {
+         // Para móvil abrimos el diálogo nativo
+         await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+      }
+
+    } catch (e: any) {
+      Alert.alert("Error", "No se pudo generar el documento PDF: " + e.message);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
+  const renderPerformanceSummary = () => {
     return (
       <View style={[styles.summaryBoard, { backgroundColor: colors.surfaceHighlight }]}>
         <View style={styles.summaryItem}>
           <Ionicons name="calendar-outline" size={24} color={colors.primary} />
-          <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{recentWorkouts.length}</Text>
+          <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{recentWorkoutsCount}</Text>
           <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Entrenos (30d)</Text>
         </View>
         <View style={styles.summaryDivider} />
@@ -366,29 +533,18 @@ export default function AnalyticsScreen() {
   };
 
   const renderWorkloadDashboard = () => {
-    const daysToMap = 14;
     const targetAthlete = selectedAthlete || user;
     const waterSessions = targetAthlete?.technical_sessions || [];
     
     const sportIconKey = targetAthlete?.sport_icon || 'kite';
     const sportInfo = SPORT_ICON_MAP[sportIconKey] || SPORT_ICON_MAP['kite'];
 
-    const labels: string[] = [];
-    const fatigueData: number[] = [];
-    const sorenessData: number[] = [];
+    const { labels, fatigueData, sorenessData } = workloadData;
+    
     const activityGrid: { date: string, gym: boolean, water: boolean }[] = [];
-
+    const daysToMap = 14;
     for (let i = daysToMap - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = getLocalDateStr(d);
-      
-      labels.push(`${d.getDate()}/${d.getMonth() + 1}`);
-      
-      const well = wellnessHistory.find(w => w.date === dateStr);
-      fatigueData.push(well ? well.fatigue || 0 : 0);
-      sorenessData.push(well ? well.soreness || well.muscle_soreness || 0 : 0);
-
+      const d = new Date(); d.setDate(d.getDate() - i); const dateStr = getLocalDateStr(d);
       const hasGym = workoutHistory.some(w => w.date === dateStr && w.completed);
       const hasWater = waterSessions.includes(dateStr);
       activityGrid.push({ date: dateStr, gym: hasGym, water: hasWater });
@@ -560,7 +716,6 @@ export default function AnalyticsScreen() {
           {/* Silueta Unificada */}
           <View style={isDesktop ? styles.silhouettesWrapper : { alignItems: 'center', marginBottom: 25 }}>
             <View style={{ alignItems: 'center', justifyContent: 'center', height: isDesktop ? 450 : 350 }}>
-              {/* Llamamos al Body UNA sola vez, ya que contiene ambas siluetas */}
               <Body data={bodyData} gender="female" scale={isDesktop ? 1.3 : 0.8} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
             </View>
           </View>
@@ -616,7 +771,9 @@ export default function AnalyticsScreen() {
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
-              <TouchableOpacity onPress={exportToCSV} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="download" size={22} color={colors.primary} /></TouchableOpacity>
+              <TouchableOpacity onPress={exportToPDF} disabled={isGeneratingPDF} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
+                {isGeneratingPDF ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="document-text" size={22} color={colors.primary} />}
+              </TouchableOpacity>
               <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>{refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}</TouchableOpacity>
             </View>
           </View>
