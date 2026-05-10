@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  Platform, Alert, ScrollView, Linking, ActivityIndicator, KeyboardAvoidingView, Switch, Share
+  Platform, Alert, ScrollView, ActivityIndicator, KeyboardAvoidingView, Switch, Share, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -41,12 +41,27 @@ export default function SettingsScreen() {
   const [savingMeasures, setSavingMeasures] = useState(false);
   const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
 
-  // Cargar preferencias al entrar
+  // --- GESTOR DE PÍLDORAS ---
+  const [pills, setPills] = useState<any[]>([]);
+  const [showPillBuilder, setShowPillBuilder] = useState(false);
+  const [pillName, setPillName] = useState('');
+  const [pillType, setPillType] = useState<'traditional' | 'hiit'>('traditional');
+  const [pillExs, setPillExs] = useState<any[]>([{ _key: '1', name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
+  const [pillBlocks, setPillBlocks] = useState<any[]>([{ _key: 'b1', name: 'Bloque 1', sets: '1', exercises: [{ _key: 'e1', name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
+  const [savingPill, setSavingPill] = useState(false);
+
   useEffect(() => {
     AsyncStorage.getItem('timer_sounds_enabled').then(val => {
       if (val === 'false') setTimerSoundsEnabled(false);
     });
-  }, []);
+    if (!isAthlete) {
+      loadPills();
+    }
+  }, [isAthlete]);
+
+  const loadPills = () => {
+    api.getPills().then(setPills).catch(console.log);
+  };
 
   // --- FUNCIONES ---
   const toggleTimerSounds = async (value: boolean) => {
@@ -57,7 +72,6 @@ export default function SettingsScreen() {
   const togglePush = async (value: boolean) => {
     if (loadingPush) return;
     setLoadingPush(true);
-    
     try {
       if (value) {
         const subscription = await getWebPushSubscription();
@@ -70,7 +84,6 @@ export default function SettingsScreen() {
         setPushEnabled(false);
       }
     } catch (e) {
-      console.error("Error con push:", e);
       setPushEnabled(false);
     } finally {
       setLoadingPush(false);
@@ -121,9 +134,7 @@ export default function SettingsScreen() {
         url: 'https://fit-tracker-azure-iota.vercel.app/', 
         title: 'Fit Tracker App'
       });
-    } catch (error: any) {
-      console.error('Error al compartir:', error.message);
-    }
+    } catch (error: any) {}
   };
 
   const handleLogout = async () => {
@@ -134,20 +145,44 @@ export default function SettingsScreen() {
     }
   };
 
+  // --- LOGICA BUILDER PILDORAS ---
+  const openPillBuilder = () => {
+    setPillName('');
+    setPillType('traditional');
+    setPillExs([{ _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
+    setPillBlocks([{ _key: Math.random().toString(), name: 'Bloque 1', sets: '1', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
+    setShowPillBuilder(true);
+  };
+
+  const handleSavePill = async () => {
+    if (!pillName.trim()) { Alert.alert("Aviso", "Ponle un nombre a la píldora"); return; }
+    
+    const exercisesToSave = pillType === 'traditional'
+        ? pillExs.filter(e => e.name.trim())
+        : pillBlocks.filter(b => b.exercises.some((e:any) => e.name.trim()));
+
+    if (exercisesToSave.length === 0) { Alert.alert("Aviso", "Añade al menos un ejercicio."); return; }
+
+    setSavingPill(true);
+    try {
+        await api.createPill({ name: pillName.trim(), is_hiit: pillType === 'hiit', exercises: exercisesToSave });
+        setShowPillBuilder(false);
+        loadPills();
+    } catch (e: any) { Alert.alert("Error", e.message); } 
+    finally { setSavingPill(false); }
+  };
+
+  const handleDeletePill = async (id: string) => {
+    try { await api.deletePill(id); loadPills(); } catch (e) { Alert.alert("Error al borrar"); }
+  };
+
   const renderInputBox = (label: string, iconName: any, value: string, onChange: (t: string) => void, placeholder: string) => (
     <View style={styles.measureCol}>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 }}>
         <Ionicons name={iconName} size={16} color={colors.primary} />
         <Text style={[styles.inputLabel, { color: colors.textSecondary }]}>{label}</Text>
       </View>
-      <TextInput 
-        style={[styles.measureInput, { color: colors.textPrimary, backgroundColor: colors.background, borderColor: colors.border }]} 
-        keyboardType="numeric" 
-        value={value} 
-        onChangeText={onChange} 
-        placeholder={placeholder} 
-        placeholderTextColor={colors.textSecondary} 
-      />
+      <TextInput style={[styles.measureInput, { color: colors.textPrimary, backgroundColor: colors.background, borderColor: colors.border }]} keyboardType="numeric" value={value} onChangeText={onChange} placeholder={placeholder} placeholderTextColor={colors.textSecondary} />
     </View>
   );
 
@@ -157,40 +192,26 @@ export default function SettingsScreen() {
         
         {/* HEADER */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-            <Ionicons name="arrow-back" size={26} color={colors.textPrimary} />
-          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={26} color={colors.textPrimary} /></TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Ajustes</Text>
           <View style={{ width: 40 }} />
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           
-          {/* PERFIL */}
           <View style={styles.profileHeader}>
-            <View style={[styles.avatarCircle, { backgroundColor: colors.primary }]}>
-              <Text style={styles.avatarText}>{name.charAt(0).toUpperCase() || 'U'}</Text>
-            </View>
+            <View style={[styles.avatarCircle, { backgroundColor: colors.primary }]}><Text style={styles.avatarText}>{name.charAt(0).toUpperCase() || 'U'}</Text></View>
             <View style={styles.profileTextWrapper}>
               <Text style={[styles.profileName, { color: colors.textPrimary }]}>{name || 'Usuario'}</Text>
-              <Text style={[styles.roleText, { color: colors.textSecondary }]}>
-                {isAthlete ? 'DEPORTISTA' : 'ENTRENADOR'}
-              </Text>
+              <Text style={[styles.roleText, { color: colors.textSecondary }]}>{isAthlete ? 'DEPORTISTA' : 'ENTRENADOR'}</Text>
             </View>
           </View>
 
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <View style={styles.inputRow}>
               <Ionicons name="person-outline" size={20} color={colors.textSecondary} style={{ marginRight: 10 }} />
-              <TextInput 
-                style={[styles.input, { color: colors.textPrimary }]} 
-                value={name} 
-                onChangeText={setName} 
-                placeholder="Tu nombre completo" 
-                placeholderTextColor={colors.textSecondary}
-              />
+              <TextInput style={[styles.input, { color: colors.textPrimary }]} value={name} onChangeText={setName} placeholder="Tu nombre completo" placeholderTextColor={colors.textSecondary} />
             </View>
-            
             {name.trim() !== user?.name && (
               <TouchableOpacity style={[styles.saveProfileBtn, { backgroundColor: colors.primary }]} onPress={handleSaveProfile} disabled={savingProfile}>
                 {savingProfile ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.saveProfileBtnText}>Guardar Nombre</Text>}
@@ -237,6 +258,37 @@ export default function SettingsScreen() {
             )}
           </View>
 
+          {/* GESTOR DE PÍLDORAS (SOLO ENTRENADOR) */}
+          {!isAthlete && (
+            <>
+              <Text style={[styles.sectionTitle, { marginTop: 25 }]}>GESTOR DE PÍLDORAS (PREHAB/CALENTAMIENTO)</Text>
+              <View style={[styles.card, { backgroundColor: colors.surface }]}>
+                {pills.length === 0 ? (
+                  <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 15 }}>No tienes píldoras guardadas. Crea bloques base para inyectar en las sesiones.</Text>
+                ) : (
+                  <View style={{ gap: 10, marginBottom: 15 }}>
+                    {pills.map(p => (
+                      <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10 }}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14 }}>{p.name}</Text>
+                          <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{p.is_hiit ? 'Formato Circuito' : 'Formato Fuerza'} • {p.exercises?.length || 0} bloques/ej.</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => handleDeletePill(p.id)} style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}>
+                          <Ionicons name="trash" size={16} color="#EF4444" />
+                        </TouchableOpacity>
+                      </View>
+                    ))}
+                  </View>
+                )}
+                
+                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 6, paddingVertical: 12 }]} onPress={openPillBuilder}>
+                  <Ionicons name="add" size={18} color="#FFF" />
+                  <Text style={[styles.saveBtnText, { color: '#FFF', fontSize: 13 }]}>Crear Nueva Píldora</Text>
+                </TouchableOpacity>
+              </View>
+            </>
+          )}
+
           {isAthlete ? (
             <>
               <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ACTUALIZAR MEDICIONES</Text>
@@ -261,24 +313,16 @@ export default function SettingsScreen() {
                 <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 14, lineHeight: 22 }}>
                   Comparte este enlace con tus deportistas para que se registren fácilmente en tu equipo.
                 </Text>
-                <TouchableOpacity 
-                  style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 10 }]} 
-                  onPress={handleShareApp}
-                >
+                <TouchableOpacity style={[styles.saveBtn, { backgroundColor: colors.primary, flexDirection: 'row', justifyContent: 'center', gap: 10 }]} onPress={handleShareApp}>
                   <Ionicons name="share-social" size={20} color="#FFF" />
                   <Text style={[styles.saveBtnText, { color: '#FFF' }]}>Compartir Enlace</Text>
                 </TouchableOpacity>
               </View>
-            </>
-          )}
 
-          {/* LIBRERIA DE ICONOS (SOLO ENTRENADOR) */}
-          {!isAthlete && (
-            <>
               <Text style={[styles.sectionTitle, { marginTop: 25 }]}>LIBRERÍA DE ICONOS DEPORTIVOS</Text>
               <View style={[styles.card, { backgroundColor: colors.surface }]}>
                 <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 13 }}>
-                  Estos iconos aparecen en la esquina superior izquierda del calendario cuando un atleta registra una sesión técnica o competición.
+                  Estos iconos aparecen en el calendario cuando un atleta registra una sesión técnica o competición.
                 </Text>
                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 15 }}>
                   {Object.entries(SPORT_ICON_MAP).map(([key, value]) => (
@@ -305,9 +349,87 @@ export default function SettingsScreen() {
               <Text style={[styles.settingText, { color: '#EF4444', marginLeft: 16, flex: 1 }]}>Cerrar Sesión</Text>
             </TouchableOpacity>
           </View>
-
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* --- MODAL CREADOR DE PÍLDORAS --- */}
+      <Modal visible={showPillBuilder} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={[styles.modalContent, { backgroundColor: colors.surface, height: '90%' }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Constructor de Píldoras</Text>
+              <TouchableOpacity onPress={() => setShowPillBuilder(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+              <TextInput style={[styles.pillInput, { color: colors.textPrimary, borderColor: colors.border }]} value={pillName} onChangeText={setPillName} placeholder="Nombre (ej: Activación Hombros)" placeholderTextColor={colors.textSecondary} />
+              
+              <View style={[styles.typeSelector, { backgroundColor: colors.background, borderColor: colors.border, marginBottom: 20 }]}>
+                <TouchableOpacity style={[styles.typeBtn, pillType === 'traditional' && { backgroundColor: colors.primary }]} onPress={() => setPillType('traditional')}><Text style={{ color: pillType === 'traditional' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Fuerza</Text></TouchableOpacity>
+                <TouchableOpacity style={[styles.typeBtn, pillType === 'hiit' && { backgroundColor: colors.error || '#EF4444' }]} onPress={() => setPillType('hiit')}><Text style={{ color: pillType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito</Text></TouchableOpacity>
+              </View>
+
+              {pillType === 'traditional' ? (
+                <View style={{ gap: 10 }}>
+                  {pillExs.map((ex, i) => (
+                    <View key={ex._key} style={[styles.pillExCard, { borderColor: colors.border }]}>
+                      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => { const n = [...pillExs]; n[i].name = v; setPillExs(n); }} placeholder="Nombre ej." placeholderTextColor={colors.textSecondary} />
+                        <TouchableOpacity onPress={() => setPillExs(pillExs.filter((_, idx) => idx !== i))}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
+                      </View>
+                      <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.sets} onChangeText={v => { const n = [...pillExs]; n[i].sets = v; setPillExs(n); }} placeholder="Series" />
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.reps} onChangeText={v => { const n = [...pillExs]; n[i].reps = v; setPillExs(n); }} placeholder="Reps" />
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration} onChangeText={v => { const n = [...pillExs]; n[i].duration = v; setPillExs(n); }} placeholder="Tiempo" />
+                      </View>
+                      <TextInput style={[styles.pillExInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 8 }]} value={ex.video_url} onChangeText={v => { const n = [...pillExs]; n[i].video_url = v; setPillExs(n); }} placeholder="URL YouTube (opcional)" />
+                      <TouchableOpacity onPress={() => { const n = [...pillExs]; n[i].is_unilateral = !n[i].is_unilateral; setPillExs(n); }} style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8}}>
+                        <Ionicons name={ex.is_unilateral ? "checkbox" : "square-outline"} size={18} color={ex.is_unilateral ? colors.primary : colors.textSecondary} />
+                        <Text style={{color: ex.is_unilateral ? colors.primary : colors.textSecondary, fontSize: 12, fontWeight: '700'}}>Unilateral</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity onPress={() => setPillExs([...pillExs, { _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }])} style={[styles.addExBtnBig, { borderColor: colors.primary }]}><Text style={{ color: colors.primary, fontWeight: '700' }}>+ Añadir Ejercicio</Text></TouchableOpacity>
+                </View>
+              ) : (
+                <View style={{ gap: 15 }}>
+                  {pillBlocks.map((block, bIdx) => (
+                    <View key={block._key} style={[styles.pillExCard, { borderColor: colors.border }]}>
+                      <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 10 }}>
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontWeight: '700' }]} value={block.name} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].name = v; setPillBlocks(n); }} placeholder="Nombre Bloque" />
+                        <TextInput style={[styles.pillExInput, { width: 60, color: colors.textPrimary, borderColor: colors.border }]} value={block.sets} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].sets = v; setPillBlocks(n); }} placeholder="Vueltas" keyboardType="numeric" />
+                        <TouchableOpacity onPress={() => setPillBlocks(pillBlocks.filter((_, idx) => idx !== bIdx))}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
+                      </View>
+                      
+                      {block.exercises.map((ex: any, eIdx: number) => (
+                        <View key={ex._key} style={{ paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.primary, marginBottom: 10 }}>
+                          <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].name = v; setPillBlocks(n); }} placeholder="Ejercicio" />
+                            <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises.splice(eIdx, 1); setPillBlocks(n); }}><Ionicons name="close-circle" size={18} color={colors.textSecondary} /></TouchableOpacity>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration_reps} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration_reps = v; setPillBlocks(n); }} placeholder="Reps" />
+                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration = v; setPillBlocks(n); }} placeholder="Tiempo" />
+                          </View>
+                          <TextInput style={[styles.pillExInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 6 }]} value={ex.video_url} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].video_url = v; setPillBlocks(n); }} placeholder="URL YouTube (opcional)" />
+                        </View>
+                      ))}
+                      <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises.push({ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }); setPillBlocks(n); }} style={{ paddingVertical: 8 }}><Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>+ Añadir ejercicio al bloque</Text></TouchableOpacity>
+                    </View>
+                  ))}
+                  <TouchableOpacity onPress={() => setPillBlocks([...pillBlocks, { _key: Math.random().toString(), name: `Bloque ${pillBlocks.length + 1}`, sets: '1', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }])} style={[styles.addExBtnBig, { borderColor: colors.error || '#EF4444', borderStyle: 'dashed' }]}><Text style={{ color: colors.error || '#EF4444', fontWeight: '700' }}>+ Añadir Bloque</Text></TouchableOpacity>
+                </View>
+              )}
+
+            </ScrollView>
+
+            <TouchableOpacity style={[styles.saveBtnBig, { backgroundColor: colors.primary, marginTop: 10 }]} onPress={handleSavePill} disabled={savingPill}>
+              {savingPill ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>GUARDAR PÍLDORA</Text>}
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -343,5 +465,14 @@ const styles = StyleSheet.create({
   iconBox: { width: 38, height: 38, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
   settingText: { fontSize: 15, fontWeight: '700' },
   themeBtn: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 14, borderRadius: 14 },
-  themeBtnText: { fontSize: 11, fontWeight: '800', marginTop: 6, textTransform: 'uppercase' }
+  themeBtnText: { fontSize: 11, fontWeight: '800', marginTop: 6, textTransform: 'uppercase' },
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
+  pillInput: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16, marginBottom: 15 },
+  typeSelector: { flexDirection: 'row', borderRadius: 12, padding: 4, borderWidth: 1 }, 
+  typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 }, 
+  pillExCard: { padding: 12, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
+  pillExInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 13 },
+  addExBtnBig: { padding: 14, borderRadius: 12, borderWidth: 1, alignItems: 'center', marginTop: 5 },
+  saveBtnBig: { paddingVertical: 16, borderRadius: 15, alignItems: 'center' },
 });
