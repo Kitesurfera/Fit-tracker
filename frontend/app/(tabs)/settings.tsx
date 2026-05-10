@@ -157,9 +157,41 @@ export default function SettingsScreen() {
   const handleSavePill = async () => {
     if (!pillName.trim()) { Alert.alert("Aviso", "Ponle un nombre a la píldora"); return; }
     
-    const exercisesToSave = pillType === 'traditional'
-        ? pillExs.filter(e => e.name.trim())
-        : pillBlocks.filter(b => b.exercises.some((e:any) => e.name.trim()));
+    let exercisesToSave = [];
+    
+    // Normalizamos los datos de la misma forma que en AddWorkout / EditWorkout
+    if (pillType === 'traditional') {
+        exercisesToSave = pillExs.filter(e => e.name.trim()).map(e => ({
+            name: e.name, 
+            sets: e.sets, 
+            reps: e.reps, 
+            duration: e.duration, 
+            weight: '', // Rellenamos campos vacíos para evitar undefined
+            rest: '', 
+            rest_exercise: '', 
+            video_url: e.video_url, 
+            exercise_notes: '', 
+            is_unilateral: !!e.is_unilateral
+        }));
+    } else {
+        exercisesToSave = pillBlocks.filter(b => b.exercises.some((e:any) => e.name.trim())).map(block => ({
+            is_hiit_block: true, 
+            name: block.name, 
+            sets: block.sets, 
+            rest_exercise: '0', // Valores por defecto seguros
+            rest_block: '0', 
+            rest_between_blocks: '60',
+            hiit_exercises: block.exercises.filter((e:any) => e.name.trim()).map((e:any) => ({
+                name: e.name, 
+                sets: '1', // Los ejercicios de HIIT dentro de una píldora suelen ser de 1 serie por vuelta
+                duration_reps: e.duration_reps, 
+                duration: e.duration, 
+                exercise_notes: '', 
+                video_url: e.video_url, 
+                is_unilateral: !!e.is_unilateral
+            }))
+        }));
+    }
 
     if (exercisesToSave.length === 0) { Alert.alert("Aviso", "Añade al menos un ejercicio."); return; }
 
@@ -412,6 +444,10 @@ export default function SettingsScreen() {
                             <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration = v; setPillBlocks(n); }} placeholder="Tiempo" />
                           </View>
                           <TextInput style={[styles.pillExInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 6 }]} value={ex.video_url} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].video_url = v; setPillBlocks(n); }} placeholder="URL YouTube (opcional)" />
+                          <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].is_unilateral = !n[bIdx].exercises[eIdx].is_unilateral; setPillBlocks(n); }} style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6}}>
+                            <Ionicons name={ex.is_unilateral ? "checkbox" : "square-outline"} size={16} color={ex.is_unilateral ? colors.primary : colors.textSecondary} />
+                            <Text style={{color: ex.is_unilateral ? colors.primary : colors.textSecondary, fontSize: 11, fontWeight: '700'}}>Unilateral</Text>
+                          </TouchableOpacity>
                         </View>
                       ))}
                       <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises.push({ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }); setPillBlocks(n); }} style={{ paddingVertical: 8 }}><Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>+ Añadir ejercicio al bloque</Text></TouchableOpacity>
