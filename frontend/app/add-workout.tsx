@@ -187,8 +187,8 @@ export default function AddWorkoutScreen() {
         if (pill.is_hiit) {
             Alert.alert("Aviso", "Esta píldora es de formato circuito. Se ha insertado como ejercicios sueltos de fuerza.");
             const flatExercises = pill.exercises.flatMap((b: any) =>
-                b.exercises.map((e: any) => ({
-                    _key: Math.random().toString(), name: e.name, sets: e.sets, reps: e.duration_reps || '', duration: e.duration || '', weight: '', rest: '', rest_exercise: '', video_url: e.video_url || '', exercise_notes: e.exercise_notes || '', is_unilateral: e.is_unilateral || false
+                (b.hiit_exercises || b.exercises || []).map((e: any) => ({
+                    _key: Math.random().toString(), name: e.name, sets: e.sets || '1', reps: e.duration_reps || '', duration: e.duration || '', weight: '', rest: '', rest_exercise: '', video_url: e.video_url || '', exercise_notes: e.exercise_notes || '', is_unilateral: !!e.is_unilateral
                 }))
             );
             setExercises([...exercises.filter(e => e.name), ...flatExercises]);
@@ -200,17 +200,17 @@ export default function AddWorkoutScreen() {
         if (pill.is_hiit) {
             const newBlocks = pill.exercises.map((b: any) => ({
                 ...b, _key: Math.random().toString(),
-                exercises: b.exercises.map((e: any) => ({...e, _key: Math.random().toString()}))
+                exercises: (b.hiit_exercises || b.exercises || []).map((e: any) => ({...e, _key: Math.random().toString()}))
             }));
-            setHiitBlocks([...hiitBlocks.filter(b => b.exercises.some(e => e.name)), ...newBlocks]);
+            setHiitBlocks([...hiitBlocks.filter(b => (b.exercises || []).some((e:any) => e.name)), ...newBlocks]);
         } else {
             const newBlock = {
                 _key: Math.random().toString(), name: `Píldora: ${pill.name}`, sets: '1', rest_exercise: '0', rest_block: '0', rest_between_blocks: '60',
                 exercises: pill.exercises.map((e: any) => ({
-                    _key: Math.random().toString(), name: e.name, sets: e.sets, duration_reps: e.reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url, is_unilateral: e.is_unilateral || false
+                    _key: Math.random().toString(), name: e.name, sets: e.sets, duration_reps: e.reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url, is_unilateral: !!e.is_unilateral
                 }))
             };
-            setHiitBlocks([...hiitBlocks.filter(b => b.exercises.some(e => e.name)), newBlock]);
+            setHiitBlocks([...hiitBlocks.filter(b => (b.exercises || []).some((e:any) => e.name)), newBlock]);
         }
     }
     setShowPillModal(false);
