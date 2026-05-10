@@ -96,8 +96,6 @@ export default function AddWorkoutScreen() {
   // Estados Píldoras
   const [pills, setPills] = useState<any[]>([]);
   const [showPillModal, setShowPillModal] = useState(false);
-  const [showSavePillModal, setShowSavePillModal] = useState(false);
-  const [newPillName, setNewPillName] = useState('');
 
   useEffect(() => {
     if (params.athlete_id) {
@@ -184,35 +182,6 @@ export default function AddWorkoutScreen() {
     const updated = [...hiitBlocks]; [updated[bIndex].exercises[eIndex + 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex + 1]]; setHiitBlocks(updated);
   };
 
-  // --- LOGICA DE PÍLDORAS ---
-  const handleSavePill = async () => {
-    if (!newPillName.trim()) { Alert.alert("Error", "Ponle un nombre a la píldora"); return; }
-    
-    const exercisesToSave = workoutType === 'traditional'
-        ? exercises.filter(e => e.name.trim())
-        : hiitBlocks.filter(b => b.exercises.some((e:any) => e.name.trim()));
-
-    if (exercisesToSave.length === 0) {
-        Alert.alert("Error", "Añade al menos un ejercicio antes de guardar."); return;
-    }
-
-    const data = {
-        name: newPillName.trim(),
-        is_hiit: workoutType === 'hiit',
-        exercises: exercisesToSave
-    };
-
-    try {
-        await api.createPill(data);
-        Alert.alert("Éxito", "Píldora guardada correctamente");
-        setShowSavePillModal(false);
-        setNewPillName('');
-        api.getPills().then(setPills);
-    } catch (e: any) {
-        Alert.alert("Error", e.message);
-    }
-  };
-
   const injectPill = (pill: any) => {
     if (workoutType === 'traditional') {
         if (pill.is_hiit) {
@@ -246,16 +215,6 @@ export default function AddWorkoutScreen() {
     }
     setShowPillModal(false);
   };
-
-  const handleDeletePill = async (pillId: string) => {
-      try {
-          await api.deletePill(pillId);
-          api.getPills().then(setPills);
-      } catch(e:any) {
-          Alert.alert("Error", e.message);
-      }
-  };
-  // -------------------------
 
   const downloadCSVTemplate = async () => {
     let csvContent = "";
@@ -537,7 +496,6 @@ export default function AddWorkoutScreen() {
           <View style={[styles.csvSection, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>IMPORTAR DESDE CSV</Text>
-              
               <View style={{ flexDirection: 'row', gap: 8 }}>
                 <TouchableOpacity style={[styles.csvBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]} onPress={downloadCSVTemplate}>
                   <Ionicons name="download-outline" size={16} color={colors.primary} />
@@ -555,16 +513,10 @@ export default function AddWorkoutScreen() {
           <View style={[styles.csvSection, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border, marginTop: -10 }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>PÍLDORAS (ACTIVACIÓN/PREHAB)</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity style={[styles.csvBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]} onPress={() => setShowSavePillModal(true)}>
-                  <Ionicons name="save-outline" size={16} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Guardar Base</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.csvBtn, { backgroundColor: colors.primary }]} onPress={() => setShowPillModal(true)}>
-                  <Ionicons name="flask" size={16} color="#FFF" />
-                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Inyectar</Text>
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity style={[styles.csvBtn, { backgroundColor: colors.primary }]} onPress={() => setShowPillModal(true)}>
+                <Ionicons name="flask" size={16} color="#FFF" />
+                <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Añadir Píldora</Text>
+              </TouchableOpacity>
             </View>
           </View>
 
@@ -773,7 +725,7 @@ export default function AddWorkoutScreen() {
               <TouchableOpacity onPress={() => setShowPillModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
             </View>
             {pills.length === 0 ? (
-                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 20 }}>No tienes píldoras guardadas. Crea una base de ejercicios y dale a "Guardar Base".</Text>
+                <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 20 }}>No tienes píldoras guardadas. Ve a la pantalla de Ajustes para crearlas.</Text>
             ) : (
                 <ScrollView style={{ flexShrink: 1 }}>
                 {pills.map(p => (
@@ -782,38 +734,13 @@ export default function AddWorkoutScreen() {
                             <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16 }}>{p.name}</Text>
                             <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>{p.is_hiit ? 'Formato Circuito' : 'Formato Fuerza'} • {p.exercises?.length || 0} bloques/ejercicios</Text>
                         </View>
-                        <View style={{ flexDirection: 'row', gap: 10 }}>
-                            <TouchableOpacity onPress={() => handleDeletePill(p.id)} style={{ padding: 8, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 8 }}>
-                                <Ionicons name="trash" size={18} color="#EF4444" />
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => injectPill(p)} style={{ padding: 8, backgroundColor: colors.primary, borderRadius: 8 }}>
-                                <Ionicons name="add" size={18} color="#FFF" />
-                            </TouchableOpacity>
-                        </View>
+                        <TouchableOpacity onPress={() => injectPill(p)} style={{ padding: 10, backgroundColor: colors.primary, borderRadius: 8 }}>
+                            <Ionicons name="add" size={20} color="#FFF" />
+                        </TouchableOpacity>
                     </View>
                 ))}
                 </ScrollView>
             )}
-          </View>
-        </View>
-      </Modal>
-
-      {/* MODAL GUARDAR PÍLDORA */}
-      <Modal visible={showSavePillModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Guardar Base 💾</Text>
-              <TouchableOpacity onPress={() => setShowSavePillModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
-            </View>
-            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 14 }}>Guarda los ejercicios actuales como una píldora para poder inyectarlos rápidamente en futuros entrenamientos.</Text>
-            <TextInput 
-                style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border, marginBottom: 20 }]} 
-                value={newPillName} onChangeText={setNewPillName} placeholder="Nombre de la píldora (ej: Activación Core)" placeholderTextColor="rgba(150, 150, 150, 0.5)" autoFocus
-            />
-            <TouchableOpacity style={[styles.saveBtnBig, { backgroundColor: colors.primary }]} onPress={handleSavePill}>
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>GUARDAR PÍLDORA</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
