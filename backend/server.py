@@ -494,7 +494,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         logger.error(f"Error general en endpoint IA: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error conectando con la IA: {str(e)}")
 
- @api_router.post("/brain/analyze-analytics")
+@api_router.post("/brain/analyze-analytics")
 async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_current_user)):
     global COOLDOWN_PRO_UNTIL
     if not GEMINI_API_KEY:
@@ -530,7 +530,7 @@ async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_
             model.generation_config = {"response_mime_type": "application/json"}
             response = model.generate_content(system_prompt)
         except Exception as e:
-            if intentar_pro and ("429" in str(e) or "Quota" in str(e) or isinstance(e, ResourceExhausted)):
+            if intentar_pro and ("429" in str(e) or "Quota" in str(e) or isinstance(e, "ResourceExhausted")):
                 COOLDOWN_PRO_UNTIL = time.time() + 60
                 model_fallback = genai.GenerativeModel(model_name=model_flash_id)
                 model_fallback.generation_config = {"response_mime_type": "application/json"}
