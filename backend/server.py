@@ -223,7 +223,7 @@ class GeminiChatRequest(BaseModel):
 class PillCreate(BaseModel):
     name: str
     is_hiit: bool
-    exercises: list
+    exercises: List[dict] # Se actualiza a List[dict] para validación robusta
 
 # --- AUTH HELPERS ---
 def hash_password(password: str) -> str:
