@@ -103,6 +103,8 @@ class WellnessCreate(BaseModel):
     soreness: int
     notes: Optional[str] = ""
     cycle_phase: Optional[str] = None
+    date: Optional[str] = None
+    athlete_id: Optional[str] = None
 
 class UserRegister(BaseModel):
     email: str
@@ -230,7 +232,7 @@ class GeminiChatRequest(BaseModel):
 class PillCreate(BaseModel):
     name: str
     is_hiit: bool
-    exercises: List[dict] # Se actualiza a List[dict] para validación robusta
+    exercises: List[dict]
 
 # --- AUTH HELPERS ---
 def hash_password(password: str) -> str:
@@ -298,7 +300,6 @@ async def create_pill(data: PillCreate, user=Depends(get_current_user)):
 
 @api_router.get("/pills")
 async def get_pills(user=Depends(get_current_user)):
-    # Los entrenadores ven las suyas, los atletas ven las de su entrenador
     target_trainer_id = user['id'] if user['role'] == 'trainer' else user.get('trainer_id')
     pills = await db.pills.find({"trainer_id": target_trainer_id}, {"_id": 0}).sort("created_at", -1).to_list(100)
     return pills
@@ -307,7 +308,6 @@ async def get_pills(user=Depends(get_current_user)):
 async def update_pill(pill_id: str, data: PillCreate, user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
     update_data = data.dict()
-    # Actualizamos los campos recibidos sin modificar el owner (trainer_id)
     await db.pills.update_one(
         {"id": pill_id, "trainer_id": user['id']},
         {"$set": update_data}
@@ -341,12 +341,10 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
         
     try:
-        # 1. CONSTRUCCIÓN DEL CONTEXTO ESPECÍFICO DEL ATLETA
         contexto_atleta = ""
         nombre_atleta = "el atleta"
         
         if data.athlete_id:
-            # A) Datos del Perfil y Lesiones
             athlete = await db.users.find_one({"id": data.athlete_id})
             if athlete:
                 nombre_atleta = athlete.get('name', 'Atleta')
@@ -356,7 +354,6 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
                 if athlete.get('equipment'):
                     contexto_atleta += f"🛠️ MATERIAL DISPONIBLE: {athlete.get('equipment')}\n"
 
-            # B) Últimos entrenamientos (para saber su nivel y rutina habitual)
             recent_workouts = await db.workouts.find(
                 {"athlete_id": data.athlete_id, "completed": True}
             ).sort("date", -1).limit(3).to_list(3)
@@ -368,7 +365,6 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
                     nombres_ejercicios = [ex.get('name') for ex in w.get('exercises', [])[:3]]
                     contexto_atleta += f"- {w.get('title')} (RPE reportado: {rpe}/10). Ejercicios: {', '.join(nombres_ejercicios)}...\n"
                     
-            # C) Periodización Actual (¿En qué fase está?)
             today = datetime.now(timezone.utc).isoformat().split('T')[0]
             current_micro = await db.microciclos.find_one({
                 "fecha_inicio": {"$lte": today},
@@ -377,12 +373,10 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
             if current_micro:
                 contexto_atleta += f"\n📅 FASE DE PERIODIZACIÓN ACTUAL: {current_micro.get('nombre')} (Tipo: {current_micro.get('tipo', 'CARGA')}). Adapta la intensidad a esta fase.\n"
 
-        # D) Bienestar del día (Fatiga, Dolor, Regla)
         fatiga = data.athleteContext.get('fatigue', '-')
         dolor = data.athleteContext.get('soreness', '-')
         fase_ciclo = data.athleteContext.get('cycle_phase', 'No registrada')
         
-        # 2. EL SÚPER-PROMPT 
         system_prompt = f"""
         Eres un preparador físico de élite y experto en alto rendimiento.
         Estás diseñando una sesión para {nombre_atleta}.
@@ -436,7 +430,6 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         }}
         """
 
-        # 3. LÓGICA DE FALLBACK Y CORTOCIRCUITO
         model_pro_id = "models/gemini-3.1-pro-preview"
         model_flash_id = "models/gemini-2.5-flash"
         
@@ -458,10 +451,10 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
             error_str = str(e)
             if "429" in error_str or "Quota" in error_str or isinstance(e, ResourceExhausted):
                 if intentar_pro:
-                    cooldown_seconds = 60 # Por defecto 1 minuto
+                    cooldown_seconds = 60
                     match = re.search(r'retry_delay\s*\{\s*seconds:\s*(\d+)\s*\}', error_str)
                     if match:
-                        cooldown_seconds = int(match.group(1)) + 5 # Añadimos 5 segundos de margen
+                        cooldown_seconds = int(match.group(1)) + 5
                         
                     logger.warning(f"Cuota de Gemini Pro excedida. Aplicando cooldown de {cooldown_seconds}s. Cambiando a Flash...")
                     COOLDOWN_PRO_UNTIL = time.time() + cooldown_seconds
@@ -483,10 +476,10 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
                 logger.error(f"Error IA desconocido: {error_str}")
                 raise HTTPException(status_code=500, detail=f"Error conectando con la IA: {error_str}")
 
-        # 4. LIMPIEZA DE LA RESPUESTA
         raw_text = response.text.strip()
         if raw_text.startswith("```"):
-            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+            raw_text = raw_text.replace("
+```json", "").replace("```", "").strip()
         
         return json.loads(raw_text)
         
@@ -540,7 +533,8 @@ async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_
 
         raw_text = response.text.strip()
         if raw_text.startswith("```"):
-            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
+            raw_text = raw_text.replace("
+```json", "").replace("```", "").strip()
         
         return json.loads(raw_text)
         
@@ -558,17 +552,22 @@ async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
 
 @api_router.post("/wellness")
 async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
-    today = datetime.now(timezone.utc).isoformat().split('T')[0]
+    target_date = data.date if data.date else datetime.now(timezone.utc).isoformat().split('T')[0]
+    
+    # Permitir al entrenador guardar wellness en nombre de su atleta
+    target_athlete_id = data.athlete_id if (data.athlete_id and user['role'] == 'trainer') else user['id']
+    
     wellness_data = {
         "fatigue": data.fatigue, "stress": data.stress, "sleep_quality": data.sleep_quality,
         "soreness": data.soreness, "notes": data.notes, "cycle_phase": data.cycle_phase,
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
-    existing = await db.wellness.find_one({"athlete_id": user['id'], "date": today})
+    
+    existing = await db.wellness.find_one({"athlete_id": target_athlete_id, "date": target_date})
     if existing:
         await db.wellness.update_one({"_id": existing["_id"]}, {"$set": wellness_data})
     else:
-        wellness_data.update({"id": str(uuid.uuid4()), "athlete_id": user['id'], "date": today, "created_at": wellness_data["updated_at"]})
+        wellness_data.update({"id": str(uuid.uuid4()), "athlete_id": target_athlete_id, "date": target_date, "created_at": wellness_data["updated_at"]})
         await db.wellness.insert_one(wellness_data)
 
     # 🤖 AGENTE FISIO: Intervención Automática
@@ -576,8 +575,8 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
         recovery_workout = {
             "id": str(uuid.uuid4()),
             "title": "🆘 PROTOCOLO RESET: Fluidez y Recuperación",
-            "date": today,
-            "athlete_id": user['id'],
+            "date": target_date,
+            "athlete_id": target_athlete_id,
             "exercises": [
                 {"name": "Liberación Miofascial (Foam Roller)", "sets": 1, "reps": "5 min", "notes": "Cadenas posteriores y cuádriceps. Buscar puntos de tensión sin dolor extremo."},
                 {"name": "Movilidad 90/90 de Cadera", "sets": 2, "reps": "10/lado", "notes": "Sin forzar. El objetivo es engrasar la articulación y recuperar rango."},
@@ -590,7 +589,7 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
         }
         await db.workouts.insert_one(recovery_workout)
 
-    # Notificaciones Push a Andre
+    # Notificaciones Push a Andre/Entrenador
     if user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
         if trainer and trainer.get('web_push_subscription'):
