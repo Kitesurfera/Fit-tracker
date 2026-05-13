@@ -532,8 +532,7 @@ async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_
 
         raw_text = response.text.strip()
         if raw_text.startswith("```"):
-            raw_text = raw_text.replace("
-```json", "").replace("```", "").strip()
+            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
         
         return json.loads(raw_text)
         
