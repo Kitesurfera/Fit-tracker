@@ -125,7 +125,20 @@ export default function CalendarScreen() {
             }
             if (isActive) setSelectedAthlete(currentAthlete);
           } else {
-            currentAthlete = user;
+            // SOLUCIÓN: Cargar de API si es posible, para refrescar el contexto
+            let freshUser = user;
+            if ((api as any).getMe) {
+              try {
+                const res = await (api as any).getMe();
+                if (res && res.user) {
+                  freshUser = res.user;
+                  if (updateUser) updateUser(res.user);
+                }
+              } catch (e) {
+                console.log("No se pudo refrescar profile:", e);
+              }
+            }
+            currentAthlete = freshUser;
             if (isActive) setSelectedAthlete(currentAthlete);
           }
 
@@ -192,7 +205,6 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
         await api.updateAthlete(selectedAthlete.id, { technical_sessions: dates });
       } else if (api.updateProfile) {
         await api.updateProfile({ technical_sessions: dates });
-        // 👇 SOLUCIÓN: Sincronizamos el contexto global para no perder los datos al navegar
         if (updateUser) updateUser({ technical_sessions: dates });
       }
       setSportSessions(dates);
@@ -360,7 +372,17 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
 
       const currentActualDayOne = getActualDayOneStr();
       if (lastPeriodDateInput && lastPeriodDateInput !== currentActualDayOne) {
-          const wellnessData = { athlete_id: selectedAthlete.id, date: lastPeriodDateInput, cycle_phase: 'menstruacion', sleep_quality: 3, stress_level: 3, muscle_soreness: 3, energy_level: 3 };
+          // SOLUCIÓN: payload correcto de acuerdo al schema de Pydantic
+          const wellnessData = { 
+            athlete_id: selectedAthlete.id, 
+            date: lastPeriodDateInput, 
+            cycle_phase: 'menstruacion', 
+            sleep_quality: 3, 
+            stress: 3, 
+            soreness: 3, 
+            fatigue: 3,
+            notes: "Ajuste manual de ciclo"
+          };
           try {
              if (api.postWellness) await api.postWellness(wellnessData);
              setWellnessHistory(prev => [...prev, wellnessData]);
