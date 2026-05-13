@@ -22,6 +22,9 @@ import json
 import re
 import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -144,6 +147,7 @@ class AthleteUpdate(BaseModel):
     has_extra_sport: Optional[bool] = None
     sport_icon: Optional[str] = None
     technical_sessions: Optional[List[str]] = None
+    email_notifications: Optional[bool] = None
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
@@ -160,6 +164,7 @@ class ProfileUpdate(BaseModel):
     has_extra_sport: Optional[bool] = None
     sport_icon: Optional[str] = None
     technical_sessions: Optional[List[str]] = None
+    email_notifications: Optional[bool] = None
 
 class CycleUpdate(BaseModel):
     macro_ciclo: str
@@ -263,6 +268,36 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     return user
 
 from pywebpush import webpush, WebPushException
+
+def send_email_async(to_email: str, subject: str, body: str):
+    smtp_user = os.environ.get("SMTP_USER")
+    smtp_pass = os.environ.get("SMTP_PASSWORD")
+    smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", 587))
+
+    if not smtp_user or not smtp_pass:
+        logger.warning("Credenciales SMTP no configuradas. Saltando envío de email.")
+        return False
+
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = f"Fit Tracker <{smtp_user}>"
+        msg['To'] = to_email
+        msg['Subject'] = subject
+
+        # Se envía como HTML para que quede presentable
+        msg.attach(MIMEText(body, 'html'))
+
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(smtp_user, smtp_pass)
+        server.send_message(msg)
+        server.quit()
+        logger.info(f"Email enviado correctamente a {to_email}")
+        return True
+    except Exception as e:
+        logger.error(f"Fallo al enviar email a {to_email}: {str(e)}")
+        return False
 
 # Configuración VAPID
 VAPID_PRIVATE_KEY = "HEbQpgf3KOB2smfjz8recSVKHC7p3sjZBjznzxrct-c"
@@ -587,21 +622,34 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
         }
         await db.workouts.insert_one(recovery_workout)
 
-    # Notificaciones Push a Andre/Entrenador
+   # Notificaciones por Email a Andre/Entrenador
     if user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
-        if trainer and trainer.get('web_push_subscription'):
+        # Verificamos si tiene los emails activados (por defecto asumimos que Sí)
+        if trainer and trainer.get('email_notifications', True) is not False:
             athlete_name = user.get('name', 'Un deportista')
-            titulo = f"📊 {athlete_name} actualizó su estado"
-            mensaje = f"Fatiga: {data.fatigue}/5 | Agujetas: {data.soreness}/5"
             
+            titulo = f"📊 {athlete_name} ha actualizado su Wellness"
+            mensaje_html = f"""
+            <h3>Actualización de estado</h3>
+            <p><b>{athlete_name}</b> acaba de registrar sus sensaciones de hoy:</p>
+            <ul>
+                <li><b>Fatiga:</b> {data.fatigue} / 5</li>
+                <li><b>Agujetas/Dolor:</b> {data.soreness} / 5</li>
+                <li><b>Estrés:</b> {data.stress} / 5</li>
+                <li><b>Calidad de Sueño:</b> {data.sleep_quality} / 5</li>
+            </ul>
+            """
+            
+            # Si hay alerta, cambiamos el asunto y añadimos el aviso al cuerpo
             if data.fatigue >= 4 or data.soreness >= 4:
-                titulo = f"🚨 Agente Fisio activado para {athlete_name}"
-                mensaje = "Protocolo de Reset inyectado por alta fatiga muscular."
-                
-            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], titulo, mensaje)
+                titulo = f"🚨 ALERTA: Agente Fisio activado para {athlete_name}"
+                mensaje_html += "<br><p style='color: red;'><b>⚠️ Atención:</b> Se ha inyectado automáticamente el <i>Protocolo de Reset</i> debido a los altos niveles de fatiga o dolor muscular reportados.</p>"
             
-    return {"status": "success"}
+            if data.notes:
+                mensaje_html += f"<p><b>Notas del atleta:</b> {data.notes}</p>"
+                
+            background_tasks.add_task(send_email_async, trainer['email'], titulo, mensaje_html)
 
 @api_router.get("/analytics/summary")
 async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
@@ -737,12 +785,13 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
     
     workout.pop('_id', None)
     
-    if user['role'] == 'trainer':
+   if user['role'] == 'trainer':
         athlete = await db.users.find_one({"id": data.athlete_id})
-        if athlete and athlete.get('web_push_subscription'):
+        if athlete and athlete.get('email_notifications', True) is not False:
             trainer_name = user.get('name', 'Tu entrenador')
-            background_tasks.add_task(send_web_push, athlete['web_push_subscription'], "🏋️‍♂️ ¡Nueva sesión!", f"{trainer_name} ha añadido '{data.title}' para el {data.date}.")
-    return {"status": "success", "workout": workout}
+            titulo = "🏋️‍♂️ ¡Nueva sesión en tu calendario!"
+            mensaje_html = f"<p>Hola {athlete.get('name', '')},</p><p><b>{trainer_name}</b> acaba de programarte la sesión <b>'{data.title}'</b> para el día {data.date}.</p><p>Abre la app para ver los detalles.</p>"
+            background_tasks.add_task(send_email_async, athlete['email'], titulo, mensaje_html)
 
 @api_router.post("/workouts/bulk")
 async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
@@ -769,14 +818,15 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
         if brain_memories:
             await db.brain_memory.insert_many(brain_memories) 
             
-        if user['role'] == 'trainer':
+if user['role'] == 'trainer':
             trainer_name = user.get('name', 'Tu entrenador')
             for a_id in athlete_ids:
                 athlete = await db.users.find_one({"id": a_id})
-                if athlete and athlete.get('web_push_subscription'):
+                if athlete and athlete.get('email_notifications', True) is not False:
                     count = sum(1 for wk in data.workouts if wk.athlete_id == a_id)
-                    background_tasks.add_task(send_web_push, athlete['web_push_subscription'], "📅 Planes actualizados", f"{trainer_name} ha añadido {count} sesiones a tu calendario.")
-    return {"status": "success", "inserted": len(new_workouts)}
+                    titulo = "📅 Tu calendario ha sido actualizado"
+                    mensaje_html = f"<p>Hola {athlete.get('name', '')},</p><p><b>{trainer_name}</b> ha añadido <b>{count} nuevas sesiones</b> a tu planificación.</p><p>Abre la app para revisar las próximas fechas.</p>"
+                    background_tasks.add_task(send_email_async, athlete['email'], titulo, mensaje_html)
 
 @api_router.get("/workouts")
 async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = None, user=Depends(get_current_user)):
