@@ -12,7 +12,6 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import WellnessModal from '../../src/components/WellnessModal';
 import { syncManager } from '../../src/offline';
-import { scheduleDailyWellnessReminder } from '../../src/notifications';
 
 const DAILY_TIPS = [
   "El descanso es tan importante como tu serie más pesada.",
@@ -317,8 +316,7 @@ export default function HomeScreen() {
             setShowWellness(true);
             await AsyncStorage.setItem(promptedKey, 'true');
           }
-        }
-        scheduleDailyWellnessReminder().catch(() => {}); 
+        } 
       }; 
       init(); 
     }, [isTrainer, user, authLoading, todayStr])
