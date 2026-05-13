@@ -785,7 +785,7 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
     
     workout.pop('_id', None)
     
-   if user['role'] == 'trainer':
+        if user['role'] == 'trainer':
         athlete = await db.users.find_one({"id": data.athlete_id})
         if athlete and athlete.get('email_notifications', True) is not False:
             trainer_name = user.get('name', 'Tu entrenador')
