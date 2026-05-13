@@ -32,8 +32,9 @@ export default function SettingsScreen() {
   // --- ESTADOS ---
   const [name, setName] = useState(user?.name || '');
   const [savingProfile, setSavingProfile] = useState(false);
-  const [pushEnabled, setPushEnabled] = useState(!!user?.web_push_subscription || !!user?.push_token);
-  const [loadingPush, setLoadingPush] = useState(false);
+// Asumimos que los emails están activados por defecto a menos que el usuario los apague explícitamente.
+  const [emailEnabled, setEmailEnabled] = useState(user?.email_notifications !== false);
+  const [loadingEmail, setLoadingEmail] = useState(false);
 
   const [measurements, setMeasurements] = useState({
     weight: '', shoulders: '', chest: '', arm: '', thigh: ''
@@ -70,27 +71,30 @@ export default function SettingsScreen() {
     await AsyncStorage.setItem('timer_sounds_enabled', value ? 'true' : 'false');
   };
 
-  const togglePush = async (value: boolean) => {
-    if (loadingPush) return;
-    setLoadingPush(true);
+const toggleEmail = async (value: boolean) => {
+    if (loadingEmail) return;
+    setLoadingEmail(true);
+    
+    // Cambiamos el estado visual al instante (Optimistic UI)
+    setEmailEnabled(value);
+    
     try {
-      if (value) {
-        const subscription = await getWebPushSubscription();
-        if (!subscription) throw new Error("Permiso denegado.");
-        if (api.updateProfile) await api.updateProfile({ web_push_subscription: subscription }); 
-        await testNotification();
-        setPushEnabled(true);
-      } else {
-        if (api.updateProfile) await api.updateProfile({ web_push_subscription: null });
-        setPushEnabled(false);
+      if (api.updateProfile) {
+        await api.updateProfile({ email_notifications: value });
       }
+      // Si tienes acceso a updateUser del contexto, actualízalo para que no se resetee
+      // al cambiar de pantalla
+      // if (updateUser) updateUser({ ...user, email_notifications: value });
+      
     } catch (e) {
-      setPushEnabled(false);
+      // Si falla, revertimos el botón
+      setEmailEnabled(!value);
+      if (Platform.OS === 'web') window.alert("Error guardando preferencias.");
+      else Alert.alert("Error", "No se pudo actualizar la preferencia de correos.");
     } finally {
-      setLoadingPush(false);
+      setLoadingEmail(false);
     }
   };
-
   const handleSaveProfile = async () => {
     if (!name.trim()) return;
     setSavingProfile(true);
@@ -307,15 +311,29 @@ export default function SettingsScreen() {
               ))}
             </View>
           </View>
-
+          
           <Text style={[styles.sectionTitle, { marginTop: 25 }]}>NOTIFICACIONES Y AUDIO</Text>
           <View style={[styles.cardList, { backgroundColor: colors.surface }]}>
             <View style={styles.settingRowAction}>
               <View style={styles.settingIconText}>
-                <View style={[styles.iconBox, { backgroundColor: '#3B82F615' }]}><Ionicons name="notifications" size={20} color="#3B82F6" /></View>
-                <View style={{ flex: 1 }}><Text style={[styles.settingText, { color: colors.textPrimary }]}>Avisos de la App</Text></View>
+                <View style={[styles.iconBox, { backgroundColor: '#3B82F615' }]}>
+                  {/* Cambiamos el icono a "mail" */}
+                  <Ionicons name="mail" size={20} color="#3B82F6" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Avisos por Correo</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                    Recibe notificaciones importantes por email
+                  </Text>
+                </View>
               </View>
-              <Switch value={pushEnabled} onValueChange={togglePush} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
+              {/* Conectamos el Switch a nuestras nuevas funciones */}
+              <Switch 
+                value={emailEnabled} 
+                onValueChange={toggleEmail} 
+                trackColor={{ false: colors.border, true: colors.primary }} 
+                thumbColor="#FFF" 
+              />
             </View>
 
             {isAthlete && (
