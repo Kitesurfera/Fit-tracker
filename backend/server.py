@@ -818,7 +818,7 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
         if brain_memories:
             await db.brain_memory.insert_many(brain_memories) 
             
-if user['role'] == 'trainer':
+        if user['role'] == 'trainer':
             trainer_name = user.get('name', 'Tu entrenador')
             for a_id in athlete_ids:
                 athlete = await db.users.find_one({"id": a_id})
@@ -827,6 +827,8 @@ if user['role'] == 'trainer':
                     titulo = "📅 Tu calendario ha sido actualizado"
                     mensaje_html = f"<p>Hola {athlete.get('name', '')},</p><p><b>{trainer_name}</b> ha añadido <b>{count} nuevas sesiones</b> a tu planificación.</p><p>Abre la app para revisar las próximas fechas.</p>"
                     background_tasks.add_task(send_email_async, athlete['email'], titulo, mensaje_html)
+                    
+    return {"status": "success", "inserted": len(new_workouts)}
 
 @api_router.get("/workouts")
 async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = None, user=Depends(get_current_user)):
