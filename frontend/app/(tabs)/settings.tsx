@@ -24,7 +24,7 @@ const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
 
 export default function SettingsScreen() {
   const { colors, themeMode, changeTheme } = useTheme();
-  const { user, logout } = useAuth(); 
+  const { user, logout, updateUser } = useAuth();
   const router = useRouter();
 
   const isAthlete = user?.role === 'athlete';
@@ -72,29 +72,29 @@ export default function SettingsScreen() {
   };
 
 const toggleEmail = async (value: boolean) => {
-    if (loadingEmail) return;
-    setLoadingEmail(true);
-    
-    // Cambiamos el estado visual al instante (Optimistic UI)
-    setEmailEnabled(value);
-    
-    try {
-      if (api.updateProfile) {
-        await api.updateProfile({ email_notifications: value });
-      }
-      // Si tienes acceso a updateUser del contexto, actualízalo para que no se resetee
-      // al cambiar de pantalla
-      // if (updateUser) updateUser({ ...user, email_notifications: value });
-      
-    } catch (e) {
-      // Si falla, revertimos el botón
-      setEmailEnabled(!value);
-      if (Platform.OS === 'web') window.alert("Error guardando preferencias.");
-      else Alert.alert("Error", "No se pudo actualizar la preferencia de correos.");
-    } finally {
-      setLoadingEmail(false);
-    }
-  };
+     if (loadingEmail) return;
+     setLoadingEmail(true);
+     setEmailEnabled(value);
+     
+     try {
+       if (api.updateProfile) {
+         await api.updateProfile({ email_notifications: value });
+       }
+       
+       // ¡Aquí está la magia! Actualizamos la memoria a corto plazo al instante:
+       if (updateUser) {
+           updateUser({ ...user, email_notifications: value });
+       }
+       
+     } catch (e) {
+       setEmailEnabled(!value);
+       if (Platform.OS === 'web') window.alert("Error guardando preferencias.");
+       else Alert.alert("Error", "No se pudo actualizar la preferencia de correos.");
+     } finally {
+       setLoadingEmail(false);
+     }
+   };
+  
   const handleSaveProfile = async () => {
     if (!name.trim()) return;
     setSavingProfile(true);
