@@ -478,8 +478,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
 
         raw_text = response.text.strip()
         if raw_text.startswith("```"):
-            raw_text = raw_text.replace("
-```json", "").replace("```", "").strip()
+            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
         
         return json.loads(raw_text)
         
