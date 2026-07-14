@@ -7,6 +7,11 @@ import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import GeminiChatModal from '../src/components/GeminiChatModal';
 
+// IMPORTACIONES PARA EL CSV
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+
 const MACRO_COLORS = ['#4A90E2', '#FF3B30', '#34C759', '#FF9500', '#AF52DE'];
 const MICRO_COLORS = ['#34C759', '#5856D6', '#FF9500', '#FF2D55', '#32ADE6', '#8B5CF6'];
 const MICRO_TIPOS = ['CARGA', 'RECUPERACION', 'TEST', 'COMPETICION'];
@@ -176,6 +181,139 @@ export default function PeriodizationScreen() {
     }
   };
 
+  // --- INICIO LÓGICA CSV ---
+  
+  const parseCSV = (str: string) => {
+    const arr: string[][] = [];
+    let quote = false;
+    let row = 0, col = 0;
+    for (let c = 0; c < str.length; c++) {
+      let cc = str[c], nc = str[c + 1];
+      arr[row] = arr[row] || [];
+      arr[row][col] = arr[row][col] || '';
+      if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
+      if (cc === '"') { quote = !quote; continue; }
+      if (cc === ',' && !quote) { ++col; continue; }
+      if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
+      if (cc === '\n' && !quote) { ++row; col = 0; continue; }
+      if (cc === '\r' && !quote) { ++row; col = 0; continue; }
+      arr[row][col] += cc;
+    }
+    return arr;
+  };
+
+  const downloadMultiDayTemplate = async () => {
+    const BOM = "\uFEFF";
+    const csvContent = BOM +
+      "Fecha (YYYY-MM-DD),Titulo Sesion,Notas Sesion,Nombre Ejercicio,Series,Reps,Duracion (s),Desc. Serie,Desc. Ejercicio,Notas Ejercicio,URL Video,Unilateral (Si/No)\n" +
+      "2026-04-01,Fuerza Máxima Pierna,Calentar bien tobillos,Sentadilla Trasera,4,5,,,3m,,,\n" +
+      "2026-04-01,Fuerza Máxima Pierna,,Prensa Inclinada,3,10,,,2m,,,\n" +
+      "2026-04-02,Core y Estabilidad,,Plancha Abdominal,3,,60s,1m,,,,\n" +
+      "2026-04-02,Core y Estabilidad,,Paseo del Granjero,4,,40s,90s,,,Si\n";
+
+    const fileName = "Plantilla_MultiDia_FitTracker.csv";
+
+    if (Platform.OS === 'web') {
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', fileName);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } else {
+      try {
+        const fileUri = FileSystem.documentDirectory + fileName;
+        await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(fileUri);
+        } else {
+          Alert.alert("Aviso", "No se puede compartir o guardar el archivo en este dispositivo.");
+        }
+      } catch (error) {
+        Alert.alert("Error", "No se pudo generar la plantilla.");
+      }
+    }
+  };
+
+  const handleMultiDayUpload = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel'] });
+      if (result.canceled || !result.assets) return;
+
+      setLoading(true);
+      const fileUri = result.assets[0].uri;
+      const response = await fetch(fileUri);
+      const csvText = await response.text();
+      const rows = parseCSV(csvText);
+
+      if (rows.length < 2) {
+        setLoading(false);
+        Alert.alert("Error", "El CSV parece estar vacío.");
+        return;
+      }
+
+      const workoutsMap = new Map<string, any>();
+
+      // Empezamos en 1 para saltar la fila de títulos
+      rows.slice(1).forEach(row => {
+        if (!row.some(cell => cell?.trim())) return; // Ignorar filas vacías
+
+        const date = row[0]?.trim();
+        const title = row[1]?.trim();
+        if (!date || !title) return; // Si no hay fecha o título, la fila no es válida
+
+        const key = `${date}|${title}`;
+        
+        if (!workoutsMap.has(key)) {
+          workoutsMap.set(key, {
+            title: title,
+            date: date,
+            notes: row[2]?.trim() || '',
+            athlete_id: params.athlete_id,
+            exercises: []
+          });
+        }
+
+        const exName = row[3]?.trim();
+        if (exName) {
+          workoutsMap.get(key).exercises.push({
+            name: exName,
+            sets: row[4]?.trim() || '',
+            reps: row[5]?.trim() || '',
+            duration: row[6]?.trim() || '',
+            rest: row[7]?.trim() || '',
+            rest_exercise: row[8]?.trim() || '',
+            exercise_notes: row[9]?.trim() || '',
+            video_url: row[10]?.trim() || '',
+            is_unilateral: ['si', 'sí', 'true', '1'].includes((row[11] || '').trim().toLowerCase())
+          });
+        }
+      });
+
+      const workoutsToCreate = Array.from(workoutsMap.values()).filter(w => w.exercises.length > 0);
+
+      if (workoutsToCreate.length === 0) {
+          setLoading(false);
+          Alert.alert("Error", "No se encontraron ejercicios válidos en el archivo.");
+          return;
+      }
+
+      await api.createWorkoutsBulk({ workouts: workoutsToCreate });
+      
+      setLoading(false);
+      Alert.alert("Éxito", `¡Se han programado ${workoutsToCreate.length} sesiones de golpe!`);
+      loadTree(); 
+
+    } catch (err) {
+      setLoading(false);
+      Alert.alert("Error", "Fallo al procesar el archivo CSV.");
+    }
+  };
+  
+  // --- FIN LÓGICA CSV ---
+
   if (loading) return <View style={{flex:1, justifyContent:'center', backgroundColor:colors.background}}><ActivityIndicator size="large" color={colors.primary}/></View>;
 
   return (
@@ -194,6 +332,18 @@ export default function PeriodizationScreen() {
           <Ionicons name="add-circle" size={20} color="#FFF" />
           <Text style={styles.addMacroText}>NUEVO MACROCICLO</Text>
         </TouchableOpacity>
+
+        {/* --- BOTONES DE IMPORTACIÓN MASIVA --- */}
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+          <TouchableOpacity style={[styles.csvBtnMulti, { borderColor: colors.primary, borderWidth: 1 }]} onPress={downloadMultiDayTemplate}>
+            <Ionicons name="download-outline" size={18} color={colors.primary} />
+            <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Plantilla CSV</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.csvBtnMulti, { backgroundColor: colors.primary }]} onPress={handleMultiDayUpload}>
+            <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Importar Varios Días</Text>
+          </TouchableOpacity>
+        </View>
 
         {macros.length === 0 && <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 30 }}>Aún no has creado ningún macrociclo.</Text>}
 
@@ -531,5 +681,16 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
+  },
+
+  // --- ESTILO DE BOTONES MULTI CSV ---
+  csvBtnMulti: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 12,
+    gap: 8
   }
 });
