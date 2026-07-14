@@ -6,26 +6,8 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
-
-const BASE_MUSCLE_MAP: Record<string, string[]> = {
-  'Pecho': ['press banca', 'flexiones', 'pecho', 'aperturas', 'push up'],
-  'Espalda': ['dominadas', 'remo', 'pull up', 'espalda', 'lat pulldown'],
-  'Cuádriceps': ['sentadilla', 'squat', 'prensa', 'extensiones', 'bulgara', 'lunge', 'zancada'],
-  'Isquiotibiales': ['peso muerto', 'deadlift', 'curl femoral', 'isquios', 'buenos dias'],
-  'Glúteo': ['hip thrust', 'puente', 'gluteo', 'patada'],
-  'Hombro': ['press militar', 'hombro', 'elevaciones', 'deltoides', 'face pull'],
-  'Bíceps': ['curl', 'biceps'],
-  'Tríceps': ['triceps', 'extensiones triceps', 'fondos', 'dip'],
-  'Core': ['plancha', 'crunch', 'core', 'abs', 'abdominales', 'leg raise', 'rueda'],
-  'Gemelos': ['gemelos', 'gemelo', 'calf', 'calves', 'soleo', 'elevacion talones'],
-  'Antebrazos': ['antebrazos', 'antebrazo', 'forearm', 'curl muñeca', 'paseo granjero', 'agarre'],
-  'Aductores': ['aductores', 'aductor', 'adductor', 'copenhague', 'copenhagen', 'interior pierna'],
-  'Abductores': ['abductores', 'abductor', 'aperturas pierna', 'banda lateral', 'exterior pierna']
-};
-const MUSCLE_GROUPS = Object.keys(BASE_MUSCLE_MAP);
 
 const normalizeName = (name: string) => {
   if (!name) return "";
@@ -59,11 +41,6 @@ export default function EditWorkoutScreen() {
 
   const [exercises, setExercises] = useState<any[]>([]);
   const [hiitBlocks, setHiitBlocks] = useState<any[]>([]);
-
-  const [customMap, setCustomMap] = useState<Record<string, string[]>>({});
-  const [showMapModal, setShowMapModal] = useState(false);
-  const [unknownExercises, setUnknownExercises] = useState<string[]>([]);
-  const [exerciseMappings, setExerciseMappings] = useState<Record<string, string[]>>({});
 
   // Estados Píldoras
   const [pills, setPills] = useState<any[]>([]);
@@ -114,10 +91,6 @@ export default function EditWorkoutScreen() {
       finally { setLoadingData(false); }
     };
     if (params.workoutId) fetchWorkout();
-
-    AsyncStorage.getItem('custom_muscle_map').then(res => {
-      if (res) setCustomMap(JSON.parse(res));
-    });
 
     api.getPills().then(setPills).catch(console.log);
   }, [params.workoutId]);
@@ -188,7 +161,6 @@ export default function EditWorkoutScreen() {
     const updated = [...hiitBlocks]; [updated[bIndex].exercises[eIndex + 1], updated[bIndex].exercises[eIndex]] = [updated[bIndex].exercises[eIndex], updated[bIndex].exercises[eIndex + 1]]; setHiitBlocks(updated);
   };
 
-  // --- LÓGICA DE PÍLDORAS CORREGIDA ---
   const handleSavePill = async () => {
     if (!newPillName.trim()) { Alert.alert("Error", "Ponle un nombre a la píldora"); return; }
     
@@ -200,7 +172,6 @@ export default function EditWorkoutScreen() {
             rest: e.rest, rest_exercise: e.rest_exercise, video_url: e.video_url, exercise_notes: e.exercise_notes, is_unilateral: !!e.is_unilateral
         }));
     } else {
-        // Aseguramos que el esquema se guarda con hiit_exercises para ser compatible con la BD
         exercisesToSave = hiitBlocks.filter(b => b.exercises.some((e:any) => e.name.trim())).map(block => ({
             is_hiit_block: true, name: block.name, sets: block.sets, rest_exercise: block.rest_exercise, rest_block: block.rest_block, rest_between_blocks: block.rest_between_blocks,
             hiit_exercises: block.exercises.filter((e:any) => e.name.trim()).map((e:any) => ({
@@ -272,7 +243,6 @@ export default function EditWorkoutScreen() {
           Alert.alert("Error", e.message);
       }
   };
-  // --------------------------
 
   const handleSave = () => {
     setError('');
@@ -285,50 +255,7 @@ export default function EditWorkoutScreen() {
 
     if (exNames.length === 0) { setError('Añade al menos un ejercicio'); return; }
 
-    const unknowns: string[] = [];
-    exNames.forEach(name => {
-      const norm = normalizeName(name);
-      let found = false;
-      for (const keywords of Object.values(BASE_MUSCLE_MAP)) { if (keywords.some(k => norm.includes(k) || k === norm)) found = true; }
-      for (const keywords of Object.values(customMap)) { if (keywords.some(k => norm.includes(k) || k === norm)) found = true; }
-      if (!found && !unknowns.includes(name)) unknowns.push(name);
-    });
-
-    if (unknowns.length > 0) {
-      setUnknownExercises(unknowns); setExerciseMappings({}); setShowMapModal(true);
-    } else {
-      executeSave();
-    }
-  };
-
-  const saveMappingsAndContinue = async () => {
-    try {
-      const stored = await AsyncStorage.getItem('custom_muscle_map');
-      const currentMap = stored ? JSON.parse(stored) : {};
-      unknownExercises.forEach(exName => {
-        const norm = normalizeName(exName);
-        const muscles = exerciseMappings[exName] || [];
-        if (muscles.length === 0) {
-          if (!currentMap['Sin_Mapear']) currentMap['Sin_Mapear'] = [];
-          if (!currentMap['Sin_Mapear'].includes(norm)) currentMap['Sin_Mapear'].push(norm);
-        } else {
-          muscles.forEach((m: string) => {
-            if (!currentMap[m]) currentMap[m] = [];
-            if (!currentMap[m].includes(norm)) currentMap[m].push(norm);
-          });
-        }
-      });
-      await AsyncStorage.setItem('custom_muscle_map', JSON.stringify(currentMap));
-      setCustomMap(currentMap); setShowMapModal(false); executeSave();
-    } catch (e) { setShowMapModal(false); executeSave(); }
-  };
-
-  const toggleMuscleSelection = (exName: string, muscle: string) => {
-    setExerciseMappings(prev => {
-      const current = prev[exName] || [];
-      const updated = current.includes(muscle) ? current.filter(m => m !== muscle) : [...current, muscle];
-      return { ...prev, [exName]: updated };
-    });
+    executeSave();
   };
 
   const executeSave = async () => {
@@ -590,39 +517,6 @@ export default function EditWorkoutScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* MODAL MAPA MUSCULAR */}
-      <Modal visible={showMapModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
-            <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary, marginBottom: 10 }}>Ejercicios Nuevos 🤔</Text>
-            <Text style={{ color: colors.textSecondary, marginBottom: 20, fontSize: 14 }}>Para que el Mapa de Calor sea preciso, indícale a Fit Tracker qué grupos musculares trabajan estos ejercicios:</Text>
-            <ScrollView style={{ flexShrink: 1, marginBottom: 20 }}>
-              {unknownExercises.map(ex => (
-                <View key={ex} style={{ marginBottom: 20 }}>
-                  <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 10 }}>{ex}</Text>
-                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                    {MUSCLE_GROUPS.map(muscle => {
-                      const isSelected = (exerciseMappings[ex] || []).includes(muscle);
-                      return (
-                        <TouchableOpacity key={muscle} onPress={() => toggleMuscleSelection(ex, muscle)} style={[styles.musclePill, { borderColor: colors.border }, isSelected && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
-                          <Text style={{ color: isSelected ? '#FFF' : colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{muscle}</Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
-                </View>
-              ))}
-            </ScrollView>
-            <TouchableOpacity style={[styles.saveBtnBig, { backgroundColor: colors.primary }]} onPress={saveMappingsAndContinue}>
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>GUARDAR Y CONTINUAR</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={executeSave} style={{ marginTop: 15 }}>
-              <Text style={{ color: colors.textSecondary, textAlign: 'center', fontWeight: '600' }}>Ignorar y continuar sin mapear</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {/* MODAL INYECTAR PÍLDORA */}
       <Modal visible={showPillModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -732,8 +626,7 @@ const styles = StyleSheet.create({
   errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
-  musclePill: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
-  saveBtnBig: { paddingVertical: 16, borderRadius: 15, alignItems: 'center' },
   csvSection: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
-  csvBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }
+  csvBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  saveBtnBig: { paddingVertical: 16, borderRadius: 15, alignItems: 'center' }
 });
