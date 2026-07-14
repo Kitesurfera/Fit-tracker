@@ -11,6 +11,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
 import { getWebPushSubscription, testNotification } from '../../src/notifications';
+import * as ImagePicker from 'expo-image-picker';
 
 const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'kite': { icon: 'kitesurfing', lib: 'MaterialCommunity' },
@@ -32,6 +33,8 @@ export default function SettingsScreen() {
   // --- ESTADOS ---
   const [name, setName] = useState(user?.name || '');
   const [savingProfile, setSavingProfile] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || null);
+  const [uploadingAvatar, setUploadingAvatar] = useState(false);
 // Asumimos que los emails están activados por defecto a menos que el usuario los apague explícitamente.
   const [emailEnabled, setEmailEnabled] = useState(user?.email_notifications !== false);
   const [loadingEmail, setLoadingEmail] = useState(false);
@@ -41,6 +44,38 @@ export default function SettingsScreen() {
   });
   const [savingMeasures, setSavingMeasures] = useState(false);
   const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
+
+  // --- NUEVA FUNCIÓN: CAMBIAR FOTO DE PERFIL ---
+  const handlePickAvatar = async () => {
+    try {
+      let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.6,
+      });
+
+      if (!result.canceled && result.assets) {
+        setUploadingAvatar(true);
+        const asset = result.assets[0];
+        
+        // Subimos a nuestro bucket (Firebase/Supabase/etc)
+        const uploaded = await api.uploadFile(asset);
+        const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
+        
+        setAvatarUrl(finalUrl);
+        
+        // Lo guardamos en la base de datos y actualizamos el contexto
+        if (api.updateProfile) await api.updateProfile({ avatar_url: finalUrl });
+        if (updateUser) updateUser({ ...user, avatar_url: finalUrl });
+      }
+    } catch (error) {
+      if (Platform.OS === 'web') window.alert("Error al subir la imagen.");
+      else Alert.alert("Error", "No se pudo actualizar la foto de perfil.");
+    } finally {
+      setUploadingAvatar(false);
+    }
+  };
 
   // --- GESTOR DE PÍLDORAS ---
   const [pills, setPills] = useState<any[]>([]);
@@ -271,23 +306,39 @@ const toggleEmail = async (value: boolean) => {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         
+return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
+        
         {/* HEADER */}
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={26} color={colors.textPrimary} /></TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Ajustes</Text>
-          <View style={{ width: 40 }} />
-        </View>
+        {/* ... */}
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           
           <View style={styles.profileHeader}>
-            <View style={[styles.avatarCircle, { backgroundColor: colors.primary }]}><Text style={styles.avatarText}>{name.charAt(0).toUpperCase() || 'U'}</Text></View>
+            <TouchableOpacity 
+              onPress={handlePickAvatar} 
+              style={[styles.avatarCircle, { backgroundColor: colors.primary }]}
+              activeOpacity={0.8}
+            >
+              {uploadingAvatar ? (
+                <ActivityIndicator color="#FFF" size="small" />
+              ) : avatarUrl ? (
+                <Image source={{ uri: avatarUrl }} style={styles.avatarImage} />
+              ) : (
+                <Text style={styles.avatarText}>{name.charAt(0).toUpperCase() || 'U'}</Text>
+              )}
+              {/* Badget de la cámara */}
+              <View style={[styles.cameraBadge, { backgroundColor: colors.background }]}>
+                <Ionicons name="camera" size={12} color={colors.textPrimary} />
+              </View>
+            </TouchableOpacity>
+            
             <View style={styles.profileTextWrapper}>
               <Text style={[styles.profileName, { color: colors.textPrimary }]}>{name || 'Usuario'}</Text>
               <Text style={[styles.roleText, { color: colors.textSecondary }]}>{isAthlete ? 'DEPORTISTA' : 'ENTRENADOR'}</Text>
             </View>
           </View>
-
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <View style={styles.inputRow}>
               <Ionicons name="person-outline" size={20} color={colors.textSecondary} style={{ marginRight: 10 }} />
@@ -548,6 +599,8 @@ const styles = StyleSheet.create({
   content: { paddingHorizontal: 20, paddingTop: 10 },
   profileHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 25, paddingHorizontal: 10 },
   avatarCircle: { width: 70, height: 70, borderRadius: 35, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.1, shadowRadius: 8, elevation: 4 },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 35 },
+  cameraBadge: { position: 'absolute', bottom: 0, right: -4, width: 24, height: 24, borderRadius: 12, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 3 },
   avatarText: { fontSize: 28, fontWeight: '900', color: '#FFF' },
   profileTextWrapper: { marginLeft: 20, flex: 1 },
   profileName: { fontSize: 22, fontWeight: '800', marginBottom: 4 },
