@@ -10,7 +10,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
-import GeminiChatModal from '../src/components/GeminiChatModal';
+import GeminiChatModal from '../src/components/GeminiChatModal'; 
 
 const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
@@ -798,6 +798,7 @@ export default function AthleteDetailScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         
+        {/* HEADER CORREGIDO CON FOTO */}
         <View style={styles.headerCenter}>
           {athlete?.avatar_url ? (
             <Image source={{ uri: athlete.avatar_url }} style={styles.headerAvatar} />
@@ -901,9 +902,9 @@ export default function AthleteDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 }, 
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, 
-  headerTitle: { fontSize: 22, fontWeight: '900' },
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center' },
   headerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EEE' },
+  headerTitle: { fontSize: 22, fontWeight: '900' }, 
   tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, 
   tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, 
   tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, 
