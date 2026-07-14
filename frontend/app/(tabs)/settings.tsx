@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, TextInput,
-  Platform, Alert, ScrollView, ActivityIndicator, KeyboardAvoidingView, Switch, Share, Modal
+  Platform, Alert, ScrollView, ActivityIndicator, KeyboardAvoidingView, Switch, Share, Modal, Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
 import { getWebPushSubscription, testNotification } from '../../src/notifications';
-import * as ImagePicker from 'expo-image-picker';
 
 const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'kite': { icon: 'kitesurfing', lib: 'MaterialCommunity' },
@@ -35,7 +35,8 @@ export default function SettingsScreen() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
-// Asumimos que los emails están activados por defecto a menos que el usuario los apague explícitamente.
+  
+  // Asumimos que los emails están activados por defecto a menos que el usuario los apague explícitamente.
   const [emailEnabled, setEmailEnabled] = useState(user?.email_notifications !== false);
   const [loadingEmail, setLoadingEmail] = useState(false);
 
@@ -45,7 +46,30 @@ export default function SettingsScreen() {
   const [savingMeasures, setSavingMeasures] = useState(false);
   const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
 
-  // --- NUEVA FUNCIÓN: CAMBIAR FOTO DE PERFIL ---
+  // --- GESTOR DE PÍLDORAS ---
+  const [pills, setPills] = useState<any[]>([]);
+  const [showPillBuilder, setShowPillBuilder] = useState(false);
+  const [editingPillId, setEditingPillId] = useState<string | null>(null);
+  const [pillName, setPillName] = useState('');
+  const [pillType, setPillType] = useState<'traditional' | 'hiit'>('traditional');
+  const [pillExs, setPillExs] = useState<any[]>([{ _key: '1', name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
+  const [pillBlocks, setPillBlocks] = useState<any[]>([{ _key: 'b1', name: 'Bloque 1', sets: '1', exercises: [{ _key: 'e1', name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
+  const [savingPill, setSavingPill] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem('timer_sounds_enabled').then(val => {
+      if (val === 'false') setTimerSoundsEnabled(false);
+    });
+    if (!isAthlete) {
+      loadPills();
+    }
+  }, [isAthlete]);
+
+  const loadPills = () => {
+    api.getPills().then(setPills).catch(console.log);
+  };
+
+  // --- FUNCIONES ---
   const handlePickAvatar = async () => {
     try {
       let result = await ImagePicker.launchImageLibraryAsync({
@@ -77,36 +101,12 @@ export default function SettingsScreen() {
     }
   };
 
-  // --- GESTOR DE PÍLDORAS ---
-  const [pills, setPills] = useState<any[]>([]);
-  const [showPillBuilder, setShowPillBuilder] = useState(false);
-  const [editingPillId, setEditingPillId] = useState<string | null>(null);
-  const [pillName, setPillName] = useState('');
-  const [pillType, setPillType] = useState<'traditional' | 'hiit'>('traditional');
-  const [pillExs, setPillExs] = useState<any[]>([{ _key: '1', name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
-  const [pillBlocks, setPillBlocks] = useState<any[]>([{ _key: 'b1', name: 'Bloque 1', sets: '1', exercises: [{ _key: 'e1', name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
-  const [savingPill, setSavingPill] = useState(false);
-
-  useEffect(() => {
-    AsyncStorage.getItem('timer_sounds_enabled').then(val => {
-      if (val === 'false') setTimerSoundsEnabled(false);
-    });
-    if (!isAthlete) {
-      loadPills();
-    }
-  }, [isAthlete]);
-
-  const loadPills = () => {
-    api.getPills().then(setPills).catch(console.log);
-  };
-
-  // --- FUNCIONES ---
   const toggleTimerSounds = async (value: boolean) => {
     setTimerSoundsEnabled(value);
     await AsyncStorage.setItem('timer_sounds_enabled', value ? 'true' : 'false');
   };
 
-const toggleEmail = async (value: boolean) => {
+  const toggleEmail = async (value: boolean) => {
      if (loadingEmail) return;
      setLoadingEmail(true);
      setEmailEnabled(value);
@@ -306,12 +306,12 @@ const toggleEmail = async (value: boolean) => {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         
-return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
-        
         {/* HEADER */}
-        {/* ... */}
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={26} color={colors.textPrimary} /></TouchableOpacity>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Ajustes</Text>
+          <View style={{ width: 40 }} />
+        </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           
@@ -328,7 +328,6 @@ return (
               ) : (
                 <Text style={styles.avatarText}>{name.charAt(0).toUpperCase() || 'U'}</Text>
               )}
-              {/* Badget de la cámara */}
               <View style={[styles.cameraBadge, { backgroundColor: colors.background }]}>
                 <Ionicons name="camera" size={12} color={colors.textPrimary} />
               </View>
@@ -339,6 +338,7 @@ return (
               <Text style={[styles.roleText, { color: colors.textSecondary }]}>{isAthlete ? 'DEPORTISTA' : 'ENTRENADOR'}</Text>
             </View>
           </View>
+
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             <View style={styles.inputRow}>
               <Ionicons name="person-outline" size={20} color={colors.textSecondary} style={{ marginRight: 10 }} />
@@ -368,7 +368,6 @@ return (
             <View style={styles.settingRowAction}>
               <View style={styles.settingIconText}>
                 <View style={[styles.iconBox, { backgroundColor: '#3B82F615' }]}>
-                  {/* Cambiamos el icono a "mail" */}
                   <Ionicons name="mail" size={20} color="#3B82F6" />
                 </View>
                 <View style={{ flex: 1 }}>
@@ -378,7 +377,6 @@ return (
                   </Text>
                 </View>
               </View>
-              {/* Conectamos el Switch a nuestras nuevas funciones */}
               <Switch 
                 value={emailEnabled} 
                 onValueChange={toggleEmail} 
