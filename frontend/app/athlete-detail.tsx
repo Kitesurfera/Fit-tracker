@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet,
-  ActivityIndicator, ScrollView, Alert, Platform, Modal, TextInput, Linking, useWindowDimensions
+  ActivityIndicator, ScrollView, Alert, Platform, Modal, TextInput, Linking, useWindowDimensions, Image
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -10,7 +10,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
-import GeminiChatModal from '../src/components/GeminiChatModal'; 
+import GeminiChatModal from '../src/components/GeminiChatModal';
 
 const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
@@ -794,9 +794,28 @@ export default function AthleteDetailScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: colors.textPrimary }, isDesktop && { fontSize: 26 }]}>{params.name}</Text>
-        <TouchableOpacity onPress={loadData}><Ionicons name="sync" size={24} color={colors.primary} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+        </TouchableOpacity>
+        
+        <View style={styles.headerCenter}>
+          {athlete?.avatar_url ? (
+            <Image source={{ uri: athlete.avatar_url }} style={styles.headerAvatar} />
+          ) : (
+            <View style={[styles.headerAvatar, { backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }]}>
+              <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 14 }}>
+                {params.name?.charAt(0).toUpperCase() || 'A'}
+              </Text>
+            </View>
+          )}
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }, isDesktop && { fontSize: 26 }]}>
+            {params.name}
+          </Text>
+        </View>
+
+        <TouchableOpacity onPress={loadData}>
+          <Ionicons name="sync" size={24} color={colors.primary} />
+        </TouchableOpacity>
       </View>
       
       {/* RENDERIZADO CONDICIONAL: ORDENADOR VS MÓVIL */}
@@ -882,7 +901,9 @@ export default function AthleteDetailScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 }, 
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, 
-  headerTitle: { fontSize: 22, fontWeight: '900' }, 
+  headerTitle: { fontSize: 22, fontWeight: '900' },
+  headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center' },
+  headerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EEE' },
   tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, 
   tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, 
   tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, 
