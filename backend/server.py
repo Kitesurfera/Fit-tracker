@@ -108,6 +108,8 @@ class WellnessCreate(BaseModel):
     cycle_phase: Optional[str] = None
     date: Optional[str] = None
     athlete_id: Optional[str] = None
+    discomforts: Optional[Dict[str, str]] = {} 
+    sleep_hours: Optional[str] = ""
 
 class UserRegister(BaseModel):
     email: str
@@ -587,12 +589,17 @@ async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
 async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     target_date = data.date if data.date else datetime.now(timezone.utc).isoformat().split('T')[0]
     
-    # Permitir al entrenador guardar wellness en nombre de su atleta
     target_athlete_id = data.athlete_id if (data.athlete_id and user['role'] == 'trainer') else user['id']
     
     wellness_data = {
-        "fatigue": data.fatigue, "stress": data.stress, "sleep_quality": data.sleep_quality,
-        "soreness": data.soreness, "notes": data.notes, "cycle_phase": data.cycle_phase,
+        "fatigue": data.fatigue, 
+        "stress": data.stress, 
+        "sleep_quality": data.sleep_quality,
+        "soreness": data.soreness, 
+        "notes": data.notes, 
+        "cycle_phase": data.cycle_phase,
+        "discomforts": data.discomforts,  # Añadido
+        "sleep_hours": data.sleep_hours,  # Añadido
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
     
