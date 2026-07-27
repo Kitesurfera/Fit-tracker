@@ -24,7 +24,6 @@ const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'bike': { icon: 'bicycle', lib: 'Ionicons' },
 };
 
-// Función auxiliar robusta para obtener el icono
 const getSportConfig = (sportName?: string) => {
   const key = sportName || 'kite';
   return SPORT_ICON_MAP[key] || SPORT_ICON_MAP['kite'];
@@ -56,12 +55,10 @@ export default function CalendarScreen() {
   // --- ESTADOS DE VISTA ---
   const [viewMode, setViewMode] = useState<'month' | 'week'>('month');
   
-  // Estados Calendario Mensual
   const [currentMonth, setCurrentMonth] = useState(now.getMonth());
   const [currentYear, setCurrentYear] = useState(now.getFullYear());
   const [selectedDate, setSelectedDate] = useState(localTodayStr);
 
-  // Estados Calendario Semanal
   const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => {
     const d = new Date(now);
     const day = d.getDay() || 7; 
@@ -77,6 +74,7 @@ export default function CalendarScreen() {
   const [wellnessHistory, setWellnessHistory] = useState<any[]>([]); 
   
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
   
@@ -93,7 +91,6 @@ export default function CalendarScreen() {
   const [skipWorkoutId, setSkipWorkoutId] = useState<string | null>(null);
   const [skipReason, setSkipReason] = useState('');
 
-  // Estados Modal IA y Deporte
   const [isChatVisible, setChatVisible] = useState(false);
   const [showSportModal, setShowSportModal] = useState(false);
   const [sportSessions, setSportSessions] = useState<string[]>([]);
@@ -103,26 +100,54 @@ export default function CalendarScreen() {
 
   const isTrainer = user?.role === 'trainer';
   const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
-
-  // Variable robusta para saber si el atleta tiene el deporte extra activado
   const isExtraSportEnabled = selectedAthlete?.has_extra_sport === true || selectedAthlete?.has_extra_sport === 1 || selectedAthlete?.has_extra_sport === 'true';
 
-  // Obtener config segura de deporte actual para evitar bloqueos del map (Black screen fix)
   const sportConfig = getSportConfig(selectedAthlete?.sport_icon);
 
-  // OBTENER DATOS FRESCOS CADA VEZ QUE SE ENTRA A LA PANTALLA
+  const refreshAthleteData = async (athlete: any) => {
+    if (!athlete || !athlete.id) return;
+    try {
+      const [resTree, resWorkouts, resWellness] = await Promise.all([
+        api.getPeriodizationTree(athlete.id).catch(() => ({ macros: [] })),
+        api.getWorkouts({ athlete_id: athlete.id }).catch(() => []),
+        api.getWellnessHistory(athlete.id).catch(() => []) 
+      ]);
+      
+      const macroList = Array.isArray(resTree) ? resTree : (resTree?.macros || []);
+      const extractedWorkouts = Array.isArray(resWorkouts) ? resWorkouts : (resWorkouts?.data || []);
+      const extractedWellness = Array.isArray(resWellness) ? resWellness : (resWellness?.data || []);
+      
+      setMacros(macroList);
+      setWorkouts(extractedWorkouts);
+      setWellnessHistory(extractedWellness);
+    } catch (e: any) { 
+      console.log("Error recargando datos del atleta:", e); 
+    } finally { 
+      setUpdating(false); 
+      setLoading(false);
+    }
+  };
+
   useFocusEffect(
     useCallback(() => {
       let isActive = true;
 
       const loadFreshData = async () => {
-        if (authLoading || !user) return;
+        if (authLoading) return;
+        if (!user) {
+          if (isActive) {
+            setLoading(false);
+            setLoadError("No hay sesión de usuario activa.");
+          }
+          return;
+        }
         
         try {
+          setLoadError(null);
           let currentAthlete = selectedAthlete;
 
           if (isTrainer) {
-            const data = await api.getAthletes();
+            const data = await api.getAthletes().catch(() => []);
             const freshAthletes = Array.isArray(data) ? data : [];
             if (isActive) setAthletes(freshAthletes);
             
@@ -152,11 +177,15 @@ export default function CalendarScreen() {
 
           if (currentAthlete && isActive) {
              await refreshAthleteData(currentAthlete);
+          } else if (isActive) {
+            setLoading(false);
           }
-        } catch (e) { 
-          console.log("Error inicializando:", e); 
-        } finally { 
-          if (isActive) setLoading(false); 
+        } catch (e: any) { 
+          console.log("Error crítico inicializando calendario:", e);
+          if (isActive) {
+            setLoadError(e?.message || "Error al cargar la planificación.");
+            setLoading(false);
+          }
         }
       };
 
@@ -165,7 +194,7 @@ export default function CalendarScreen() {
       return () => {
         isActive = false;
       };
-    }, [authLoading, user?.id, isTrainer, selectedAthlete?.id])
+    }, [authLoading, user?.id, isTrainer])
   );
 
   useEffect(() => {
@@ -175,28 +204,6 @@ export default function CalendarScreen() {
       setSportSessions([]);
     }
   }, [selectedAthlete]);
-
-  const refreshAthleteData = async (athlete: any) => {
-    try {
-      const [resTree, resWorkouts, resWellness] = await Promise.all([
-        api.getPeriodizationTree(athlete.id).catch(() => ({ macros: [] })),
-        api.getWorkouts({ athlete_id: athlete.id }).catch(() => []),
-        api.getWellnessHistory(athlete.id).catch(() => []) 
-      ]);
-      
-      const macroList = Array.isArray(resTree) ? resTree : (resTree?.macros || []);
-      const extractedWorkouts = Array.isArray(resWorkouts) ? resWorkouts : (resWorkouts?.data || []);
-      const extractedWellness = Array.isArray(resWellness) ? resWellness : (resWellness?.data || []);
-      
-      setMacros(macroList);
-      setWorkouts(extractedWorkouts);
-      setWellnessHistory(extractedWellness);
-    } catch (e) { 
-      console.log("Error recargando:", e); 
-    } finally { 
-      setUpdating(false); setLoading(false);
-    }
-  };
 
   const handleSelectAthlete = (athlete: any) => {
     if (!athlete) return;
@@ -658,7 +665,36 @@ export default function CalendarScreen() {
     return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   }, [workouts, viewMicroInfo]);
 
-  if (authLoading || (loading && athletes.length === 0)) return <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}><ActivityIndicator size="large" color={colors.primary}/></View>;
+  // Manejo de carga inicial o error de carga para evitar pantalla en negro infinita
+  if (authLoading || loading) {
+    return (
+      <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background, padding: 20}}>
+        <ActivityIndicator size="large" color={colors.primary}/>
+        <Text style={{color: colors.textSecondary, marginTop: 15, fontWeight: '600'}}>Cargando planificación...</Text>
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background, padding: 24}}>
+        <Ionicons name="alert-circle-outline" size={56} color={colors.error || '#EF4444'} />
+        <Text style={{color: colors.textPrimary, fontSize: 18, fontWeight: '900', marginTop: 15, textAlign: 'center'}}>No se pudo cargar el calendario</Text>
+        <Text style={{color: colors.textSecondary, fontSize: 13, textAlign: 'center', marginTop: 8, marginBottom: 24}}>{loadError}</Text>
+        <TouchableOpacity 
+          style={{backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12}}
+          onPress={() => {
+            setLoading(true);
+            setLoadError(null);
+            if (selectedAthlete) refreshAthleteData(selectedAthlete);
+            else setLoading(false);
+          }}
+        >
+          <Text style={{color: '#FFF', fontWeight: '800'}}>Reintentar</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -1038,7 +1074,7 @@ export default function CalendarScreen() {
       {/* --- MODAL AJUSTES DE CICLO MENSTRUAL --- */}
       <Modal visible={showCycleSettings} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Ajustes del Ciclo</Text>
               <TouchableOpacity onPress={() => setShowCycleSettings(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
@@ -1063,14 +1099,14 @@ export default function CalendarScreen() {
             <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleSaveCycleSettings} disabled={updating}>
               {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Guardar Ajustes</Text>}
             </TouchableOpacity>
-          </KeyboardAvoidingView>
+          </View>
         </View>
       </Modal>
 
       {/* --- MODAL PARA SALTAR SESIÓN --- */}
       <Modal visible={showSkipModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Saltar Sesión</Text>
               <TouchableOpacity onPress={() => { setShowSkipModal(false); setSkipReason(''); }}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
@@ -1083,7 +1119,7 @@ export default function CalendarScreen() {
             <TouchableOpacity style={{ backgroundColor: colors.warning || '#F59E0B', padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleSkipSubmit} disabled={updating}>
               {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar</Text>}
             </TouchableOpacity>
-          </KeyboardAvoidingView>
+          </View>
         </View>
       </Modal>
 
