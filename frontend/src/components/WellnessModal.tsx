@@ -15,7 +15,7 @@ const BODY_PARTS = [
 
 const SLEEP_HOURS_OPTIONS = ['<6', '6', '7', '8', '9+'];
 
-export default function WellnessModal({ isVisible, onClose }: { isVisible: boolean, onClose: () => void }) {
+export default function WellnessModal({ isVisible, onClose, athleteId }: { isVisible: boolean, onClose: () => void, athleteId?: string }) {
   const { colors } = useTheme();
   const { user, updateUser } = useAuth(); 
   const [loading, setLoading] = useState(false);
@@ -50,7 +50,8 @@ export default function WellnessModal({ isVisible, onClose }: { isVisible: boole
   const handleSave = async () => {
     setLoading(true);
     try {
-      await api.postWellness({ ...form, cycle_phase: '' }); // El backend calculará la fase, o se ignora.
+      // 2. Incluye athlete_id en el payload que se envía al backend
+      await api.postWellness({ ...form, cycle_phase: '', athlete_id: athleteId }); 
       onClose();
     } catch (e: any) {
       if (Platform.OS !== 'web') Alert.alert("Error de envío", e.message || "No se pudo conectar con el servidor.");
