@@ -90,7 +90,7 @@ export default function AthleteDetailScreen() {
   const [duplicateDate, setDuplicateDate] = useState(getLocalDateStr(new Date()));
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
 
-  // <-- ESTADO PARA EL CHAT DE GEMINI -->
+  // <-- ESTADO PARA CHAT GEMINI Y WELLNESS -->
   const [isChatVisible, setChatVisible] = useState(false);
   const [showWellnessModal, setShowWellnessModal] = useState(false);
 
@@ -116,8 +116,6 @@ export default function AthleteDetailScreen() {
       setLoading(false); 
     }
   };
-
-
 
   const toggleWorkout = useCallback((id: string) => {
     setExpandedWorkouts(prev => ({ ...prev, [id]: !prev[id] }));
@@ -409,15 +407,6 @@ export default function AthleteDetailScreen() {
               <Text style={{color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, marginTop: 2}}>{summary.injury_notes}</Text>
             </View>
           </View>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-          <Text style={[styles.sectionTitle, { marginBottom: 0 }, isDesktop && { fontSize: 13 }]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
-        <TouchableOpacity 
-          style={{ backgroundColor: colors.primary + '20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
-          onPress={() => setShowWellnessModal(true)}
-        >
-          <Text style={{ color: colors.primary, fontSize: isDesktop ? 13 : 11, fontWeight: '800' }}>+ AÑADIR</Text>
-        </TouchableOpacity>
-      </View>
         )}
 
         {/* PRÓXIMO ENTRENAMIENTO */}
@@ -550,15 +539,23 @@ export default function AthleteDetailScreen() {
           </View>
         </View>
 
-        <Text style={[styles.sectionTitle, isDesktop && { fontSize: 13 }]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+          <Text style={[styles.sectionTitle, { marginBottom: 0 }, isDesktop && { fontSize: 13 }]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
+          <TouchableOpacity 
+            style={{ backgroundColor: colors.primary + '20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+            onPress={() => setShowWellnessModal(true)}
+          >
+            <Text style={{ color: colors.primary, fontSize: isDesktop ? 13 : 11, fontWeight: '800' }}>+ AÑADIR</Text>
+          </TouchableOpacity>
+        </View>
+
         <View style={[styles.mainCard, { backgroundColor: colors.surface }]}>
           <View style={styles.wellnessRow}>
             <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.fatigue) }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.fatigue || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>FATIGA</Text></View>
             <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.soreness) }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.soreness || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>DOLOR</Text></View>
             <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.sleep_quality, true) }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.sleep_quality || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>SUEÑO</Text></View>
             <View style={styles.wellBox}><Text style={[styles.wellVal, { color: colors.textPrimary }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.sleep_hours || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>HORAS</Text></View>
-            </View>
-        </View>
+          </View>
           
           {!!summary?.latest_wellness?.notes && (
             <View style={[styles.noteBox, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} /><Text style={[styles.noteText, { color: colors.textPrimary }, isDesktop && { fontSize: 15 }]}>"{summary.latest_wellness.notes}"</Text></View>
@@ -813,7 +810,6 @@ export default function AthleteDetailScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         
-        {/* HEADER CORREGIDO CON FOTO */}
         <View style={styles.headerCenter}>
           {athlete?.avatar_url ? (
             <Image source={{ uri: athlete.avatar_url }} style={styles.headerAvatar} />
@@ -914,10 +910,10 @@ export default function AthleteDetailScreen() {
       <WellnessModal
         isVisible={showWellnessModal}
         onClose={() => {
-        setShowWellnessModal(false);
-        loadData();
+          setShowWellnessModal(false);
+          loadData();
         }}
-      athleteId={params.id}
+        athleteId={params.id}
       />
 
     </SafeAreaView>
