@@ -10,6 +10,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import GeminiChatModal from '../../src/components/GeminiChatModal';
+import { useTrainer } from '../../src/context/TrainerContext';
 
 const DAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -68,7 +69,7 @@ export default function CalendarScreen() {
   
   // --- ESTADOS DE DATOS ---
   const [athletes, setAthletes] = useState<any[]>([]);
-  const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
+  const { selectedAthlete, setSelectedAthlete } = useTrainer();
   const [macros, setMacros] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [wellnessHistory, setWellnessHistory] = useState<any[]>([]); 
@@ -665,7 +666,6 @@ export default function CalendarScreen() {
     return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
   }, [workouts, viewMicroInfo]);
 
-  // Manejo de carga inicial o error de carga para evitar pantalla en negro infinita
   if (authLoading || loading) {
     return (
       <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background, padding: 20}}>
@@ -700,9 +700,9 @@ export default function CalendarScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       {/* --- CABECERA PRINCIPAL --- */}
       <View style={styles.topHeader}>
-        <View style={{flex:1}}>
-          <Text style={styles.headerSubtitle}>{isTrainer ? 'AGENDA DEPORTISTA' : 'MI PLANIFICACIÓN'}</Text>
-          <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{selectedAthlete?.name || 'Calendario'}</Text>
+        <View style={{flex:1, marginRight: 8}}>
+          <Text style={styles.headerSubtitle} numberOfLines={1}>{isTrainer ? 'AGENDA DEPORTISTA' : 'MI PLANIFICACIÓN'}</Text>
+          <Text style={[styles.headerTitle, { color: colors.textPrimary }]} numberOfLines={1}>{selectedAthlete?.name || 'Calendario'}</Text>
         </View>
 
         <View style={styles.viewToggleContainer}>
@@ -716,8 +716,8 @@ export default function CalendarScreen() {
           </TouchableOpacity>
         </View>
 
-        <View style={{flexDirection:'row', gap: 10, marginLeft: 10}}>
-          {workoutToCopy && <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: (colors.error || '#EF4444') + '20' }]}><Ionicons name="close" size={22} color={colors.error || '#EF4444'} /></TouchableOpacity>}
+        <View style={styles.headerActionsRight}>
+          {workoutToCopy && <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: (colors.error || '#EF4444') + '20' }]}><Ionicons name="close" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>}
           
           {isExtraSportEnabled && (
             <TouchableOpacity onPress={() => {
@@ -727,20 +727,20 @@ export default function CalendarScreen() {
                 setShowSportModal(true);
             }} style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}>
                {sportConfig.lib === 'Ionicons' ? (
-                   <Ionicons name={sportConfig.icon as any} size={22} color={colors.primary} />
+                   <Ionicons name={sportConfig.icon as any} size={20} color={colors.primary} />
                ) : (
-                   <MaterialCommunityIcons name={sportConfig.icon as any} size={22} color={colors.primary} />
+                   <MaterialCommunityIcons name={sportConfig.icon as any} size={20} color={colors.primary} />
                )}
             </TouchableOpacity>
           )}
           
-          {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
+          {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}><Ionicons name="people" size={20} color={colors.primary} /></TouchableOpacity>}
         </View>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: isDesktop ? 40 : 16, paddingBottom: 100, flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 40 : 16 }} showsVerticalScrollIndicator={false}>
         
-        {/* === COLUMNA IZQUIERDA (Calendario) === */}
+        {/* === COLUMNA IZQUIERDA (Calendario / Vista Semana) === */}
         <View style={[{flex: isDesktop ? 1.5 : 1}]}>
           
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
@@ -756,97 +756,128 @@ export default function CalendarScreen() {
               <TouchableOpacity onPress={() => viewMode === 'month' ? changeMonth(1) : changeWeek(1)} style={styles.arrowBtn}><Ionicons name="chevron-forward" size={24} color={colors.textPrimary} /></TouchableOpacity>
             </View>
 
-            <View style={styles.daysHeader}>
-              {DAYS.map(day => <Text key={day} style={[styles.dayHeaderText, { color: colors.textSecondary }]}>{day}</Text>)}
-            </View>
-
             {viewMode === 'month' ? (
-               <View style={styles.daysGrid}>
-                 {daysInMonth.map((day, idx) => {
-                   if (!day) return <View key={`empty-${idx}`} style={styles.dayCell} />;
-                   
-                   const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                   const isSelected = selectedDate === dateStr;
-                   const isToday = localTodayStr === dateStr;
-                   const status = getDayStatus(day);
-                   const isTechnical = sportSessions.includes(dateStr);
-                   const isCopyTarget = !!workoutToCopy;
+              <>
+                <View style={styles.daysHeader}>
+                  {DAYS.map(day => <Text key={day} style={[styles.dayHeaderText, { color: colors.textSecondary }]}>{day}</Text>)}
+                </View>
+                <View style={styles.daysGrid}>
+                  {daysInMonth.map((day, idx) => {
+                    if (!day) return <View key={`empty-${idx}`} style={styles.dayCell} />;
+                    
+                    const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const isSelected = selectedDate === dateStr;
+                    const isToday = localTodayStr === dateStr;
+                    const status = getDayStatus(day);
+                    const isTechnical = sportSessions.includes(dateStr);
+                    const isCopyTarget = !!workoutToCopy;
 
-                   return (
-                     <TouchableOpacity 
-                       key={idx} 
-                       onPress={() => handleDatePress(dateStr)} 
-                       style={[
-                         styles.dayCell, 
-                         isSelected && !isCopyTarget && { backgroundColor: colors.primary + '20', borderRadius: 8 },
-                         isCopyTarget && { backgroundColor: colors.success + '20', borderRadius: 8, borderWidth: 1, borderColor: colors.success }
-                       ]}
-                     >
-                       <View style={styles.dateNumberContainer}>
-                          <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && !isCopyTarget && { color: colors.primary, fontWeight: '800' }, isToday && { color: colors.primary, fontWeight: '900' }]}>{day}</Text>
-                       </View>
+                    return (
+                      <TouchableOpacity 
+                        key={idx} 
+                        onPress={() => handleDatePress(dateStr)} 
+                        style={[
+                          styles.dayCell, 
+                          isSelected && !isCopyTarget && { backgroundColor: colors.primary + '20', borderRadius: 8 },
+                          isCopyTarget && { backgroundColor: colors.success + '20', borderRadius: 8, borderWidth: 1, borderColor: colors.success }
+                        ]}
+                      >
+                        <View style={styles.dateNumberContainer}>
+                           <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && !isCopyTarget && { color: colors.primary, fontWeight: '800' }, isToday && { color: colors.primary, fontWeight: '900' }]}>{day}</Text>
+                        </View>
 
-                       {/* INDICADORES DEL CALENDARIO */}
-                       <View style={styles.indicatorsRow}>
-                         {!!status?.phaseColor && <View style={[styles.indicatorDot, { backgroundColor: status.phaseColor, width: 20, height: 4, borderRadius: 2 }]} />}
-                         {status?.isPeriod && <View style={[styles.indicatorDot, { backgroundColor: '#EF4444' }]} />}
-                         {status?.hasWorkout && <View style={[styles.indicatorDot, { backgroundColor: status.isCompleted ? colors.success : colors.warning }]} />}
-                         {isTechnical && (
-                            <View style={{ marginTop: 2 }}>
-                               {sportConfig.lib === 'Ionicons' ? (
-                                   <Ionicons name={sportConfig.icon as any} size={10} color={colors.primary} />
-                               ) : (
-                                   <MaterialCommunityIcons name={sportConfig.icon as any} size={10} color={colors.primary} />
-                               )}
-                            </View>
-                         )}
-                       </View>
-                     </TouchableOpacity>
-                   );
-                 })}
-               </View>
+                        {/* INDICADORES DEL CALENDARIO */}
+                        <View style={styles.indicatorsRow}>
+                           {!!status?.phaseColor && <View style={[styles.indicatorDot, { backgroundColor: status.phaseColor, width: 20, height: 4, borderRadius: 2 }]} />}
+                           {status?.isPeriod && <View style={[styles.indicatorDot, { backgroundColor: '#EF4444' }]} />}
+                           {status?.hasWorkout && <View style={[styles.indicatorDot, { backgroundColor: status.isCompleted ? colors.success : colors.warning }]} />}
+                           {isTechnical && (
+                              <View style={{ marginTop: 2 }}>
+                                 {sportConfig.lib === 'Ionicons' ? (
+                                     <Ionicons name={sportConfig.icon as any} size={10} color={colors.primary} />
+                                 ) : (
+                                     <MaterialCommunityIcons name={sportConfig.icon as any} size={10} color={colors.primary} />
+                                 )}
+                              </View>
+                           )}
+                        </View>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              </>
             ) : (
-               <View style={styles.daysGrid}>
-                 {currentWeekDays.map((d, idx) => {
-                   const dateStr = getLocalDateStr(d);
-                   const day = d.getDate();
-                   const isSelected = selectedDate === dateStr;
-                   const isToday = localTodayStr === dateStr;
-                   const status = monthStatusMap[dateStr] || null;
-                   const isTechnical = sportSessions.includes(dateStr);
-                   const isCopyTarget = !!workoutToCopy;
+              /* --- NUEVA VISTA DE SEMANA DETALLADA (EVITA SUPERPOSICIONES Y MUESTRA EJERCICIOS) --- */
+              <View style={{ gap: 10, marginTop: 5 }}>
+                {currentWeekDays.map((d, idx) => {
+                  const dateStr = getLocalDateStr(d);
+                  const isSelected = selectedDate === dateStr;
+                  const isToday = localTodayStr === dateStr;
+                  const status = monthStatusMap[dateStr] || {};
+                  const dayWorkouts = workouts?.filter(w => extractDateString(w.date) === dateStr) || [];
+                  const isTechnical = sportSessions.includes(dateStr);
+                  const microColor = status.phaseColor || colors.border;
 
-                   return (
-                     <TouchableOpacity 
-                       key={idx} 
-                       onPress={() => handleDatePress(dateStr)} 
-                       style={[
-                         styles.dayCell, 
-                         isSelected && !isCopyTarget && { backgroundColor: colors.primary + '20', borderRadius: 8 },
-                         isCopyTarget && { backgroundColor: colors.success + '20', borderRadius: 8, borderWidth: 1, borderColor: colors.success }
-                       ]}
-                     >
-                       <View style={styles.dateNumberContainer}>
-                          <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && !isCopyTarget && { color: colors.primary, fontWeight: '800' }, isToday && { color: colors.primary, fontWeight: '900' }]}>{day}</Text>
-                       </View>
-                       <View style={styles.indicatorsRow}>
-                         {!!status?.phaseColor && <View style={[styles.indicatorDot, { backgroundColor: status.phaseColor, width: 20, height: 4, borderRadius: 2 }]} />}
-                         {status?.isPeriod && <View style={[styles.indicatorDot, { backgroundColor: '#EF4444' }]} />}
-                         {status?.hasWorkout && <View style={[styles.indicatorDot, { backgroundColor: status.isCompleted ? colors.success : colors.warning }]} />}
-                         {isTechnical && (
-                            <View style={{ marginTop: 2 }}>
-                               {sportConfig.lib === 'Ionicons' ? (
-                                   <Ionicons name={sportConfig.icon as any} size={10} color={colors.primary} />
-                               ) : (
-                                   <MaterialCommunityIcons name={sportConfig.icon as any} size={10} color={colors.primary} />
-                               )}
+                  return (
+                    <TouchableOpacity
+                      key={idx}
+                      onPress={() => handleDatePress(dateStr)}
+                      style={[
+                        styles.weekDayCard,
+                        { backgroundColor: colors.surfaceHighlight, borderColor: isSelected ? colors.primary : colors.border },
+                        status.phaseColor && { borderLeftWidth: 6, borderLeftColor: status.phaseColor }
+                      ]}
+                    >
+                      <View style={styles.weekDayHeaderRow}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                          <View style={[styles.weekDayNumBadge, isToday && { backgroundColor: colors.primary }]}>
+                            <Text style={[styles.weekDayNumText, isToday && { color: '#FFF' }]}>{d.getDate()}</Text>
+                          </View>
+                          <Text style={[styles.weekDayNameText, { color: colors.textPrimary }, isToday && { color: colors.primary }]}>
+                            {DAYS[idx]} ({d.getDate()}/{d.getMonth() + 1})
+                          </Text>
+                        </View>
+
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          {isTechnical && (
+                            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: colors.primary + '15' }}>
+                              {sportConfig.lib === 'Ionicons' ? <Ionicons name={sportConfig.icon as any} size={12} color={colors.primary} /> : <MaterialCommunityIcons name={sportConfig.icon as any} size={12} color={colors.primary} />}
                             </View>
-                         )}
-                       </View>
-                     </TouchableOpacity>
-                   );
-                 })}
-               </View>
+                          )}
+                          {status.isPeriod && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' }} />}
+                        </View>
+                      </View>
+
+                      {/* Resumen de entrenamientos en la semana */}
+                      <View style={{ marginTop: 8, gap: 6 }}>
+                        {dayWorkouts.length > 0 ? (
+                          dayWorkouts.map((wk: any, wIdx: number) => (
+                            <View key={wIdx} style={[styles.weekWorkoutSnippet, { backgroundColor: colors.surface, borderColor: wk.completed ? colors.success + '40' : colors.border }]}>
+                              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                <Text style={[styles.weekWorkoutTitle, { color: colors.textPrimary }]} numberOfLines={1}>{wk.title}</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                  <Ionicons name={wk.completed ? "checkmark-circle" : "time-outline"} size={12} color={wk.completed ? colors.success : colors.warning} />
+                                  <Text style={{ fontSize: 10, fontWeight: '700', color: wk.completed ? colors.success : colors.warning }}>{wk.completed ? 'Hecho' : 'Pendiente'}</Text>
+                                </View>
+                              </View>
+                              {/* Lista resumida de ejercicios */}
+                              {wk.exercises && wk.exercises.length > 0 ? (
+                                <Text style={[styles.weekWorkoutExercises, { color: colors.textSecondary }]} numberOfLines={2}>
+                                  {wk.exercises.map((ex: any) => ex.name).join(' • ')}
+                                </Text>
+                              ) : (
+                                <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic' }}>Sin ejercicios especificados</Text>
+                              )}
+                            </View>
+                          ))
+                        ) : (
+                          <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic', paddingVertical: 4 }}>Libre de entrenamientos</Text>
+                        )}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
             )}
 
             {isFemale && (
@@ -934,7 +965,7 @@ export default function CalendarScreen() {
             activeDetail.workouts.map((w: any) => (
               <TouchableOpacity key={w.id || w._id} style={[styles.workoutCard, { backgroundColor: colors.surface, borderColor: w.completed ? colors.success : colors.border }]} onPress={() => handleWorkoutPress(w)}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <View style={{ flex: 1 }}>
+                  <View style={{ flex: 1, marginRight: 8 }}>
                     <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
                     <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>{w.exercises?.length || 0} ejercicios programados</Text>
                   </View>
@@ -1218,30 +1249,41 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  topHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 15 },
-  headerSubtitle: { fontSize: 10, fontWeight: '800', letterSpacing: 1, color: '#888', marginBottom: 4 },
-  headerTitle: { fontSize: 22, fontWeight: '900' },
-  viewToggleContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 8, padding: 4, marginLeft: 15 },
-  viewToggleBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  topHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 10, paddingBottom: 15 },
+  headerSubtitle: { fontSize: 10, fontWeight: '800', letterSpacing: 1, color: '#888', marginBottom: 2 },
+  headerTitle: { fontSize: 20, fontWeight: '900' },
+  viewToggleContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 8, padding: 3, marginHorizontal: 8 },
+  viewToggleBtn: { paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
   viewToggleText: { fontSize: 12, fontWeight: '700', color: '#888' },
-  iconBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
+  headerActionsRight: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  iconBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   
-  card: { borderRadius: 24, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.05, shadowRadius: 20, elevation: 4, overflow: 'hidden' },
+  card: { borderRadius: 24, padding: 16, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.05, shadowRadius: 20, elevation: 4, overflow: 'hidden' },
   absoluteLoading: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, justifyContent: 'center', alignItems: 'center' },
   
-  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   arrowBtn: { padding: 8 },
   monthYearText: { fontSize: 18, fontWeight: '800', textAlign: 'center', textTransform: 'capitalize' },
-  daysHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, paddingHorizontal: 5 },
-  dayHeaderText: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700' },
-  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 5 },
-  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  dateNumberContainer: { width: 28, height: 28, justifyContent: 'center', alignItems: 'center' },
-  dayText: { fontSize: 15, fontWeight: '500' },
+  daysHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingHorizontal: 2 },
+  dayHeaderText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700' },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 2 },
+  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  dateNumberContainer: { width: 26, height: 26, justifyContent: 'center', alignItems: 'center' },
+  dayText: { fontSize: 14, fontWeight: '500' },
   
-  indicatorsRow: { flexDirection: 'row', gap: 2, marginTop: 4, height: 4, alignItems: 'center', justifyContent: 'center' },
+  indicatorsRow: { flexDirection: 'row', gap: 2, marginTop: 2, height: 4, alignItems: 'center', justifyContent: 'center' },
   indicatorDot: { width: 4, height: 4, borderRadius: 2 },
   
+  /* Estilos mejorados para la Vista Semanal */
+  weekDayCard: { padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
+  weekDayHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  weekDayNumBadge: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
+  weekDayNumText: { fontSize: 12, fontWeight: '800' },
+  weekDayNameText: { fontSize: 13, fontWeight: '800' },
+  weekWorkoutSnippet: { padding: 8, borderRadius: 8, borderWidth: 1, marginTop: 4 },
+  weekWorkoutTitle: { fontSize: 13, fontWeight: '800', flex: 1, marginRight: 6 },
+  weekWorkoutExercises: { fontSize: 11, fontStyle: 'italic', marginTop: 2 },
+
   microPhaseCard: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, minWidth: 150 },
   microPhaseDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
   microPhaseName: { fontSize: 13, fontWeight: '800' },
