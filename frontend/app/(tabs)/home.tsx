@@ -12,6 +12,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import WellnessModal from '../../src/components/WellnessModal';
 import { syncManager } from '../../src/offline';
+import { useTrainer } from '../../src/context/TrainerContext';
 
 const DAILY_TIPS = [
   "El descanso es tan importante como tu serie más pesada.",
@@ -55,6 +56,7 @@ export default function HomeScreen() {
   const { user, loading: authLoading } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
+  const { setSelectedAthlete } = useTrainer();
   
   const { width } = useWindowDimensions();
   const isDesktop = width >= 860;
@@ -663,27 +665,39 @@ export default function HomeScreen() {
               isDesktop && { flex: 1, marginHorizontal: 10, marginBottom: 20 }
             ]}>
               <Link href={`/athlete-detail?id=${item.id}&name=${encodeURIComponent(item.name)}`} asChild>
-                <TouchableOpacity style={styles.athleteInfoArea}>
-                  <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
-                    <Text style={{color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 18 : 16}}>{String(item.name || 'A').charAt(0).toUpperCase()}</Text>
+                <TouchableOpacity 
+                style={styles.athleteInfoArea}
+                onPress={() => {
+                 setSelectedAthlete(item); // 1. Guardamos el atleta en la memoria global
+                  router.push(`/athlete-detail?id=${item.id}&name=${encodeURIComponent(item.name)}`); // 2. Navegamos al detalle
+                }}
+                >
+                <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
+                  <Text style={{color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 18 : 16}}>
+                    {String(item.name || 'A').charAt(0).toUpperCase()}
+                  </Text>
+                </View>
+                <View style={{flex: 1}}>
+                  <Text style={[styles.cardTitle, { color: colors.textPrimary }, isDesktop && { fontSize: 18 }]}>
+                    {item.name}
+                  </Text>
+                  
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
+                    <MaterialCommunityIcons name={item.sport_icon || "run"} size={14} color={colors.textSecondary} />
+                    <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 11 }}>
+                      {item.sport || 'General'}
+                    </Text>
                   </View>
-                  <View style={{flex: 1}}>
-                    <Text style={[styles.cardTitle, { color: colors.textPrimary }, isDesktop && { fontSize: 18 }]}>{item.name}</Text>
-                    
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4 }}>
-                      <MaterialCommunityIcons name={item.sport_icon || "run"} size={14} color={colors.textSecondary} />
-                      <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 11 }}>
-                        {item.sport || 'General'}
-                      </Text>
-                    </View>
-                  </View>
+                </View>
 
-                  {/* Semáforo */}
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: colorHex }}>
-                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colorHex }} />
-                    <Text style={{ fontSize: 10, fontWeight: '800', color: colorHex, textTransform: 'uppercase' }}>{item.readinessLabel}</Text>
-                  </View>
-                </TouchableOpacity>
+                {/* Semáforo */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: colorHex }}>
+                  <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colorHex }} />
+                  <Text style={{ fontSize: 10, fontWeight: '800', color: colorHex, textTransform: 'uppercase' }}>
+                    {item.readinessLabel}
+                  </Text>
+                </View>
+              </TouchableOpacity>
               </Link>
 
               {/* Tira de Advertencia si está en Amarillo/Rojo */}
