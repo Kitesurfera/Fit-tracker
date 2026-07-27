@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+periodization: import React, { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator, TextInput, KeyboardAvoidingView, Platform, Alert, Modal } from 'react-native';
 import { useFocusEffect, useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -32,6 +32,7 @@ export default function PeriodizationScreen() {
   const [macroModal, setMacroModal] = useState(false);
   const [microModal, setMicroModal] = useState(false);
   const [assignModal, setAssignModal] = useState(false);
+  const [importModal, setImportModal] = useState(false); // Modal para selección CSV
   const [targetMicroId, setTargetMicroId] = useState<string | null>(null);
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -205,7 +206,7 @@ export default function PeriodizationScreen() {
   const downloadMultiDayTemplate = async () => {
     const BOM = "\uFEFF";
     const csvContent = BOM +
-      "Fecha (YYYY-MM-DD),Titulo Sesion,Notas Sesion,Nombre Ejercicio,Series,Reps,Duracion (s),Desc. Serie,Desc. Ejercicio,Notas Ejercicio,URL Video,Unilateral (Si/No)\n" +
+      "Fecha (YYYY-MM-DD),Titulo Sesion,Indicaciones Generales,Nombre Ejercicio,Series,Reps,Duracion (s),Desc. Serie,Desc. Ejercicio,Notas Ejercicio,URL Video,Unilateral (Si/No)\n" +
       "2026-04-01,Fuerza Máxima Pierna,Calentar bien tobillos,Sentadilla Trasera,4,5,,,3m,,,\n" +
       "2026-04-01,Fuerza Máxima Pierna,,Prensa Inclinada,3,10,,,2m,,,\n" +
       "2026-04-02,Core y Estabilidad,,Plancha Abdominal,3,,60s,1m,,,,\n" +
@@ -333,17 +334,14 @@ export default function PeriodizationScreen() {
           <Text style={styles.addMacroText}>NUEVO MACROCICLO</Text>
         </TouchableOpacity>
 
-        {/* --- BOTONES DE IMPORTACIÓN MASIVA --- */}
-        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
-          <TouchableOpacity style={[styles.csvBtnMulti, { borderColor: colors.primary, borderWidth: 1 }]} onPress={downloadMultiDayTemplate}>
-            <Ionicons name="download-outline" size={18} color={colors.primary} />
-            <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Plantilla CSV</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.csvBtnMulti, { backgroundColor: colors.primary }]} onPress={handleMultiDayUpload}>
-            <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
-            <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Importar Varios Días</Text>
-          </TouchableOpacity>
-        </View>
+        {/* --- BOTÓN DE IMPORTACIÓN (Abre opciones) --- */}
+        <TouchableOpacity 
+          style={[styles.addMacroMain, { backgroundColor: colors.surfaceHighlight, borderWidth: 1, borderColor: colors.primary, marginTop: -10 }]} 
+          onPress={() => setImportModal(true)}
+        >
+          <Ionicons name="cloud-upload-outline" size={20} color={colors.primary} />
+          <Text style={[styles.addMacroText, { color: colors.primary }]}>IMPORTAR SESIONES (CSV)</Text>
+        </TouchableOpacity>
 
         {macros.length === 0 && <Text style={{ textAlign: 'center', color: colors.textSecondary, marginTop: 30 }}>Aún no has creado ningún macrociclo.</Text>}
 
@@ -499,6 +497,42 @@ export default function PeriodizationScreen() {
       >
         <Ionicons name="sparkles" size={26} color="#FFF" />
       </TouchableOpacity>
+
+      {/* --- MODAL DE SELECCIÓN DE IMPORTACIÓN --- */}
+      <Modal visible={importModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Opciones de Importación</Text>
+              <TouchableOpacity onPress={() => setImportModal(false)}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
+            </View>
+
+            <Text style={[styles.label, { marginBottom: 10 }]}>MÚLTIPLES DÍAS</Text>
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+              <TouchableOpacity style={[styles.csvBtnMulti, { borderColor: colors.primary, borderWidth: 1 }]} onPress={downloadMultiDayTemplate}>
+                <Ionicons name="download-outline" size={18} color={colors.primary} />
+                <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Descargar Plantilla</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.csvBtnMulti, { backgroundColor: colors.primary }]} onPress={() => { setImportModal(false); handleMultiDayUpload(); }}>
+                <Ionicons name="cloud-upload-outline" size={18} color="#FFF" />
+                <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Subir Multi-Día</Text>
+              </TouchableOpacity>
+            </View>
+
+            <Text style={[styles.label, { marginBottom: 10 }]}>DÍA INDIVIDUAL</Text>
+            <TouchableOpacity
+              style={[styles.createNewSessionBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border, borderWidth: 1 }]}
+              onPress={() => {
+                setImportModal(false);
+                router.push({ pathname: '/add-workout', params: { athlete_id: params.athlete_id } });
+              }}
+            >
+              <Ionicons name="document-text" size={20} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontWeight: '800', marginLeft: 8 }}>IR A CREAR SESIÓN (Y SUBIR CSV 1 DÍA)</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* --- MODAL PARA ASIGNAR SESIONES --- */}
       <Modal visible={assignModal} transparent animationType="slide">
