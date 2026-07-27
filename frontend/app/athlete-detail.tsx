@@ -11,6 +11,7 @@ import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
 import GeminiChatModal from '../src/components/GeminiChatModal'; 
+import WellnessModal from '../src/components/WellnessModal'; 
 
 const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
@@ -91,6 +92,7 @@ export default function AthleteDetailScreen() {
 
   // <-- ESTADO PARA EL CHAT DE GEMINI -->
   const [isChatVisible, setChatVisible] = useState(false);
+  const [showWellnessModal, setShowWellnessModal] = useState(false);
 
   const todayStr = useMemo(() => getLocalDateStr(new Date()), []);
 
@@ -114,6 +116,8 @@ export default function AthleteDetailScreen() {
       setLoading(false); 
     }
   };
+
+
 
   const toggleWorkout = useCallback((id: string) => {
     setExpandedWorkouts(prev => ({ ...prev, [id]: !prev[id] }));
@@ -405,6 +409,15 @@ export default function AthleteDetailScreen() {
               <Text style={{color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, marginTop: 2}}>{summary.injury_notes}</Text>
             </View>
           </View>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+          <Text style={[styles.sectionTitle, { marginBottom: 0 }, isDesktop && { fontSize: 13 }]}>ÚLTIMO REGISTRO DE BIENESTAR</Text>
+        <TouchableOpacity 
+          style={{ backgroundColor: colors.primary + '20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }}
+          onPress={() => setShowWellnessModal(true)}
+        >
+          <Text style={{ color: colors.primary, fontSize: isDesktop ? 13 : 11, fontWeight: '800' }}>+ AÑADIR</Text>
+        </TouchableOpacity>
+      </View>
         )}
 
         {/* PRÓXIMO ENTRENAMIENTO */}
@@ -543,7 +556,9 @@ export default function AthleteDetailScreen() {
             <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.fatigue) }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.fatigue || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>FATIGA</Text></View>
             <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.soreness) }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.soreness || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>DOLOR</Text></View>
             <View style={styles.wellBox}><Text style={[styles.wellVal, { color: getLevelColor(summary?.latest_wellness?.sleep_quality, true) }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.sleep_quality || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>SUEÑO</Text></View>
-          </View>
+            <View style={styles.wellBox}><Text style={[styles.wellVal, { color: colors.textPrimary }, isDesktop && { fontSize: 32 }]}>{summary?.latest_wellness?.sleep_hours || '-'}</Text><Text style={[styles.wellLabel, isDesktop && { fontSize: 11 }]}>HORAS</Text></View>
+            </View>
+        </View>
           
           {!!summary?.latest_wellness?.notes && (
             <View style={[styles.noteBox, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="chatbubble-ellipses-outline" size={16} color={colors.primary} /><Text style={[styles.noteText, { color: colors.textPrimary }, isDesktop && { fontSize: 15 }]}>"{summary.latest_wellness.notes}"</Text></View>
@@ -893,6 +908,16 @@ export default function AthleteDetailScreen() {
         isVisible={isChatVisible} 
         onClose={() => setChatVisible(false)} 
         athleteContext={summary?.latest_wellness} 
+      />
+
+      {/* <-- MODAL DE WELLNESS --> */}
+      <WellnessModal
+        isVisible={showWellnessModal}
+        onClose={() => {
+        setShowWellnessModal(false);
+        loadData();
+        }}
+      athleteId={params.id}
       />
 
     </SafeAreaView>
