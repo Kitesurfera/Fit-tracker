@@ -24,6 +24,12 @@ const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'bike': { icon: 'bicycle', lib: 'Ionicons' },
 };
 
+// Función auxiliar robusta para obtener el icono
+const getSportConfig = (sportName?: string) => {
+  const key = sportName || 'kite';
+  return SPORT_ICON_MAP[key] || SPORT_ICON_MAP['kite'];
+};
+
 const getLocalDateStr = (date: Date) => {
   if (!(date instanceof Date) || isNaN(date.getTime())) return '';
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -101,6 +107,9 @@ export default function CalendarScreen() {
   // Variable robusta para saber si el atleta tiene el deporte extra activado
   const isExtraSportEnabled = selectedAthlete?.has_extra_sport === true || selectedAthlete?.has_extra_sport === 1 || selectedAthlete?.has_extra_sport === 'true';
 
+  // Obtener config segura de deporte actual para evitar bloqueos del map (Black screen fix)
+  const sportConfig = getSportConfig(selectedAthlete?.sport_icon);
+
   // OBTENER DATOS FRESCOS CADA VEZ QUE SE ENTRA A LA PANTALLA
   useFocusEffect(
     useCallback(() => {
@@ -125,7 +134,6 @@ export default function CalendarScreen() {
             }
             if (isActive) setSelectedAthlete(currentAthlete);
           } else {
-            // SOLUCIÓN: Cargar de API si es posible, para refrescar el contexto
             let freshUser = user;
             if ((api as any).getMe) {
               try {
@@ -198,7 +206,7 @@ export default function CalendarScreen() {
     refreshAthleteData(athlete);
   };
 
-const handleSaveTechnicalSession = async (dates: string[]) => {
+  const handleSaveTechnicalSession = async (dates: string[]) => {
     setUpdating(true);
     try {
       if (isTrainer && api.updateAthlete) {
@@ -396,7 +404,6 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
 
       const currentActualDayOne = getActualDayOneStr();
       if (lastPeriodDateInput && lastPeriodDateInput !== currentActualDayOne) {
-          // SOLUCIÓN: payload correcto de acuerdo al schema de Pydantic
           const wellnessData = { 
             athlete_id: selectedAthlete.id, 
             date: lastPeriodDateInput, 
@@ -683,10 +690,10 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
                 setRangeEnd(selectedDate);
                 setShowSportModal(true);
             }} style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}>
-               {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
-                   <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={22} color={colors.primary} />
+               {sportConfig.lib === 'Ionicons' ? (
+                   <Ionicons name={sportConfig.icon as any} size={22} color={colors.primary} />
                ) : (
-                   <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={22} color={colors.primary} />
+                   <MaterialCommunityIcons name={sportConfig.icon as any} size={22} color={colors.primary} />
                )}
             </TouchableOpacity>
           )}
@@ -745,15 +752,15 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
 
                        {/* INDICADORES DEL CALENDARIO */}
                        <View style={styles.indicatorsRow}>
-                         {status?.phaseColor && <View style={[styles.indicatorDot, { backgroundColor: status.phaseColor, width: 20, height: 4, borderRadius: 2 }]} />}
+                         {!!status?.phaseColor && <View style={[styles.indicatorDot, { backgroundColor: status.phaseColor, width: 20, height: 4, borderRadius: 2 }]} />}
                          {status?.isPeriod && <View style={[styles.indicatorDot, { backgroundColor: '#EF4444' }]} />}
                          {status?.hasWorkout && <View style={[styles.indicatorDot, { backgroundColor: status.isCompleted ? colors.success : colors.warning }]} />}
                          {isTechnical && (
                             <View style={{ marginTop: 2 }}>
-                               {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
-                                   <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={10} color={colors.primary} />
+                               {sportConfig.lib === 'Ionicons' ? (
+                                   <Ionicons name={sportConfig.icon as any} size={10} color={colors.primary} />
                                ) : (
-                                   <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={10} color={colors.primary} />
+                                   <MaterialCommunityIcons name={sportConfig.icon as any} size={10} color={colors.primary} />
                                )}
                             </View>
                          )}
@@ -787,15 +794,15 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
                           <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && !isCopyTarget && { color: colors.primary, fontWeight: '800' }, isToday && { color: colors.primary, fontWeight: '900' }]}>{day}</Text>
                        </View>
                        <View style={styles.indicatorsRow}>
-                         {status?.phaseColor && <View style={[styles.indicatorDot, { backgroundColor: status.phaseColor, width: 20, height: 4, borderRadius: 2 }]} />}
+                         {!!status?.phaseColor && <View style={[styles.indicatorDot, { backgroundColor: status.phaseColor, width: 20, height: 4, borderRadius: 2 }]} />}
                          {status?.isPeriod && <View style={[styles.indicatorDot, { backgroundColor: '#EF4444' }]} />}
                          {status?.hasWorkout && <View style={[styles.indicatorDot, { backgroundColor: status.isCompleted ? colors.success : colors.warning }]} />}
                          {isTechnical && (
                             <View style={{ marginTop: 2 }}>
-                               {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
-                                   <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={10} color={colors.primary} />
+                               {sportConfig.lib === 'Ionicons' ? (
+                                   <Ionicons name={sportConfig.icon as any} size={10} color={colors.primary} />
                                ) : (
-                                   <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={10} color={colors.primary} />
+                                   <MaterialCommunityIcons name={sportConfig.icon as any} size={10} color={colors.primary} />
                                )}
                             </View>
                          )}
@@ -872,10 +879,10 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
             <View style={[styles.phaseCard, { borderColor: colors.primary, backgroundColor: colors.primary + '10' }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                   {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
-                       <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={22} color={colors.primary} />
+                   {sportConfig.lib === 'Ionicons' ? (
+                       <Ionicons name={sportConfig.icon as any} size={22} color={colors.primary} />
                    ) : (
-                       <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={22} color={colors.primary} />
+                       <MaterialCommunityIcons name={sportConfig.icon as any} size={22} color={colors.primary} />
                    )}
                    <Text style={{ fontWeight: '900', fontSize: 15, color: colors.primary, marginLeft: 8 }}>Sesión Técnica Registrada</Text>
                 </View>
@@ -996,7 +1003,7 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
                                   <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                                     <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginRight: 8 }} />
                                     <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{ex.name}</Text>
-                                    {(ex.sets && ex.reps) && <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{ex.sets}x{ex.reps}</Text>}
+                                    {(ex.sets && ex.reps) ? <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{ex.sets}x{ex.reps}</Text> : null}
                                   </View>
                                 ))}
 
@@ -1096,10 +1103,10 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
             <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                  {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
-                     <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={24} color={colors.primary} />
+                  {sportConfig.lib === 'Ionicons' ? (
+                     <Ionicons name={sportConfig.icon as any} size={24} color={colors.primary} />
                   ) : (
-                     <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={24} color={colors.primary} />
+                     <MaterialCommunityIcons name={sportConfig.icon as any} size={24} color={colors.primary} />
                   )}
                   <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary, marginLeft: 10 }}>Registro Deportivo</Text>
                 </View>
