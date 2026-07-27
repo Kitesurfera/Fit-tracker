@@ -409,6 +409,25 @@ export default function AthleteDetailScreen() {
           </View>
         )}
 
+              {/* BOTONES DE ACCESO RÁPIDO A PESTAÑAS */}
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25, marginTop: 5 }}>
+        <TouchableOpacity 
+          style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
+          onPress={() => router.push('/(tabs)/calendar')}
+        >
+          <Ionicons name="calendar-outline" size={22} color={colors.primary} />
+          <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Calendario</Text>
+        </TouchableOpacity>
+      
+        <TouchableOpacity 
+          style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
+          onPress={() => router.push('/(tabs)/analytics')}
+        >
+          <Ionicons name="trending-up-outline" size={22} color={colors.primary} />
+          <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Analíticas</Text>
+        </TouchableOpacity>
+      </View>
+
         {/* PRÓXIMO ENTRENAMIENTO */}
         <Text style={[styles.sectionTitle, isDesktop && { fontSize: 13 }]}>PRÓXIMO ENTRENAMIENTO</Text>
         {nextWorkout ? (
