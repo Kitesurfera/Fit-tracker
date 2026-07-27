@@ -15,6 +15,7 @@ import Body from 'react-native-body-highlighter';
 import { LineChart } from 'react-native-chart-kit';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
+import { useTrainer } from '../../src/context/TrainerContext';
 
 const MAX_CONTENT_WIDTH = 1200;
 
@@ -88,7 +89,7 @@ export default function AnalyticsScreen() {
   const [wellnessHistory, setWellnessHistory] = useState<any[]>([]);
   
   const [athletes, setAthletes] = useState<any[]>([]);
-  const [selectedAthlete, setSelectedAthlete] = useState<any>(null);
+  const { selectedAthlete, setSelectedAthlete } = useTrainer();
   
   const [showPicker, setShowPicker] = useState(false);
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
@@ -118,7 +119,13 @@ export default function AnalyticsScreen() {
       if (isTrainer) {
         const aths = await api.getAthletes().catch(() => []);
         setAthletes(aths);
-        if (aths.length > 0) handleSelectAthlete(aths[0]);
+        // Si no hay atleta seleccionado, cogemos el primero por defecto. 
+        // Si ya hay uno (porque venimos del home o detail), cargamos sus datos.
+        if (aths.length > 0 && !selectedAthlete) {
+          handleSelectAthlete(aths[0]);
+        } else if (selectedAthlete) {
+          loadAthleteData(selectedAthlete.id);
+        }
       } else {
         loadAthleteData(user?.id);
       }
