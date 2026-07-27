@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+add workout: import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ActivityIndicator, ScrollView, Alert, Modal
@@ -188,17 +188,17 @@ export default function AddWorkoutScreen() {
 
     if (workoutType === 'traditional') {
       csvContent = BOM + 
-        "Nombre,Series,Reps,Duración (s),Desc. Serie,Desc. Ejercicio,URL Vídeo,Notas,Unilateral (Sí/No)\n" +
-        "Sentadilla,4,10,,2m,1m,,Mantener espalda recta,No\n" +
-        "Zancadas Búlgaras,3,12,,,1m,,,Sí";
+        "Nombre,Series,Reps,Duración (s),Desc. Serie,Desc. Ejercicio,URL Vídeo,Notas,Unilateral (Sí/No),Indicaciones Generales\n" +
+        "Sentadilla,4,10,,2m,1m,,Mantener espalda recta,No,Calentamiento de 10 min antes de empezar\n" +
+        "Zancadas Búlgaras,3,12,,,1m,,,Sí,";
       fileName = "Plantilla_Fuerza_FitTracker.csv";
     } else {
       csvContent = BOM + 
-        "Nom. Bloque,Vueltas,Desc. Ex,Desc. Vuelta,Desc. Bloques,Nom. Ejercicio,Series Ex,Reps/Dur,Tiempo,Vídeo,Notas,Unilateral (Sí/No)\n" +
-        "Bloque 1,3,15s,60s,120s,Burpees,1,15,45s,,,No\n" +
-        ",,,,,Jumping Jacks,1,,45s,,,No\n" +
-        "Bloque 2,4,10s,30s,60s,Flexiones,1,10,30s,,,No\n" +
-        ",,,,,Plancha lateral,1,,30s,,,Sí";
+        "Nom. Bloque,Vueltas,Desc. Ex,Desc. Vuelta,Desc. Bloques,Nom. Ejercicio,Series Ex,Reps/Dur,Tiempo,Vídeo,Notas,Unilateral (Sí/No),Indicaciones Generales\n" +
+        "Bloque 1,3,15s,60s,120s,Burpees,1,15,45s,,,No,Enfocar en la técnica pese a la fatiga\n" +
+        ",,,,,Jumping Jacks,1,,45s,,,No,\n" +
+        "Bloque 2,4,10s,30s,60s,Flexiones,1,10,30s,,,No,\n" +
+        ",,,,,Plancha lateral,1,,30s,,,Sí,";
       fileName = "Plantilla_HIIT_FitTracker.csv";
     }
 
@@ -236,20 +236,27 @@ export default function AddWorkoutScreen() {
       const rows = parseCSV(csvText);
       if (rows.length < 2) { Alert.alert("Error", "El CSV parece estar vacío."); return; }
 
+      let parsedNotes = '';
+
       if (workoutType === 'traditional') {
-        const newExercises = rows.slice(1).map(row => ({
-          _key: Math.random().toString(), 
-          name: row[0]?.trim() || '', 
-          sets: row[1]?.trim() || '', 
-          reps: row[2]?.trim() || '', 
-          duration: row[3]?.trim() || '', 
-          rest: row[4]?.trim() || '', 
-          rest_exercise: row[5]?.trim() || '', 
-          video_url: row[6]?.trim() || '', 
-          exercise_notes: row[7]?.trim() || '',
-          is_unilateral: ['si', 'sí', 'true', '1'].includes((row[8] || '').trim().toLowerCase())
-        })).filter(e => e.name);
+        const newExercises = rows.slice(1).map(row => {
+          if (!parsedNotes && row[9]?.trim()) parsedNotes = row[9].trim();
+          return {
+            _key: Math.random().toString(), 
+            name: row[0]?.trim() || '', 
+            sets: row[1]?.trim() || '', 
+            reps: row[2]?.trim() || '', 
+            duration: row[3]?.trim() || '', 
+            rest: row[4]?.trim() || '', 
+            rest_exercise: row[5]?.trim() || '', 
+            video_url: row[6]?.trim() || '', 
+            exercise_notes: row[7]?.trim() || '',
+            is_unilateral: ['si', 'sí', 'true', '1'].includes((row[8] || '').trim().toLowerCase())
+          };
+        }).filter(e => e.name);
+        
         if (newExercises.length > 0) setExercises(newExercises);
+        if (parsedNotes) setNotes(parsedNotes);
       } else {
         const blocks: any[] = [];
         let currentBlockName = null;
@@ -257,6 +264,7 @@ export default function AddWorkoutScreen() {
         
         rows.slice(1).forEach(row => {
           if (!row.some(cell => cell?.trim())) return;
+          if (!parsedNotes && row[12]?.trim()) parsedNotes = row[12].trim();
 
           const bName = row[0]?.trim();
           
@@ -300,6 +308,7 @@ export default function AddWorkoutScreen() {
           }
         });
         if (blocks.length > 0) setHiitBlocks(blocks);
+        if (parsedNotes) setNotes(parsedNotes);
       }
       Alert.alert("Éxito", "Ejercicios importados correctamente.");
     } catch (err) { Alert.alert("Error", "No se pudo leer el archivo CSV."); }
