@@ -254,7 +254,31 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
     if (!workoutToCopy) return;
     setUpdating(true);
     try {
-      const newWorkout = { ...workoutToCopy, date: targetDate, completed: false, completion_data: null, athlete_id: selectedAthlete.id };
+      let matchedMicroId = null;
+      if (macros && Array.isArray(macros)) {
+        for (const macro of macros) {
+          const micros = macro.microciclos || macro.microcycles || [];
+          for (const m of micros) {
+            const start = extractDateString(m.fecha_inicio || m.start_date);
+            const end = extractDateString(m.fecha_fin || m.end_date);
+            if (start && end && targetDate >= start && targetDate <= end) {
+              matchedMicroId = m.id || m._id;
+              break;
+            }
+          }
+          if (matchedMicroId) break;
+        }
+      }
+
+      const newWorkout = { 
+        ...workoutToCopy, 
+        date: targetDate, 
+        completed: false, 
+        completion_data: null, 
+        athlete_id: selectedAthlete.id,
+        microciclo_id: matchedMicroId,
+        microcycle_id: matchedMicroId
+      };
       delete newWorkout.id; 
       await api.createWorkout(newWorkout);
       setWorkoutToCopy(null);
@@ -666,432 +690,542 @@ const handleSaveTechnicalSession = async (dates: string[]) => {
                )}
             </TouchableOpacity>
           )}
-
-          {isFemale && <TouchableOpacity onPress={openCycleSettings} style={[styles.iconBtn, { backgroundColor: '#FEE2E2' }]}><Ionicons name="water" size={22} color="#EF4444" /></TouchableOpacity>}
-          {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.iconBtn}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
-          <TouchableOpacity onPress={() => { setUpdating(true); refreshAthleteData(selectedAthlete); }} disabled={updating} style={styles.iconBtn}>
-            {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={22} color={colors.primary} />}
-          </TouchableOpacity>
+          
+          {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
         </View>
       </View>
 
-      {workoutToCopy && <View style={[styles.copyBanner, { backgroundColor: colors.primary }]}><Ionicons name="copy-outline" size={16} color="#FFF" /><Text style={styles.copyBannerText}>Duplicando "{workoutToCopy.title}". Toca un día para pegar.</Text></View>}
-
-      {/* --- RENDER CONDICIONAL: SEMANA o MES --- */}
-      {viewMode === 'week' ? (
-        <View style={{flex: 1}}>
-          <View style={styles.monthSelector}>
-            <TouchableOpacity onPress={() => changeWeek(-1)}><Ionicons name="chevron-back" size={24} color={colors.textPrimary}/></TouchableOpacity>
-            <Text style={[styles.monthLabel, { color: colors.textPrimary, fontSize: 16 }]}>Semana del {currentWeekStart.getDate()} de {MONTHS[currentWeekStart.getMonth()]}</Text>
-            <TouchableOpacity onPress={() => changeWeek(1)}><Ionicons name="chevron-forward" size={24} color={colors.textPrimary}/></TouchableOpacity>
-          </View>
+      <ScrollView contentContainerStyle={{ padding: isDesktop ? 40 : 16, paddingBottom: 100, flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 40 : 16 }} showsVerticalScrollIndicator={false}>
+        
+        {/* === COLUMNA IZQUIERDA (Calendario) === */}
+        <View style={[{flex: isDesktop ? 1.5 : 1}]}>
           
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} snapToInterval={isDesktop ? undefined : width * 0.88} decelerationRate="fast" style={{flex: 1}}>
-            {currentWeekDays.map((dayDate, i) => {
-              const dStr = getLocalDateStr(dayDate);
-              const dayWorkouts = workouts.filter(w => extractDateString(w.date) === dStr);
-              const isToday = dStr === localTodayStr;
-              const columnWidth = isDesktop ? Math.max(width / 7, 280) : width * 0.88;
+          <View style={[styles.card, { backgroundColor: colors.surface }]}>
+            {updating && <View style={[styles.absoluteLoading, {backgroundColor: 'rgba(255,255,255,0.7)'}]}><ActivityIndicator size="small" color={colors.primary} /></View>}
+            
+            <View style={styles.calendarHeader}>
+              <TouchableOpacity onPress={() => viewMode === 'month' ? changeMonth(-1) : changeWeek(-1)} style={styles.arrowBtn}><Ionicons name="chevron-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
+              <View>
+                 <Text style={[styles.monthYearText, { color: colors.textPrimary }]}>
+                   {viewMode === 'month' ? `${MONTHS[currentMonth]} ${currentYear}` : `Semana del ${currentWeekStart.getDate()} ${MONTHS[currentWeekStart.getMonth()].substring(0,3)}`}
+                 </Text>
+              </View>
+              <TouchableOpacity onPress={() => viewMode === 'month' ? changeMonth(1) : changeWeek(1)} style={styles.arrowBtn}><Ionicons name="chevron-forward" size={24} color={colors.textPrimary} /></TouchableOpacity>
+            </View>
 
-              return (
-                <View key={i} style={[styles.weekDayColumn, { width: columnWidth, backgroundColor: isToday ? colors.primary + '08' : 'transparent' }]}>
-                  <TouchableOpacity style={[styles.weekDayHeader, isToday && {borderBottomColor: colors.primary, borderBottomWidth: 3}]} onPress={() => handleDatePress(dStr)}>
-                    <Text style={{color: isToday ? colors.primary : colors.textSecondary, fontWeight: '900', textTransform: 'uppercase', fontSize: 12}}>{DAYS[i]}</Text>
-                    <Text style={{color: isToday ? colors.primary : colors.textPrimary, fontSize: 24, fontWeight: '900'}}>{dayDate.getDate()}</Text>
-                  </TouchableOpacity>
+            <View style={styles.daysHeader}>
+              {DAYS.map(day => <Text key={day} style={[styles.dayHeaderText, { color: colors.textSecondary }]}>{day}</Text>)}
+            </View>
 
-                  <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{paddingBottom: 40, paddingHorizontal: 10}}>
-                    {dayWorkouts.length > 0 ? dayWorkouts.map(wk => (
-                      <View key={wk.id} style={[styles.weeklyWorkoutCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                        <TouchableOpacity style={[styles.weeklyWorkoutHeader, { backgroundColor: wk.completed ? colors.success + '15' : colors.primary + '10' }]} onPress={() => handleWorkoutPress(wk)}>
-                          <Text style={{fontWeight: '900', color: colors.textPrimary, flex: 1, fontSize: 13}} numberOfLines={1}>{wk.title}</Text>
-                          <Ionicons name={wk.completed ? "checkmark-circle" : "arrow-forward-circle"} size={18} color={wk.completed ? colors.success : colors.primary} />
-                        </TouchableOpacity>
-                        <View style={{padding: 12}}>
-                           {wk.exercises?.map((ex: any, idx: number) => (
-                             <View key={idx} style={{marginBottom: 10, borderBottomWidth: idx === wk.exercises.length - 1 ? 0 : 0.5, borderBottomColor: colors.border, paddingBottom: 6}}>
-                               <Text style={{color: colors.textPrimary, fontSize: 12, fontWeight: '700'}}>• {ex.name}</Text>
-                               {ex.is_hiit_block ? (
-                                  <Text style={{color: colors.textSecondary, fontSize: 11, marginLeft: 10, fontStyle: 'italic'}}>Circuito HIIT ({ex.sets} vueltas)</Text>
+            {viewMode === 'month' ? (
+               <View style={styles.daysGrid}>
+                 {daysInMonth.map((day, idx) => {
+                   if (!day) return <View key={`empty-${idx}`} style={styles.dayCell} />;
+                   
+                   const dateStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                   const isSelected = selectedDate === dateStr;
+                   const isToday = localTodayStr === dateStr;
+                   const status = getDayStatus(day);
+                   const isTechnical = sportSessions.includes(dateStr);
+                   const isCopyTarget = !!workoutToCopy;
+
+                   return (
+                     <TouchableOpacity 
+                       key={idx} 
+                       onPress={() => handleDatePress(dateStr)} 
+                       style={[
+                         styles.dayCell, 
+                         isSelected && !isCopyTarget && { backgroundColor: colors.primary + '20', borderRadius: 8 },
+                         isCopyTarget && { backgroundColor: colors.success + '20', borderRadius: 8, borderWidth: 1, borderColor: colors.success }
+                       ]}
+                     >
+                       <View style={styles.dateNumberContainer}>
+                          <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && !isCopyTarget && { color: colors.primary, fontWeight: '800' }, isToday && { color: colors.primary, fontWeight: '900' }]}>{day}</Text>
+                       </View>
+
+                       {/* INDICADORES DEL CALENDARIO */}
+                       <View style={styles.indicatorsRow}>
+                         {status?.phaseColor && <View style={[styles.indicatorDot, { backgroundColor: status.phaseColor, width: 20, height: 4, borderRadius: 2 }]} />}
+                         {status?.isPeriod && <View style={[styles.indicatorDot, { backgroundColor: '#EF4444' }]} />}
+                         {status?.hasWorkout && <View style={[styles.indicatorDot, { backgroundColor: status.isCompleted ? colors.success : colors.warning }]} />}
+                         {isTechnical && (
+                            <View style={{ marginTop: 2 }}>
+                               {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
+                                   <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={10} color={colors.primary} />
                                ) : (
-                                  <Text style={{color: colors.primary, fontSize: 11, fontWeight: '900', marginLeft: 10}}>{ex.sets}x{ex.reps} {ex.weight ? `@ ${ex.weight}kg` : ''}</Text>
+                                   <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={10} color={colors.primary} />
                                )}
-                             </View>
-                           ))}
-                           {(!wk.exercises || wk.exercises.length === 0) && <Text style={{color: colors.textSecondary, fontSize: 11, fontStyle: 'italic'}}>Sin ejercicios detallados</Text>}
-                        </View>
-                        {isTrainer && (
-                          <View style={{flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.surfaceHighlight}}>
-                            <TouchableOpacity style={{flex: 1, padding: 10, alignItems: 'center', borderRightWidth: 1, borderRightColor: colors.border}} onPress={() => startCopyWorkout(wk)}><Ionicons name="copy-outline" size={16} color={colors.textSecondary} /></TouchableOpacity>
-                            <TouchableOpacity style={{flex: 1, padding: 10, alignItems: 'center'}} onPress={() => handleDeleteWorkout(wk)}><Ionicons name="trash-outline" size={16} color={colors.error} /></TouchableOpacity>
-                          </View>
-                        )}
+                            </View>
+                         )}
+                       </View>
+                     </TouchableOpacity>
+                   );
+                 })}
+               </View>
+            ) : (
+               <View style={styles.daysGrid}>
+                 {currentWeekDays.map((d, idx) => {
+                   const dateStr = getLocalDateStr(d);
+                   const day = d.getDate();
+                   const isSelected = selectedDate === dateStr;
+                   const isToday = localTodayStr === dateStr;
+                   const status = monthStatusMap[dateStr] || null;
+                   const isTechnical = sportSessions.includes(dateStr);
+                   const isCopyTarget = !!workoutToCopy;
+
+                   return (
+                     <TouchableOpacity 
+                       key={idx} 
+                       onPress={() => handleDatePress(dateStr)} 
+                       style={[
+                         styles.dayCell, 
+                         isSelected && !isCopyTarget && { backgroundColor: colors.primary + '20', borderRadius: 8 },
+                         isCopyTarget && { backgroundColor: colors.success + '20', borderRadius: 8, borderWidth: 1, borderColor: colors.success }
+                       ]}
+                     >
+                       <View style={styles.dateNumberContainer}>
+                          <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && !isCopyTarget && { color: colors.primary, fontWeight: '800' }, isToday && { color: colors.primary, fontWeight: '900' }]}>{day}</Text>
+                       </View>
+                       <View style={styles.indicatorsRow}>
+                         {status?.phaseColor && <View style={[styles.indicatorDot, { backgroundColor: status.phaseColor, width: 20, height: 4, borderRadius: 2 }]} />}
+                         {status?.isPeriod && <View style={[styles.indicatorDot, { backgroundColor: '#EF4444' }]} />}
+                         {status?.hasWorkout && <View style={[styles.indicatorDot, { backgroundColor: status.isCompleted ? colors.success : colors.warning }]} />}
+                         {isTechnical && (
+                            <View style={{ marginTop: 2 }}>
+                               {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
+                                   <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={10} color={colors.primary} />
+                               ) : (
+                                   <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={10} color={colors.primary} />
+                               )}
+                            </View>
+                         )}
+                       </View>
+                     </TouchableOpacity>
+                   );
+                 })}
+               </View>
+            )}
+
+            {isFemale && (
+              <TouchableOpacity onPress={openCycleSettings} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
+                <Ionicons name="water" size={14} color="#EF4444" />
+                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, marginLeft: 6 }}>Ajustar Ciclo / Ver Detalles</Text>
+              </TouchableOpacity>
+            )}
+            
+            {workoutToCopy && (
+              <View style={{ marginTop: 15, padding: 15, backgroundColor: colors.success + '15', borderRadius: 12, borderWidth: 1, borderColor: colors.success, alignItems: 'center' }}>
+                <Ionicons name="copy" size={24} color={colors.success} style={{ marginBottom: 5 }} />
+                <Text style={{ color: colors.success, fontWeight: '800', textAlign: 'center' }}>Modo Duplicar Activo</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 12, textAlign: 'center', marginTop: 4 }}>Toca cualquier día del calendario para pegar: <Text style={{fontWeight: '700'}}>{workoutToCopy.title}</Text></Text>
+                <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={{ marginTop: 10, paddingVertical: 6, paddingHorizontal: 16, backgroundColor: colors.surface, borderRadius: 8, borderWidth: 1, borderColor: colors.border }}>
+                  <Text style={{ color: colors.textPrimary, fontSize: 12, fontWeight: '700' }}>Cancelar</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* INDICADORES DEL MES / MICROCICLOS (Solo Vista Mensual) */}
+          {viewMode === 'month' && microciclosDelMes.length > 0 && (
+            <View style={{ marginTop: 20 }}>
+              <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, letterSpacing: 1 }}>FASES ESTE MES</Text>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
+                {microciclosDelMes.map((m: any, i: number) => {
+                  const isActive = selectedDate >= m.fecha_inicio && selectedDate <= m.fecha_fin;
+                  return (
+                    <TouchableOpacity key={i} onPress={() => setViewMicroInfo(m)} style={[styles.microPhaseCard, { borderColor: m.color, backgroundColor: isActive ? m.color + '20' : colors.surface }]}>
+                      <View style={[styles.microPhaseDot, { backgroundColor: m.color }]} />
+                      <View>
+                        <Text style={[styles.microPhaseName, { color: colors.textPrimary }]}>{m.nombre}</Text>
+                        <Text style={[styles.microPhaseDates, { color: colors.textSecondary }]}>{(m.fecha_inicio || '').split('-').slice(1).reverse().join('/')} - {(m.fecha_fin || '').split('-').slice(1).reverse().join('/')}</Text>
                       </View>
-                    )) : (
-                      <View style={styles.emptyDayWeekly}>
-                        <Ionicons name="cafe-outline" size={32} color={colors.border} />
-                        <Text style={{color: colors.textSecondary, fontSize: 12, marginTop: 8, fontWeight: '600'}}>Descanso</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+        </View>
+
+        {/* === COLUMNA DERECHA (Detalles del día seleccionado) === */}
+        <View style={[{flex: isDesktop ? 1 : 1}]}>
+          <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary, marginBottom: 15 }}>
+            {selectedDate === localTodayStr ? 'Hoy, ' : ''}
+            {selectedDate.split('-').reverse().join('/')}
+          </Text>
+
+          {/* FASE DEL CICLO MENSTRUAL */}
+          {isFemale && phaseInfo && (
+            <View style={[styles.phaseCard, { borderColor: phaseInfo.color, backgroundColor: phaseInfo.color + '10' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+                <Ionicons name={phaseInfo.icon as any} size={22} color={phaseInfo.color} />
+                <Text style={{ fontWeight: '900', fontSize: 15, color: phaseInfo.color, marginLeft: 8 }}>{phaseInfo.name} (Día {phaseInfo.day})</Text>
+              </View>
+              <Text style={{ fontSize: 13, color: colors.textPrimary, marginBottom: 6 }}><Text style={{fontWeight:'800'}}>🏋️ Entreno:</Text> {phaseInfo.training}</Text>
+              <Text style={{ fontSize: 13, color: colors.textPrimary, marginBottom: 6 }}><Text style={{fontWeight:'800'}}>⚠️ Riesgo:</Text> {phaseInfo.risk}</Text>
+              <Text style={{ fontSize: 13, color: colors.textPrimary }}><Text style={{fontWeight:'800'}}>🥑 Nutrición:</Text> {phaseInfo.nutrition}</Text>
+            </View>
+          )}
+          
+          {/* REGISTRO TÉCNICO (DEPORTE EXTRA) */}
+          {isExtraSportEnabled && sportSessions.includes(selectedDate) && (
+            <View style={[styles.phaseCard, { borderColor: colors.primary, backgroundColor: colors.primary + '10' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                   {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
+                       <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={22} color={colors.primary} />
+                   ) : (
+                       <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={22} color={colors.primary} />
+                   )}
+                   <Text style={{ fontWeight: '900', fontSize: 15, color: colors.primary, marginLeft: 8 }}>Sesión Técnica Registrada</Text>
+                </View>
+                <TouchableOpacity onPress={() => handleSaveTechnicalSession(sportSessions.filter(d => d !== selectedDate))}>
+                  <Ionicons name="trash" size={18} color={colors.error || '#EF4444'} />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+
+          {/* SESIONES DEL DÍA */}
+          {activeDetail.workouts.length > 0 ? (
+            activeDetail.workouts.map((w: any) => (
+              <TouchableOpacity key={w.id || w._id} style={[styles.workoutCard, { backgroundColor: colors.surface, borderColor: w.completed ? colors.success : colors.border }]} onPress={() => handleWorkoutPress(w)}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
+                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>{w.exercises?.length || 0} ejercicios programados</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end', gap: 6 }}>
+                    {w.is_ai && <View style={[styles.tag, { backgroundColor: '#8B5CF6' + '20' }]}><Ionicons name="sparkles" size={10} color="#8B5CF6" /><Text style={{ color: '#8B5CF6', fontSize: 10, fontWeight: '800', marginLeft: 4 }}>IA</Text></View>}
+                    <View style={[styles.statusBadge, { backgroundColor: w.completed ? colors.success + '20' : colors.warning + '20' }]}>
+                      <Ionicons name={w.completed ? "checkmark-circle" : "time"} size={14} color={w.completed ? colors.success : colors.warning} />
+                      <Text style={[styles.statusText, { color: w.completed ? colors.success : colors.warning }]}>{w.completed ? 'Completado' : 'Pendiente'}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {isTrainer && (
+                  <View style={styles.trainerActionsRow}>
+                    <TouchableOpacity onPress={(e) => { e.stopPropagation(); startCopyWorkout(w); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="copy" size={16} color={colors.primary} /><Text style={[styles.actionBtnTrainerText, { color: colors.primary }]}>Duplicar</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={(e) => { e.stopPropagation(); router.push({ pathname: '/edit-workout', params: { workoutId: w.id } }); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="pencil" size={16} color={colors.textSecondary} /><Text style={[styles.actionBtnTrainerText, { color: colors.textSecondary }]}>Editar</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={(e) => { e.stopPropagation(); handleDeleteWorkout(w); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.error + '15' }]}><Ionicons name="trash" size={16} color={colors.error || '#EF4444'} /><Text style={[styles.actionBtnTrainerText, { color: colors.error || '#EF4444' }]}>Borrar</Text></TouchableOpacity>
+                  </View>
+                )}
+
+                {!isTrainer && !w.completed && (
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                     <TouchableOpacity style={[styles.startWorkoutBtn, { flex: 1, backgroundColor: colors.primary }]} onPress={() => handleWorkoutPress(w)}>
+                       <Ionicons name="play" size={18} color="#FFF" />
+                       <Text style={{ color: '#FFF', fontWeight: '800', marginLeft: 6 }}>COMENZAR</Text>
+                     </TouchableOpacity>
+                     <TouchableOpacity style={[styles.startWorkoutBtn, { flex: 0.4, backgroundColor: colors.surfaceHighlight, borderWidth: 1, borderColor: colors.border }]} onPress={(e) => { e.stopPropagation(); setSkipWorkoutId(w.id); setShowSkipModal(true); }}>
+                       <Ionicons name="play-skip-forward" size={18} color={colors.textSecondary} />
+                     </TouchableOpacity>
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))
+          ) : (
+            <View style={styles.emptyState}>
+              <Ionicons name="calendar-clear-outline" size={48} color={colors.border} />
+              <Text style={{ color: colors.textSecondary, marginTop: 10, textAlign: 'center' }}>No hay entrenamiento asignado para este día.</Text>
+            </View>
+          )}
+
+          {isTrainer && (
+            <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => router.push({ pathname: '/add-workout', params: { athlete_id: selectedAthlete.id, date: selectedDate } })}>
+              <Ionicons name="add" size={24} color="#FFF" />
+              <Text style={styles.addBtnText}>AÑADIR SESIÓN AL DÍA</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+      </ScrollView>
+
+      {/* --- MODAL DETALLE DE MICROCICLO --- */}
+      <Modal visible={!!viewMicroInfo} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContentLarge, { backgroundColor: colors.surface }]}>
+            {viewMicroInfo && (
+              <>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+                  <View style={{ flex: 1 }}>
+                     <Text style={{ color: colors.textSecondary, fontSize: 11, fontWeight: '800', letterSpacing: 1, marginBottom: 4 }}>{viewMicroInfo.macroNombre}</Text>
+                     <Text style={{ color: colors.textPrimary, fontSize: 24, fontWeight: '900' }}>{viewMicroInfo.nombre}</Text>
+                     <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 10 }}>
+                        <View style={{ backgroundColor: viewMicroInfo.color + '20', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: viewMicroInfo.color }}>
+                          <Text style={{ color: viewMicroInfo.color, fontSize: 10, fontWeight: '900' }}>{viewMicroInfo.tipo}</Text>
+                        </View>
+                        <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600' }}>
+                           {(viewMicroInfo.fecha_inicio || '').split('-').reverse().join('/')} - {(viewMicroInfo.fecha_fin || '').split('-').reverse().join('/')}
+                        </Text>
+                     </View>
+                  </View>
+                  <TouchableOpacity onPress={handleCloseMicroInfo} style={{ padding: 4 }}><Ionicons name="close" size={28} color={colors.textSecondary} /></TouchableOpacity>
+                </View>
+
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '800', marginBottom: 15, letterSpacing: 0.5 }}>SESIONES DE LA SEMANA ({microWorkouts.length})</Text>
+                  
+                  <ScrollView showsVerticalScrollIndicator={false}>
+                    {microWorkouts.length > 0 ? microWorkouts.map((wk: any) => {
+                      const wkId = wk.id || wk._id;
+                      const isExpanded = expandedWorkoutId === wkId;
+                      return (
+                        <View key={wkId} style={{ marginBottom: 15, borderRadius: 12, borderWidth: 1, borderColor: colors.border, overflow: 'hidden' }}>
+                           <TouchableOpacity 
+                             style={{ padding: 16, backgroundColor: colors.surfaceHighlight, flexDirection: 'row', alignItems: 'center' }}
+                             onPress={() => setExpandedWorkoutId(isExpanded ? null : wkId)}
+                           >
+                             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: wk.completed ? colors.success + '20' : colors.primary + '20', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                               <Ionicons name={wk.completed ? "checkmark" : "barbell"} size={20} color={wk.completed ? colors.success : colors.primary} />
+                             </View>
+                             <View style={{ flex: 1 }}>
+                               <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800' }}>{wk.title}</Text>
+                               <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>{(wk.date || '').split('-').reverse().join('/')}</Text>
+                             </View>
+                             <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+                           </TouchableOpacity>
+
+                           {isExpanded && (
+                             <View style={{ padding: 16, backgroundColor: colors.surface }}>
+                                {wk.notes ? <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginBottom: 15 }}>"{wk.notes}"</Text> : null}
+                                
+                                <Text style={{ color: colors.textPrimary, fontSize: 12, fontWeight: '800', marginBottom: 10 }}>EJERCICIOS ({wk.exercises?.length || 0}):</Text>
+                                {wk.exercises?.map((ex: any, idx: number) => (
+                                  <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginRight: 8 }} />
+                                    <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{ex.name}</Text>
+                                    {(ex.sets && ex.reps) && <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{ex.sets}x{ex.reps}</Text>}
+                                  </View>
+                                ))}
+
+                                <View style={{ flexDirection: 'row', gap: 10, marginTop: 20 }}>
+                                  <TouchableOpacity style={{ flex: 1, backgroundColor: colors.surfaceHighlight, padding: 12, borderRadius: 10, alignItems: 'center', borderWidth: 1, borderColor: colors.border }} onPress={() => { handleCloseMicroInfo(); handleWorkoutPress(wk); }}>
+                                     <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Ver Detalle</Text>
+                                  </TouchableOpacity>
+                                  {isTrainer && (
+                                    <TouchableOpacity style={{ flex: 1, backgroundColor: colors.primary, padding: 12, borderRadius: 10, alignItems: 'center' }} onPress={() => { handleCloseMicroInfo(); router.push({ pathname: '/edit-workout', params: { workoutId: wkId } }); }}>
+                                       <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 13 }}>Editar</Text>
+                                    </TouchableOpacity>
+                                  )}
+                                </View>
+                             </View>
+                           )}
+                        </View>
+                      );
+                    }) : (
+                      <View style={{ padding: 40, alignItems: 'center', justifyContent: 'center' }}>
+                         <Ionicons name="leaf-outline" size={48} color={colors.border} />
+                         <Text style={{ color: colors.textSecondary, marginTop: 10, fontWeight: '600' }}>Microciclo vacío.</Text>
                       </View>
                     )}
                   </ScrollView>
                 </View>
-              );
-            })}
-          </ScrollView>
-        </View>
-      ) : (
-        /* --- MODO MENSUAL --- */
-        <View style={[styles.mainLayout, isDesktop && styles.mainLayoutDesktop]}>
-          <View style={[isDesktop && styles.leftColumnDesktop]}>
-            <View style={styles.monthSelector}>
-              <TouchableOpacity onPress={() => changeMonth(-1)}><Ionicons name="chevron-back" size={24} color={colors.textPrimary}/></TouchableOpacity>
-              <Text style={[styles.monthLabel, { color: colors.textPrimary }]}>{MONTHS[currentMonth]} {currentYear}</Text>
-              <TouchableOpacity onPress={() => changeMonth(1)}><Ionicons name="chevron-forward" size={24} color={colors.textPrimary}/></TouchableOpacity>
-            </View>
-
-            <View style={styles.calendarGrid}>
-              <View style={styles.weekDays}>{DAYS.map(d => <Text key={d} style={[styles.weekDayText, { color: colors.textSecondary }]}>{d}</Text>)}</View>
-              <View style={styles.daysGrid}>
-                {daysInMonth.map((day, i) => {
-                  const status = getDayStatus(day);
-                  const dateStr = day ? `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}` : null;
-                  const isSelected = dateStr && selectedDate === dateStr;
-                  const isToday = dateStr && dateStr === localTodayStr;
-                  const hasTechnical = dateStr && sportSessions.includes(dateStr);
-                  const sportInfo = SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'];
-                  
-                  return (
-                    <TouchableOpacity key={i} style={[styles.dayCell, status?.phaseColor && { backgroundColor: status.phaseColor + '15', borderRadius: 12 }, status?.isPeriod && status?.periodType === 'current' && { backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#EF4444', borderRadius: 12 }, status?.isPeriod && status?.periodType === 'predicted' && { backgroundColor: '#FEE2E2', borderWidth: 1, borderColor: '#EF4444', borderStyle: 'dashed', borderRadius: 12 }, isSelected && { backgroundColor: (status?.phaseColor || colors.primary) + '40', borderWidth: 2, borderColor: status?.phaseColor || colors.primary, borderRadius: 12 }, status?.hasWorkout && !isSelected && { borderWidth: 1, borderColor: status.isCompleted ? (colors.success || '#10B981') : colors.primary, borderRadius: 12 }]} onPress={() => dateStr && handleDatePress(dateStr)} disabled={!day}>
-                      {day && (
-                        <>
-                          <Text style={[styles.dayText, { color: colors.textPrimary }, status?.phaseColor && { color: status.phaseColor, fontWeight: '800' }, status?.isPeriod && { color: '#EF4444', fontWeight: '900' }, isSelected && { color: status?.phaseColor || colors.primary, fontWeight: '900' }, isToday && !isSelected && { color: colors.error || '#EF4444', fontWeight: '900' }]}>{day}</Text>
-                          
-                          {/* DOT DEL ENTRENAMIENTO */}
-                          {status?.hasWorkout && status?.isCompleted && <Ionicons name="checkmark-circle" size={12} color={colors.success || '#10B981'} style={{ position: 'absolute', top: 2, right: 2 }} />}
-                          
-                          {/* ICONO MENSTRUACIÓN */}
-                          {status?.isPeriod && <Ionicons name="water" size={10} color="#EF4444" style={{ position: 'absolute', bottom: 2, right: 4 }} />}
-
-                          {/* ICONO SESIÓN TÉCNICA EXTRA */}
-                          {hasTechnical && (
-                             <View style={{ position: 'absolute', top: 4, left: 4 }}>
-                               {sportInfo.lib === 'Ionicons' ? (
-                                 <Ionicons name={sportInfo.icon as any} size={10} color={colors.textPrimary} />
-                               ) : (
-                                 <MaterialCommunityIcons name={sportInfo.icon as any} size={10} color={colors.textPrimary} />
-                               )}
-                             </View>
-                          )}
-                        </>
-                      )}
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            </View>
-          </View>
-
-          <ScrollView style={[styles.footer, isDesktop && styles.rightColumnDesktop]} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
-            {isFemale && phaseInfo && (
-              <View style={{ marginBottom: 25 }}>
-                <Text style={styles.footerLabel}>BIOLOGÍA Y RENDIMIENTO (DÍA {phaseInfo.day})</Text>
-                <View style={[styles.insightCard, { borderColor: phaseInfo.color, backgroundColor: colors.surface }]}>
-                  <View style={[styles.insightHeader, { backgroundColor: phaseInfo.color + '15' }]}>
-                    <Ionicons name={phaseInfo.icon as any} size={20} color={phaseInfo.color} />
-                    <Text style={[styles.insightTitle, { color: phaseInfo.color }]}>{phaseInfo.name}</Text>
-                  </View>
-                  <View style={styles.insightContent}>
-                    <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Entrenamiento:</Text> {phaseInfo.training}</Text>
-                    <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Prevención:</Text> {phaseInfo.risk}</Text>
-                    <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Nutrición:</Text> {phaseInfo.nutrition}</Text>
-                  </View>
-                </View>
-              </View>
+              </>
             )}
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL AJUSTES DE CICLO MENSTRUAL --- */}
+      <Modal visible={showCycleSettings} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Ajustes del Ciclo</Text>
+              <TouchableOpacity onPress={() => setShowCycleSettings(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+            </View>
+
+            <View style={{ marginBottom: 15 }}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>DURACIÓN DEL CICLO (DÍAS)</Text>
+              <TextInput style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} keyboardType="numeric" value={cycleLengthInput} onChangeText={setCycleLengthInput} />
+            </View>
+
+            <View style={{ marginBottom: 15 }}>
+              <Text style={[styles.label, { color: colors.textSecondary }]}>DURACIÓN DEL PERIODO (DÍAS)</Text>
+              <TextInput style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} keyboardType="numeric" value={periodLengthInput} onChangeText={setPeriodLengthInput} />
+            </View>
 
             <View style={{ marginBottom: 25 }}>
-              <Text style={styles.footerLabel}>FASES DE ESTE MES</Text>
-              {microciclosDelMes.length > 0 ? (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 20, marginTop: 10 }}>
-                  {microciclosDelMes.map((micro, idx) => (
-                    <TouchableOpacity key={idx} style={[styles.microCard, { backgroundColor: colors.surface, borderTopColor: micro.color || colors.primary, borderColor: colors.border }]} onPress={() => setViewMicroInfo(micro)}>
-                      <Text style={[styles.microMacroName, { color: colors.textSecondary }]} numberOfLines={1}>{micro.macroNombre}</Text>
-                      <Text style={[styles.microName, { color: colors.textPrimary }]} numberOfLines={1}>{micro.nombre}</Text>
-                      <View style={[styles.microTypeBadge, { backgroundColor: (micro.color || colors.primary) + '15' }]}><Text style={{ color: micro.color || colors.primary, fontSize: 10, fontWeight: '800' }} numberOfLines={1} ellipsizeMode="tail">{micro.tipo}</Text></View>
-                      <Text style={[styles.microDates, { color: colors.textSecondary }]}>{micro.fecha_inicio.split('-').slice(1).reverse().join('/')} al {micro.fecha_fin.split('-').slice(1).reverse().join('/')}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              ) : <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 10 }}>No hay fases/microciclos planificados para este mes.</Text>}
+              <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA DEL ÚLTIMO PERIODO (AAAA-MM-DD)</Text>
+              <TextInput style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} value={lastPeriodDateInput} onChangeText={setLastPeriodDateInput} placeholder="Ej: 2026-03-21" placeholderTextColor={colors.textSecondary} />
+              <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 6, fontStyle: 'italic' }}>*Esto recalibrará el calendario inmediatamente.</Text>
             </View>
 
-            <Text style={styles.footerLabel}>DETALLE DEL {selectedDate.split('-').reverse().join('/')}</Text>
-            
-            {activeDetail.workouts.length > 0 ? (
-              activeDetail.workouts.map((wk: any) => {
-                  let hasVid = false;
-                  if (wk.completed && wk.completion_data) {
-                      wk.completion_data.exercise_results?.forEach((ex: any) => { if (ex.recorded_video_url) hasVid = true; });
-                      wk.completion_data.hiit_results?.forEach((b: any) => b.hiit_exercises?.forEach((ex: any) => { if (ex.recorded_video_url) hasVid = true; }));
-                  }
-
-                  return (
-                    <View key={wk.id} style={[styles.workoutCard, { backgroundColor: colors.surface }]}>
-                      <TouchableOpacity style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }} onPress={() => handleWorkoutPress(wk)}>
-                        <View style={[styles.workoutIcon, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}><Ionicons name={wk.completed ? "checkmark-done" : "barbell"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} /></View>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.workoutTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }]}>{wk.title}</Text>
-                          <View style={{flexDirection: 'row', alignItems: 'center', gap: 6}}>
-                              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{wk.completed ? 'Completado' : isTrainer ? 'Sesión asignada' : 'Sesión pendiente'}</Text>
-                              {(isTrainer && hasVid) && <Ionicons name="videocam" size={14} color={colors.primary} />}
-                          </View>
-                          {wk.observations?.includes('[NO COMPLETADA]') && <Text style={{color: colors.error || '#EF4444', fontSize: 10, fontWeight: '800', marginTop: 4}}>SESIÓN SALTADA</Text>}
-                        </View>
-                      </TouchableOpacity>
-                      <View style={styles.workoutActions}>
-                        {!isTrainer && !wk.completed && (
-                          <TouchableOpacity onPress={() => { setSkipWorkoutId(wk.id); setShowSkipModal(true); }} style={styles.actionIconBtn}>
-                            <Ionicons name="close-circle-outline" size={24} color={colors.error || '#EF4444'} />
-                          </TouchableOpacity>
-                        )}
-                        {isTrainer && <><TouchableOpacity onPress={() => handleDeleteWorkout(wk)} style={styles.actionIconBtn}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity><TouchableOpacity onPress={() => startCopyWorkout(wk)} style={styles.actionIconBtn}><Ionicons name="copy-outline" size={20} color={colors.primary} /></TouchableOpacity></>}
-                        <TouchableOpacity onPress={() => handleWorkoutPress(wk)} style={styles.actionIconBtn}><Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} /></TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-              })
-            ) : <View style={styles.emptyCard}><Ionicons name="calendar-clear-outline" size={32} color={colors.border} /><Text style={{ color: colors.textSecondary, marginTop: 10 }}>Día sin sesiones programadas.</Text></View>}
-          </ScrollView>
-        </View>
-      )}
-
-      {/* --- BOTONES DE IA (SOLO ENTRENADORES) --- */}
-      {isTrainer && (
-        <>
-          <TouchableOpacity
-            style={[styles.fab, { backgroundColor: colors.primary }]}
-            onPress={() => setChatVisible(true)}
-          >
-            <Ionicons name="sparkles" size={26} color="#FFF" />
-          </TouchableOpacity>
-
-          <GeminiChatModal 
-            isVisible={isChatVisible} 
-            onClose={() => setChatVisible(false)} 
-            athleteContext={selectedAthlete} 
-            athleteId={selectedAthlete?.id}
-            athleteName={selectedAthlete?.name}
-            onSaveWorkout={handleSaveWorkoutFromAI} 
-          />
-        </>
-      )}
-
-      {/* --- MODALES DE CONFIGURACIÓN --- */}
-      
-      {/* Modal Deporte Extra */}
-      <Modal visible={showSportModal} transparent animationType="slide">
-        <View style={styles.modalOverlayCenter}>
-          <View style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Sesión de Competición / Deporte</Text>
-            <Text style={{ color: colors.textSecondary, marginBottom: 15, textAlign: 'center' }}>Registra tus sesiones técnicas para ayudar a calcular tu fatiga general.</Text>
-
-            {/* PESTAÑAS INTUITIVAS */}
-            <View style={{flexDirection: 'row', backgroundColor: colors.surfaceHighlight, borderRadius: 10, padding: 4, marginBottom: 20, width: '100%'}}>
-               <TouchableOpacity style={{flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: sportModalTab === 'single' ? colors.primary : 'transparent', borderRadius: 8}} onPress={() => setSportModalTab('single')}>
-                  <Text style={{fontWeight: '700', color: sportModalTab === 'single' ? '#FFF' : colors.textSecondary}}>Día Único</Text>
-               </TouchableOpacity>
-               <TouchableOpacity style={{flex: 1, paddingVertical: 8, alignItems: 'center', backgroundColor: sportModalTab === 'range' ? colors.primary : 'transparent', borderRadius: 8}} onPress={() => setSportModalTab('range')}>
-                  <Text style={{fontWeight: '700', color: sportModalTab === 'range' ? '#FFF' : colors.textSecondary}}>Varios Días</Text>
-               </TouchableOpacity>
-            </View>
-
-            {sportModalTab === 'single' ? (
-                <>
-                  <Text style={{color: colors.textPrimary, marginBottom: 20, fontWeight: '700'}}>Día seleccionado: {selectedDate.split('-').reverse().join('/')}</Text>
-                  <TouchableOpacity 
-                    style={[styles.modalBtn, { backgroundColor: colors.primary, width: '100%', marginBottom: 10, flex: 0 }]}
-                    onPress={() => {
-                      const newSessions = sportSessions.includes(selectedDate) 
-                        ? sportSessions.filter(d => d !== selectedDate)
-                        : [...sportSessions, selectedDate];
-                      handleSaveTechnicalSession(newSessions);
-                    }}
-                  >
-                    <Text style={{ color: '#FFF', fontWeight: '800', paddingVertical: 4 }}>
-                      {sportSessions.includes(selectedDate) ? "Desmarcar registro de este día" : "Registrar entreno en este día"}
-                    </Text>
-                  </TouchableOpacity>
-                </>
-            ) : (
-                <>
-                  <View style={{flexDirection: 'row', gap: 10, width: '100%', marginBottom: 20}}>
-                      <View style={{flex: 1}}>
-                          <Text style={[styles.label, {color: colors.textSecondary}]}>Inicio</Text>
-                          <TextInput style={[styles.input, {color: colors.textPrimary, borderColor: colors.border}]} value={rangeStart} onChangeText={setRangeStart} placeholder="AAAA-MM-DD" placeholderTextColor={colors.textSecondary} />
-                      </View>
-                      <View style={{flex: 1}}>
-                          <Text style={[styles.label, {color: colors.textSecondary}]}>Fin</Text>
-                          <TextInput style={[styles.input, {color: colors.textPrimary, borderColor: colors.border}]} value={rangeEnd} onChangeText={setRangeEnd} placeholder="AAAA-MM-DD" placeholderTextColor={colors.textSecondary} />
-                      </View>
-                  </View>
-                  <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary, width: '100%', marginBottom: 10, flex: 0 }]} onPress={handleSaveDateRange}>
-                      <Text style={{ color: '#FFF', fontWeight: '800', paddingVertical: 4 }}>Añadir Rango de Fechas</Text>
-                  </TouchableOpacity>
-                </>
-            )}
-
-            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight, width: '100%', flex: 0 }]} onPress={() => setShowSportModal(false)}>
-              <Text style={{ color: colors.textPrimary, fontWeight: '700', paddingVertical: 4 }}>Cerrar</Text>
+            <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleSaveCycleSettings} disabled={updating}>
+              {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Guardar Ajustes</Text>}
             </TouchableOpacity>
-          </View>
+          </KeyboardAvoidingView>
         </View>
       </Modal>
 
+      {/* --- MODAL PARA SALTAR SESIÓN --- */}
       <Modal visible={showSkipModal} transparent animationType="fade">
-        <View style={styles.modalOverlayCenter}>
-          <View style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
-            <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 10 }]}>Saltar Sesión</Text>
-            <Text style={{ color: colors.textSecondary, marginBottom: 20, textAlign: 'center' }}>¿Por qué no has podido completar el entrenamiento hoy? El coach lo verá para poder ajustar cargas.</Text>
-            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, width: '100%', minHeight: 80, textAlignVertical: 'top' }]} placeholder="Ej. Falta de tiempo, enfermedad, lesión..." placeholderTextColor={colors.textSecondary} value={skipReason} onChangeText={setSkipReason} multiline />
-            <View style={{ flexDirection: 'row', gap: 10, width: '100%', marginTop: 20 }}>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => { setShowSkipModal(false); setSkipReason(''); }}><Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Cancelar</Text></TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.error || '#EF4444' }]} onPress={handleSkipSubmit}><Text style={{ color: '#FFF', fontWeight: '700' }}>Confirmar</Text></TouchableOpacity>
+        <View style={styles.modalOverlay}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Saltar Sesión</Text>
+              <TouchableOpacity onPress={() => { setShowSkipModal(false); setSkipReason(''); }}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+            </View>
+            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 14 }}>Indica brevemente por qué no has podido realizar este entrenamiento:</Text>
+            <TextInput
+              style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, minHeight: 80, textAlignVertical: 'top', marginBottom: 20 }]}
+              multiline placeholder="Ej: Falta de tiempo, molestia en el hombro..." placeholderTextColor={colors.textSecondary} value={skipReason} onChangeText={setSkipReason}
+            />
+            <TouchableOpacity style={{ backgroundColor: colors.warning || '#F59E0B', padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleSkipSubmit} disabled={updating}>
+              {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Confirmar</Text>}
+            </TouchableOpacity>
+          </KeyboardAvoidingView>
+        </View>
+      </Modal>
+
+      {/* --- MODAL DE GEMINI IA --- */}
+      <GeminiChatModal 
+        isVisible={isChatVisible} 
+        onClose={() => setChatVisible(false)} 
+        athleteId={selectedAthlete?.id}
+        athleteName={selectedAthlete?.name}
+        onSaveWorkout={handleSaveWorkoutFromAI} 
+      />
+
+      {/* MODAL DE DEPORTE EXTRA */}
+      {isExtraSportEnabled && (
+        <Modal visible={showSportModal} transparent animationType="fade">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  {SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite']?.lib === 'Ionicons' ? (
+                     <Ionicons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={24} color={colors.primary} />
+                  ) : (
+                     <MaterialCommunityIcons name={SPORT_ICON_MAP[selectedAthlete?.sport_icon || 'kite'].icon as any} size={24} color={colors.primary} />
+                  )}
+                  <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary, marginLeft: 10 }}>Registro Deportivo</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowSportModal(false)}>
+                  <Ionicons name="close" size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={{ flexDirection: 'row', backgroundColor: colors.surfaceHighlight, borderRadius: 8, padding: 4, marginBottom: 20 }}>
+                <TouchableOpacity style={{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6, backgroundColor: sportModalTab === 'single' ? colors.primary : 'transparent' }} onPress={() => setSportModalTab('single')}>
+                  <Text style={{ fontWeight: '700', fontSize: 12, color: sportModalTab === 'single' ? '#FFF' : colors.textSecondary }}>Día Único</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 6, backgroundColor: sportModalTab === 'range' ? colors.primary : 'transparent' }} onPress={() => setSportModalTab('range')}>
+                  <Text style={{ fontWeight: '700', fontSize: 12, color: sportModalTab === 'range' ? '#FFF' : colors.textSecondary }}>Rango (Viaje/Camp)</Text>
+                </TouchableOpacity>
+              </View>
+
+              {sportModalTab === 'single' ? (
+                <View>
+                  <Text style={{ color: colors.textPrimary, marginBottom: 20, fontSize: 14 }}>
+                    ¿Añadir sesión técnica para el <Text style={{fontWeight: '800'}}>{selectedDate}</Text>?
+                  </Text>
+                  <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={() => {
+                    const newDates = Array.from(new Set([...sportSessions, selectedDate]));
+                    handleSaveTechnicalSession(newDates);
+                  }} disabled={updating}>
+                    {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Guardar Día</Text>}
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <View>
+                  <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 6 }]}>DESDE (AAAA-MM-DD)</Text>
+                      <TextInput style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} value={rangeStart} onChangeText={setRangeStart} placeholder="2026-04-01" placeholderTextColor={colors.textSecondary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 6 }]}>HASTA (AAAA-MM-DD)</Text>
+                      <TextInput style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} value={rangeEnd} onChangeText={setRangeEnd} placeholder="2026-04-10" placeholderTextColor={colors.textSecondary} />
+                    </View>
+                  </View>
+                  <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleSaveDateRange} disabled={updating}>
+                    {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Guardar Rango</Text>}
+                  </TouchableOpacity>
+                </View>
+              )}
             </View>
           </View>
+        </Modal>
+      )}
+
+      {/* --- SELECTOR DE ATLETA (Para Entrenadores) --- */}
+      <Modal visible={showPicker} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+               <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary }}>Seleccionar Atleta</Text>
+               <TouchableOpacity onPress={() => setShowPicker(false)}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
+             </View>
+             <ScrollView style={{ maxHeight: 300 }}>
+               {athletes.map(a => (
+                 <TouchableOpacity key={a.id} style={[styles.pickerItem, { borderBottomColor: colors.border }]} onPress={() => handleSelectAthlete(a)}>
+                   <Text style={{ color: colors.textPrimary, fontSize: 16, fontWeight: selectedAthlete?.id === a.id ? '800' : '500' }}>{a.name}</Text>
+                   {selectedAthlete?.id === a.id && <Ionicons name="checkmark-circle" size={20} color={colors.primary} />}
+                 </TouchableOpacity>
+               ))}
+             </ScrollView>
+          </View>
         </View>
       </Modal>
-
-      <Modal visible={showPicker} transparent animationType="slide"><TouchableOpacity style={styles.modalOverlay} onPress={() => setShowPicker(false)}><View style={[styles.modalContent, { backgroundColor: colors.surface }]}><Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text>{athletes.map(a => (<TouchableOpacity key={a.id} style={[styles.athleteItem, { borderBottomColor: colors.border }]} onPress={() => handleSelectAthlete(a)}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text></TouchableOpacity>))}</View></TouchableOpacity></Modal>
-
-      <Modal visible={showCycleSettings} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlayCenter} onPress={() => setShowCycleSettings(false)}>
-          <TouchableOpacity activeOpacity={1} style={[styles.modalContentInfo, { backgroundColor: colors.surface, width: '85%' }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20, width: '100%', justifyContent: 'center' }}><View style={[styles.phaseIconBadge, { backgroundColor: '#FEE2E2', marginRight: 10 }]}><Ionicons name="water" size={24} color="#EF4444" /></View><Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Ajustes del Ciclo</Text></View>
-            <Text style={[styles.label, { color: colors.textSecondary, alignSelf: 'flex-start' }]}>Fecha de inicio del último periodo:</Text>
-            <TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginBottom: 20, width: '100%' }]} placeholder="AAAA-MM-DD" placeholderTextColor={colors.textSecondary} value={lastPeriodDateInput} onChangeText={setLastPeriodDateInput} />
-            <Text style={[styles.label, { color: colors.textSecondary, alignSelf: 'flex-start' }]}>Duración habitual del ciclo completo (días):</Text><TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginBottom: 20, width: '100%' }]} keyboardType="numeric" value={cycleLengthInput} onChangeText={setCycleLengthInput} />
-            <Text style={[styles.label, { color: colors.textSecondary, alignSelf: 'flex-start' }]}>Días habituales de sangrado:</Text><TextInput style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginBottom: 25, width: '100%' }]} keyboardType="numeric" value={periodLengthInput} onChangeText={setPeriodLengthInput} />
-            <View style={{ flexDirection: 'row', gap: 10, width: '100%' }}><TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setShowCycleSettings(false)}><Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Cancelar</Text></TouchableOpacity><TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={handleSaveCycleSettings} disabled={updating}>{updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '700' }}>Guardar</Text>}</TouchableOpacity></View>
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
-      <Modal visible={!!viewMicroInfo} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlayCenter} onPress={handleCloseMicroInfo}>
-          <TouchableOpacity activeOpacity={1} style={[styles.modalContentInfo, { backgroundColor: colors.surface }]}>
-            {viewMicroInfo && (
-              <View style={{ alignItems: 'center', width: '100%', flex: 1 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}><View style={[styles.phaseIconBadge, { backgroundColor: (viewMicroInfo.color || colors.primary) + '15' }]}><Ionicons name="flag" size={24} color={viewMicroInfo.color || colors.primary} /></View><TouchableOpacity onPress={handleCloseMicroInfo}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity></View>
-                <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>PERTENECE AL MACROCICLO:</Text><Text style={[styles.infoTitleMacro, { color: colors.textPrimary }]}>{viewMicroInfo.macroNombre}</Text>
-                <View style={[styles.divider, { backgroundColor: colors.border }]} /><Text style={[styles.infoLabel, { color: colors.textSecondary }]}>FASE ACTUAL (MICROCICLO):</Text><Text style={[styles.infoTitleMicro, { color: colors.textPrimary }]}>{viewMicroInfo.nombre}</Text>
-                <View style={{ flexDirection: 'row', gap: 10, marginTop: 15 }}>
-                  <View style={[styles.microTypeBadgeBig, { backgroundColor: (viewMicroInfo.color || colors.primary) }]}>
-                    <Text style={{ color: '#FFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }} numberOfLines={1}>{viewMicroInfo.tipo}</Text>
-                  </View>
-                  <View style={[styles.datesRow, { marginTop: 0 }]}><Ionicons name="calendar-outline" size={16} color={colors.textSecondary} /><Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{viewMicroInfo.fecha_inicio.split('-').reverse().join('/')} - {viewMicroInfo.fecha_fin.split('-').reverse().join('/')}</Text></View></View>
-                <View style={{ width: '100%', marginTop: 25, flexShrink: 1 }}><Text style={[styles.infoLabel, { color: colors.textSecondary, marginBottom: 10, textAlign: 'left' }]}>SESIONES PROGRAMADAS ({microWorkouts.length})</Text>
-                  <ScrollView style={{ width: '100%' }} showsVerticalScrollIndicator={true}>
-                    {microWorkouts.map(wk => (
-                      <View key={wk.id} style={[styles.microWorkoutCard, { borderColor: colors.border }]}><TouchableOpacity style={[styles.microWorkoutHeader, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setExpandedWorkoutId(expandedWorkoutId === wk.id ? null : wk.id)}><Ionicons name="barbell-outline" size={18} color={viewMicroInfo.color || colors.primary} /><View style={{ flex: 1, marginLeft: 10 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{wk.title}</Text><Text style={{ color: colors.textSecondary, fontSize: 11 }}>{wk.date.split('-').reverse().join('/')}</Text></View><Ionicons name={expandedWorkoutId === wk.id ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} /></TouchableOpacity>
-                        {expandedWorkoutId === wk.id && (<View style={[styles.microWorkoutExercises, { borderTopColor: colors.border }]}>{wk.exercises && wk.exercises.length > 0 ? (wk.exercises.map((ex: any, i: number) => { if (ex.is_hiit_block) { return (<View key={i} style={{ marginBottom: 8 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 12 }}>⚡ {ex.name}</Text>{ex.hiit_exercises?.map((he: any, j: number) => (<Text key={j} style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 15, marginTop: 2 }}>• {he.name} <Text style={{fontWeight: '600', color: colors.textPrimary}}>({he.duration_reps})</Text></Text>))}</View>); } else { return (<Text key={i} style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>• {ex.name} <Text style={{fontWeight: '600', color: viewMicroInfo.color || colors.primary}}>{ex.sets}x{ex.reps}</Text></Text>); } })) : (<Text style={{ color: colors.textSecondary, fontSize: 12, fontStyle: 'italic' }}>Sin ejercicios registrados.</Text>)}</View>)}
-                      </View>
-                    ))}
-                    {microWorkouts.length === 0 && <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', textAlign: 'center', marginTop: 15 }}>No hay sesiones asignadas a esta fase todavía.</Text>}
-                  </ScrollView>
-                </View>
-                {isTrainer && <TouchableOpacity style={[styles.editPhaseBtn, { borderColor: viewMicroInfo.color || colors.primary }]} onPress={() => { handleCloseMicroInfo(); router.push(`/periodization?athlete_id=${selectedAthlete.id}&name=${encodeURIComponent(selectedAthlete.name)}`); }}><Ionicons name="pencil" size={18} color={viewMicroInfo.color || colors.primary} /><Text style={{ color: viewMicroInfo.color || colors.primary, fontWeight: '800', fontSize: 13, marginLeft: 8 }}>EDITAR PLANIFICACIÓN</Text></TouchableOpacity>}
-              </View>
-            )}
-          </TouchableOpacity>
-        </TouchableOpacity>
-      </Modal>
-
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  topHeader: { flexDirection: 'row', alignItems: 'center', padding: 20 },
-  headerSubtitle: { fontSize: 10, fontWeight: '800', color: '#888', letterSpacing: 1.5 },
-  headerTitle: { fontSize: 24, fontWeight: '900' },
-  iconBtn: { width: 44, height: 44, borderRadius: 14, backgroundColor: 'rgba(0,0,0,0.03)', justifyContent: 'center', alignItems: 'center' },
-  viewToggleContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4 },
-  viewToggleBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, gap: 6 },
-  viewToggleText: { fontSize: 12, fontWeight: '800', color: '#888' },
-  mainLayout: { flex: 1, flexDirection: 'column' },
-  mainLayoutDesktop: { flexDirection: 'row', paddingHorizontal: 20, gap: 30 },
-  leftColumnDesktop: { flex: 1, maxWidth: 380, minWidth: 300 },
-  rightColumnDesktop: { flex: 1 },
-  monthSelector: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginVertical: 15 },
-  monthLabel: { fontSize: 18, fontWeight: '900', textTransform: 'capitalize' },
-  calendarGrid: { paddingHorizontal: 15 },
-  weekDays: { flexDirection: 'row', marginBottom: 10 },
-  weekDayText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '800' },
-  daysGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center' },
-  dayText: { fontSize: 15, fontWeight: '600' },
+  topHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 10, paddingBottom: 15 },
+  headerSubtitle: { fontSize: 10, fontWeight: '800', letterSpacing: 1, color: '#888', marginBottom: 4 },
+  headerTitle: { fontSize: 22, fontWeight: '900' },
+  viewToggleContainer: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 8, padding: 4, marginLeft: 15 },
+  viewToggleBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  viewToggleText: { fontSize: 12, fontWeight: '700', color: '#888' },
+  iconBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   
-  weekDayColumn: { borderRightWidth: 1, borderRightColor: 'rgba(0,0,0,0.05)' },
-  weekDayHeader: { paddingVertical: 20, alignItems: 'center', marginBottom: 10 },
-  weeklyWorkoutCard: { borderWidth: 1, borderRadius: 16, marginBottom: 15, overflow: 'hidden', elevation: 2, shadowColor: '#000', shadowOffset: {width:0, height:2}, shadowOpacity: 0.1, shadowRadius: 4 },
-  weeklyWorkoutHeader: { flexDirection: 'row', padding: 12, alignItems: 'center' },
-  emptyDayWeekly: { alignItems: 'center', justifyContent: 'center', paddingVertical: 60, opacity: 0.3 },
+  card: { borderRadius: 24, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.05, shadowRadius: 20, elevation: 4, overflow: 'hidden' },
+  absoluteLoading: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10, justifyContent: 'center', alignItems: 'center' },
   
-  footer: { flex: 1, paddingHorizontal: 20, paddingTop: 10 },
-  footerLabel: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1, textTransform: 'uppercase' },
-  workoutCard: { flexDirection: 'row', alignItems: 'center', padding: 12, borderRadius: 18, marginBottom: 12 },
-  workoutIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
-  workoutTitle: { fontSize: 16, fontWeight: '800' },
-  workoutActions: { flexDirection: 'row', gap: 5 },
-  actionIconBtn: { padding: 8 },
-  emptyCard: { alignItems: 'center', paddingVertical: 30 },
-  copyBanner: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8, paddingHorizontal: 20, justifyContent: 'center' },
-  copyBannerText: { color: '#FFF', fontSize: 12, fontWeight: '700', textAlign: 'center' },
+  calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
+  arrowBtn: { padding: 8 },
+  monthYearText: { fontSize: 18, fontWeight: '800', textAlign: 'center', textTransform: 'capitalize' },
+  daysHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, paddingHorizontal: 5 },
+  dayHeaderText: { flex: 1, textAlign: 'center', fontSize: 12, fontWeight: '700' },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 5 },
+  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
+  dateNumberContainer: { width: 28, height: 28, justifyContent: 'center', alignItems: 'center' },
+  dayText: { fontSize: 15, fontWeight: '500' },
   
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
-  modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30, width: '100%', position: 'absolute', bottom: 0 },
-  modalTitle: { fontSize: 18, fontWeight: '900', marginBottom: 20 },
-  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 },
-  modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 },
-  phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
-  infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' },
-  infoTitleMacro: { fontSize: 18, fontWeight: '900', marginTop: 4, textAlign: 'center' },
-  divider: { height: 1, width: '80%', marginVertical: 15, opacity: 0.5 },
-  infoTitleMicro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' },
-  microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, maxWidth: '100%' },
-  datesRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.03)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-  microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' },
-  microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 },
-  microWorkoutExercises: { padding: 14, borderTopWidth: 1 },
-  editPhaseBtn: { flexDirection: 'row', width: '100%', paddingVertical: 14, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, marginTop: 20 },
-  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 },
-  label: { fontSize: 11, fontWeight: '800', marginBottom: 6, letterSpacing: 0.5 },
-  modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  insightCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },
-  insightHeader: { flexDirection: 'row', alignItems: 'center', padding: 12, gap: 10 },
-  insightTitle: { fontSize: 14, fontWeight: '900', letterSpacing: 0.5 },
-  insightContent: { padding: 15, gap: 8 },
-  insightText: { fontSize: 13, lineHeight: 18 },
-  microCard: { padding: 14, borderRadius: 16, borderTopWidth: 4, borderWidth: 1, width: 160, marginRight: 12 },
-  microMacroName: { fontSize: 9, fontWeight: '800', letterSpacing: 0.5, textTransform: 'uppercase', marginBottom: 2 },
-  microName: { fontSize: 14, fontWeight: '800', marginBottom: 8 },
-  microTypeBadge: { alignSelf: 'flex-start', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, marginBottom: 8, maxWidth: '100%' },
-  microDates: { fontSize: 11, fontWeight: '600' },
+  indicatorsRow: { flexDirection: 'row', gap: 2, marginTop: 4, height: 4, alignItems: 'center', justifyContent: 'center' },
+  indicatorDot: { width: 4, height: 4, borderRadius: 2 },
+  
+  microPhaseCard: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, minWidth: 150 },
+  microPhaseDot: { width: 10, height: 10, borderRadius: 5, marginRight: 10 },
+  microPhaseName: { fontSize: 13, fontWeight: '800' },
+  microPhaseDates: { fontSize: 10, marginTop: 2 },
 
-  fab: {
-    position: 'absolute',
-    bottom: 25,
-    right: 25,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  }
+  phaseCard: { borderWidth: 1, borderRadius: 16, padding: 16, marginBottom: 20 },
+  
+  workoutCard: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 12 },
+  workoutTitle: { fontSize: 16, fontWeight: '800' },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6, gap: 4 },
+  statusText: { fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  tag: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  
+  trainerActionsRow: { flexDirection: 'row', gap: 8, marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
+  actionBtnTrainer: { flex: 1, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 8, borderRadius: 8, gap: 6 },
+  actionBtnTrainerText: { fontSize: 12, fontWeight: '700' },
+
+  startWorkoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 14, borderRadius: 12 },
+  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 16, marginTop: 10 },
+  addBtnText: { color: '#FFF', fontWeight: '800', marginLeft: 8, fontSize: 14 },
+  
+  emptyState: { padding: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', borderStyle: 'dashed' },
+  
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  modalContent: { width: '85%', maxWidth: 400, borderRadius: 24, padding: 24 },
+  modalContentLarge: { width: '90%', maxWidth: 600, height: '80%', borderRadius: 24, padding: 24 },
+  pickerItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1 },
+  label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15 }
 });
