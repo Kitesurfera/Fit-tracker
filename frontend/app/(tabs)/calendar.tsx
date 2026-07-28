@@ -778,36 +778,48 @@ export default function CalendarScreen() {
                         onPress={() => handleDatePress(dateStr)} 
                         style={[
                           styles.dayCell, 
-                          isSelected && !isCopyTarget && { backgroundColor: colors.primary + '20', borderRadius: 8 },
-                          isCopyTarget && { backgroundColor: colors.success + '20', borderRadius: 8, borderWidth: 1, borderColor: colors.success }
+                          // Resalte de Microciclo (fondo de toda la celda)
+                          status?.phaseColor && { backgroundColor: status.phaseColor + '20' },
+                          // Borde de selección
+                          isSelected && !isCopyTarget && { borderWidth: 2, borderColor: colors.primary },
+                          isCopyTarget && { backgroundColor: colors.success + '20', borderWidth: 2, borderColor: colors.success }
                         ]}
                       >
-                        <View style={styles.dateNumberContainer}>
-                           <Text style={[styles.dayText, { color: colors.textPrimary }, isSelected && !isCopyTarget && { color: colors.primary, fontWeight: '800' }, isToday && { color: colors.primary, fontWeight: '900' }]}>{day}</Text>
+                        {/* Círculo de número (resalta si hay entrenamiento) */}
+                        <View style={[
+                           styles.dateNumberContainer,
+                           status?.hasWorkout && { backgroundColor: status.isCompleted ? colors.success : colors.primary, borderRadius: 14 }
+                        ]}>
+                           <Text style={[
+                              styles.dayText, 
+                              { color: status?.hasWorkout ? '#FFF' : colors.textPrimary }, 
+                              isToday && !status?.hasWorkout && { color: colors.primary, fontWeight: '900' },
+                              status?.hasWorkout && { fontWeight: '800' }
+                           ]}>
+                             {day}
+                           </Text>
                         </View>
 
-                        {/* INDICADORES DEL CALENDARIO */}
-                        <View style={styles.indicatorsRow}>
-                           {!!status?.phaseColor && <View style={[styles.indicatorDot, { backgroundColor: status.phaseColor, width: 20, height: 4, borderRadius: 2 }]} />}
-                           {status?.isPeriod && <View style={[styles.indicatorDot, { backgroundColor: '#EF4444' }]} />}
-                           {status?.hasWorkout && <View style={[styles.indicatorDot, { backgroundColor: status.isCompleted ? colors.success : colors.warning }]} />}
-                           {isTechnical && (
-                              <View style={{ marginTop: 2 }}>
-                                 {sportConfig.lib === 'Ionicons' ? (
-                                     <Ionicons name={sportConfig.icon as any} size={10} color={colors.primary} />
-                                 ) : (
-                                     <MaterialCommunityIcons name={sportConfig.icon as any} size={10} color={colors.primary} />
-                                 )}
-                              </View>
-                           )}
-                        </View>
+                        {/* Fila de Iconos: Deporte técnico y Gota menstrual */}
+                        {(status?.isPeriod || isTechnical) && (
+                          <View style={styles.cellIconsRow}>
+                             {status?.isPeriod && <Ionicons name="water" size={12} color="#EF4444" />}
+                             {isTechnical && (
+                                sportConfig.lib === 'Ionicons' ? (
+                                    <Ionicons name={sportConfig.icon as any} size={12} color={colors.primary} />
+                                ) : (
+                                    <MaterialCommunityIcons name={sportConfig.icon as any} size={12} color={colors.primary} />
+                                )
+                             )}
+                          </View>
+                        )}
                       </TouchableOpacity>
                     );
                   })}
                 </View>
               </>
             ) : (
-              /* --- NUEVA VISTA DE SEMANA DETALLADA (EVITA SUPERPOSICIONES Y MUESTRA EJERCICIOS) --- */
+              /* --- NUEVA VISTA DE SEMANA DETALLADA --- */
               <View style={{ gap: 10, marginTop: 5 }}>
                 {currentWeekDays.map((d, idx) => {
                   const dateStr = getLocalDateStr(d);
@@ -816,7 +828,6 @@ export default function CalendarScreen() {
                   const status = monthStatusMap[dateStr] || {};
                   const dayWorkouts = workouts?.filter(w => extractDateString(w.date) === dateStr) || [];
                   const isTechnical = sportSessions.includes(dateStr);
-                  const microColor = status.phaseColor || colors.border;
 
                   return (
                     <TouchableOpacity
@@ -824,8 +835,9 @@ export default function CalendarScreen() {
                       onPress={() => handleDatePress(dateStr)}
                       style={[
                         styles.weekDayCard,
-                        { backgroundColor: colors.surfaceHighlight, borderColor: isSelected ? colors.primary : colors.border },
-                        status.phaseColor && { borderLeftWidth: 6, borderLeftColor: status.phaseColor }
+                        // Resalte de microciclo en el fondo y selección en borde
+                        { backgroundColor: status.phaseColor ? status.phaseColor + '15' : colors.surfaceHighlight },
+                        { borderColor: isSelected ? colors.primary : (status.phaseColor ? status.phaseColor + '40' : colors.border) }
                       ]}
                     >
                       <View style={styles.weekDayHeaderRow}>
@@ -844,7 +856,11 @@ export default function CalendarScreen() {
                               {sportConfig.lib === 'Ionicons' ? <Ionicons name={sportConfig.icon as any} size={12} color={colors.primary} /> : <MaterialCommunityIcons name={sportConfig.icon as any} size={12} color={colors.primary} />}
                             </View>
                           )}
-                          {status.isPeriod && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#EF4444' }} />}
+                          {status.isPeriod && (
+                            <View style={{ paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, backgroundColor: '#EF444415' }}>
+                              <Ionicons name="water" size={12} color="#EF4444" />
+                            </View>
+                          )}
                         </View>
                       </View>
 
@@ -860,7 +876,6 @@ export default function CalendarScreen() {
                                   <Text style={{ fontSize: 10, fontWeight: '700', color: wk.completed ? colors.success : colors.warning }}>{wk.completed ? 'Hecho' : 'Pendiente'}</Text>
                                 </View>
                               </View>
-                              {/* Lista resumida de ejercicios */}
                               {wk.exercises && wk.exercises.length > 0 ? (
                                 <Text style={[styles.weekWorkoutExercises, { color: colors.textSecondary }]} numberOfLines={2}>
                                   {wk.exercises.map((ex: any) => ex.name).join(' • ')}
@@ -1267,14 +1282,14 @@ const styles = StyleSheet.create({
   daysHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingHorizontal: 2 },
   dayHeaderText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700' },
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 2 },
-  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
-  dateNumberContainer: { width: 26, height: 26, justifyContent: 'center', alignItems: 'center' },
+  
+  // Cambios de estilos para la celda de cada día
+  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', marginBottom: 6, borderRadius: 10 },
+  dateNumberContainer: { width: 28, height: 28, justifyContent: 'center', alignItems: 'center' },
   dayText: { fontSize: 14, fontWeight: '500' },
+  cellIconsRow: { flexDirection: 'row', gap: 4, marginTop: 2, minHeight: 14, alignItems: 'center', justifyContent: 'center' },
   
-  indicatorsRow: { flexDirection: 'row', gap: 2, marginTop: 2, height: 4, alignItems: 'center', justifyContent: 'center' },
-  indicatorDot: { width: 4, height: 4, borderRadius: 2 },
-  
-  /* Estilos mejorados para la Vista Semanal */
+  /* Estilos para la Vista Semanal */
   weekDayCard: { padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
   weekDayHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   weekDayNumBadge: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
