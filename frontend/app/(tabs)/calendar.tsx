@@ -819,8 +819,8 @@ export default function CalendarScreen() {
                 </View>
               </>
             ) : (
-              /* --- NUEVA VISTA DE SEMANA DETALLADA --- */
-              <View style={{ gap: 10, marginTop: 5 }}>
+              /* --- NUEVA VISTA DE SEMANA DETALLADA HORIZONTAL --- */
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 5, paddingHorizontal: 2 }}>
                 {currentWeekDays.map((d, idx) => {
                   const dateStr = getLocalDateStr(d);
                   const isSelected = selectedDate === dateStr;
@@ -835,6 +835,7 @@ export default function CalendarScreen() {
                       onPress={() => handleDatePress(dateStr)}
                       style={[
                         styles.weekDayCard,
+                        { width: isDesktop ? 320 : width * 0.75 },
                         // Resalte de microciclo en el fondo y selección en borde
                         { backgroundColor: status.phaseColor ? status.phaseColor + '15' : colors.surfaceHighlight },
                         { borderColor: isSelected ? colors.primary : (status.phaseColor ? status.phaseColor + '40' : colors.border) }
@@ -865,7 +866,7 @@ export default function CalendarScreen() {
                       </View>
 
                       {/* Resumen de entrenamientos en la semana */}
-                      <View style={{ marginTop: 8, gap: 6 }}>
+                      <View style={{ marginTop: 8, gap: 8 }}>
                         {dayWorkouts.length > 0 ? (
                           dayWorkouts.map((wk: any, wIdx: number) => (
                             <View key={wIdx} style={[styles.weekWorkoutSnippet, { backgroundColor: colors.surface, borderColor: wk.completed ? colors.success + '40' : colors.border }]}>
@@ -876,12 +877,42 @@ export default function CalendarScreen() {
                                   <Text style={{ fontSize: 10, fontWeight: '700', color: wk.completed ? colors.success : colors.warning }}>{wk.completed ? 'Hecho' : 'Pendiente'}</Text>
                                 </View>
                               </View>
+
+                              {/* Lista Detallada de Ejercicios */}
                               {wk.exercises && wk.exercises.length > 0 ? (
-                                <Text style={[styles.weekWorkoutExercises, { color: colors.textSecondary }]} numberOfLines={2}>
-                                  {wk.exercises.map((ex: any) => ex.name).join(' • ')}
-                                </Text>
+                                <View style={{ marginTop: 6, gap: 4 }}>
+                                  {wk.exercises.map((ex: any, eIdx: number) => (
+                                    <View key={eIdx} style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.textSecondary, marginRight: 6 }} />
+                                      <Text style={{ fontSize: 11, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{ex.name}</Text>
+                                      {(ex.sets && (ex.reps || ex.time)) && (
+                                         <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary }}>
+                                           {ex.reps || ex.time} x {ex.sets}
+                                         </Text>
+                                      )}
+                                    </View>
+                                  ))}
+                                </View>
                               ) : (
-                                <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic' }}>Sin ejercicios especificados</Text>
+                                <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 }}>Sin ejercicios especificados</Text>
+                              )}
+
+                              {/* Botones de acción (Entrenador) */}
+                              {isTrainer && (
+                                <View style={[styles.trainerActionsRow, { marginTop: 10, paddingTop: 10, gap: 6 }]}>
+                                  <TouchableOpacity onPress={(e) => { e.stopPropagation(); startCopyWorkout(wk); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight, paddingVertical: 6 }]}>
+                                    <Ionicons name="copy" size={12} color={colors.primary} />
+                                    <Text style={[styles.actionBtnTrainerText, { color: colors.primary, fontSize: 11 }]}>Duplicar</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={(e) => { e.stopPropagation(); router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } }); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight, paddingVertical: 6 }]}>
+                                    <Ionicons name="pencil" size={12} color={colors.textSecondary} />
+                                    <Text style={[styles.actionBtnTrainerText, { color: colors.textSecondary, fontSize: 11 }]}>Editar</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={(e) => { e.stopPropagation(); handleDeleteWorkout(wk); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.error + '15', paddingVertical: 6 }]}>
+                                    <Ionicons name="trash" size={12} color={colors.error || '#EF4444'} />
+                                    <Text style={[styles.actionBtnTrainerText, { color: colors.error || '#EF4444', fontSize: 11 }]}>Borrar</Text>
+                                  </TouchableOpacity>
+                                </View>
                               )}
                             </View>
                           ))
@@ -892,7 +923,7 @@ export default function CalendarScreen() {
                     </TouchableOpacity>
                   );
                 })}
-              </View>
+              </ScrollView>
             )}
 
             {isFemale && (
@@ -1290,7 +1321,7 @@ const styles = StyleSheet.create({
   cellIconsRow: { flexDirection: 'row', gap: 4, marginTop: 2, minHeight: 14, alignItems: 'center', justifyContent: 'center' },
   
   /* Estilos para la Vista Semanal */
-  weekDayCard: { padding: 12, borderRadius: 14, borderWidth: 1, marginBottom: 10 },
+  weekDayCard: { padding: 12, borderRadius: 14, borderWidth: 1 },
   weekDayHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   weekDayNumBadge: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
   weekDayNumText: { fontSize: 12, fontWeight: '800' },
