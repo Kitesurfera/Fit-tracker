@@ -47,11 +47,56 @@ export default function WellnessModal({ isVisible, onClose, athleteId }: { isVis
     }
   }, [isVisible]);
 
-  const handleSave = async () => {
+const handleSave = async () => {
     setLoading(true);
     try {
-      // 2. Incluye athlete_id en el payload que se envía al backend
+      // 1. Guardamos el wellness en el servidor
       await api.postWellness({ ...form, cycle_phase: '', athlete_id: athleteId }); 
+
+      // 2. Evaluamos si se debe disparar la alerta de WhatsApp al entrenador (umbral >= 4 para fatiga, estrés y soreness)
+      const isFatigueHigh = form.fatigue >= 4;
+      const isStressHigh = form.stress >= 4;
+      const isSorenessHigh = form.soreness >= 4;
+      const isSleepLow = form.sleep_quality <= 2;
+      const hasDiscomforts = Object.keys(form.discomforts).length > 0;
+
+      if (isFatigueHigh || isStressHigh || isSorenessHigh || isSleepLow || hasDiscomforts) {
+        const athleteName = user?.name || 'Un deportista';
+        
+        // Construimos el desglose de motivos de la alerta
+        let alertsText = '';
+        if (isFatigueHigh) alertsText += `\n   - ⚠️ Fatiga elevada (${form.fatigue}/5)`;
+        if (isStressHigh) alertsText += `\n   - ⚠️ Estrés elevado (${form.stress}/5)`;
+        if (isSorenessHigh) alertsText += `\n   - ⚠️ Dolor muscular alto (${form.soreness}/5)`;
+        if (isSleepLow) alertsText += `\n   - 🌙 Sueño deficiente (${form.sleep_quality}/5)`;
+        
+        if (hasDiscomforts) {
+          const discomfortsList = Object.entries(form.discomforts)
+            .map(([part, level]) => `     • ${part}: *${level.toUpperCase()}*`)
+            .join('\n');
+          alertsText += `\n\n  🔥 *Mapa Térmico de Molestias:*\n${discomfortsList}`;
+        }
+
+        if (form.notes.trim()) {
+          alertsText += `\n\n  📝 *Nota:* "${form.notes.trim()}"`;
+        }
+
+        const message = `🚨 *Alerta de Wellness - ${athleteName}*\n` +
+                        `Se ha registrado un estado que requiere atención:\n` +
+                        alertsText;
+
+        // Abrimos WhatsApp de forma automática
+        const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
+        
+        if (Platform.OS === 'web') {
+          window.open(whatsappUrl, '_blank');
+        } else {
+          Linking.openURL(whatsappUrl).catch(() => {
+            Alert.alert("Aviso", "No se pudo abrir WhatsApp automáticamente.");
+          });
+        }
+      }
+
       onClose();
     } catch (e: any) {
       if (Platform.OS !== 'web') Alert.alert("Error de envío", e.message || "No se pudo conectar con el servidor.");
