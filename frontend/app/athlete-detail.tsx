@@ -429,7 +429,7 @@ export default function AthleteDetailScreen() {
     
             <TouchableOpacity 
               style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
-              onPress={() => router.push(`/(tabs)/tests?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}
+              onPress={() => router.push('/(tabs)/tests')}
             >
               <Ionicons name="fitness-outline" size={22} color={colors.primary} />
               <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Tests</Text>
