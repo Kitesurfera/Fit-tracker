@@ -53,19 +53,16 @@ const PLATE_COLORS: Record<number, string> = {
   5: '#FFFFFF', 2.5: '#000000', 1.25: '#6B7280'
 };
 
-// --- SINGLETON AUDIO CONTEXT REFORZADO ---
 let sharedAudioCtx: AudioContext | null = null;
 const getWebAudioCtx = () => {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
   const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
   if (!AudioContextClass) return null;
   
-  // Si no existe o el SO lo ha matado (closed), creamos uno nuevo
   if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
     sharedAudioCtx = new AudioContextClass();
   }
   
-  // Si el SO lo ha puesto a dormir (suspended), intentamos despertarlo
   if (sharedAudioCtx.state === 'suspended') {
     sharedAudioCtx.resume().catch(() => {});
   }
@@ -119,6 +116,7 @@ export default function TrainingModeScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   const { user } = useAuth();
+  const isTrainer = user?.role === 'trainer';
   
   const params = useLocalSearchParams();
   const [stableWorkoutId] = useState(() => typeof params.workoutId === 'string' ? params.workoutId : params.workoutId?.[0]);
@@ -133,7 +131,7 @@ export default function TrainingModeScreen() {
   const [tradSide, setTradSide] = useState<1 | 2>(1); 
   
   const [logs, setLogs] = useState<Record<number, {weight: string, reps: string, note?: string, coach_note?: string}>>({});
-  const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string}>>({});
+  const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string, coach_note?: string}>>({});
   
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
   const [videoUploading, setVideoUploading] = useState<string | null>(null);
@@ -188,7 +186,6 @@ export default function TrainingModeScreen() {
   const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
   const justFinishedRestRef = useRef(false);
 
-  // --- APPSTATE SYNC ---
   const appState = useRef(AppState.currentState);
   const backgroundTimeRef = useRef<number | null>(null);
 
@@ -242,14 +239,12 @@ export default function TrainingModeScreen() {
     }, [])
   );
 
-  // --- APPSTATE SYNC: RECALCULO DE TIEMPOS Y REACTIVACIÓN DE AUDIO ---
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
         
-        // AL VOLVER DE SEGUNDO PLANO: Forzamos la escucha táctil para reactivar el sonido
         if (Platform.OS === 'web') {
-          getWebAudioCtx(); // Intentamos despertar inmediatamente
+          getWebAudioCtx();
           
           const unlockOnNextTap = () => {
             getWebAudioCtx();
@@ -260,7 +255,6 @@ export default function TrainingModeScreen() {
           document.addEventListener('click', unlockOnNextTap);
         }
 
-        // RECALCULAR TIEMPOS
         if (backgroundTimeRef.current && !isPaused && !finished) {
           const timeAway = Math.floor((Date.now() - backgroundTimeRef.current) / 1000);
           
@@ -285,7 +279,6 @@ export default function TrainingModeScreen() {
     };
   }, [isPaused, finished, isPrep, prepSeconds, isWorking, workSeconds, isRestingStatus, restSeconds]);
 
-  // --- SINTETIZADOR DE PITIDOS CLÁSICOS ---
   const playTimerSound = (type: 'short' | 'long' | 'double') => {
     if (!timerSoundsEnabled || finished) return;
 
@@ -331,12 +324,12 @@ export default function TrainingModeScreen() {
       };
 
       if (type === 'short') {
-        playClassicBeep(800, 0, 0.15); // 3, 2, 1
+        playClassicBeep(800, 0, 0.15); 
       } else if (type === 'long') {
-        playClassicBeep(1200, 0, 0.5); // TRABAJO
+        playClassicBeep(1200, 0, 0.5); 
       } else if (type === 'double') {
-        playClassicBeep(400, 0, 0.15); // DESCANSO 1
-        playClassicBeep(400, 0.25, 0.15); // DESCANSO 2
+        playClassicBeep(400, 0, 0.15); 
+        playClassicBeep(400, 0.25, 0.15); 
       }
     } catch (e) {
       console.log("Error Web Audio API:", e);
@@ -453,7 +446,7 @@ export default function TrainingModeScreen() {
                 const loadedLogs: Record<number, any> = {};
                 const loadedSets: Record<number, SetStatus[]> = {};
                 currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
-                  loadedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '' };
+                  loadedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '', coach_note: res.coach_note || '' };
                   if (res.recorded_video_url) savedVideos[idx.toString()] = res.recorded_video_url;
                   if (res.set_details) {
                     loadedSets[idx] = res.set_details.map((sd: any) => sd.status);
@@ -470,7 +463,7 @@ export default function TrainingModeScreen() {
                   block.hiit_exercises?.forEach((ex: any, eIdx: number) => { 
                     const key = `${bIdx}-${eIdx}`; 
                     if (ex.recorded_video_url) savedVideos[key] = ex.recorded_video_url; 
-                    if (ex.athlete_note) hLogs[key] = { note: ex.athlete_note }; 
+                    if (ex.athlete_note || ex.coach_note) hLogs[key] = { note: ex.athlete_note || '', coach_note: ex.coach_note || '' }; 
                     if (ex.skipped_rounds) hSkipped[key] = ex.skipped_rounds;
                   });
                 });
@@ -710,6 +703,7 @@ export default function TrainingModeScreen() {
       { text: "Grabar", onPress: () => launchVideoPicker('camera', key) } 
     ]); 
   };
+  
   const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
       let result;
@@ -745,16 +739,48 @@ export default function TrainingModeScreen() {
       return { 
         ...common,
         hiit_completed: true, 
-        hiit_results: (workout.exercises || []).map((b: any, bIdx: number) => ({ ...b, hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ ...ex, skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0, recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '' })) })) 
+        hiit_results: (workout.exercises || []).map((b: any, bIdx: number) => ({ 
+          ...b, 
+          hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ 
+            ...ex, 
+            skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0, 
+            recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', 
+            athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '',
+            coach_note: hiitLogs[`${bIdx}-${eIdx}`]?.coach_note || ''
+          })) 
+        })) 
       }; 
     }
     return { 
       ...common,
       exercise_results: (workout.exercises || []).map((ex: any, i: number) => { 
         const s = setsStatus[i] || []; 
-        return { exercise_index: i, name: ex.name, total_sets: parseInt(ex.sets) || 1, completed_sets: s.filter(item => item === 'completed').length, skipped_sets: s.filter(item => item === 'skipped').length, set_details: s.map((status, si) => ({ set: si + 1, status })), logged_weight: logs[i]?.weight || '', logged_reps: logs[i]?.reps || '', athlete_note: logs[i]?.note || '', recorded_video_url: recordedVideos[i.toString()] || '' }; 
+        return { 
+          exercise_index: i, 
+          name: ex.name, 
+          total_sets: parseInt(ex.sets) || 1, 
+          completed_sets: s.filter(item => item === 'completed').length, 
+          skipped_sets: s.filter(item => item === 'skipped').length, 
+          set_details: s.map((status, si) => ({ set: si + 1, status })), 
+          logged_weight: logs[i]?.weight || '', 
+          logged_reps: logs[i]?.reps || '', 
+          athlete_note: logs[i]?.note || '', 
+          coach_note: logs[i]?.coach_note || '',
+          recorded_video_url: recordedVideos[i.toString()] || '' 
+        }; 
       }), 
     };
+  };
+
+  const handleSaveTrainerFeedback = async () => {
+    if (!stableWorkoutId) return;
+    try {
+       const data = buildCompletionData();
+       await api.updateWorkout(stableWorkoutId, { completion_data: data });
+       Alert.alert("Guardado", "Feedback técnico guardado correctamente.");
+    } catch(e) { 
+       Alert.alert("Error", "No se pudo guardar el feedback."); 
+    }
   };
 
   const sendWhatsAppMessage = async (cd: any) => {
@@ -1182,6 +1208,7 @@ export default function TrainingModeScreen() {
           {block.hiit_exercises?.map((ex: any, eIdx: number) => {
             const key = `${bIdx}-${eIdx}`;
             const note = hiitLogs[key]?.note;
+            const cNote = hiitLogs[key]?.coach_note || '';
             const vid = recordedVideos[key];
             const skipped = hiitSkipped[key] || 0;
             return (
@@ -1189,7 +1216,35 @@ export default function TrainingModeScreen() {
                 <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{ex.name} {ex.is_unilateral && '(Unilateral)'}</Text>
                 {skipped > 0 && <Text style={{ color: colors.error, fontSize: 13, marginTop: 2 }}>⏭ Rondas saltadas: {skipped}</Text>}
                 {note ? <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 2 }}>📝 Nota: {note}</Text> : null}
-                {vid ? <Text style={{ color: colors.primary, fontSize: 13, fontWeight: '700', marginTop: 2 }}>📹 Video técnico guardado</Text> : null}
+                
+                {vid && (
+                  <View style={{ marginTop: 10, alignSelf: 'flex-start' }}>
+                    <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
+                  </View>
+                )}
+                
+                {isTrainer ? (
+                  <View style={{ marginTop: 10 }}>
+                    <TextInput
+                      style={[styles.coachNoteInput, { borderColor: colors.border, color: colors.textPrimary }]}
+                      placeholder="Añadir feedback técnico del entrenador..."
+                      placeholderTextColor={colors.textSecondary}
+                      value={cNote}
+                      onChangeText={t => setHiitLogs(p => ({...p, [key]: {...(p[key] || {}), coach_note: t}}))}
+                      multiline
+                    />
+                    <TouchableOpacity style={[styles.saveFeedbackBtn, { backgroundColor: colors.primary }]} onPress={handleSaveTrainerFeedback}>
+                      <Text style={styles.saveFeedbackBtnText}>Guardar Feedback</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  cNote ? (
+                    <View style={{ marginTop: 10, backgroundColor: colors.primary + '10', padding: 10, borderRadius: 8 }}>
+                      <Text style={{ color: colors.primary, fontWeight: '800', marginBottom: 4 }}>Feedback del Entrenador:</Text>
+                      <Text style={{ color: colors.textPrimary, fontStyle: 'italic' }}>{cNote}</Text>
+                    </View>
+                  ) : null
+                )}
               </View>
             );
           })}
@@ -1203,6 +1258,8 @@ export default function TrainingModeScreen() {
         const tot = parseInt(ex.sets) || 1;
         const log = logs[i];
         const vid = recordedVideos[i.toString()];
+        const cNote = log?.coach_note || '';
+
         return (
           <View key={i} style={[styles.summaryCard, { backgroundColor: colors.surfaceHighlight }]}>
             <Text style={{ fontWeight: '900', color: colors.textPrimary, fontSize: 15 }}>{i + 1}. {ex.name} {ex.is_unilateral && '(Uni)'}</Text>
@@ -1217,7 +1274,35 @@ export default function TrainingModeScreen() {
               </Text>
             )}
             {log?.note && <Text style={{ color: colors.textSecondary, fontSize: 14, fontStyle: 'italic', marginTop: 6 }}>📝 Nota: {log.note}</Text>}
-            {vid && <Text style={{ color: colors.primary, fontSize: 14, fontWeight: '700', marginTop: 6 }}>📹 Video técnico guardado</Text>}
+            
+            {vid && (
+              <View style={{ marginTop: 10, alignSelf: 'flex-start' }}>
+                <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
+              </View>
+            )}
+
+            {isTrainer ? (
+              <View style={{ marginTop: 10 }}>
+                <TextInput
+                  style={[styles.coachNoteInput, { borderColor: colors.border, color: colors.textPrimary }]}
+                  placeholder="Añadir feedback técnico del entrenador..."
+                  placeholderTextColor={colors.textSecondary}
+                  value={cNote}
+                  onChangeText={t => setLogs(p => ({...p, [i]: {...p[i], coach_note: t}}))}
+                  multiline
+                />
+                <TouchableOpacity style={[styles.saveFeedbackBtn, { backgroundColor: colors.primary }]} onPress={handleSaveTrainerFeedback}>
+                  <Text style={styles.saveFeedbackBtnText}>Guardar Feedback</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              cNote ? (
+                <View style={{ marginTop: 10, backgroundColor: colors.primary + '10', padding: 10, borderRadius: 8 }}>
+                  <Text style={{ color: colors.primary, fontWeight: '800', marginBottom: 4 }}>Feedback del Entrenador:</Text>
+                  <Text style={{ color: colors.textPrimary, fontStyle: 'italic' }}>{cNote}</Text>
+                </View>
+              ) : null
+            )}
           </View>
         );
       });
@@ -1605,5 +1690,8 @@ const styles = StyleSheet.create({
   stackedPlate: { borderRadius: 4, marginHorizontal: 1, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.4, shadowRadius: 3, elevation: 4 },
   legendPlate: { width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 3, elevation: 2 },
   fatigueToggle: { flexDirection: 'row', alignItems: 'center', padding: 14, borderRadius: 16, backgroundColor: 'rgba(0,0,0,0.03)', borderWidth: 1, borderColor: 'rgba(0,0,0,0.05)', marginBottom: 10, justifyContent: 'center' },
-  fatigueToggleActive: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#EF4444' }
+  fatigueToggleActive: { backgroundColor: 'rgba(239, 68, 68, 0.1)', borderColor: '#EF4444' },
+  coachNoteInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 14, minHeight: 60, textAlignVertical: 'top', marginTop: 8 },
+  saveFeedbackBtn: { padding: 10, borderRadius: 8, marginTop: 8, alignItems: 'center' },
+  saveFeedbackBtnText: { color: '#FFF', fontWeight: '700', fontSize: 13 }
 });
