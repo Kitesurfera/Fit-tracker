@@ -11,11 +11,11 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Body from 'react-native-body-highlighter';
 import { LineChart } from 'react-native-chart-kit';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useTrainer } from '../../src/context/TrainerContext';
+import { Video, ResizeMode } from 'expo-av';
 
 const MAX_CONTENT_WIDTH = 1200;
 
@@ -73,11 +73,10 @@ export default function AnalyticsScreen() {
   const params = useLocalSearchParams();
   const isTrainer = user?.role === 'trainer';
   
-  // Responsive hooks
   const { width: SCREEN_WIDTH } = useWindowDimensions();
   const isDesktop = SCREEN_WIDTH > 768;
 
-  const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'body' | 'workload' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
+  const [activeTab, setActiveTab] = useState<'summary' | 'progress' | 'workload' | 'feedback'>(params.tab === 'feedback' ? 'feedback' : 'summary');
   const [customExerciseMuscles, setCustomExerciseMuscles] = useState<Record<string, string[]>>({});
   const [mergeMap, setMergeMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
@@ -99,13 +98,13 @@ export default function AnalyticsScreen() {
   const [hideEmpty, setHideEmpty] = useState(true);
   const [filterCategory, setFilterCategory] = useState<'all' | 'ejercicio' | 'test'>('all');
   
-  const [bodyTimeFilter, setBodyTimeFilter] = useState<1 | 7 | 14 | 30>(1);
-  
   const [showDictModal, setShowDictModal] = useState(false);
   const [dictTargetExercise, setDictTargetExercise] = useState<string>('');
   const [dictSelectedMuscles, setDictSelectedMuscles] = useState<string[]>([]);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeTargetItem, setMergeTargetItem] = useState<any>(null);
+
+  const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -119,8 +118,6 @@ export default function AnalyticsScreen() {
       if (isTrainer) {
         const aths = await api.getAthletes().catch(() => []);
         setAthletes(aths);
-        // Si no hay atleta seleccionado, cogemos el primero por defecto. 
-        // Si ya hay uno (porque venimos del home o detail), cargamos sus datos.
         if (aths.length > 0 && !selectedAthlete) {
           handleSelectAthlete(aths[0]);
         } else if (selectedAthlete) {
@@ -193,40 +190,6 @@ export default function AnalyticsScreen() {
       return newMap;
     });
   };
-
-  const heatMap = useMemo(() => {
-     const heat: Record<string, number> = {};
-     ALL_MUSCLES.forEach(m => heat[m] = 0);
-     const now = new Date();
-     const localTodayStr = getLocalDateStr(now);
-     let limitDateStr = localTodayStr;
-     if (bodyTimeFilter !== 1) {
-       const limitDate = new Date(); limitDate.setDate(now.getDate() - bodyTimeFilter + 1); limitDateStr = getLocalDateStr(limitDate);
-     }
-     workoutHistory.forEach(w => {
-       const isDateValid = bodyTimeFilter === 1 ? w.date === localTodayStr : (w.date >= limitDateStr && w.date <= localTodayStr);
-       if (isDateValid) {
-         const exercisesList = w.completed ? (w.completion_data?.exercise_results || []) : (w.exercises || w.routine || w.completion_data?.exercise_results || []);
-         exercisesList.forEach((r: any) => {
-           if (r.is_hiit_block && r.hiit_exercises) {
-             r.hiit_exercises.forEach((he: any) => {
-               const exName = he.name || he.exercise_name || he.exercise;
-               if (exName) { const sets = parseInt(r.sets) || parseInt(he.sets) || 1; getMusclesForExercise(exName).forEach(m => { if (heat[m] !== undefined) heat[m] += sets; }); }
-             });
-           } else {
-             const exName = r.name || r.exercise_name || r.exercise;
-             if (exName) {
-               let sets = 0;
-               if (w.completed) sets = parseInt(r.completed_sets) || 1;
-               else sets = parseInt(r.target_sets) || parseInt(r.sets) || parseInt(r.series) || 1;
-               if (sets > 0) getMusclesForExercise(exName).forEach(m => { if (heat[m] !== undefined) heat[m] += sets; });
-             }
-           }
-         });
-       }
-     });
-     return heat;
-  }, [workoutHistory, bodyTimeFilter, getMusclesForExercise]);
 
   const latestMeasurements = useMemo(() => {
     const measures: Record<string, any> = {};
@@ -312,20 +275,38 @@ export default function AnalyticsScreen() {
     return { labels, fatigueData, sorenessData };
   }, [wellnessHistory]);
 
-  // --- NUEVA LÓGICA DE EXPORTACIÓN A PDF CON IA ---
+  const allFeedbacks = useMemo(() => {
+    const list: any[] = [];
+    workoutHistory.forEach(w => {
+      if (w.completed && w.completion_data) {
+        w.completion_data.exercise_results?.forEach((ex: any) => {
+          if (ex.coach_note) {
+            list.push({ date: w.date, name: ex.name, note: ex.coach_note, video: ex.recorded_video_url });
+          }
+        });
+        w.completion_data.hiit_results?.forEach((b: any) => {
+          b.hiit_exercises?.forEach((ex: any) => {
+            if (ex.coach_note) {
+              list.push({ date: w.date, name: ex.name, note: ex.coach_note, video: ex.recorded_video_url });
+            }
+          });
+        });
+      }
+    });
+    return list.sort((a, b) => b.date.localeCompare(a.date));
+  }, [workoutHistory]);
+
   const exportToPDF = async () => {
     setIsGeneratingPDF(true);
     try {
       const athleteName = selectedAthlete?.name || user?.name || 'Deportista';
       
-      // 1. Recopilar Récords (PRs) más top
       const topPRs = cleanProgression
         .filter((item: any) => item.maxW > 0)
         .sort((a: any, b: any) => b.maxW - a.maxW)
         .slice(0, 5)
         .map((item: any) => `${item.name}: ${item.maxW}${item.unit}`);
 
-      // 2. Pedir Análisis a Gemini
       let aiAnalysis = {
         workload_analysis: "Datos insuficientes para análisis.",
         progress_analysis: "Sigue registrando entrenamientos para ver tu evolución.",
@@ -344,14 +325,13 @@ export default function AnalyticsScreen() {
         }
       } catch (e) { console.log("Aviso: Error generando IA, usando template base."); }
 
-      // 3. Generar HTML con Chart.js incrustado
       const htmlContent = `
       <html>
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
-          <script src="[https://cdn.jsdelivr.net/npm/chart.js](https://cdn.jsdelivr.net/npm/chart.js)"></script>
+          <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
           <style>
-            @import url('[https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap](https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap)');
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
             body { font-family: 'Inter', sans-serif; padding: 40px; color: #1e293b; background-color: #f8fafc; }
             .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #3b82f6; padding-bottom: 20px; }
             h1 { font-size: 32px; font-weight: 900; margin: 0; color: #0f172a; text-transform: uppercase; letter-spacing: -1px; }
@@ -470,7 +450,7 @@ export default function AnalyticsScreen() {
                     plugins: {
                         legend: { position: 'bottom' }
                     },
-                    animation: { duration: 0 } // Desactivar animación para que se renderice al instante en el PDF
+                    animation: { duration: 0 }
                 }
             });
           </script>
@@ -478,17 +458,14 @@ export default function AnalyticsScreen() {
       </html>
       `;
 
-      // 4. Crear PDF e invocar el menú de compartir
       const { uri } = await Print.printToFileAsync({ html: htmlContent });
       
       if (Platform.OS === 'web') {
-         // Para web descargamos usando un enlace
          const link = document.createElement('a');
          link.href = uri;
          link.download = `Reporte_${athleteName.replace(/\s+/g, '_')}.pdf`;
          link.click();
       } else {
-         // Para móvil abrimos el diálogo nativo
          await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
       }
 
@@ -696,76 +673,16 @@ export default function AnalyticsScreen() {
     );
   };
 
-  const renderBodyMap = () => { 
-    const totalSets = Object.values(heatMap).reduce((sum, val) => sum + val, 0);
-    const sortedMuscles = Object.entries(heatMap).sort((a, b) => b[1] - a[1]);
-    const bodyData: { slug: string; intensity: number }[] = [];
-    const mapIntensity = (p: number) => { if (p === 0) return 0; if (p <= 20) return 1; if (p <= 40) return 2; if (p <= 50) return 3; return 4; };
-    const addToBody = (muscle: string, slugs: string[]) => { const s = heatMap[muscle] || 0; if (s > 0) { const p = (s / totalSets) * 100; slugs.forEach(slug => bodyData.push({ slug, intensity: mapIntensity(p) })); } };
-    addToBody('Pecho', ['chest']); addToBody('Espalda', ['trapezius', 'upper-back', 'lower-back']); addToBody('Cuádriceps', ['quadriceps']); addToBody('Isquiotibiales', ['hamstring']); addToBody('Glúteo', ['gluteal']); addToBody('Hombro', ['front-deltoids', 'back-deltoids']); addToBody('Bíceps', ['biceps']); addToBody('Tríceps', ['triceps']); addToBody('Core', ['abs', 'obliques']); addToBody('Gemelos', ['calves']); addToBody('Antebrazos', ['forearm']); addToBody('Aductores', ['adductor']); addToBody('Abductores', ['abductors']);
-
-    return (
-      <View style={{ paddingBottom: 100 }}>
-        
-        {/* Controles de Filtros */}
-        <View style={isDesktop ? styles.timeFilterContainer : { flexDirection: 'row', gap: 10, marginBottom: 20 }}>
-          <View style={styles.segmentedControl}>
-            {[ {l: 'Hoy', v: 1}, {l: '7D', v: 7}, {l: '14D', v: 14}, {l: '1 Mes', v: 30} ].map(f => (
-              <TouchableOpacity key={f.v} style={[styles.segmentBtn, bodyTimeFilter === f.v && { backgroundColor: colors.primary }]} onPress={() => setBodyTimeFilter(f.v as any)}>
-                <Text style={{ color: bodyTimeFilter === f.v ? '#FFF' : colors.textSecondary, fontWeight: '700', fontSize: 13 }}>{f.l}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </View>
-
-        <View style={isDesktop ? styles.desktopBodyLayout : { flexDirection: 'column' }}>
-          
-          {/* Silueta Unificada */}
-          <View style={isDesktop ? styles.silhouettesWrapper : { alignItems: 'center', marginBottom: 25 }}>
-            <View style={{ alignItems: 'center', justifyContent: 'center', height: isDesktop ? 450 : 350 }}>
-              <Body data={bodyData} gender="female" scale={isDesktop ? 1.3 : 0.8} colors={['#3B82F6', '#FBBF24', '#F97316', '#EF4444']} />
-            </View>
-          </View>
-
-          {/* Datos y Leyenda */}
-          <View style={isDesktop ? styles.dataWrapper : { width: '100%' }}>
-            
-            <View style={[styles.legendCard, { backgroundColor: colors.surface, borderColor: colors.border, marginBottom: 20 }]}>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary, textAlign: isDesktop ? 'left' : 'center' }]}>Distribución de Carga</Text>
-              <View style={[styles.legendGrid, !isDesktop && { justifyContent: 'center' }]}>
-                {['0%', '0-20%', '20-40%', '40-50%', '50%+'].map((l, i) => (
-                  <View key={l} style={styles.legendItem}>
-                    <View style={[styles.dot, { backgroundColor: ['#E2E8F0', '#3B82F6', '#FBBF24', '#F97316', '#EF4444'][i] }]} />
-                    <Text style={styles.legendText}>{l}</Text>
-                  </View>
-                ))}
-              </View>
-            </View>
-
-            <View style={[styles.muscleCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <Text style={[styles.cardTitle, { color: colors.textPrimary }]}>Reparto Muscular</Text>
-              {sortedMuscles.map(([m, s], i) => {
-                const p = totalSets > 0 ? ((s / totalSets) * 100) : 0;
-                return (
-                  <View key={m} style={styles.muscleRow}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Text style={{ color: colors.textSecondary, width: 25, fontWeight: '800' }}>{i + 1}</Text>
-                      <Text style={{ color: colors.textPrimary, fontWeight: '600', fontSize: 14 }}>{m}</Text>
-                    </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={{ color: colors.primary, fontWeight: '800' }}>{p.toFixed(1)}%</Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 10 }}>{s} series</Text>
-                    </View>
-                  </View>
-                );
-              })}
-            </View>
-
-          </View>
-        </View>
+  const renderVideoModal = () => (
+    <Modal visible={!!expandedVideo} transparent animationType="fade">
+      <View style={styles.fullscreenVideoOverlay}>
+        <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}>
+          <Ionicons name="close-circle" size={40} color="#FFF" />
+        </TouchableOpacity>
+        {expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
       </View>
-    );
-  };
+    </Modal>
+  );
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -787,10 +704,10 @@ export default function AnalyticsScreen() {
 
           <View style={{ paddingHorizontal: isDesktop ? 25 : 20, marginBottom: 15 }}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={isDesktop ? styles.tabsContainerDesktop : styles.tabsContainerMobile}>
-              {['summary', 'progress', 'body', 'workload', 'feedback'].map(tab => (
+              {['summary', 'progress', 'workload', 'feedback'].map(tab => (
                 <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && { backgroundColor: colors.primary }]} onPress={() => setActiveTab(tab as any)}>
                   <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>
-                    {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'body' ? 'CUERPO' : tab === 'workload' ? 'CARGA Y FATIGA' : 'FEEDBACK'}
+                    {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'workload' ? 'CARGA Y FATIGA' : 'FEEDBACK'}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -830,16 +747,40 @@ export default function AnalyticsScreen() {
                 </View>
              ) : activeTab === 'workload' ? (
                 renderWorkloadDashboard()
-             ) : activeTab === 'body' ? renderBodyMap() : <View>{(workoutHistory.filter(w => w.completed && w.completion_data?.exercise_results?.some((ex:any) => ex.coach_note)).map((w, i) => w.completion_data.exercise_results.filter((ex:any) => ex.coach_note).map((ex:any, j:number) => (<View key={`${i}-${j}`} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: colors.warning + '40' }]}><Text style={{ color: colors.textSecondary, fontSize: 12 }}>{w.date}</Text><Text style={{ color: colors.textPrimary, fontWeight: '800' }}>{ex.name}</Text><Text style={{ color: colors.textPrimary, fontStyle: 'italic' }}>"{ex.coach_note}"</Text></View>))))}</View>}
+             ) : (
+                <View>
+                  {allFeedbacks.length === 0 ? (
+                    <Text style={{color: colors.textSecondary, textAlign: 'center', marginTop: 20}}>No hay feedback técnico guardado todavía.</Text>
+                  ) : (
+                    allFeedbacks.map((fb, i) => (
+                      <View key={i} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}>
+                        <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start'}}>
+                           <View style={{flex: 1}}>
+                              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{fb.date}</Text>
+                              <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 8 }}>{fb.name}</Text>
+                              <Text style={{ color: colors.textPrimary, fontStyle: 'italic', lineHeight: 22 }}>"{fb.note}"</Text>
+                           </View>
+                           {fb.video ? (
+                             <TouchableOpacity onPress={() => setExpandedVideo(fb.video)} style={{backgroundColor: colors.primary + '20', padding: 12, borderRadius: 12, marginLeft: 15}}>
+                               <Ionicons name="play" size={28} color={colors.primary} />
+                             </TouchableOpacity>
+                           ) : null}
+                        </View>
+                      </View>
+                    ))
+                  )}
+                </View>
+             )}
           </ScrollView>
         </View>
 
-        {/* Modales (Athlete Picker, Merge, Dict) */}
         <Modal visible={showPicker} transparent animationType="slide"><TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}><View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}><Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text><ScrollView>{athletes.map(a => (<TouchableOpacity key={a.id} style={[styles.athleteItem, { borderBottomColor: colors.border }]} onPress={() => { handleSelectAthlete(a); setShowPicker(false); }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text></TouchableOpacity>))}</ScrollView></View></TouchableOpacity></Modal>
         
         <Modal visible={showMergeModal} transparent animationType="slide"><View style={styles.modalOverlay}><View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>{!mergeTargetItem ? (<><Text style={styles.modalTitle}>1. Test Principal</Text><ScrollView>{Object.values(rawItems).sort((a: any, b: any) => a.name.localeCompare(b.name)).map((item: any) => (<TouchableOpacity key={item.id} style={[styles.dictSelectBtn, { borderColor: colors.border, marginBottom: 10 }]} onPress={() => setMergeTargetItem(item)}><Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{item.name} ({item.type.toUpperCase()})</Text></TouchableOpacity>))}</ScrollView></>) : (<><Text style={styles.modalTitle}>2. Unificar con {mergeTargetItem.name}</Text><ScrollView>{Object.values(rawItems).filter((r: any) => r.id !== mergeTargetItem.id).map((r: any) => (<TouchableOpacity key={r.id} style={[styles.dictSelectBtn, { borderColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary : colors.border, backgroundColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary + '10' : 'transparent', marginBottom: 10 }]} onPress={() => toggleMerge(r.id)}><Text style={{ color: colors.textPrimary }}>{r.name}</Text></TouchableOpacity>))}</ScrollView><TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={() => setShowMergeModal(false)}><Text style={{ color: '#FFF', fontWeight: '800' }}>TERMINAR</Text></TouchableOpacity></>)}<TouchableOpacity onPress={() => setShowMergeModal(false)} style={{marginTop:15, alignItems:'center'}}><Text style={{color:colors.textSecondary}}>Cancelar</Text></TouchableOpacity></View></View></Modal>
 
         <Modal visible={showDictModal} transparent animationType="slide"><View style={styles.modalOverlay}><View style={[styles.modalContent, { backgroundColor: colors.surface }]}><Text style={styles.modalTitle}>Editar Diccionario: {dictTargetExercise}</Text><ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{ALL_MUSCLES.map(m => (<TouchableOpacity key={m} style={[styles.dictSelectBtn, { borderColor: colors.border, backgroundColor: dictSelectedMuscles.includes(m) ? colors.primary : 'transparent' }]} onPress={() => toggleDictMuscle(m)}><Text style={{ color: dictSelectedMuscles.includes(m) ? '#FFF' : colors.textPrimary }}>{m}</Text></TouchableOpacity>))}</ScrollView><TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={saveDictMuscles}><Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR</Text></TouchableOpacity></View></View></Modal>
+        
+        {renderVideoModal()}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -862,21 +803,6 @@ const styles = StyleSheet.create({
   summaryLabel: { fontSize: 12, color: '#888' },
   summaryDivider: { width: 1, backgroundColor: 'rgba(0,0,0,0.1)' },
   
-  // Elementos unificados Body/Filtros
-  segmentedControl: { flexDirection: 'row', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: 12, padding: 4, width: '100%' },
-  segmentBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 },
-  timeFilterContainer: { flexDirection: 'row', justifyContent: 'center', marginBottom: 30 },
-  desktopBodyLayout: { flexDirection: 'row', gap: 30, alignItems: 'flex-start' },
-  silhouettesWrapper: { flex: 1.5, alignItems: 'center' },
-  dataWrapper: { flex: 1 },
-  legendCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
-  legendGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  dot: { width: 14, height: 14, borderRadius: 4 },
-  legendText: { fontSize: 12, fontWeight: '700', color: '#666' },
-  muscleCard: { padding: 20, borderRadius: 20, borderWidth: 1 },
-  muscleRow: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-
   measurementsContainer: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
   measurementsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
   measureBadge: { flex: 1, minWidth: '45%', padding: 15, borderRadius: 16, borderWidth: 1 },
@@ -900,5 +826,8 @@ const styles = StyleSheet.create({
   confirmBtn: { padding: 18, borderRadius: 15, alignItems: 'center', marginTop: 30 },
   modalOverlayPicker: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContentPicker: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30, maxHeight: '80%' },
-  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
+  athleteItem: { paddingVertical: 18, borderBottomWidth: 1 },
+  fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
+  fullVideo: { width: '100%', height: '80%' },
+  closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }
 });
