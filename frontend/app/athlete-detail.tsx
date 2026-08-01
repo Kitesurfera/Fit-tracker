@@ -90,7 +90,6 @@ export default function AthleteDetailScreen() {
   const [duplicateDate, setDuplicateDate] = useState(getLocalDateStr(new Date()));
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
 
-  // <-- ESTADO PARA CHAT GEMINI Y WELLNESS -->
   const [isChatVisible, setChatVisible] = useState(false);
   const [showWellnessModal, setShowWellnessModal] = useState(false);
 
@@ -409,11 +408,11 @@ export default function AthleteDetailScreen() {
           </View>
         )}
 
-    {/* BOTONES DE ACCESO RÁPIDO A PESTAÑAS */}
+    {/* <-- BOTONES DE ACCESO RÁPIDO A PESTAÑAS (CORREGIDOS) --> */}
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25, marginTop: 5 }}>
             <TouchableOpacity 
               style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
-              onPress={() => router.push('/(tabs)/calendar')}
+              onPress={() => router.push(`/(tabs)/calendar?athlete_id=${params.id}`)}
             >
               <Ionicons name="calendar-outline" size={22} color={colors.primary} />
               <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Calendario</Text>
@@ -421,7 +420,7 @@ export default function AthleteDetailScreen() {
           
             <TouchableOpacity 
               style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
-              onPress={() => router.push('/(tabs)/analytics')}
+              onPress={() => router.push(`/(tabs)/analytics?athlete_id=${params.id}`)}
             >
               <Ionicons name="trending-up-outline" size={22} color={colors.primary} />
               <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Analíticas</Text>
@@ -429,7 +428,7 @@ export default function AthleteDetailScreen() {
     
             <TouchableOpacity 
               style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
-              onPress={() => router.push('/(tabs)/tests')}
+              onPress={() => router.push(`/(tabs)/tests?athlete_id=${params.id}`)}
             >
               <Ionicons name="fitness-outline" size={22} color={colors.primary} />
               <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Tests</Text>
