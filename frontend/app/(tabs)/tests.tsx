@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator,
   Alert, Modal, TextInput, Platform, ScrollView, KeyboardAvoidingView, Dimensions
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
@@ -39,12 +39,17 @@ export default function TestsScreen() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const router = useRouter();
+  const params = useLocalSearchParams<{ athlete_id?: string }>();
+  
   const isTrainer = user?.role === 'trainer';
   
   const [tests, setTests] = useState<any[]>([]);
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
-  const [selectedAthlete, setSelectedAthlete] = useState<string | null>(null);
+  
+  // <-- INICIALIZAMOS CON EL PARÁMETRO DE LA RUTA SI EXISTE -->
+  const [selectedAthlete, setSelectedAthlete] = useState<string | null>(params.athlete_id || null);
+  
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [dynamicCategories, setDynamicCategories] = useState(INITIAL_CATEGORIES);
@@ -52,7 +57,6 @@ export default function TestsScreen() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [showCustomModal, setShowCustomModal] = useState(false);
   
-  // <-- ESTADO PARA EL SELECTOR DE DEPORTISTAS -->
   const [showPicker, setShowPicker] = useState(false);
   
   const [editTest, setEditTest] = useState<any>(null);
@@ -69,14 +73,15 @@ export default function TestsScreen() {
     notes: ''
   });
 
-  const loadData = async () => {
+  const loadData = async (athleteIdToUse?: string | null) => {
     try {
-      const params: any = {};
-      if (selectedCategory !== 'all') params.test_type = selectedCategory;
-      if (selectedAthlete) params.athlete_id = selectedAthlete;
-      if (!isTrainer && user?.id) params.athlete_id = user.id;
+      const targetAthlete = athleteIdToUse !== undefined ? athleteIdToUse : selectedAthlete;
+      const queryParams: any = {};
+      if (selectedCategory !== 'all') queryParams.test_type = selectedCategory;
+      if (targetAthlete) queryParams.athlete_id = targetAthlete;
+      if (!isTrainer && user?.id) queryParams.athlete_id = user.id;
 
-      const ts = await api.getTests(params);
+      const ts = await api.getTests(queryParams);
       const rawTests = Array.isArray(ts) ? ts : (ts?.data || []);
       const filteredTests = rawTests.filter(t => t.test_type !== 'medicion');
 
@@ -91,21 +96,42 @@ export default function TestsScreen() {
 
   useEffect(() => {
     const initTrainer = async () => {
-      if (isTrainer && athletes.length === 0) {
-        const ath = await api.getAthletes();
-        const athList = Array.isArray(ath) ? ath : (ath?.data || []);
-        setAthletes(athList);
-        if (athList.length > 0 && !selectedAthlete) {
-          setSelectedAthlete(athList[0].id);
-          return; // El cambio de estado relanzará el useEffect
+      if (isTrainer) {
+        try {
+          const ath = await api.getAthletes();
+          const athList = Array.isArray(ath) ? ath : (ath?.data || []);
+          setAthletes(athList);
+
+          // Si nos pasan un athlete_id por parámetro, nos aseguramos de usarlo
+          if (params.athlete_id) {
+            setSelectedAthlete(params.athlete_id);
+            loadData(params.athlete_id);
+          } else if (athList.length > 0 && !selectedAthlete) {
+            setSelectedAthlete(athList[0].id);
+            loadData(athList[0].id);
+          } else {
+            loadData(selectedAthlete);
+          }
+        } catch (e) {
+          console.log("Error cargando lista de atletas:", e);
+          loadData(selectedAthlete);
         }
+      } else {
+        loadData(selectedAthlete);
       }
-      loadData();
     };
     initTrainer();
-  }, [selectedCategory, selectedAthlete]);
+  }, [selectedCategory, params.athlete_id]);
 
-  const onRefresh = () => { setRefreshing(true); loadData(); };
+  // Recargar al cambiar de deportista desde el selector interno
+  const handleSelectAthlete = (athleteId: string) => {
+    setSelectedAthlete(athleteId);
+    setShowPicker(false);
+    setLoading(true);
+    loadData(athleteId);
+  };
+
+  const onRefresh = () => { setRefreshing(true); loadData(selectedAthlete); };
 
   const deleteTest = (testId: string, testName: string) => {
     const performDelete = async () => {
@@ -182,7 +208,7 @@ export default function TestsScreen() {
         await api.createTest(payload);
       }
 
-      await loadData();
+      await loadData(selectedAthlete);
       setShowCustomModal(false);
 
     } catch (e: any) {
@@ -207,14 +233,13 @@ export default function TestsScreen() {
           ListHeaderComponent={
             <View style={{ marginBottom: 20 }}>
               <View style={styles.headerRow}>
-                <View>
-                  <Text style={[styles.screenTitle, { color: colors.textPrimary }]}>
-                    {isTrainer ? (athletes.find(a => a.id === selectedAthlete)?.name || 'Cargando...') : 'Tests Físicos'}
+                <View style={{ flex: 1, marginRight: 10 }}>
+                  <Text style={[styles.screenTitle, { color: colors.textPrimary }]} numberOfLines={1}>
+                    {isTrainer ? (athletes.find(a => a.id === selectedAthlete)?.name || 'Tests del Deportista') : 'Tests Físicos'}
                   </Text>
                   {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Vista Entrenador</Text>}
                 </View>
                 <View style={styles.headerActions}>
-                  {/* <-- BOTÓN DE SELECCIÓN DE DEPORTISTA --> */}
                   {isTrainer && (
                     <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.refreshIcon}>
                       <Ionicons name="people" size={24} color={colors.primary} />
@@ -287,7 +312,7 @@ export default function TestsScreen() {
         />
       </View>
 
-      {/* <-- MODAL SELECTOR DE DEPORTISTA --> */}
+      {/* MODAL SELECTOR DE DEPORTISTA */}
       <Modal visible={showPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}>
           <View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}>
@@ -297,7 +322,7 @@ export default function TestsScreen() {
                 <TouchableOpacity 
                   key={a.id} 
                   style={[styles.athleteItem, { borderBottomColor: colors.border }]} 
-                  onPress={() => { setSelectedAthlete(a.id); setShowPicker(false); }}
+                  onPress={() => handleSelectAthlete(a.id)}
                 >
                   <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text>
                 </TouchableOpacity>
@@ -493,7 +518,6 @@ const styles = StyleSheet.create({
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 10 },
   modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' },
   
-  // <-- ESTILOS DEL SELECTOR DE DEPORTISTAS -->
   modalOverlayPicker: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContentPicker: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30, maxHeight: '80%' },
   athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
