@@ -746,8 +746,10 @@ export default function CalendarScreen() {
 
       <ScrollView contentContainerStyle={{ padding: isDesktop ? 40 : 16, paddingBottom: 100, flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 40 : 16 }} showsVerticalScrollIndicator={false}>
         
-        {/* === COLUMNA IZQUIERDA (Calendario / Vista Semana) === */}
-        <View style={[{flex: isDesktop ? 1.5 : 1}]}>
+        {/* === COLUMNA IZQUIERDA (Calendario / Vista Semana) === 
+            Fix: En móvil aplicamos width 100% (eliminando flex: 1) para evitar superposición
+        */}
+        <View style={isDesktop ? { flex: 1.5 } : { width: '100%' }}>
           
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
             {updating && <View style={[styles.absoluteLoading, {backgroundColor: 'rgba(255,255,255,0.7)'}]}><ActivityIndicator size="small" color={colors.primary} /></View>}
@@ -966,8 +968,10 @@ export default function CalendarScreen() {
           )}
         </View>
 
-        {/* === COLUMNA DERECHA (Detalles del día seleccionado) === */}
-        <View style={[{flex: isDesktop ? 1 : 1}]}>
+        {/* === COLUMNA DERECHA (Detalles del día seleccionado) === 
+            Fix: En móvil aplicamos width 100% para evitar superposición
+        */}
+        <View style={isDesktop ? { flex: 1 } : { width: '100%' }}>
           <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary, marginBottom: 15 }}>
             {selectedDate === localTodayStr ? 'Hoy, ' : ''}
             {selectedDate.split('-').reverse().join('/')}
@@ -1328,8 +1332,8 @@ const styles = StyleSheet.create({
   dayHeaderText: { width: '14.28%', textAlign: 'center', fontSize: 11, fontWeight: '700' },
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap', width: '100%' },
   
-  // SOLUCIÓN AL SOLAPAMIENTO: Porcentaje fijo 14.28% para los 7 días y padding/margin controlados.
-  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', borderRadius: 8, padding: 2, marginVertical: 2 },
+  // SOLUCIÓN AL SOLAPAMIENTO INTERNO EN MÓVIL: Quitamos aspectRatio y usamos padding para que se autoajuste.
+  dayCell: { width: '14.28%', minHeight: 52, justifyContent: 'center', alignItems: 'center', borderRadius: 8, paddingVertical: 4, marginVertical: 2 },
   dateNumberContainer: { width: 26, height: 26, justifyContent: 'center', alignItems: 'center' },
   dayText: { fontSize: 14, fontWeight: '500' },
   cellIconsRow: { flexDirection: 'row', gap: 4, marginTop: 2, minHeight: 14, alignItems: 'center', justifyContent: 'center' },
