@@ -717,6 +717,12 @@ export default function CalendarScreen() {
         </View>
 
         <View style={styles.headerActionsRight}>
+          {isFemale && (
+            <TouchableOpacity onPress={openCycleSettings} style={[styles.iconBtn, { backgroundColor: '#EF444415' }]}>
+               <Ionicons name="water" size={20} color="#EF4444" />
+            </TouchableOpacity>
+          )}
+
           {workoutToCopy && <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: (colors.error || '#EF4444') + '20' }]}><Ionicons name="close" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>}
           
           {isExtraSportEnabled && (
@@ -781,8 +787,8 @@ export default function CalendarScreen() {
                           // Resalte de Microciclo (fondo de toda la celda)
                           status?.phaseColor && { backgroundColor: status.phaseColor + '20' },
                           // Borde de selección
-                          isSelected && !isCopyTarget && { borderWidth: 2, borderColor: colors.primary },
-                          isCopyTarget && { backgroundColor: colors.success + '20', borderWidth: 2, borderColor: colors.success }
+                          isSelected && !isCopyTarget && { borderWidth: 1.5, borderColor: colors.primary },
+                          isCopyTarget && { backgroundColor: colors.success + '20', borderWidth: 1.5, borderColor: colors.success }
                         ]}
                       >
                         {/* Círculo de número (resalta si hay entrenamiento) */}
@@ -924,13 +930,6 @@ export default function CalendarScreen() {
                   );
                 })}
               </ScrollView>
-            )}
-
-            {isFemale && (
-              <TouchableOpacity onPress={openCycleSettings} style={{ flexDirection: 'row', justifyContent: 'center', alignItems: 'center', marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
-                <Ionicons name="water" size={14} color="#EF4444" />
-                <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary, marginLeft: 6 }}>Ajustar Ciclo / Ver Detalles</Text>
-              </TouchableOpacity>
             )}
             
             {workoutToCopy && (
@@ -1170,7 +1169,20 @@ export default function CalendarScreen() {
             <View style={{ marginBottom: 25 }}>
               <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA DEL ÚLTIMO PERIODO (AAAA-MM-DD)</Text>
               <TextInput style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} value={lastPeriodDateInput} onChangeText={setLastPeriodDateInput} placeholder="Ej: 2026-03-21" placeholderTextColor={colors.textSecondary} />
-              <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 6, fontStyle: 'italic' }}>*Esto recalibrará el calendario inmediatamente.</Text>
+              
+              {/* Botones de acción rápida para facilitar la vida */}
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                 <TouchableOpacity style={{ flex: 1, padding: 10, backgroundColor: colors.surfaceHighlight, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: colors.border }} onPress={() => setLastPeriodDateInput(localTodayStr)}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textPrimary }}>Empezó hoy</Text>
+                 </TouchableOpacity>
+                 <TouchableOpacity style={{ flex: 1, padding: 10, backgroundColor: colors.surfaceHighlight, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: colors.border }} onPress={() => {
+                    const d = new Date(); d.setDate(d.getDate() - 1);
+                    setLastPeriodDateInput(getLocalDateStr(d));
+                 }}>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textPrimary }}>Empezó ayer</Text>
+                 </TouchableOpacity>
+              </View>
+              <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>*Esto recalibrará el calendario inmediatamente.</Text>
             </View>
 
             <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleSaveCycleSettings} disabled={updating}>
@@ -1310,13 +1322,15 @@ const styles = StyleSheet.create({
   calendarHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   arrowBtn: { padding: 8 },
   monthYearText: { fontSize: 18, fontWeight: '800', textAlign: 'center', textTransform: 'capitalize' },
-  daysHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingHorizontal: 2 },
-  dayHeaderText: { flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700' },
-  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 2 },
   
-  // Cambios de estilos para la celda de cada día
-  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', marginBottom: 6, borderRadius: 10 },
-  dateNumberContainer: { width: 28, height: 28, justifyContent: 'center', alignItems: 'center' },
+  // SOLUCIÓN A LOS MÁRGENES: Forzamos el ancho máximo.
+  daysHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, width: '100%' },
+  dayHeaderText: { width: '14.28%', textAlign: 'center', fontSize: 11, fontWeight: '700' },
+  daysGrid: { flexDirection: 'row', flexWrap: 'wrap', width: '100%' },
+  
+  // SOLUCIÓN AL SOLAPAMIENTO: Porcentaje fijo 14.28% para los 7 días y padding/margin controlados.
+  dayCell: { width: '14.28%', aspectRatio: 1, justifyContent: 'center', alignItems: 'center', borderRadius: 8, padding: 2, marginVertical: 2 },
+  dateNumberContainer: { width: 26, height: 26, justifyContent: 'center', alignItems: 'center' },
   dayText: { fontSize: 14, fontWeight: '500' },
   cellIconsRow: { flexDirection: 'row', gap: 4, marginTop: 2, minHeight: 14, alignItems: 'center', justifyContent: 'center' },
   
