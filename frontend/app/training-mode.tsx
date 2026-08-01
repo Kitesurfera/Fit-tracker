@@ -446,12 +446,13 @@ export default function TrainingModeScreen() {
                 const loadedLogs: Record<number, any> = {};
                 const loadedSets: Record<number, SetStatus[]> = {};
                 currentWorkout.completion_data.exercise_results?.forEach((res: any, idx: number) => {
-                  loadedLogs[idx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '', coach_note: res.coach_note || '' };
-                  if (res.recorded_video_url) savedVideos[idx.toString()] = res.recorded_video_url;
+                  const exIdx = res.exercise_index !== undefined ? res.exercise_index : idx;
+                  loadedLogs[exIdx] = { weight: res.logged_weight || '', reps: res.logged_reps || '', note: res.athlete_note || '', coach_note: res.coach_note || '' };
+                  if (res.recorded_video_url) savedVideos[exIdx.toString()] = res.recorded_video_url;
                   if (res.set_details) {
-                    loadedSets[idx] = res.set_details.map((sd: any) => sd.status);
+                    loadedSets[exIdx] = res.set_details.map((sd: any) => sd.status);
                   } else {
-                    loadedSets[idx] = Array(res.total_sets).fill('completed');
+                    loadedSets[exIdx] = Array(res.total_sets).fill('completed');
                   }
                 });
                 setLogs(loadedLogs);
@@ -1218,9 +1219,13 @@ export default function TrainingModeScreen() {
                 {note ? <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 2 }}>📝 Nota: {note}</Text> : null}
                 
                 {vid && (
-                  <View style={{ marginTop: 10, alignSelf: 'flex-start' }}>
-                    <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
-                  </View>
+                  <TouchableOpacity 
+                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: colors.primary + '15', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.primary + '30' }}
+                    onPress={() => setExpandedVideo(vid)}
+                  >
+                    <Ionicons name="play-circle" size={24} color={colors.primary} />
+                    <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '800', flex: 1 }}>Ver vídeo de técnica del atleta</Text>
+                  </TouchableOpacity>
                 )}
                 
                 {isTrainer ? (
@@ -1276,9 +1281,13 @@ export default function TrainingModeScreen() {
             {log?.note && <Text style={{ color: colors.textSecondary, fontSize: 14, fontStyle: 'italic', marginTop: 6 }}>📝 Nota: {log.note}</Text>}
             
             {vid && (
-              <View style={{ marginTop: 10, alignSelf: 'flex-start' }}>
-                <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
-              </View>
+              <TouchableOpacity 
+                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: colors.primary + '15', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.primary + '30' }}
+                onPress={() => setExpandedVideo(vid)}
+              >
+                <Ionicons name="play-circle" size={24} color={colors.primary} />
+                <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '800', flex: 1 }}>Ver vídeo de técnica del atleta</Text>
+              </TouchableOpacity>
             )}
 
             {isTrainer ? (
@@ -1361,7 +1370,7 @@ export default function TrainingModeScreen() {
             <Text style={[styles.finishedSubtitle, { color: colors.textSecondary }]}>¿Cómo te has sentido hoy?</Text>
             
             {!workout.completed && (
-              <View style={{ width: '100%', gap: 24, marginTop: 10 }}>
+              <View style={{ alignSelf: 'stretch', gap: 24, marginTop: 10 }}>
                 <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>NIVEL DE ESFUERZO (RPE)</Text>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => { const isSelected = rpe === num; let c = (num >= 8) ? (colors.error || '#EF4444') : (num >= 4) ? (colors.warning || '#F59E0B') : (colors.success || '#10B981'); return ( <TouchableOpacity key={num} onPress={() => setRpe(num)} style={[styles.rpeCircle, { borderColor: colors.border }, isSelected && { backgroundColor: c, borderColor: c }]}><Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textSecondary }]}>{num}</Text></TouchableOpacity> ); })}</View>
                 </View>
@@ -1369,7 +1378,7 @@ export default function TrainingModeScreen() {
                 
                 <View>
                   <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA O IMPACTO</Text>
-                  <View style={{ width: '100%', backgroundColor: colors.surfaceHighlight, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border }}>
+                  <View style={{ backgroundColor: colors.surfaceHighlight, borderRadius: 12, overflow: 'hidden', borderWidth: 1, borderColor: soreJoints.length > 0 ? (colors.error || '#EF4444') : colors.border }}>
                     <TouchableOpacity
                       style={{ padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
                       onPress={() => setIsPainSelectorOpen(!isPainSelectorOpen)}
@@ -1419,13 +1428,13 @@ export default function TrainingModeScreen() {
               </View>
             )}
 
-            <View style={{ width: '100%', marginTop: 30 }}>
+            <View style={{ alignSelf: 'stretch', marginTop: 30 }}>
               <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 15, textAlign: 'center' }]}>RESUMEN DE EJERCICIOS</Text>
               {renderSessionSummary()}
             </View>
 
             {workout.completed && workout.completion_data && (
-              <View style={{ width: '100%', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
+              <View style={{ alignSelf: 'stretch', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
                 <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Feedback General:</Text>
                 {workout.completion_data.duration_seconds && (
                   <Text style={{ color: colors.textPrimary, marginBottom: 4 }}>⏱ Tiempo Activo: {formatGlobalTime(workout.completion_data.duration_seconds)}</Text>
@@ -1620,9 +1629,10 @@ export default function TrainingModeScreen() {
             </View>
 
             <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
-               <View style={{ flexDirection: 'row', width: '100%' }}>
+               <View style={{ flexDirection: 'row', gap: 12 }}>
                  <TextInput 
-                    style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary, marginRight: 6 }]} 
+                    key={`weight-${currentExIndex}`}
+                    style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} 
                     placeholder="Kilos" 
                     placeholderTextColor={colors.textSecondary} 
                     keyboardType="numeric" 
@@ -1630,7 +1640,8 @@ export default function TrainingModeScreen() {
                     onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} 
                  />
                  <TextInput 
-                    style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary, marginLeft: 6 }]} 
+                    key={`reps-${currentExIndex}`}
+                    style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} 
                     placeholder="Reps" 
                     placeholderTextColor={colors.textSecondary} 
                     keyboardType="numeric" 
@@ -1639,7 +1650,8 @@ export default function TrainingModeScreen() {
                  />
                </View>
                <TextInput 
-                  style={[styles.logInput, { borderColor: colors.border, marginTop: 12, minHeight: 60, backgroundColor: colors.background, color: colors.textPrimary, width: '100%' }]} 
+                  key={`note-${currentExIndex}`}
+                  style={[styles.logInput, { borderColor: colors.border, marginTop: 12, minHeight: 60, backgroundColor: colors.background, color: colors.textPrimary }]} 
                   multiline 
                   placeholder="Anotaciones de la serie..." 
                   placeholderTextColor={colors.textSecondary} 
@@ -1672,13 +1684,13 @@ export default function TrainingModeScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 }, topBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 }, topTitle: { fontSize: 16, fontWeight: '700' }, topProgress: { fontSize: 14, fontWeight: '600' }, progressBar: { height: 4, marginHorizontal: 16, borderRadius: 2, backgroundColor: '#EEE' }, progressFill: { height: '100%', borderRadius: 2 }, content: { padding: 20, paddingBottom: 100, gap: 16 },
-  compactExerciseCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, compactExHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, compactExName: { fontSize: 18, fontWeight: '800', flex: 1 }, compactDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 16, gap: 10 }, compactDetailItem: { minWidth: '28%' }, compactDetailLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 }, compactDetailValue: { fontSize: 17, fontWeight: '700' },
+  compactExerciseCard: { borderRadius: 16, borderWidth: 1, overflow: 'hidden' }, compactExHeader: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, compactExName: { fontSize: 18, fontWeight: '800', flex: 1 }, compactDetailsGrid: { flexDirection: 'row', flexWrap: 'wrap', padding: 16, gap: 10 }, compactDetailItem: { flex: 1, minWidth: '30%' }, compactDetailLabel: { fontSize: 11, fontWeight: '600', textTransform: 'uppercase', marginBottom: 2 }, compactDetailValue: { fontSize: 17, fontWeight: '700' },
   setsCard: { borderRadius: 16, padding: 20 }, setsGrid: { flexDirection: 'row', gap: 10, flexWrap: 'wrap' }, setCircle: { width: 44, height: 44, borderRadius: 22, borderWidth: 2, justifyContent: 'center', alignItems: 'center' }, recordBtn: { borderWidth: 1, borderRadius: 12, padding: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', borderStyle: 'dashed' },
   bottomNav: { position: 'absolute', bottom: 0, left: 0, right: 0, flexDirection: 'row', justifyContent: 'space-between', padding: 20, borderTopWidth: 0.5, paddingBottom: 35 },
-  activeLogContainer: { width: '100%' }, logInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 },
-  finishedIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.1)' }, finishedTitle: { fontSize: 26, fontWeight: '900', textAlign: 'center' }, finishedSubtitle: { fontSize: 15, textAlign: 'center', marginBottom: 20 }, finishWorkoutBtn: { padding: 18, borderRadius: 16, alignItems: 'center', width: '100%', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
+  activeLogContainer: { alignSelf: 'stretch' }, logInput: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 15 },
+  finishedIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.1)' }, finishedTitle: { fontSize: 26, fontWeight: '900', textAlign: 'center' }, finishedSubtitle: { fontSize: 15, textAlign: 'center', marginBottom: 20 }, finishWorkoutBtn: { padding: 18, borderRadius: 16, alignItems: 'center', alignSelf: 'stretch', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
   label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }, rpeCircle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 13, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, fontSize: 15, textAlignVertical: 'top' },
-  summaryCard: { padding: 16, borderRadius: 16, marginBottom: 12, width: '100%' },
+  summaryCard: { padding: 16, borderRadius: 16, marginBottom: 12, alignSelf: 'stretch' },
   miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 },
   floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 },
