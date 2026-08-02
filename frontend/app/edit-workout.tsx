@@ -144,6 +144,28 @@ export default function EditWorkoutScreen() {
     })));
   };
 
+  const moveToTop = (bIndex: number) => {
+    if (bIndex === 0) return;
+    const newBlocks = [...exerciseBlocks];
+    const [movedBlock] = newBlocks.splice(bIndex, 1);
+    newBlocks.unshift(movedBlock);
+    setExercises(newBlocks.flatMap(b => b.exercises.map((e: any) => {
+      const { originalIndex, ...rest } = e;
+      return rest;
+    })));
+  };
+
+  const moveToBottom = (bIndex: number) => {
+    if (bIndex === exerciseBlocks.length - 1) return;
+    const newBlocks = [...exerciseBlocks];
+    const [movedBlock] = newBlocks.splice(bIndex, 1);
+    newBlocks.push(movedBlock);
+    setExercises(newBlocks.flatMap(b => b.exercises.map((e: any) => {
+      const { originalIndex, ...rest } = e;
+      return rest;
+    })));
+  };
+
   const removeBlock = (bIndex: number) => {
     const newBlocks = exerciseBlocks.filter((_, i) => i !== bIndex);
     setExercises(newBlocks.flatMap(b => b.exercises.map((e: any) => {
@@ -315,7 +337,7 @@ export default function EditWorkoutScreen() {
       payloadData.exercises = exercises.filter(e => e.name.trim()).map(ex => ({
         name: ex.name, sets: ex.sets, reps: ex.reps, duration: ex.duration, weight: ex.weight,
         rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes, is_unilateral: !!ex.is_unilateral,
-        group_id: ex.group_id || null, group_name: ex.group_name || null // <-- Guardamos la agrupación
+        group_id: ex.group_id || null, group_name: ex.group_name || null
       }));
     } else {
       payloadData.exercises = hiitBlocks.map(block => ({
@@ -479,7 +501,22 @@ export default function EditWorkoutScreen() {
                     <View key={`group-${block.group_id}-${bIndex}`} style={{ marginBottom: 10, borderRadius: 12, borderWidth: 2, borderColor: colors.primary, overflow: 'hidden' }}>
                       <View style={{ backgroundColor: colors.primary + '20', padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                         <Text style={{ fontWeight: '800', color: colors.primary, fontSize: 14 }}>💊 {block.group_name}</Text>
-                        <View style={{ flexDirection: 'row', gap: 6 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          {/* Botón dinámico extremo */}
+                          {bIndex === 0 ? (
+                            <TouchableOpacity onPress={() => moveToBottom(bIndex)} style={[styles.dynamicJumpBtn, { backgroundColor: colors.primary }]}>
+                              <Text style={styles.dynamicJumpText}>Bajar al final ⬇️</Text>
+                            </TouchableOpacity>
+                          ) : bIndex === exerciseBlocks.length - 1 ? (
+                            <TouchableOpacity onPress={() => moveToTop(bIndex)} style={[styles.dynamicJumpBtn, { backgroundColor: colors.primary }]}>
+                              <Text style={styles.dynamicJumpText}>Subir princ. ⬆️</Text>
+                            </TouchableOpacity>
+                          ) : (
+                            <TouchableOpacity onPress={() => moveToTop(bIndex)} style={[styles.dynamicJumpBtn, { backgroundColor: colors.primary + '80' }]}>
+                              <Text style={styles.dynamicJumpText}>⬆️ / ⬇️</Text>
+                            </TouchableOpacity>
+                          )}
+
                           {bIndex > 0 && <TouchableOpacity onPress={() => moveBlockUp(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-up" size={20} color={colors.primary} /></TouchableOpacity>}
                           {bIndex < exerciseBlocks.length - 1 && <TouchableOpacity onPress={() => moveBlockDown(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-down" size={20} color={colors.primary} /></TouchableOpacity>}
                           <TouchableOpacity onPress={() => removeBlock(bIndex)} style={styles.iconBtn}><Ionicons name="trash" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
@@ -699,5 +736,7 @@ const styles = StyleSheet.create({
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
   csvSection: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
   csvBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  saveBtnBig: { paddingVertical: 16, borderRadius: 15, alignItems: 'center' }
+  saveBtnBig: { paddingVertical: 16, borderRadius: 15, alignItems: 'center' },
+  dynamicJumpBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  dynamicJumpText: { color: '#FFF', fontSize: 11, fontWeight: '800' }
 });
