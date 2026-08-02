@@ -21,13 +21,12 @@ import { api } from '../src/api';
 // --- IMPORTACIONES PARA GOOGLE OAUTH ---
 import * as WebBrowser from 'expo-web-browser';
 import * as Google from 'expo-auth-session/providers/google';
+import * as AuthSession from 'expo-auth-session'; // <-- 1. AÑADIDO: Para generar la URI en Web
 
 // Cierra la sesión del navegador web de Expo si se queda pillada
 WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
-  // ⚠️ Asegúrate de tener una función en AuthContext que acepte el token directamente
-  // Por ejemplo: loginWithToken(token, user)
   const { user, loading, login, register, loginWithToken } = useAuth() as any; 
   const router = useRouter();
   const { colors } = useTheme();
@@ -42,20 +41,25 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  // --- CONFIGURACIÓN DE GOOGLE OAUTH ---
+  // --- 2. CONFIGURACIÓN DE GOOGLE OAUTH CORREGIDA PARA WEB ---
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com',
+    webClientId: '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com', // <-- OBLIGATORIO PARA WEB
     androidClientId: '351214985492-ahg14f57mak2mcj47q6jucsvcieu4dq9.apps.googleusercontent.com',
     iosClientId: '351214985492-r7k26kmllj5j7nef3bpdcv8vg5c4robk.apps.googleusercontent.com',
+    redirectUri: AuthSession.makeRedirectUri(), // <-- GARANTIZA COMPATIBILIDAD EN FIREFOX/WEB
     prompt: 'select_account',
   });
 
-  // Escucha la respuesta del navegador de Google
+  // 3. CAPTURA DEL TOKEN MÁS ROBUSTA PARA WEB Y MÓVIL
   useEffect(() => {
     if (response?.type === 'success') {
-      const { id_token } = response.params;
-      if (id_token) {
-        handleGoogleLoginToBackend(id_token);
+      // En Expo Web moderno suele venir en authentication?.idToken
+      const idToken = response.authentication?.idToken || response.params?.id_token;
+      if (idToken) {
+        handleGoogleLoginToBackend(idToken);
+      } else {
+        setError("No se pudo obtener el ID Token de Google.");
       }
     } else if (response?.type === 'error') {
       setError("No se pudo completar el inicio de sesión con Google.");
@@ -66,11 +70,9 @@ export default function LoginScreen() {
     setIsGoogleLoading(true);
     setError('');
     try {
-      // Si está en modo registro, pedimos rol de trainer, si no, atleta
       const role = isLoginValue ? 'athlete' : 'trainer';
       const data = await api.googleLogin(idToken, role);
       
-      // Guardamos la sesión (necesitarás este método en tu AuthContext)
       if (loginWithToken) {
         await loginWithToken(data.token, data.user);
       } else {
@@ -129,7 +131,6 @@ export default function LoginScreen() {
           contentContainerStyle={styles.scrollContent} 
           keyboardShouldPersistTaps="handled"
         >
-          {/* SECCIÓN DEL LOGO Y NOMBRE APP */}
           <View style={styles.header}>
             <Image
               source={require('../assets/images/icon.png')}
@@ -214,14 +215,12 @@ export default function LoginScreen() {
               )}
             </TouchableOpacity>
 
-            {/* --- SEPARADOR GOOGLE --- */}
             <View style={styles.dividerContainer}>
               <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
               <Text style={[styles.dividerText, { color: colors.textSecondary }]}>O continúa con</Text>
               <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
             </View>
 
-            {/* --- BOTÓN DE GOOGLE --- */}
             <TouchableOpacity 
               style={[styles.googleBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}
               onPress={() => promptAsync()}
@@ -301,8 +300,6 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   mainBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800', letterSpacing: 1 },
-  
-  // Nuevos estilos para Google Auth
   dividerContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 10 },
   dividerLine: { flex: 1, height: 1 },
   dividerText: { marginHorizontal: 16, fontSize: 12, fontWeight: '600', textTransform: 'uppercase' },
@@ -316,7 +313,6 @@ const styles = StyleSheet.create({
     borderWidth: 1 
   },
   googleBtnText: { fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
-  
   toggleBtn: { alignItems: 'center', paddingVertical: 20 },
   toggleText: { fontSize: 14 },
 });
