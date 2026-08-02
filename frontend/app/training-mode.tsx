@@ -8,7 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode, Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
@@ -134,6 +134,7 @@ export default function TrainingModeScreen() {
   const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string, coach_note?: string}>>({});
   
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
+  const [localVideoUris, setLocalVideoUris] = useState<Record<string, string>>({}); // <-- Fix: Caché local rápida
   const [videoUploading, setVideoUploading] = useState<string | null>(null);
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
   
@@ -196,6 +197,9 @@ export default function TrainingModeScreen() {
   const [isLandmineMode, setIsLandmineMode] = useState(false);
   const [athleteHeight, setAthleteHeight] = useState('170'); 
 
+  // Merged object para mostrar siempre la URL local si existe, previniendo errores de carga 404 del servidor
+  const displayVideos = { ...recordedVideos, ...localVideoUris };
+
   const adjustReps = (reps: string | number | undefined | null) => {
     if (!reps) return null;
     return String(reps).replace(/\d+/g, (match) => {
@@ -222,6 +226,16 @@ export default function TrainingModeScreen() {
         } catch (e) { console.log("⚠️ Error cargando preferencias:", e); }
       };
       loadPreferences();
+      
+      // Reseteamos el modo de Audio al entrar para evitar que la app se quede en "Modo grabación"
+      if (Platform.OS !== 'web') {
+        Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          playThroughEarpieceAndroid: false,
+          staysActiveInBackground: false,
+        }).catch(() => {});
+      }
       
       if (Platform.OS === 'web') {
         const unlockAudioOnInteraction = () => {
@@ -306,7 +320,7 @@ export default function TrainingModeScreen() {
         osc2.type = 'sine';
 
         osc1.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
-        osc2.frequency.setValueAtTime(freq * 2, ctx.currentTime + startTime);
+        osc2.frequency.setValueAtTime(freq * 2, ctx.currentTime + startTime + startTime);
 
         gainNode.gain.setValueAtTime(0, ctx.currentTime + startTime);
         gainNode.gain.linearRampToValueAtTime(0.75, ctx.currentTime + startTime + 0.01);
@@ -687,12 +701,21 @@ export default function TrainingModeScreen() {
       input.onchange = async (e: any) => {
         const file = e.target.files[0];
         if (!file) return;
+        
+        // Guardado optimista para visualización local inmediata
+        const localUrl = URL.createObjectURL(file);
+        setLocalVideoUris(prev => ({ ...prev, [key]: localUrl }));
+        setVideoUploading(key);
+        
         try {
-          setVideoUploading(key);
           const uploaded = await api.uploadFile(file);
-          const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || URL.createObjectURL(file));
+          const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || localUrl);
           setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
-        } catch (err) { console.error("Error subiendo video:", err); } 
+        } catch (err) { 
+          console.error("Error subiendo video:", err);
+          // Si falla, preservamos la URI local para no perder el video en el UI
+          setRecordedVideos(prev => ({ ...prev, [key]: localUrl }));
+        } 
         finally { setVideoUploading(null); }
       };
       input.click();
@@ -718,11 +741,37 @@ export default function TrainingModeScreen() {
       } else { 
         result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, allowsEditing: true, quality: 0.7 }); 
       }
+
+      // IMPORTANTE: Tras usar la cámara/galería, iOS puede quedarse en modo de grabación silenciando todo.
+      if (Platform.OS !== 'web') {
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          playThroughEarpieceAndroid: false,
+        }).catch(() => {});
+      }
+
       if (result.canceled || !result.assets) return;
-      setVideoUploading(key); const asset = result.assets[0]; const uploaded = await api.uploadFile(asset);
-      const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
-      setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
-    } catch (e) { console.error(e); } finally { setVideoUploading(null); }
+      const asset = result.assets[0]; 
+      
+      // Fix Inmediato: Guardamos la URI local para que el reproductor empiece al 100% al instante sin depender del servidor.
+      setLocalVideoUris(prev => ({ ...prev, [key]: asset.uri }));
+      setVideoUploading(key); 
+      
+      try {
+        const uploaded = await api.uploadFile(asset);
+        const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
+        setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
+      } catch (upErr) {
+        console.log("Upload falló, reteniendo versión local:", upErr);
+        // Si el upload falla o no tiene internet, forzamos usar el URI local para guardarlo al menos offline.
+        setRecordedVideos(prev => ({ ...prev, [key]: asset.uri }));
+      }
+    } catch (e) { 
+      console.error(e); 
+    } finally { 
+      setVideoUploading(null); 
+    }
   };
 
   const buildCompletionData = () => {
@@ -1134,10 +1183,18 @@ export default function TrainingModeScreen() {
   };
 
   const renderVideoModal = () => (
-    <Modal visible={!!expandedVideo} transparent animationType="fade">
+    <Modal visible={!!expandedVideo} transparent animationType="fade" onRequestClose={() => setExpandedVideo(null)}>
       <View style={styles.fullscreenVideoOverlay}>
         <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
-        {expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
+        {expandedVideo && (
+          <Video 
+            source={{ uri: expandedVideo }} 
+            style={styles.fullVideo} 
+            resizeMode={ResizeMode.CONTAIN} 
+            useNativeControls 
+            shouldPlay 
+          />
+        )}
       </View>
     </Modal>
   );
@@ -1210,7 +1267,7 @@ export default function TrainingModeScreen() {
             const key = `${bIdx}-${eIdx}`;
             const note = hiitLogs[key]?.note;
             const cNote = hiitLogs[key]?.coach_note || '';
-            const vid = recordedVideos[key];
+            const vid = displayVideos[key];
             const skipped = hiitSkipped[key] || 0;
             return (
               <View key={eIdx} style={{ marginTop: 8, paddingLeft: 12, borderLeftWidth: 3, borderLeftColor: colors.primary }}>
@@ -1262,7 +1319,7 @@ export default function TrainingModeScreen() {
         const skip = s.filter(x => x === 'skipped').length;
         const tot = parseInt(ex.sets) || 1;
         const log = logs[i];
-        const vid = recordedVideos[i.toString()];
+        const vid = displayVideos[i.toString()];
         const cNote = log?.coach_note || '';
 
         return (
@@ -1521,7 +1578,8 @@ export default function TrainingModeScreen() {
               onComplete={advanceHiit} onSkip={skipHiitEx} 
             />
             
-            <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} hiitSide={hiitSide} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={recordedVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
+            {/* Pasamos los displayVideos mergeados a la tarjeta */}
+            <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} hiitSide={hiitSide} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={displayVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
           </ScrollView>
           <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
             <Ionicons name="list" size={24} color="#FFF" />
