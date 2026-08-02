@@ -25,6 +25,9 @@ from google.api_core.exceptions import ResourceExhausted
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import mimetypes
+mimetypes.init()
+mimetypes.add_type('video/mp4', '.mp4')
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -1007,11 +1010,9 @@ async def get_monthly_summary(athlete_id: str, user=Depends(get_current_user)):
         "month_name": nombre_mes
     }
 
-# --- CORRECCIÓN BUG 2 Y 3 APLICADA AQUÍ ---
 @api_router.post("/upload")
 async def upload_file(request: Request, file: UploadFile = File(...), user=Depends(get_current_user)):
     try:
-        # Extraer extensión original de forma segura
         ext = os.path.splitext(file.filename)[1].lower()
         unique_id = str(uuid.uuid4())
         
@@ -1021,12 +1022,10 @@ async def upload_file(request: Request, file: UploadFile = File(...), user=Depen
         temp_path = UPLOAD_DIR / temp_filename
         final_path = UPLOAD_DIR / final_filename
         
-        # 1. Guardar el archivo temporalmente
         with open(temp_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
             
         try:
-            # 2. Convertir a mp4 (H.264 / AAC) usando ffmpeg de forma asíncrona
             process = await asyncio.create_subprocess_exec(
                 "ffmpeg", "-i", str(temp_path),
                 "-c:v", "libx264", "-c:a", "aac",
@@ -1038,28 +1037,27 @@ async def upload_file(request: Request, file: UploadFile = File(...), user=Depen
             stdout, stderr = await process.communicate()
             
             if process.returncode != 0:
-                logger.error(f"Fallo en ffmpeg (return code {process.returncode}): {stderr.decode()}")
-                # Si falla la conversión (ej. formato raro), renombramos el original como fallback
+                logger.error(f"Fallo en ffmpeg: {stderr.decode()}")
                 os.rename(temp_path, final_path)
             else:
-                # 3. Borrar archivo temporal si la conversión fue un éxito
                 if temp_path.exists():
                     os.remove(temp_path)
                     
-        except FileNotFoundError:
-            # Si el servidor no tiene instalado ffmpeg, el subprocess lanzará este error.
-            logger.warning("FFmpeg no está instalado en el servidor. Guardando vídeo en formato original (puede fallar en Firefox).")
-            os.rename(temp_path, final_path)
-            
         except Exception as e:
-            logger.error(f"Error procesando vídeo con ffmpeg: {str(e)}")
+            logger.error(f"Error procesando vídeo: {str(e)}")
             os.rename(temp_path, final_path)
 
-        return {"url": f"{str(request.base_url).rstrip('/')}/uploads/{final_filename}"}
+        # Detectar el protocolo real de Render (https) para evitar bloqueos de seguridad
+        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
+        base_url = str(request.base_url).rstrip('/')
+        if proto == "https" and base_url.startswith("http://"):
+            base_url = base_url.replace("http://", "https://", 1)
+
+        return {"url": f"{base_url}/uploads/{final_filename}"}
     except Exception as e:
         logger.error(f"Error subida general: {str(e)}")
         raise HTTPException(status_code=500, detail="Fallo al procesar archivo")
-
+        
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
