@@ -559,7 +559,8 @@ async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_
             model.generation_config = {"response_mime_type": "application/json"}
             response = model.generate_content(system_prompt)
         except Exception as e:
-            if intentar_pro and ("429" in str(e) or "Quota" in str(e) or isinstance(e, "ResourceExhausted")):
+            # CORRECCIÓN BUG 1 APLICADA AQUÍ (isinstance sin comillas)
+            if intentar_pro and ("429" in str(e) or "Quota" in str(e) or isinstance(e, ResourceExhausted)):
                 COOLDOWN_PRO_UNTIL = time.time() + 60
                 model_fallback = genai.GenerativeModel(model_name=model_flash_id)
                 model_fallback.generation_config = {"response_mime_type": "application/json"}
@@ -1006,16 +1007,57 @@ async def get_monthly_summary(athlete_id: str, user=Depends(get_current_user)):
         "month_name": nombre_mes
     }
 
-# --- SUBIDA DE ARCHIVOS ---
+# --- CORRECCIÓN BUG 2 Y 3 APLICADA AQUÍ ---
 @api_router.post("/upload")
 async def upload_file(request: Request, file: UploadFile = File(...), user=Depends(get_current_user)):
     try:
-        unique_filename = f"{uuid.uuid4()}.{file.filename.split('.')[-1]}"
-        file_path = UPLOAD_DIR / unique_filename
-        with open(file_path, "wb") as buffer: shutil.copyfileobj(file.file, buffer)
-        return {"url": f"{str(request.base_url).rstrip('/')}/uploads/{unique_filename}"}
+        # Extraer extensión original de forma segura
+        ext = os.path.splitext(file.filename)[1].lower()
+        unique_id = str(uuid.uuid4())
+        
+        temp_filename = f"temp_{unique_id}{ext}"
+        final_filename = f"{unique_id}.mp4"
+        
+        temp_path = UPLOAD_DIR / temp_filename
+        final_path = UPLOAD_DIR / final_filename
+        
+        # 1. Guardar el archivo temporalmente
+        with open(temp_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+            
+        try:
+            # 2. Convertir a mp4 (H.264 / AAC) usando ffmpeg de forma asíncrona
+            process = await asyncio.create_subprocess_exec(
+                "ffmpeg", "-i", str(temp_path),
+                "-c:v", "libx264", "-c:a", "aac",
+                "-preset", "fast", "-movflags", "+faststart", "-y",
+                str(final_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+            stdout, stderr = await process.communicate()
+            
+            if process.returncode != 0:
+                logger.error(f"Fallo en ffmpeg (return code {process.returncode}): {stderr.decode()}")
+                # Si falla la conversión (ej. formato raro), renombramos el original como fallback
+                os.rename(temp_path, final_path)
+            else:
+                # 3. Borrar archivo temporal si la conversión fue un éxito
+                if temp_path.exists():
+                    os.remove(temp_path)
+                    
+        except FileNotFoundError:
+            # Si el servidor no tiene instalado ffmpeg, el subprocess lanzará este error.
+            logger.warning("FFmpeg no está instalado en el servidor. Guardando vídeo en formato original (puede fallar en Firefox).")
+            os.rename(temp_path, final_path)
+            
+        except Exception as e:
+            logger.error(f"Error procesando vídeo con ffmpeg: {str(e)}")
+            os.rename(temp_path, final_path)
+
+        return {"url": f"{str(request.base_url).rstrip('/')}/uploads/{final_filename}"}
     except Exception as e:
-        logger.error(f"Error subida: {str(e)}")
+        logger.error(f"Error subida general: {str(e)}")
         raise HTTPException(status_code=500, detail="Fallo al procesar archivo")
 
 app.include_router(api_router)
