@@ -101,12 +101,24 @@ const normalizeHiitReps = (val: string | number | undefined | null) => {
   return str;
 };
 
+// COMPONENTE PREVIEW REDISEÑADO
 const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
   return (
-    <View style={styles.miniVideoContainer}>
-      <Video source={{ uri: url }} style={styles.miniVideo} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted playsInLine />
-      <TouchableOpacity style={styles.expandBtn} onPress={() => onExpand(url)}><Ionicons name="expand" size={16} color="#FFF" /></TouchableOpacity>
+    <View style={styles.videoPreviewCard}>
+      <Video 
+        source={{ uri: url }} 
+        style={styles.videoPreview} 
+        resizeMode={ResizeMode.COVER} 
+        shouldPlay={false} // Evita crasheos de decodificación múltiple
+        isMuted={true} 
+      />
+      <View style={styles.videoOverlay}>
+         <TouchableOpacity style={styles.playExpandBtn} onPress={() => onExpand(url)}>
+            <Ionicons name="play-circle" size={54} color="#FFF" />
+            <Text style={{color: '#FFF', fontWeight: '800', marginTop: 8, fontSize: 13, letterSpacing: 0.5}}>VER TÉCNICA</Text>
+         </TouchableOpacity>
+      </View>
     </View>
   );
 };
@@ -136,6 +148,7 @@ export default function TrainingModeScreen() {
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
   const [localVideoUris, setLocalVideoUris] = useState<Record<string, string>>({}); 
   const [videoUploading, setVideoUploading] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
   
   const [hiitBlockIdx, setHiitBlockIdx] = useState(0);
@@ -197,7 +210,6 @@ export default function TrainingModeScreen() {
   const [isLandmineMode, setIsLandmineMode] = useState(false);
   const [athleteHeight, setAthleteHeight] = useState('170'); 
 
-  // Merged object para mostrar siempre la URL local en la UI si existe, previniendo errores de carga 404
   const displayVideos = { ...recordedVideos, ...localVideoUris };
 
   const adjustReps = (reps: string | number | undefined | null) => {
@@ -702,16 +714,33 @@ export default function TrainingModeScreen() {
         const localUrl = URL.createObjectURL(file);
         setLocalVideoUris(prev => ({ ...prev, [key]: localUrl }));
         setVideoUploading(key);
+        setUploadProgress(prev => ({ ...prev, [key]: 0 }));
+        
+        const progressInterval = setInterval(() => {
+          setUploadProgress(prev => {
+            const current = prev[key] || 0;
+            return current >= 90 ? prev : { ...prev, [key]: current + (Math.floor(Math.random() * 15) + 5) };
+          });
+        }, 600);
         
         try {
           const uploaded = await api.uploadFile(file);
           const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || localUrl);
+          
+          clearInterval(progressInterval);
+          setUploadProgress(prev => ({ ...prev, [key]: 100 }));
+          
+          Alert.alert("¡Subido!", "Tu vídeo de técnica se ha subido correctamente.");
           setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
         } catch (err) { 
           console.error("Error subiendo video:", err);
+          clearInterval(progressInterval);
+          Alert.alert("Error de subida", "Hubo un problema, pero se guardó tu vídeo localmente.");
           setRecordedVideos(prev => ({ ...prev, [key]: localUrl }));
         } 
-        finally { setVideoUploading(null); }
+        finally { 
+          setTimeout(() => setVideoUploading(null), 1000); 
+        }
       };
       input.click();
       return; 
@@ -750,6 +779,15 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
       
       setLocalVideoUris(prev => ({ ...prev, [key]: asset.uri }));
       setVideoUploading(key); 
+      setUploadProgress(prev => ({ ...prev, [key]: 0 }));
+      
+      // Simulación de barra de progreso visual (ya que FormData estándar no reporta % fácilmente)
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          const current = prev[key] || 0;
+          return current >= 90 ? prev : { ...prev, [key]: current + (Math.floor(Math.random() * 15) + 5) };
+        });
+      }, 500);
       
       try {
         const formData = new FormData();
@@ -764,14 +802,23 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
         const uploaded = await api.uploadFile(formData);
         const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
         
+        clearInterval(progressInterval);
+        setUploadProgress(prev => ({ ...prev, [key]: 100 }));
+        
+        if (Platform.OS !== 'web') { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{}); }
+        Alert.alert("¡Vídeo Subido!", "Tu registro de técnica se ha procesado correctamente.");
+        
         setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
       } catch (upErr) {
         console.log("Upload falló, reteniendo versión local:", upErr);
+        clearInterval(progressInterval);
+        Alert.alert("Error de Red", "El vídeo se intentó guardar, revisa tu conexión.");
         setRecordedVideos(prev => ({ ...prev, [key]: asset.uri }));
+      } finally {
+        setTimeout(() => setVideoUploading(null), 1000); 
       }
     } catch (e) { 
       console.error(e); 
-    } finally { 
       setVideoUploading(null); 
     }
   };
@@ -917,7 +964,6 @@ const handleFinish = async () => {
     if (workout.completed) { router.back(); return; }
     if (!stableWorkoutId) return;
     
-    // 🚨 NUEVO: Bloqueo de seguridad si el vídeo se está procesando en el backend
     if (videoUploading) {
       Alert.alert(
         "Procesando vídeo ⏳",
@@ -1196,14 +1242,16 @@ const handleFinish = async () => {
   const renderVideoModal = () => (
     <Modal visible={!!expandedVideo} transparent animationType="fade" onRequestClose={() => setExpandedVideo(null)}>
       <View style={styles.fullscreenVideoOverlay}>
-        <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
+        <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}>
+          <Ionicons name="close-circle" size={40} color="#FFF" />
+        </TouchableOpacity>
         {expandedVideo && (
           <Video 
             source={{ uri: expandedVideo }} 
             style={styles.fullVideo} 
             resizeMode={ResizeMode.CONTAIN} 
-            useNativeControls 
-            shouldPlay 
+            useNativeControls={true}
+            shouldPlay={true}
           />
         )}
       </View>
@@ -1286,11 +1334,11 @@ const handleFinish = async () => {
                 {skipped > 0 && <Text style={{ color: colors.error, fontSize: 13, marginTop: 2 }}>⏭ Rondas saltadas: {skipped}</Text>}
                 {note ? <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 2 }}>📝 Nota: {note}</Text> : null}
                 
-          {vid && (
-                        <View style={{ marginTop: 12 }}>
-                          <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
-                        </View>
-                      )}
+                {vid && (
+                  <View style={{ marginTop: 12 }}>
+                    <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
+                  </View>
+                )}
                 
                 {isTrainer ? (
                   <View style={{ marginTop: 10 }}>
@@ -1344,11 +1392,11 @@ const handleFinish = async () => {
             )}
             {log?.note && <Text style={{ color: colors.textSecondary, fontSize: 14, fontStyle: 'italic', marginTop: 6 }}>📝 Nota: {log.note}</Text>}
             
-      {vid && (
-                    <View style={{ marginTop: 12 }}>
-                      <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
-                    </View>
-                  )}
+            {vid && (
+              <View style={{ marginTop: 12 }}>
+                <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
+              </View>
+            )}
 
             {isTrainer ? (
               <View style={{ marginTop: 10 }}>
@@ -1683,7 +1731,7 @@ const handleFinish = async () => {
               )}
             </View>
             
-<View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
+            <View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
             <View style={styles.setsGrid}>
               {s.map((st, i) => ( 
                 <View 
@@ -1700,7 +1748,7 @@ const handleFinish = async () => {
               ))}
             </View>
             
-            {/* 📹 NUEVO: Muestra la previsualización del vídeo en miniatura si ya existe */}
+            {/* NUEVO RENDERIZADO DEL VÍDEO CON ESTILO DE PORTADA MÁS GRANDE */}
             {displayVideos[currentExIndex.toString()] && (
               <View style={{ marginTop: 15 }}>
                 <MiniVideoPlayer 
@@ -1710,7 +1758,7 @@ const handleFinish = async () => {
               </View>
             )}
 
-            {/* Botón inteligente que muestra el estado de subida */}
+            {/* BARRA DE PROGRESO / BOTÓN DE SUBIDA */}
             <TouchableOpacity 
               style={[styles.recordBtn, { marginTop: 15, borderColor: colors.border, opacity: videoUploading === currentExIndex.toString() ? 0.6 : 1 }]} 
               onPress={() => {
@@ -1719,14 +1767,23 @@ const handleFinish = async () => {
               }}
             >
               {videoUploading === currentExIndex.toString() ? (
-                <>
-                  <ActivityIndicator color={colors.primary} size="small" />
-                  <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Convirtiendo vídeo...</Text>
-                </>
+                <View style={{ width: '100%', alignItems: 'center' }}>
+                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                      <ActivityIndicator color={colors.primary} size="small" />
+                      <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>
+                        Subiendo... {uploadProgress[currentExIndex.toString()] || 0}%
+                      </Text>
+                   </View>
+                   <View style={{ height: 4, width: '80%', backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
+                      <View style={{ height: '100%', width: `${uploadProgress[currentExIndex.toString()] || 0}%`, backgroundColor: colors.primary }} />
+                   </View>
+                </View>
               ) : (
                 <>
                   <Ionicons name="videocam" size={20} color={colors.primary} />
-                  <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text>
+                  <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>
+                    {displayVideos[currentExIndex.toString()] ? "Reemplazar vídeo" : "Grabar técnica"}
+                  </Text>
                 </>
               )}
             </TouchableOpacity>
@@ -1794,7 +1851,14 @@ const styles = StyleSheet.create({
   finishedIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.1)' }, finishedTitle: { fontSize: 26, fontWeight: '900', textAlign: 'center' }, finishedSubtitle: { fontSize: 15, textAlign: 'center', marginBottom: 20 }, finishWorkoutBtn: { padding: 18, borderRadius: 16, alignItems: 'center', alignSelf: 'stretch', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
   label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }, rpeCircle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 13, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, fontSize: 15, textAlignVertical: 'top' },
   summaryCard: { padding: 16, borderRadius: 16, marginBottom: 12, alignSelf: 'stretch' },
-  miniVideoContainer: { width: 80, height: 80, borderRadius: 8, overflow: 'hidden', backgroundColor: '#000' }, miniVideo: { width: '100%', height: '100%' }, expandBtn: { position: 'absolute', bottom: 4, right: 4, backgroundColor: 'rgba(0,0,0,0.5)', padding: 4, borderRadius: 10 }, fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
+  
+  // NUEVOS ESTILOS PARA LA PREVISUALIZACIÓN DE VÍDEOS
+  videoPreviewCard: { width: '100%', height: 160, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', marginTop: 10 }, 
+  videoPreview: { width: '100%', height: '100%', opacity: 0.7 }, 
+  videoOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
+  playExpandBtn: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.4)', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 16 },
+  
+  fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 },
   floatingInfoBtn: { position: 'absolute', right: 20, bottom: 100, width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center', elevation: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.3, shadowRadius: 4.65, zIndex: 100 },
   painButton: { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1 }, painButtonText: { fontSize: 13, fontWeight: '600' },
