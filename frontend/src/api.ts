@@ -435,9 +435,10 @@ export const api = {
     return res.json();
   },
 
-  // --- SUBIDA DE ARCHIVOS ---
+// --- SUBIDA DE ARCHIVOS ---
   uploadFile: async (asset: any) => {
     const headers: any = await getAuthHeaders();
+    // 🚨 REGLA DE ORO: Borrar el Content-Type para que Fetch genere el suyo con el "boundary"
     delete headers['Content-Type']; 
 
     const formData = new FormData();
@@ -448,19 +449,24 @@ export const api = {
       } else {
         const response = await fetch(asset.uri);
         const blob = await response.blob();
-        formData.append('file', blob, asset.fileName || 'video.mp4');
+        // Leemos asset.name (nuestra propiedad) o asset.fileName (la de Expo por defecto)
+        formData.append('file', blob, asset.name || asset.fileName || 'video.mp4');
       }
     } else {
       formData.append('file', {
         uri: Platform.OS === 'android' ? asset.uri : asset.uri.replace('file://', ''),
-        name: asset.fileName || asset.uri.split('/').pop() || 'video.mp4',
-        type: asset.mimeType || 'video/mp4',
+        // Leemos asset.name y asset.type para conectar con el fix que hicimos en la pantalla de entrenamiento
+        name: asset.name || asset.fileName || asset.uri.split('/').pop() || 'video.mp4',
+        type: asset.type || asset.mimeType || 'video/mp4',
       } as any);
     }
 
     const res = await authFetch(`${BACKEND_URL}/api/upload`, { 
       method: 'POST', headers, body: formData,
     });
+    
+    return res.json();
+  }
     
     return res.json();
   }
