@@ -728,7 +728,7 @@ export default function TrainingModeScreen() {
     ]); 
   };
   
-  const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
+const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
       let result;
       if (source === 'camera') {
@@ -742,7 +742,6 @@ export default function TrainingModeScreen() {
         result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, allowsEditing: true, quality: 0.7 }); 
       }
 
-      // IMPORTANTE: Tras usar la cámara/galería, iOS puede quedarse en modo de grabación silenciando todo.
       if (Platform.OS !== 'web') {
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
@@ -754,21 +753,26 @@ export default function TrainingModeScreen() {
       if (result.canceled || !result.assets) return;
       const asset = result.assets[0]; 
       
-      // Guardado local instantáneo para feedback de la UI
+      // Guardado local instantáneo para feedback inmediato en UI
       setLocalVideoUris(prev => ({ ...prev, [key]: asset.uri }));
       setVideoUploading(key); 
       
       try {
-        // --- 🚨 CORRECCIÓN CLAVE AQUÍ 🚨 ---
-        // Transformamos el 'asset' bruto en un objeto de archivo estructurado para la red
-        const fileToUpload = {
+        // --- 🛠️ CORRECCIÓN DE SUBIDA CON FORMDATA ---
+        const formData = new FormData();
+        const filename = asset.uri.split('/').pop() || `video_${Date.now()}.mp4`;
+        
+        // Adjuntamos correctamente el archivo con formato FormData para la API
+        formData.append('file', {
           uri: asset.uri,
-          name: asset.fileName || asset.uri.split('/').pop() || `video_${Date.now()}.mp4`,
-          type: asset.mimeType || 'video/mp4'
-        };
+          name: filename,
+          type: asset.mimeType || 'video/mp4',
+        } as any);
 
-        const uploaded = await api.uploadFile(fileToUpload);
+        const uploaded = await api.uploadFile(formData);
         const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
+        
+        // Guardamos la URL definitiva del servidor
         setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
       } catch (upErr) {
         console.log("Upload falló, reteniendo versión local:", upErr);
