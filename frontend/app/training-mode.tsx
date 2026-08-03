@@ -725,18 +725,22 @@ export default function TrainingModeScreen() {
         
         try {
           const uploaded = await api.uploadFile(file);
-          const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || localUrl);
+          const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url);
+          
+          if (!finalUrl || finalUrl.startsWith('blob:')) {
+            throw new Error("El servidor no devolvió una URL válida.");
+          }
           
           clearInterval(progressInterval);
           setUploadProgress(prev => ({ ...prev, [key]: 100 }));
           
           Alert.alert("¡Subido!", "Tu vídeo de técnica se ha subido correctamente.");
           setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
+          setLocalVideoUris(prev => { const c = {...prev}; delete c[key]; return c; });
         } catch (err) { 
           console.error("Error subiendo video:", err);
           clearInterval(progressInterval);
-          Alert.alert("Error de subida", "Hubo un problema, pero se guardó tu vídeo localmente.");
-          setRecordedVideos(prev => ({ ...prev, [key]: localUrl }));
+          Alert.alert("Error de Subida", "No se pudo subir el vídeo al servidor. Inténtalo de nuevo.");
         } 
         finally { 
           setTimeout(() => setVideoUploading(null), 1000); 
@@ -752,7 +756,7 @@ export default function TrainingModeScreen() {
     ]); 
   };
   
-const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
+  const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
       let result;
       if (source === 'camera') {
@@ -781,7 +785,6 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
       setVideoUploading(key); 
       setUploadProgress(prev => ({ ...prev, [key]: 0 }));
       
-      // Simulación de barra de progreso visual (ya que FormData estándar no reporta % fácilmente)
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           const current = prev[key] || 0;
@@ -800,8 +803,12 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
         } as any);
 
         const uploaded = await api.uploadFile(formData);
-        const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
+        const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url);
         
+        if (!finalUrl || finalUrl.startsWith('file://') || finalUrl.startsWith('content://')) {
+          throw new Error("El servidor no devolvió una URL web/remota válida.");
+        }
+
         clearInterval(progressInterval);
         setUploadProgress(prev => ({ ...prev, [key]: 100 }));
         
@@ -809,11 +816,11 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
         Alert.alert("¡Vídeo Subido!", "Tu registro de técnica se ha procesado correctamente.");
         
         setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
+        setLocalVideoUris(prev => { const c = {...prev}; delete c[key]; return c; });
       } catch (upErr) {
-        console.log("Upload falló, reteniendo versión local:", upErr);
+        console.log("Upload falló:", upErr);
         clearInterval(progressInterval);
-        Alert.alert("Error de Red", "El vídeo se intentó guardar, revisa tu conexión.");
-        setRecordedVideos(prev => ({ ...prev, [key]: asset.uri }));
+        Alert.alert("Error de Subida", "No se pudo subir el vídeo al servidor. Comprueba tu conexión e inténtalo de nuevo.");
       } finally {
         setTimeout(() => setVideoUploading(null), 1000); 
       }
@@ -834,6 +841,15 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
       fatigue_mode_start_ex: fatigueModeTriggeredEx,
     };
 
+    // Filtro estricto para no guardar rutas locales temporales (file:// o blob://) en el servidor
+    const getValidRemoteUrl = (url: string) => {
+      if (!url) return '';
+      if (url.startsWith('file://') || url.startsWith('content://') || url.startsWith('blob:')) {
+        return ''; 
+      }
+      return url;
+    };
+
     if (isHiit) { 
       return { 
         ...common,
@@ -843,7 +859,7 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
           hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ 
             ...ex, 
             skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0,
-            recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', 
+            recorded_video_url: getValidRemoteUrl(recordedVideos[`${bIdx}-${eIdx}`] || ''), 
             athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '',
             coach_note: hiitLogs[`${bIdx}-${eIdx}`]?.coach_note || ''
           })) 
@@ -865,7 +881,7 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
           logged_reps: logs[i]?.reps || '', 
           athlete_note: logs[i]?.note || '', 
           coach_note: logs[i]?.coach_note || '',
-          recorded_video_url: recordedVideos[i.toString()] || '' 
+          recorded_video_url: getValidRemoteUrl(recordedVideos[i.toString()] || '') 
         }; 
       }), 
     };
@@ -960,7 +976,7 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
 
-const handleFinish = async () => {
+  const handleFinish = async () => {
     if (workout.completed) { router.back(); return; }
     if (!stableWorkoutId) return;
     
@@ -971,7 +987,23 @@ const handleFinish = async () => {
       );
       return;
     }
-    
+
+    if (Object.keys(localVideoUris).length > 0) {
+      Alert.alert(
+        "Vídeos pendientes de subida ⚠️",
+        "Hay vídeos grabados que aún no se han subido correctamente al servidor. ¿Quieres finalizar de todos modos o esperar a que terminen de subirse?",
+        [
+          { text: "Esperar / Revisar", style: "cancel" },
+          { text: "Finalizar sin esos vídeos", style: "destructive", onPress: () => executeFinish() }
+        ]
+      );
+      return;
+    }
+
+    executeFinish();
+  };
+
+  const executeFinish = async () => {
     stopAllTimers();
     const data = buildCompletionData();
     
@@ -1748,7 +1780,6 @@ const handleFinish = async () => {
               ))}
             </View>
             
-            {/* NUEVO RENDERIZADO DEL VÍDEO CON ESTILO DE PORTADA MÁS GRANDE */}
             {displayVideos[currentExIndex.toString()] && (
               <View style={{ marginTop: 15 }}>
                 <MiniVideoPlayer 
@@ -1758,7 +1789,6 @@ const handleFinish = async () => {
               </View>
             )}
 
-            {/* BARRA DE PROGRESO / BOTÓN DE SUBIDA */}
             <TouchableOpacity 
               style={[styles.recordBtn, { marginTop: 15, borderColor: colors.border, opacity: videoUploading === currentExIndex.toString() ? 0.6 : 1 }]} 
               onPress={() => {
@@ -1852,7 +1882,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }, rpeCircle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 13, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, fontSize: 15, textAlignVertical: 'top' },
   summaryCard: { padding: 16, borderRadius: 16, marginBottom: 12, alignSelf: 'stretch' },
   
-  // NUEVOS ESTILOS PARA LA PREVISUALIZACIÓN DE VÍDEOS
   videoPreviewCard: { width: '100%', height: 160, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', marginTop: 10 }, 
   videoPreview: { width: '100%', height: '100%', opacity: 0.7 }, 
   videoOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
