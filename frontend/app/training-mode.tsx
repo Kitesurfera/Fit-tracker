@@ -134,7 +134,7 @@ export default function TrainingModeScreen() {
   const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string, coach_note?: string}>>({});
   
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
-  const [localVideoUris, setLocalVideoUris] = useState<Record<string, string>>({}); // <-- Fix: Caché local rápida
+  const [localVideoUris, setLocalVideoUris] = useState<Record<string, string>>({}); 
   const [videoUploading, setVideoUploading] = useState<string | null>(null);
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
   
@@ -197,7 +197,7 @@ export default function TrainingModeScreen() {
   const [isLandmineMode, setIsLandmineMode] = useState(false);
   const [athleteHeight, setAthleteHeight] = useState('170'); 
 
-  // Merged object para mostrar siempre la URL local si existe, previniendo errores de carga 404 del servidor
+  // Merged object para mostrar siempre la URL local en la UI si existe, previniendo errores de carga 404
   const displayVideos = { ...recordedVideos, ...localVideoUris };
 
   const adjustReps = (reps: string | number | undefined | null) => {
@@ -227,7 +227,6 @@ export default function TrainingModeScreen() {
       };
       loadPreferences();
       
-      // Reseteamos el modo de Audio al entrar para evitar que la app se quede en "Modo grabación"
       if (Platform.OS !== 'web') {
         Audio.setAudioModeAsync({
           allowsRecordingIOS: false,
@@ -259,7 +258,6 @@ export default function TrainingModeScreen() {
         
         if (Platform.OS === 'web') {
           getWebAudioCtx();
-          
           const unlockOnNextTap = () => {
             getWebAudioCtx();
             document.removeEventListener('touchstart', unlockOnNextTap);
@@ -271,7 +269,6 @@ export default function TrainingModeScreen() {
 
         if (backgroundTimeRef.current && !isPaused && !finished) {
           const timeAway = Math.floor((Date.now() - backgroundTimeRef.current) / 1000);
-          
           setGlobalSeconds(prev => prev + timeAway);
 
           if (isPrep && prepSeconds > 0) {
@@ -702,7 +699,6 @@ export default function TrainingModeScreen() {
         const file = e.target.files[0];
         if (!file) return;
         
-        // Guardado optimista para visualización local inmediata
         const localUrl = URL.createObjectURL(file);
         setLocalVideoUris(prev => ({ ...prev, [key]: localUrl }));
         setVideoUploading(key);
@@ -713,7 +709,6 @@ export default function TrainingModeScreen() {
           setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
         } catch (err) { 
           console.error("Error subiendo video:", err);
-          // Si falla, preservamos la URI local para no perder el video en el UI
           setRecordedVideos(prev => ({ ...prev, [key]: localUrl }));
         } 
         finally { setVideoUploading(null); }
@@ -753,16 +748,13 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
       if (result.canceled || !result.assets) return;
       const asset = result.assets[0]; 
       
-      // Guardado local instantáneo para feedback inmediato en UI
       setLocalVideoUris(prev => ({ ...prev, [key]: asset.uri }));
       setVideoUploading(key); 
       
       try {
-        // --- 🛠️ CORRECCIÓN DE SUBIDA CON FORMDATA ---
         const formData = new FormData();
         const filename = asset.uri.split('/').pop() || `video_${Date.now()}.mp4`;
         
-        // Adjuntamos correctamente el archivo con formato FormData para la API
         formData.append('file', {
           uri: asset.uri,
           name: filename,
@@ -772,7 +764,6 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
         const uploaded = await api.uploadFile(formData);
         const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
         
-        // Guardamos la URL definitiva del servidor
         setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
       } catch (upErr) {
         console.log("Upload falló, reteniendo versión local:", upErr);
@@ -805,7 +796,7 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
           hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ 
             ...ex, 
             skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0,
-            recorded_video_url: displayVideos[`${bIdx}-${eIdx}`] || '', 
+            recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', 
             athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '',
             coach_note: hiitLogs[`${bIdx}-${eIdx}`]?.coach_note || ''
           })) 
@@ -827,7 +818,7 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
           logged_reps: logs[i]?.reps || '', 
           athlete_note: logs[i]?.note || '', 
           coach_note: logs[i]?.coach_note || '',
-          recorded_video_url: displayVideos[i.toString()] || '' 
+          recorded_video_url: recordedVideos[i.toString()] || '' 
         }; 
       }), 
     };
@@ -1590,7 +1581,6 @@ const handleFinish = async () => {
               onComplete={advanceHiit} onSkip={skipHiitEx} 
             />
             
-            {/* Pasamos los displayVideos mergeados a la tarjeta */}
             <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} hiitSide={hiitSide} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={displayVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
           </ScrollView>
           <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
