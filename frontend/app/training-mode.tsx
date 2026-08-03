@@ -754,17 +754,24 @@ export default function TrainingModeScreen() {
       if (result.canceled || !result.assets) return;
       const asset = result.assets[0]; 
       
-      // Fix Inmediato: Guardamos la URI local para que el reproductor empiece al 100% al instante sin depender del servidor.
+      // Guardado local instantáneo para feedback de la UI
       setLocalVideoUris(prev => ({ ...prev, [key]: asset.uri }));
       setVideoUploading(key); 
       
       try {
-        const uploaded = await api.uploadFile(asset);
+        // --- 🚨 CORRECCIÓN CLAVE AQUÍ 🚨 ---
+        // Transformamos el 'asset' bruto en un objeto de archivo estructurado para la red
+        const fileToUpload = {
+          uri: asset.uri,
+          name: asset.fileName || asset.uri.split('/').pop() || `video_${Date.now()}.mp4`,
+          type: asset.mimeType || 'video/mp4'
+        };
+
+        const uploaded = await api.uploadFile(fileToUpload);
         const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
         setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
       } catch (upErr) {
         console.log("Upload falló, reteniendo versión local:", upErr);
-        // Si el upload falla o no tiene internet, forzamos usar el URI local para guardarlo al menos offline.
         setRecordedVideos(prev => ({ ...prev, [key]: asset.uri }));
       }
     } catch (e) { 
