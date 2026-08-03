@@ -800,8 +800,8 @@ export default function TrainingModeScreen() {
           ...b, 
           hiit_exercises: b.hiit_exercises.map((ex: any, eIdx: number) => ({ 
             ...ex, 
-            skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0, 
-            recorded_video_url: recordedVideos[`${bIdx}-${eIdx}`] || '', 
+            skipped_rounds: hiitSkipped[`${bIdx}-${eIdx}`] || 0,
+            recorded_video_url: displayVideos[`${bIdx}-${eIdx}`] || '', 
             athlete_note: hiitLogs[`${bIdx}-${eIdx}`]?.note || '',
             coach_note: hiitLogs[`${bIdx}-${eIdx}`]?.coach_note || ''
           })) 
@@ -823,7 +823,7 @@ export default function TrainingModeScreen() {
           logged_reps: logs[i]?.reps || '', 
           athlete_note: logs[i]?.note || '', 
           coach_note: logs[i]?.coach_note || '',
-          recorded_video_url: recordedVideos[i.toString()] || '' 
+          recorded_video_url: displayVideos[i.toString()] || '' 
         }; 
       }), 
     };
@@ -1291,15 +1291,11 @@ const handleFinish = async () => {
                 {skipped > 0 && <Text style={{ color: colors.error, fontSize: 13, marginTop: 2 }}>⏭ Rondas saltadas: {skipped}</Text>}
                 {note ? <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 2 }}>📝 Nota: {note}</Text> : null}
                 
-                {vid && (
-                  <TouchableOpacity 
-                    style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: colors.primary + '15', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.primary + '30' }}
-                    onPress={() => setExpandedVideo(vid)}
-                  >
-                    <Ionicons name="play-circle" size={24} color={colors.primary} />
-                    <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '800', flex: 1 }}>Ver vídeo de técnica del atleta</Text>
-                  </TouchableOpacity>
-                )}
+          {vid && (
+                        <View style={{ marginTop: 12 }}>
+                          <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
+                        </View>
+                      )}
                 
                 {isTrainer ? (
                   <View style={{ marginTop: 10 }}>
@@ -1353,15 +1349,11 @@ const handleFinish = async () => {
             )}
             {log?.note && <Text style={{ color: colors.textSecondary, fontSize: 14, fontStyle: 'italic', marginTop: 6 }}>📝 Nota: {log.note}</Text>}
             
-            {vid && (
-              <TouchableOpacity 
-                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: colors.primary + '15', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: colors.primary + '30' }}
-                onPress={() => setExpandedVideo(vid)}
-              >
-                <Ionicons name="play-circle" size={24} color={colors.primary} />
-                <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '800', flex: 1 }}>Ver vídeo de técnica del atleta</Text>
-              </TouchableOpacity>
-            )}
+      {vid && (
+                    <View style={{ marginTop: 12 }}>
+                      <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
+                    </View>
+                  )}
 
             {isTrainer ? (
               <View style={{ marginTop: 10 }}>
