@@ -1697,31 +1697,54 @@ const handleFinish = async () => {
               )}
             </View>
             
-          <View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
-                        <View style={styles.setsGrid}>{s.map((st, i) => ( <View key={i} style={[styles.setCircle, { borderColor: colors.border }, st === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }, st === 'skipped' && { backgroundColor: colors.error, borderColor: colors.error }]}>{st === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : <Text style={{ color: colors.textSecondary }}>{i + 1}</Text>}</View> ))}</View>
-                        
-                        {/* 🚨 NUEVO: Botón inteligente que muestra el estado de subida */}
-                        <TouchableOpacity 
-                          style={[styles.recordBtn, { marginTop: 20, borderColor: colors.border, opacity: videoUploading === currentExIndex.toString() ? 0.6 : 1 }]} 
-                          onPress={() => {
-                            if (videoUploading === currentExIndex.toString()) return;
-                            handleRecordVideoOptions(currentExIndex.toString());
-                          }}
-                        >
-                          {videoUploading === currentExIndex.toString() ? (
-                            <>
-                              <ActivityIndicator color={colors.primary} size="small" />
-                              <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Convirtiendo vídeo...</Text>
-                            </>
-                          ) : (
-                            <>
-                              <Ionicons name="videocam" size={20} color={colors.primary} />
-                              <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text>
-                            </>
-                          )}
-                        </TouchableOpacity>
-                      </View>
+<View style={[styles.setsCard, { backgroundColor: colors.surface }]}>
+            <View style={styles.setsGrid}>
+              {s.map((st, i) => ( 
+                <View 
+                  key={i} 
+                  style={[
+                    styles.setCircle, 
+                    { borderColor: colors.border }, 
+                    st === 'completed' && { backgroundColor: colors.success, borderColor: colors.success }, 
+                    st === 'skipped' && { backgroundColor: colors.error, borderColor: colors.error }
+                  ]}
+                >
+                  {st === 'completed' ? <Ionicons name="checkmark" size={18} color="#FFF" /> : <Text style={{ color: colors.textSecondary }}>{i + 1}</Text>}
+                </View> 
+              ))}
+            </View>
+            
+            {/* 📹 NUEVO: Muestra la previsualización del vídeo en miniatura si ya existe */}
+            {displayVideos[currentExIndex.toString()] && (
+              <View style={{ marginTop: 15 }}>
+                <MiniVideoPlayer 
+                  url={displayVideos[currentExIndex.toString()]} 
+                  onExpand={setExpandedVideo} 
+                />
+              </View>
+            )}
 
+            {/* Botón inteligente que muestra el estado de subida */}
+            <TouchableOpacity 
+              style={[styles.recordBtn, { marginTop: 15, borderColor: colors.border, opacity: videoUploading === currentExIndex.toString() ? 0.6 : 1 }]} 
+              onPress={() => {
+                if (videoUploading === currentExIndex.toString()) return;
+                handleRecordVideoOptions(currentExIndex.toString());
+              }}
+            >
+              {videoUploading === currentExIndex.toString() ? (
+                <>
+                  <ActivityIndicator color={colors.primary} size="small" />
+                  <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Convirtiendo vídeo...</Text>
+                </>
+              ) : (
+                <>
+                  <Ionicons name="videocam" size={20} color={colors.primary} />
+                  <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>Grabar técnica</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
             <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
                <View style={{ flexDirection: 'row', gap: 12 }}>
                  <TextInput 
