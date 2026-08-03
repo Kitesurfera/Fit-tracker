@@ -468,6 +468,4 @@ export const api = {
     return res.json();
   }
     
-    return res.json();
-  }
 };
