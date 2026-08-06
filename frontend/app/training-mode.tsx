@@ -724,7 +724,8 @@ export default function TrainingModeScreen() {
         }, 600);
         
         try {
-          const uploaded = await api.uploadFile(file);
+          // ¡Corregido aquí! Pasando objeto con propiedad { file } para la web
+          const uploaded = await api.uploadFile({ file });
           const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || localUrl);
           
           clearInterval(progressInterval);
@@ -790,16 +791,8 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
       }, 500);
       
       try {
-        const formData = new FormData();
-        const filename = asset.uri.split('/').pop() || `video_${Date.now()}.mp4`;
-        
-        formData.append('file', {
-          uri: asset.uri,
-          name: filename,
-          type: asset.mimeType || 'video/mp4',
-        } as any);
-
-        const uploaded = await api.uploadFile(formData);
+        // ¡Corregido aquí! Pasamos el asset directamente a la API en lugar de armar el FormData doble.
+        const uploaded = await api.uploadFile(asset);
         const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
         
         clearInterval(progressInterval);
