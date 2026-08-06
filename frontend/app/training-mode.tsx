@@ -101,7 +101,7 @@ const normalizeHiitReps = (val: string | number | undefined | null) => {
   return str;
 };
 
-// COMPONENTE PREVIEW REDISEÑADO
+// COMPONENTE PREVIEW DE VÍDEO
 const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
   return (
@@ -110,7 +110,7 @@ const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string)
         source={{ uri: url }} 
         style={styles.videoPreview} 
         resizeMode={ResizeMode.COVER} 
-        shouldPlay={false} // Evita crasheos de decodificación múltiple
+        shouldPlay={false} 
         isMuted={true} 
       />
       <View style={styles.videoOverlay}>
@@ -724,7 +724,6 @@ export default function TrainingModeScreen() {
         }, 600);
         
         try {
-          // ¡Corregido aquí! Pasando objeto con propiedad { file } para la web
           const uploaded = await api.uploadFile({ file });
           const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || localUrl);
           
@@ -782,7 +781,6 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
       setVideoUploading(key); 
       setUploadProgress(prev => ({ ...prev, [key]: 0 }));
       
-      // Simulación de barra de progreso visual (ya que FormData estándar no reporta % fácilmente)
       const progressInterval = setInterval(() => {
         setUploadProgress(prev => {
           const current = prev[key] || 0;
@@ -791,7 +789,6 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
       }, 500);
       
       try {
-        // ¡Corregido aquí! Pasamos el asset directamente a la API en lugar de armar el FormData doble.
         const uploaded = await api.uploadFile(asset);
         const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
         
@@ -953,14 +950,15 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
 
-const handleFinish = async () => {
+  const handleFinish = async () => {
     if (workout.completed) { router.back(); return; }
     if (!stableWorkoutId) return;
     
+    // BLOQUEO ESTRICTO: Si hay algún vídeo subiéndose, impide terminar
     if (videoUploading) {
       Alert.alert(
-        "Procesando vídeo ⏳",
-        "Por favor, espera unos segundos a que tu vídeo termine de subirse y convertirse en el servidor antes de finalizar el entrenamiento."
+        "Subida pendiente ⏳",
+        "Por favor, espera a que todos los vídeos de técnica terminen de subirse al 100% antes de finalizar."
       );
       return;
     }
@@ -1138,15 +1136,15 @@ const handleFinish = async () => {
                    <Text style={[styles.label, { color: colors.textSecondary }]}>MODO LANDMINE</Text>
                    {isAutoLandmine ? (
                      <View style={{ backgroundColor: colors.success + '20', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                       <Ionicons name="flash" size={14} color={colors.success} />
-                       <Text style={{ color: colors.success, fontSize: 12, fontWeight: '900' }}>AUTO-DETECTADO</Text>
+                        <Ionicons name="flash" size={14} color={colors.success} />
+                        <Text style={{ color: colors.success, fontSize: 12, fontWeight: '900' }}>AUTO-DETECTADO</Text>
                      </View>
                    ) : (
                      <TouchableOpacity 
                         onPress={() => setIsLandmineMode(!isLandmineMode)}
                         style={{ width: 50, height: 28, borderRadius: 14, backgroundColor: isLandmineMode ? colors.primary : colors.border, justifyContent: 'center', alignItems: isLandmineMode ? 'flex-end' : 'flex-start', paddingHorizontal: 4 }}
                      >
-                       <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF' }} />
+                        <View style={{ width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF' }} />
                      </TouchableOpacity>
                    )}
                 </View>
@@ -1741,7 +1739,6 @@ const handleFinish = async () => {
               ))}
             </View>
             
-            {/* NUEVO RENDERIZADO DEL VÍDEO CON ESTILO DE PORTADA MÁS GRANDE */}
             {displayVideos[currentExIndex.toString()] && (
               <View style={{ marginTop: 15 }}>
                 <MiniVideoPlayer 
@@ -1751,7 +1748,6 @@ const handleFinish = async () => {
               </View>
             )}
 
-            {/* BARRA DE PROGRESO / BOTÓN DE SUBIDA */}
             <TouchableOpacity 
               style={[styles.recordBtn, { marginTop: 15, borderColor: colors.border, opacity: videoUploading === currentExIndex.toString() ? 0.6 : 1 }]} 
               onPress={() => {
@@ -1780,10 +1776,10 @@ const handleFinish = async () => {
                 </>
               )}
             </TouchableOpacity>
-          </View>
+         </View>
             <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
                <View style={{ flexDirection: 'row', gap: 12 }}>
-                 <TextInput 
+                  <TextInput 
                     key={`weight-${currentExIndex}`}
                     style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} 
                     placeholder="Kilos" 
@@ -1791,8 +1787,8 @@ const handleFinish = async () => {
                     keyboardType="numeric" 
                     value={logs[currentExIndex]?.weight || ''} 
                     onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} 
-                 />
-                 <TextInput 
+                  />
+                  <TextInput 
                     key={`reps-${currentExIndex}`}
                     style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} 
                     placeholder="Reps" 
@@ -1800,7 +1796,7 @@ const handleFinish = async () => {
                     keyboardType="numeric" 
                     value={logs[currentExIndex]?.reps || ''} 
                     onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], reps: t}}))} 
-                 />
+                  />
                </View>
                <TextInput 
                   key={`note-${currentExIndex}`}
@@ -1845,7 +1841,6 @@ const styles = StyleSheet.create({
   label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }, rpeCircle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 13, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, fontSize: 15, textAlignVertical: 'top' },
   summaryCard: { padding: 16, borderRadius: 16, marginBottom: 12, alignSelf: 'stretch' },
   
-  // NUEVOS ESTILOS PARA LA PREVISUALIZACIÓN DE VÍDEOS
   videoPreviewCard: { width: '100%', height: 160, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', marginTop: 10 }, 
   videoPreview: { width: '100%', height: '100%', opacity: 0.7 }, 
   videoOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
