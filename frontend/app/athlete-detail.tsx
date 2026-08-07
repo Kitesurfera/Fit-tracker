@@ -92,10 +92,17 @@ export default function AthleteDetailScreen() {
 
   const [isChatVisible, setChatVisible] = useState(false);
   const [showWellnessModal, setShowWellnessModal] = useState(false);
+  
+  // Estados para el Agente Manual (Píldoras)
+  const [showInjectPillModal, setShowInjectPillModal] = useState(false);
+  const [allPills, setAllPills] = useState<any[]>([]);
 
   const todayStr = useMemo(() => getLocalDateStr(new Date()), []);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { 
+      loadData(); 
+      api.getPills().then(setAllPills).catch(console.log);
+  }, []);
 
   const loadData = async () => {
     try {
@@ -212,6 +219,28 @@ export default function AthleteDetailScreen() {
       setWorkouts(prev => prev.map(w => w.id === workout.id ? payload : w));
     } catch (e) { console.log("Error guardando nota HIIT:", e); }
   }, []);
+  
+  const injectPillAsWorkout = async (pill: any) => {
+    setLoading(true);
+    try {
+        const payload = {
+            title: `💊 Píldora: ${pill.name}`,
+            date: todayStr,
+            notes: "Píldora inyectada por el entrenador.",
+            athlete_id: params.id!,
+            exercises: pill.exercises,
+            is_ai: true
+        };
+        await api.createWorkout(payload);
+        setShowInjectPillModal(false);
+        loadData();
+        if (Platform.OS !== 'web') Alert.alert("Éxito", "Píldora inyectada correctamente en la sesión de hoy.");
+    } catch (e) {
+        if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo inyectar la píldora.");
+    } finally {
+        setLoading(false);
+    }
+  };
 
   const getLevelColor = (val: number, inverse = false) => {
     if (!val) return colors.border + '50'; 
@@ -395,9 +424,11 @@ export default function AthleteDetailScreen() {
   const renderDashboard = () => {
     const discomfortsObj = summary?.latest_wellness?.discomforts || {};
     const discomfortsEntries = Object.entries(discomfortsObj);
+    const needsRecovery = (summary?.latest_wellness?.fatigue >= 4 || summary?.latest_wellness?.soreness >= 4);
 
     return (
       <View style={[styles.tabContainer, isDesktop && { paddingBottom: 40 }]}>
+        
         {!!summary?.is_injured && (
           <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '10', borderColor: colors.error || '#EF4444' }]}>
             <Ionicons name="warning" size={22} color={colors.error || '#EF4444'} />
@@ -408,7 +439,23 @@ export default function AthleteDetailScreen() {
           </View>
         )}
 
-    {/* <-- BOTONES DE ACCESO RÁPIDO A PESTAÑAS (CORREGIDOS) --> */}
+        {needsRecovery && (
+            <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '15', borderColor: colors.error || '#EF4444', marginTop: 0 }]}>
+                <Ionicons name="medical" size={22} color={colors.error || '#EF4444'} />
+                <View style={{flex:1, marginLeft: 12}}>
+                    <Text style={{color: colors.error || '#EF4444', fontWeight: '900'}}>ALERTA: Recuperación necesaria</Text>
+                    <Text style={{color: colors.textPrimary, fontSize: 13, marginVertical: 5}}>El deportista ha reportado fatiga alta. Inyecta una píldora de prehab o recuperación.</Text>
+                    <TouchableOpacity 
+                        style={{ backgroundColor: colors.error || '#EF4444', padding: 8, borderRadius: 8, alignSelf: 'flex-start', marginTop: 5 }}
+                        onPress={() => setShowInjectPillModal(true)}
+                    >
+                        <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>INYECTAR PÍLDORA</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        )}
+
+        {/* <-- BOTONES DE ACCESO RÁPIDO A PESTAÑAS (CORREGIDOS) --> */}
           <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25, marginTop: 5 }}>
             <TouchableOpacity 
               style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
@@ -941,6 +988,29 @@ export default function AthleteDetailScreen() {
         }}
         athleteId={params.id}
       />
+
+      {/* <-- MODAL INYECTAR PÍLDORA (AGENTE MANUAL) --> */}
+      <Modal visible={showInjectPillModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Píldora</Text>
+                <ScrollView style={{ maxHeight: 300 }}>
+                    {allPills.map(p => (
+                        <TouchableOpacity key={p.id} style={{ padding: 15, borderBottomWidth: 1, borderColor: colors.border }} onPress={() => injectPillAsWorkout(p)}>
+                            <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{p.name}</Text>
+                            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{p.is_hiit ? 'Circuito' : 'Fuerza'} • {p.exercises?.length || 0} bloques</Text>
+                        </TouchableOpacity>
+                    ))}
+                    {allPills.length === 0 && (
+                        <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>No hay píldoras creadas. Créalas desde Ajustes.</Text>
+                    )}
+                </ScrollView>
+                <TouchableOpacity style={{ marginTop: 20, padding: 15, alignItems: 'center' }} onPress={() => setShowInjectPillModal(false)}>
+                    <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Cancelar</Text>
+                </TouchableOpacity>
+            </View>
+        </View>
+      </Modal>
 
     </SafeAreaView>
   );
