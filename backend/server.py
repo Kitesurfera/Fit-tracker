@@ -239,11 +239,14 @@ class GeminiChatRequest(BaseModel):
     chatHistory: list = []
     athlete_id: Optional[str] = None
 
+# --- MODELOS PYDANTIC ---
+
 class PillCreate(BaseModel):
     name: str
     is_hiit: bool
     exercises: List[dict]
-
+    assigned_athletes: Optional[List[str]] = []
+    
 # --- AUTH HELPERS ---
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
