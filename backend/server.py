@@ -615,23 +615,23 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
         await db.wellness.insert_one(wellness_data)
 
     # 🤖 AGENTE FISIO: Intervención Automática
-    if data.fatigue >= 4 or data.soreness >= 4:
-        recovery_workout = {
-            "id": str(uuid.uuid4()),
-            "title": "🆘 PROTOCOLO RESET: Fluidez y Recuperación",
-            "date": target_date,
-            "athlete_id": target_athlete_id,
-            "exercises": [
-                {"name": "Liberación Miofascial (Foam Roller)", "sets": 1, "reps": "5 min", "notes": "Cadenas posteriores y cuádriceps. Buscar puntos de tensión sin dolor extremo."},
-                {"name": "Movilidad 90/90 de Cadera", "sets": 2, "reps": "10/lado", "notes": "Sin forzar. El objetivo es engrasar la articulación y recuperar rango."},
-                {"name": "Gato-Camello + Rotaciones Torácicas", "sets": 2, "reps": "8 reps", "notes": "Conectar con la respiración. Darle espacio a la columna."},
-                {"name": "Box Breathing (Respiración 4-4-4-4)", "sets": 1, "reps": "3 min", "notes": "Resetear el Sistema Nervioso Central (SNC) para bajar los niveles de cortisol."}
-            ],
-            "notes": "🤖 AGENTE FISIO: He detectado niveles altos de fatiga muscular. He inyectado esta sesión para priorizar la recuperación, reducir el riesgo de lesión y restaurar tus cimientos.",
-            "completed": False,
-            "is_ai": True
-        }
-        await db.workouts.insert_one(recovery_workout)
+    # if data.fatigue >= 4 or data.soreness >= 4:
+    #    recovery_workout = {
+    #        "id": str(uuid.uuid4()),
+    #        "title": "🆘 PROTOCOLO RESET: Fluidez y Recuperación",
+    #        "date": target_date,
+    #        "athlete_id": target_athlete_id,
+    #        "exercises": [
+    #            {"name": "Liberación Miofascial (Foam Roller)", "sets": 1, "reps": "5 min", "notes": "Cadenas posteriores y cuádriceps. Buscar puntos de tensión sin dolor extremo."},
+    #            {"name": "Movilidad 90/90 de Cadera", "sets": 2, "reps": "10/lado", "notes": "Sin forzar. El objetivo es engrasar la articulación y recuperar rango."},
+    #            {"name": "Gato-Camello + Rotaciones Torácicas", "sets": 2, "reps": "8 reps", "notes": "Conectar con la respiración. Darle espacio a la columna."},
+    #            {"name": "Box Breathing (Respiración 4-4-4-4)", "sets": 1, "reps": "3 min", "notes": "Resetear el Sistema Nervioso Central (SNC) para bajar los niveles de cortisol."}
+    #        ],
+    #        "notes": "🤖 AGENTE FISIO: He detectado niveles altos de fatiga muscular. He inyectado esta sesión para priorizar la recuperación, reducir el riesgo de lesión y restaurar tus cimientos.",
+    #        "completed": False,
+    #        "is_ai": True
+    #    }
+    #    await db.workouts.insert_one(recovery_workout)
 
    # Notificaciones por Email a Andre/Entrenador
     if user.get('role') == 'athlete' and user.get('trainer_id'):
@@ -652,11 +652,11 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
             </ul>
             """
             
-            # Si hay alerta, cambiamos el asunto y añadimos el aviso al cuerpo
+        # Si hay alerta, cambiamos el asunto y añadimos el aviso al cuerpo
             if data.fatigue >= 4 or data.soreness >= 4:
-                titulo = f"🚨 ALERTA: Agente Fisio activado para {athlete_name}"
-                mensaje_html += "<br><p style='color: red;'><b>⚠️ Atención:</b> Se ha inyectado automáticamente el <i>Protocolo de Reset</i> debido a los altos niveles de fatiga o dolor muscular reportados.</p>"
-            
+                titulo = f"⚠️ ATENCIÓN: Niveles altos de fatiga en {athlete_name}"
+                mensaje_html += "<br><p style='color: orange;'><b>⚠️ Atención:</b> El atleta ha reportado niveles altos de fatiga o dolor. Se recomienda revisar su estado y, si es necesario, inyectar una píldora de recuperación desde su perfil.</p>"
+                    
             if data.notes:
                 mensaje_html += f"<p><b>Notas del atleta:</b> {data.notes}</p>"
                 
