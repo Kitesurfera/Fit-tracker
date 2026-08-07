@@ -34,7 +34,8 @@ const parseCSV = (str: string) => {
 export default function AddWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const params = useLocalSearchParams<{ athlete_id: string; name: string; microciclo_id?: string }>();
+  // Añadimos pill_data a los parámetros esperados
+  const params = useLocalSearchParams<{ athlete_id: string; name: string; microciclo_id?: string; pill_data?: string }>();
 
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState('');
@@ -65,6 +66,35 @@ export default function AddWorkoutScreen() {
   // Estados Píldoras
   const [pills, setPills] = useState<any[]>([]);
   const [showPillModal, setShowPillModal] = useState(false);
+
+  // EFECTO DE AUTO-INYECCIÓN DE PÍLDORA SOS (NUEVO)
+  useEffect(() => {
+    if (params.pill_data) {
+      try {
+        const pill = JSON.parse(decodeURIComponent(params.pill_data));
+        
+        setTitle(pill.name || '');
+        
+        if (pill.is_hiit) {
+          setWorkoutType('hiit');
+          const newBlocks = pill.exercises.map((b: any) => ({
+              ...b, _key: Math.random().toString(),
+              name: `[${pill.name}] ${b.name || 'Bloque'}`,
+              exercises: (b.hiit_exercises || b.exercises || []).map((e: any) => ({...e, _key: Math.random().toString()}))
+          }));
+          if (newBlocks.length > 0) setHiitBlocks(newBlocks);
+        } else {
+          setWorkoutType('traditional');
+          const groupId = Math.random().toString();
+          const groupName = pill.name || "Píldora";
+          const newExs = pill.exercises.map((e: any) => ({...e, _key: Math.random().toString(), group_id: groupId, group_name: groupName}));
+          if (newExs.length > 0) setExercises(newExs);
+        }
+      } catch (error) {
+        console.log("Error al inyectar la píldora desde parámetros:", error);
+      }
+    }
+  }, [params.pill_data]);
 
   useEffect(() => {
     if (params.athlete_id) {
