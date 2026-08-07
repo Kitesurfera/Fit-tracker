@@ -433,7 +433,10 @@ export default function AthleteDetailScreen() {
                   </Text>
                   <TouchableOpacity 
                     style={{ backgroundColor: colors.error || '#EF4444', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignSelf: 'flex-start', marginTop: 4 }}
-                    onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name || '')}&pill_id=${assignedPill.id}`)}
+                    onPress={() => {
+                      const pillDataStr = encodeURIComponent(JSON.stringify(assignedPill));
+                      router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name || '')}&pill_data=${pillDataStr}`);
+                    }}
                   >
                     <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>INYECTAR PÍLDORA EN ADD WORKOUT</Text>
                   </TouchableOpacity>
