@@ -11,7 +11,6 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
-import { getWebPushSubscription, testNotification } from '../../src/notifications';
 
 const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'kite': { icon: 'kitesurfing', lib: 'MaterialCommunity' },
@@ -30,13 +29,15 @@ export default function SettingsScreen() {
 
   const isAthlete = user?.role === 'athlete';
 
-  // --- ESTADOS ---
+  // --- ESTADOS DE PERFIL Y CONFIGURACIÓN ---
   const [name, setName] = useState(user?.name || '');
   const [savingProfile, setSavingProfile] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   
-  // Asumimos que los emails están activados por defecto a menos que el usuario los apague explícitamente.
+  // Estado para la elección visual del tema
+  const [selectedTheme, setSelectedTheme] = useState<string>(themeMode || 'system');
+  
   const [emailEnabled, setEmailEnabled] = useState(user?.email_notifications !== false);
   const [loadingEmail, setLoadingEmail] = useState(false);
 
@@ -46,30 +47,47 @@ export default function SettingsScreen() {
   const [savingMeasures, setSavingMeasures] = useState(false);
   const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
 
-  // --- GESTOR DE PÍLDORAS ---
+  // --- GESTOR DE PÍLDORAS Y ATLETAS ---
   const [pills, setPills] = useState<any[]>([]);
+  const [athletes, setAthletes] = useState<any[]>([]);
   const [showPillBuilder, setShowPillBuilder] = useState(false);
   const [editingPillId, setEditingPillId] = useState<string | null>(null);
   const [pillName, setPillName] = useState('');
   const [pillType, setPillType] = useState<'traditional' | 'hiit'>('traditional');
   const [pillExs, setPillExs] = useState<any[]>([{ _key: '1', name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
   const [pillBlocks, setPillBlocks] = useState<any[]>([{ _key: 'b1', name: 'Bloque 1', sets: '1', exercises: [{ _key: 'e1', name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
+  const [pillAssignedAthletes, setPillAssignedAthletes] = useState<string[]>([]);
   const [savingPill, setSavingPill] = useState(false);
 
   useEffect(() => {
     AsyncStorage.getItem('timer_sounds_enabled').then(val => {
       if (val === 'false') setTimerSoundsEnabled(false);
     });
+    
+    AsyncStorage.getItem('theme_preference').then(val => {
+      if (val) setSelectedTheme(val);
+      else setSelectedTheme(themeMode || 'system');
+    });
+
     if (!isAthlete) {
       loadPills();
+      api.getAthletes().then(res => setAthletes(Array.isArray(res) ? res : [])).catch(console.log);
     }
   }, [isAthlete]);
 
   const loadPills = () => {
-    api.getPills().then(setPills).catch(console.log);
+    api.getPills().then(res => setPills(Array.isArray(res) ? res : [])).catch(console.log);
   };
 
-  // --- FUNCIONES ---
+  // --- MANEJADORES DE MODO OSCURO / APARIENCIA ---
+  const handleThemeChange = async (mode: string) => {
+    setSelectedTheme(mode);
+    await AsyncStorage.setItem('theme_preference', mode);
+    if (changeTheme) {
+      changeTheme(mode);
+    }
+  };
+
   const handlePickAvatar = async () => {
     try {
       let result = await ImagePicker.launchImageLibraryAsync({
@@ -82,14 +100,10 @@ export default function SettingsScreen() {
       if (!result.canceled && result.assets) {
         setUploadingAvatar(true);
         const asset = result.assets[0];
-        
-        // Subimos a nuestro bucket (Firebase/Supabase/etc)
         const uploaded = await api.uploadFile(asset);
         const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
         
         setAvatarUrl(finalUrl);
-        
-        // Lo guardamos en la base de datos y actualizamos el contexto
         if (api.updateProfile) await api.updateProfile({ avatar_url: finalUrl });
         if (updateUser) updateUser({ ...user, avatar_url: finalUrl });
       }
@@ -107,28 +121,25 @@ export default function SettingsScreen() {
   };
 
   const toggleEmail = async (value: boolean) => {
-     if (loadingEmail) return;
-     setLoadingEmail(true);
-     setEmailEnabled(value);
-     
-     try {
-       if (api.updateProfile) {
-         await api.updateProfile({ email_notifications: value });
-       }
-       
-       // ¡Aquí está la magia! Actualizamos la memoria a corto plazo al instante:
-       if (updateUser) {
-           updateUser({ ...user, email_notifications: value });
-       }
-       
-     } catch (e) {
-       setEmailEnabled(!value);
-       if (Platform.OS === 'web') window.alert("Error guardando preferencias.");
-       else Alert.alert("Error", "No se pudo actualizar la preferencia de correos.");
-     } finally {
-       setLoadingEmail(false);
-     }
-   };
+    if (loadingEmail) return;
+    setLoadingEmail(true);
+    setEmailEnabled(value);
+    
+    try {
+      if (api.updateProfile) {
+        await api.updateProfile({ email_notifications: value });
+      }
+      if (updateUser) {
+        updateUser({ ...user, email_notifications: value });
+      }
+    } catch (e) {
+      setEmailEnabled(!value);
+      if (Platform.OS === 'web') window.alert("Error guardando preferencias.");
+      else Alert.alert("Error", "No se pudo actualizar la preferencia de correos.");
+    } finally {
+      setLoadingEmail(false);
+    }
+  };
   
   const handleSaveProfile = async () => {
     if (!name.trim()) return;
@@ -185,13 +196,14 @@ export default function SettingsScreen() {
     }
   };
 
-  // --- LOGICA BUILDER PILDORAS ---
+  // --- LÓGICA CONSTRUCTOR DE PÍLDORAS ---
   const openNewPillBuilder = () => {
     setEditingPillId(null);
     setPillName('');
     setPillType('traditional');
     setPillExs([{ _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
     setPillBlocks([{ _key: Math.random().toString(), name: 'Bloque 1', sets: '1', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
+    setPillAssignedAthletes([]);
     setShowPillBuilder(true);
   };
 
@@ -199,9 +211,10 @@ export default function SettingsScreen() {
     setEditingPillId(pill.id);
     setPillName(pill.name);
     setPillType(pill.is_hiit ? 'hiit' : 'traditional');
+    setPillAssignedAthletes(pill.assigned_athletes || []);
     
     if (pill.is_hiit) {
-      const blocks = pill.exercises.map((b: any) => ({
+      const blocks = (pill.exercises || []).map((b: any) => ({
         _key: Math.random().toString(),
         name: b.name || '',
         sets: b.sets || '1',
@@ -216,7 +229,7 @@ export default function SettingsScreen() {
       }));
       setPillBlocks(blocks.length > 0 ? blocks : [{ _key: Math.random().toString(), name: 'Bloque 1', sets: '1', exercises: [{ _key: Math.random().toString(), name: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
     } else {
-      const exs = pill.exercises.map((e: any) => ({
+      const exs = (pill.exercises || []).map((e: any) => ({
         _key: Math.random().toString(),
         name: e.name || '',
         sets: e.sets || '',
@@ -232,64 +245,84 @@ export default function SettingsScreen() {
   };
 
   const handleSavePill = async () => {
-    if (!pillName.trim()) { Alert.alert("Aviso", "Ponle un nombre a la píldora"); return; }
+    if (!pillName.trim()) { 
+      if (Platform.OS === 'web') window.alert("Ponle un nombre a la píldora.");
+      else Alert.alert("Aviso", "Ponle un nombre a la píldora."); 
+      return; 
+    }
     
     let exercisesToSave = [];
     
-    // Normalizamos los datos
     if (pillType === 'traditional') {
-        exercisesToSave = pillExs.filter(e => e.name.trim()).map(e => ({
-            name: e.name, 
-            sets: e.sets, 
-            reps: e.reps, 
-            duration: e.duration, 
-            weight: '',
-            rest: '', 
-            rest_exercise: '', 
-            video_url: e.video_url, 
-            exercise_notes: '', 
-            is_unilateral: !!e.is_unilateral
-        }));
+      exercisesToSave = pillExs.filter(e => e.name.trim()).map(e => ({
+        name: e.name, 
+        sets: e.sets, 
+        reps: e.reps, 
+        duration: e.duration, 
+        weight: '',
+        rest: '', 
+        rest_exercise: '', 
+        video_url: e.video_url, 
+        exercise_notes: '', 
+        is_unilateral: !!e.is_unilateral
+      }));
     } else {
-        exercisesToSave = pillBlocks.filter(b => b.exercises.some((e:any) => e.name.trim())).map(block => ({
-            is_hiit_block: true, 
-            name: block.name, 
-            sets: block.sets, 
-            rest_exercise: '0', 
-            rest_block: '0', 
-            rest_between_blocks: '60',
-            hiit_exercises: block.exercises.filter((e:any) => e.name.trim()).map((e:any) => ({
-                name: e.name, 
-                sets: '1',
-                duration_reps: e.duration_reps, 
-                duration: e.duration, 
-                exercise_notes: '', 
-                video_url: e.video_url, 
-                is_unilateral: !!e.is_unilateral
-            }))
-        }));
+      exercisesToSave = pillBlocks.filter(b => b.exercises.some((e:any) => e.name.trim())).map(block => ({
+        is_hiit_block: true, 
+        name: block.name, 
+        sets: block.sets, 
+        rest_exercise: '0', 
+        rest_block: '0', 
+        rest_between_blocks: '60',
+        hiit_exercises: block.exercises.filter((e:any) => e.name.trim()).map((e:any) => ({
+          name: e.name, 
+          sets: '1',
+          duration_reps: e.duration_reps, 
+          duration: e.duration, 
+          exercise_notes: '', 
+          video_url: e.video_url, 
+          is_unilateral: !!e.is_unilateral
+        }))
+      }));
     }
 
-    if (exercisesToSave.length === 0) { Alert.alert("Aviso", "Añade al menos un ejercicio."); return; }
+    if (exercisesToSave.length === 0) { 
+      if (Platform.OS === 'web') window.alert("Añade al menos un ejercicio.");
+      else Alert.alert("Aviso", "Añade al menos un ejercicio."); 
+      return; 
+    }
 
     setSavingPill(true);
     try {
-        const payload = { name: pillName.trim(), is_hiit: pillType === 'hiit', exercises: exercisesToSave };
-        
-        if (editingPillId) {
-            await api.updatePill(editingPillId, payload);
-        } else {
-            await api.createPill(payload);
-        }
-        
-        setShowPillBuilder(false);
-        loadPills();
-    } catch (e: any) { Alert.alert("Error", e.message); } 
-    finally { setSavingPill(false); }
+      const payload = { 
+        name: pillName.trim(), 
+        is_hiit: pillType === 'hiit', 
+        exercises: exercisesToSave,
+        assigned_athletes: pillAssignedAthletes
+      };
+      
+      if (editingPillId) {
+        await api.updatePill(editingPillId, payload);
+      } else {
+        await api.createPill(payload);
+      }
+      
+      setShowPillBuilder(false);
+      loadPills();
+    } catch (e: any) { 
+      if (Platform.OS === 'web') window.alert(e.message || "Error al guardar");
+      else Alert.alert("Error", e.message); 
+    } finally { 
+      setSavingPill(false); 
+    }
   };
 
   const handleDeletePill = async (id: string) => {
-    try { await api.deletePill(id); loadPills(); } catch (e) { Alert.alert("Error al borrar"); }
+    try { await api.deletePill(id); loadPills(); } 
+    catch (e) { 
+      if (Platform.OS === 'web') window.alert("Error al borrar la píldora.");
+      else Alert.alert("Error", "No se pudo borrar la píldora."); 
+    }
   };
 
   const renderInputBox = (label: string, iconName: any, value: string, onChange: (t: string) => void, placeholder: string) => (
@@ -351,15 +384,27 @@ export default function SettingsScreen() {
             )}
           </View>
 
+          {/* SECCIÓN APARIENCIA CORREGIDA */}
           <Text style={[styles.sectionTitle, { marginTop: 25 }]}>APARIENCIA</Text>
           <View style={[styles.card, { backgroundColor: colors.surface, paddingVertical: 12 }]}>
             <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'space-between' }}>
-              {['light', 'dark', 'system'].map((m: any) => (
-                <TouchableOpacity key={m} style={[styles.themeBtn, themeMode === m && { backgroundColor: colors.primary + '15' }]} onPress={() => changeTheme?.(m)}>
-                  <Ionicons name={m === 'light' ? 'sunny' : m === 'dark' ? 'moon' : 'phone-portrait'} size={24} color={themeMode === m ? colors.primary : colors.textSecondary} />
-                  <Text style={[styles.themeBtnText, { color: themeMode === m ? colors.primary : colors.textSecondary }]}>{m === 'light' ? 'Claro' : m === 'dark' ? 'Oscuro' : 'Auto'}</Text>
-                </TouchableOpacity>
-              ))}
+              {[
+                { id: 'light', label: 'Claro', icon: 'sunny' },
+                { id: 'dark', label: 'Oscuro', icon: 'moon' },
+                { id: 'system', label: 'Auto', icon: 'phone-portrait' }
+              ].map((m) => {
+                const isSelected = selectedTheme === m.id;
+                return (
+                  <TouchableOpacity 
+                    key={m.id} 
+                    style={[styles.themeBtn, isSelected && { backgroundColor: colors.primary + '20', borderWidth: 1, borderColor: colors.primary }]} 
+                    onPress={() => handleThemeChange(m.id)}
+                  >
+                    <Ionicons name={m.icon as any} size={24} color={isSelected ? colors.primary : colors.textSecondary} />
+                    <Text style={[styles.themeBtnText, { color: isSelected ? colors.primary : colors.textSecondary }]}>{m.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           </View>
           
@@ -411,22 +456,28 @@ export default function SettingsScreen() {
                   <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 15 }}>No tienes píldoras guardadas. Crea bloques base para inyectar en las sesiones.</Text>
                 ) : (
                   <View style={{ gap: 10, marginBottom: 15 }}>
-                    {pills.map(p => (
-                      <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10 }}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14 }}>{p.name}</Text>
-                          <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>{p.is_hiit ? 'Formato Circuito' : 'Formato Fuerza'} • {p.exercises?.length || 0} bloques/ej.</Text>
+                    {pills.map(p => {
+                      const assignedCount = p.assigned_athletes?.length || 0;
+                      return (
+                        <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 12, borderWidth: 1, borderColor: colors.border, borderRadius: 10 }}>
+                          <View style={{ flex: 1 }}>
+                            <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14 }}>{p.name}</Text>
+                            <Text style={{ color: colors.textSecondary, fontSize: 11, marginTop: 2 }}>
+                              {p.is_hiit ? 'Formato Circuito' : 'Formato Fuerza'} • {p.exercises?.length || 0} bloques
+                              {assignedCount > 0 ? ` • ${assignedCount} atleta(s) asignados` : ''}
+                            </Text>
+                          </View>
+                          <View style={{ flexDirection: 'row', gap: 8 }}>
+                            <TouchableOpacity onPress={() => openEditPillBuilder(p)} style={{ padding: 6, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 6 }}>
+                              <Ionicons name="pencil" size={16} color="#3B82F6" />
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => handleDeletePill(p.id)} style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}>
+                              <Ionicons name="trash" size={16} color="#EF4444" />
+                            </TouchableOpacity>
+                          </View>
                         </View>
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
-                          <TouchableOpacity onPress={() => openEditPillBuilder(p)} style={{ padding: 6, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 6 }}>
-                            <Ionicons name="pencil" size={16} color="#3B82F6" />
-                          </TouchableOpacity>
-                          <TouchableOpacity onPress={() => handleDeletePill(p.id)} style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}>
-                            <Ionicons name="trash" size={16} color="#EF4444" />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ))}
+                      );
+                    })}
                   </View>
                 )}
                 
@@ -501,7 +552,7 @@ export default function SettingsScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* --- MODAL CREADOR DE PÍLDORAS --- */}
+      {/* --- MODAL CREADOR / EDITOR DE PÍLDORAS CON ASIGNACIÓN DE DEPORTISTAS --- */}
       <Modal visible={showPillBuilder} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={[styles.modalContent, { backgroundColor: colors.surface, height: '90%' }]}>
@@ -513,27 +564,67 @@ export default function SettingsScreen() {
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
-              <TextInput style={[styles.pillInput, { color: colors.textPrimary, borderColor: colors.border }]} value={pillName} onChangeText={setPillName} placeholder="Nombre (ej: Activación Hombros)" placeholderTextColor={colors.textSecondary} />
+              <TextInput style={[styles.pillInput, { color: colors.textPrimary, borderColor: colors.border }]} value={pillName} onChangeText={setPillName} placeholder="Nombre (ej: Activación Hombros / Protocolo Reset)" placeholderTextColor={colors.textSecondary} />
               
-              <View style={[styles.typeSelector, { backgroundColor: colors.background, borderColor: colors.border, marginBottom: 20 }]}>
+              <View style={[styles.typeSelector, { backgroundColor: colors.background, borderColor: colors.border, marginBottom: 15 }]}>
                 <TouchableOpacity style={[styles.typeBtn, pillType === 'traditional' && { backgroundColor: colors.primary }]} onPress={() => setPillType('traditional')}><Text style={{ color: pillType === 'traditional' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Fuerza</Text></TouchableOpacity>
                 <TouchableOpacity style={[styles.typeBtn, pillType === 'hiit' && { backgroundColor: colors.error || '#EF4444' }]} onPress={() => setPillType('hiit')}><Text style={{ color: pillType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito</Text></TouchableOpacity>
               </View>
+
+              {/* CHIPS DE VINCULACIÓN A DEPORTISTAS PARA ALERTA SOS */}
+              {athletes.length > 0 && (
+                <View style={{ marginBottom: 20 }}>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '800', marginBottom: 8, letterSpacing: 0.5 }}>
+                    ASIGNAR COMO PÍLDORA SOS DE FATIGA PARA:
+                  </Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                    {athletes.map(a => {
+                      const isSelected = pillAssignedAthletes.includes(a.id);
+                      return (
+                        <TouchableOpacity
+                          key={a.id}
+                          style={{ 
+                            paddingHorizontal: 14, 
+                            paddingVertical: 8, 
+                            borderRadius: 20, 
+                            borderWidth: 1.5, 
+                            borderColor: isSelected ? colors.primary : colors.border, 
+                            backgroundColor: isSelected ? colors.primary + '18' : colors.surfaceHighlight,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 6
+                          }}
+                          onPress={() => {
+                            if (isSelected) {
+                              setPillAssignedAthletes(prev => prev.filter(id => id !== a.id));
+                            } else {
+                              setPillAssignedAthletes(prev => [...prev, a.id]);
+                            }
+                          }}
+                        >
+                          <Ionicons name={isSelected ? "checkmark-circle" : "person-outline"} size={16} color={isSelected ? colors.primary : colors.textSecondary} />
+                          <Text style={{ color: isSelected ? colors.primary : colors.textPrimary, fontSize: 13, fontWeight: '800' }}>{a.name}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+              )}
 
               {pillType === 'traditional' ? (
                 <View style={{ gap: 10 }}>
                   {pillExs.map((ex, i) => (
                     <View key={ex._key} style={[styles.pillExCard, { borderColor: colors.border }]}>
                       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
-                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => { const n = [...pillExs]; n[i].name = v; setPillExs(n); }} placeholder="Nombre ej." placeholderTextColor={colors.textSecondary} />
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => { const n = [...pillExs]; n[i].name = v; setPillExs(n); }} placeholder="Nombre del ejercicio" placeholderTextColor={colors.textSecondary} />
                         <TouchableOpacity onPress={() => setPillExs(pillExs.filter((_, idx) => idx !== i))}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
                       </View>
                       <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
-                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.sets} onChangeText={v => { const n = [...pillExs]; n[i].sets = v; setPillExs(n); }} placeholder="Series" />
-                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.reps} onChangeText={v => { const n = [...pillExs]; n[i].reps = v; setPillExs(n); }} placeholder="Reps" />
-                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration} onChangeText={v => { const n = [...pillExs]; n[i].duration = v; setPillExs(n); }} placeholder="Tiempo" />
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.sets} onChangeText={v => { const n = [...pillExs]; n[i].sets = v; setPillExs(n); }} placeholder="Series" placeholderTextColor={colors.textSecondary} />
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.reps} onChangeText={v => { const n = [...pillExs]; n[i].reps = v; setPillExs(n); }} placeholder="Reps" placeholderTextColor={colors.textSecondary} />
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration} onChangeText={v => { const n = [...pillExs]; n[i].duration = v; setPillExs(n); }} placeholder="Tiempo" placeholderTextColor={colors.textSecondary} />
                       </View>
-                      <TextInput style={[styles.pillExInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 8 }]} value={ex.video_url} onChangeText={v => { const n = [...pillExs]; n[i].video_url = v; setPillExs(n); }} placeholder="URL YouTube (opcional)" />
+                      <TextInput style={[styles.pillExInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 8 }]} value={ex.video_url} onChangeText={v => { const n = [...pillExs]; n[i].video_url = v; setPillExs(n); }} placeholder="URL YouTube (opcional)" placeholderTextColor={colors.textSecondary} />
                       <TouchableOpacity onPress={() => { const n = [...pillExs]; n[i].is_unilateral = !n[i].is_unilateral; setPillExs(n); }} style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8}}>
                         <Ionicons name={ex.is_unilateral ? "checkbox" : "square-outline"} size={18} color={ex.is_unilateral ? colors.primary : colors.textSecondary} />
                         <Text style={{color: ex.is_unilateral ? colors.primary : colors.textSecondary, fontSize: 12, fontWeight: '700'}}>Unilateral</Text>
@@ -547,22 +638,22 @@ export default function SettingsScreen() {
                   {pillBlocks.map((block, bIdx) => (
                     <View key={block._key} style={[styles.pillExCard, { borderColor: colors.border }]}>
                       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 10 }}>
-                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontWeight: '700' }]} value={block.name} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].name = v; setPillBlocks(n); }} placeholder="Nombre Bloque" />
-                        <TextInput style={[styles.pillExInput, { width: 60, color: colors.textPrimary, borderColor: colors.border }]} value={block.sets} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].sets = v; setPillBlocks(n); }} placeholder="Vueltas" keyboardType="numeric" />
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontWeight: '700' }]} value={block.name} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].name = v; setPillBlocks(n); }} placeholder="Nombre del bloque" placeholderTextColor={colors.textSecondary} />
+                        <TextInput style={[styles.pillExInput, { width: 70, color: colors.textPrimary, borderColor: colors.border }]} value={block.sets} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].sets = v; setPillBlocks(n); }} placeholder="Vueltas" placeholderTextColor={colors.textSecondary} keyboardType="numeric" />
                         <TouchableOpacity onPress={() => setPillBlocks(pillBlocks.filter((_, idx) => idx !== bIdx))}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
                       </View>
                       
                       {block.exercises.map((ex: any, eIdx: number) => (
                         <View key={ex._key} style={{ paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.primary, marginBottom: 10 }}>
                           <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
-                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].name = v; setPillBlocks(n); }} placeholder="Ejercicio" />
+                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].name = v; setPillBlocks(n); }} placeholder="Ejercicio" placeholderTextColor={colors.textSecondary} />
                             <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises.splice(eIdx, 1); setPillBlocks(n); }}><Ionicons name="close-circle" size={18} color={colors.textSecondary} /></TouchableOpacity>
                           </View>
                           <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
-                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration_reps} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration_reps = v; setPillBlocks(n); }} placeholder="Reps" />
-                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration = v; setPillBlocks(n); }} placeholder="Tiempo" />
+                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration_reps} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration_reps = v; setPillBlocks(n); }} placeholder="Reps" placeholderTextColor={colors.textSecondary} />
+                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration = v; setPillBlocks(n); }} placeholder="Tiempo" placeholderTextColor={colors.textSecondary} />
                           </View>
-                          <TextInput style={[styles.pillExInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 6 }]} value={ex.video_url} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].video_url = v; setPillBlocks(n); }} placeholder="URL YouTube (opcional)" />
+                          <TextInput style={[styles.pillExInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 6 }]} value={ex.video_url} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].video_url = v; setPillBlocks(n); }} placeholder="URL YouTube (opcional)" placeholderTextColor={colors.textSecondary} />
                           <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].is_unilateral = !n[bIdx].exercises[eIdx].is_unilateral; setPillBlocks(n); }} style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6}}>
                             <Ionicons name={ex.is_unilateral ? "checkbox" : "square-outline"} size={16} color={ex.is_unilateral ? colors.primary : colors.textSecondary} />
                             <Text style={{color: ex.is_unilateral ? colors.primary : colors.textSecondary, fontSize: 11, fontWeight: '700'}}>Unilateral</Text>
