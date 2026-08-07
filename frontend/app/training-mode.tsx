@@ -7,17 +7,14 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode, Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
-import NetInfo from '@react-native-community/netinfo';
 
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
-import { syncManager } from '../src/offline';
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
 import HiitCard from '../src/components/training/HiitCard';
 
@@ -101,7 +98,6 @@ const normalizeHiitReps = (val: string | number | undefined | null) => {
   return str;
 };
 
-// COMPONENTE PREVIEW DE VÍDEO
 const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
   if (!url) return null;
   return (
@@ -145,18 +141,9 @@ export default function TrainingModeScreen() {
   const [logs, setLogs] = useState<Record<number, {weight: string, reps: string, note?: string, coach_note?: string}>>({});
   const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string, coach_note?: string}>>({});
   
-  // ESTADOS DE VÍDEO CORREGIDOS
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
-  const [localVideoUris, setLocalVideoUris] = useState<Record<string, string>>({}); 
-  const [videoUploading, setVideoUploading] = useState<string | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<Record<string, number>>({});
-  
-  // NUEVO: Estado para feedback visual explícito debajo del botón
-  const [uploadStatusMsg, setUploadStatusMsg] = useState<Record<string, {type: 'success'|'error', text: string}>>({});
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
-  
-  // EL MERGE CORRECTO: La nube (recordedVideos) tiene prioridad sobre los archivos locales para evitar errores al terminar
-  const displayVideos = { ...localVideoUris, ...recordedVideos };
+  const displayVideos = recordedVideos;
   
   const [hiitBlockIdx, setHiitBlockIdx] = useState(0);
   const [hiitRound, setHiitRound] = useState(1);
@@ -215,7 +202,6 @@ export default function TrainingModeScreen() {
   const [isLandmineMode, setIsLandmineMode] = useState(false);
   const [athleteHeight, setAthleteHeight] = useState('170'); 
 
-
   const adjustReps = (reps: string | number | undefined | null) => {
     if (!reps) return null;
     return String(reps).replace(/\d+/g, (match) => {
@@ -271,18 +257,9 @@ export default function TrainingModeScreen() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-        
         if (Platform.OS === 'web') {
           getWebAudioCtx();
-          const unlockOnNextTap = () => {
-            getWebAudioCtx();
-            document.removeEventListener('touchstart', unlockOnNextTap);
-            document.removeEventListener('click', unlockOnNextTap);
-          };
-          document.addEventListener('touchstart', unlockOnNextTap);
-          document.addEventListener('click', unlockOnNextTap);
         }
-
         if (backgroundTimeRef.current && !isPaused && !finished) {
           const timeAway = Math.floor((Date.now() - backgroundTimeRef.current) / 1000);
           setGlobalSeconds(prev => prev + timeAway);
@@ -705,134 +682,28 @@ export default function TrainingModeScreen() {
   const skipSet = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); setTradSide(1); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
   const skipEntireExercise = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); setTradSide(1); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
-
-  // FUNCIÓN DE GRABACIÓN PARA WEB REESCRITA COMPLETAMENTE
-  const handleRecordVideoOptions = (key: string) => { 
-    if (Platform.OS === 'web') { 
-      const useCamera = window.confirm("¿Quieres grabar un vídeo ahora?\n\n[Aceptar] = Abrir Cámara\n[Cancelar] = Abrir Galería");
-      const input = document.createElement('input');
-      input.type = 'file'; input.accept = 'video/*';
-      if (useCamera) input.capture = 'environment'; 
-      input.onchange = async (e: any) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        const localUrl = URL.createObjectURL(file);
-        
-        // 1. Guardamos URL local y limpiamos mensajes anteriores
-        setLocalVideoUris(prev => ({ ...prev, [key]: localUrl }));
-        setVideoUploading(key);
-        setUploadProgress(prev => ({ ...prev, [key]: 0 }));
-        setUploadStatusMsg(prev => { const next = {...prev}; delete next[key]; return next; });
-        
-        const progressInterval = setInterval(() => {
-          setUploadProgress(prev => {
-            const current = prev[key] || 0;
-            return current >= 90 ? prev : { ...prev, [key]: current + (Math.floor(Math.random() * 15) + 5) };
-          });
-        }, 600);
-        
-        try {
-          const uploaded = await api.uploadFile({ file });
-          const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || localUrl);
-          
-          clearInterval(progressInterval);
-          setUploadProgress(prev => ({ ...prev, [key]: 100 }));
-          
-          // 2. Si sube bien: Se guarda el Remote, se BORRA el local (para que no sobreescriba en displayVideos) y se pone mensaje ✅
-          setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
-          setLocalVideoUris(prev => { const next = {...prev}; delete next[key]; return next; });
-          setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'success', text: 'Subido a la nube correctamente ✅' }}));
-          
-        } catch (err) { 
-          console.error("Error subiendo video:", err);
-          clearInterval(progressInterval);
-          // 3. Si falla: Se guarda local, mensaje en Naranja
-          setRecordedVideos(prev => ({ ...prev, [key]: localUrl }));
-          setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'error', text: 'Sin red. Guardado temporalmente 💾' }}));
-        } 
-        finally { 
-          setTimeout(() => setVideoUploading(null), 1000); 
-        }
-      };
-      input.click();
-      return; 
-    } 
-    Alert.alert("Subir Técnica", "¿Cómo quieres subir el vídeo?", [ 
-      { text: "Cancelar", style: "cancel" }, 
-      { text: "Galería", onPress: () => launchVideoPicker('library', key) }, 
-      { text: "Grabar", onPress: () => launchVideoPicker('camera', key) } 
-    ]); 
-  };
-  
-// FUNCIÓN DE GRABACIÓN NATIVA/EXPO REESCRITA
-const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
-    try {
-      let result;
-      if (source === 'camera') {
-        const cameraPerm = await ImagePicker.requestCameraPermissionsAsync(); 
-        const micPerm = await ImagePicker.requestMicrophonePermissionsAsync(); 
-        if (cameraPerm.status !== 'granted' || micPerm.status !== 'granted') {
-          Alert.alert("Permisos insuficientes", "Se necesita acceso a la cámara y al micrófono para poder grabar tus series."); return;
-        }
-        result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, videoMaxDuration: 60, quality: 0.7 });
-      } else { 
-        result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Videos, allowsEditing: true, quality: 0.7 }); 
-      }
-
-      if (Platform.OS !== 'web') {
-        await Audio.setAudioModeAsync({
-          allowsRecordingIOS: false,
-          playsInSilentModeIOS: true,
-          playThroughEarpieceAndroid: false,
-        }).catch(() => {});
-      }
-
-      if (result.canceled || !result.assets) return;
-      const asset = result.assets[0]; 
-      
-      // 1. Preparamos local
-      setLocalVideoUris(prev => ({ ...prev, [key]: asset.uri }));
-      setVideoUploading(key); 
-      setUploadProgress(prev => ({ ...prev, [key]: 0 }));
-      setUploadStatusMsg(prev => { const next = {...prev}; delete next[key]; return next; });
-      
-      const progressInterval = setInterval(() => {
-        setUploadProgress(prev => {
-          const current = prev[key] || 0;
-          return current >= 90 ? prev : { ...prev, [key]: current + (Math.floor(Math.random() * 15) + 5) };
-        });
-      }, 500);
-      
-      try {
-        const uploaded = await api.uploadFile(asset);
-        const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
-        
-        clearInterval(progressInterval);
-        setUploadProgress(prev => ({ ...prev, [key]: 100 }));
-        
-        if (Platform.OS !== 'web') { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{}); }
-        
-        // 2. Si sube bien: Guarda remoto, limpia local, mensaje ✅
-        setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
-        setLocalVideoUris(prev => { const next = {...prev}; delete next[key]; return next; });
-        setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'success', text: 'Subido a la nube correctamente ✅' }}));
-        
-      } catch (upErr) {
-        console.log("Upload falló, reteniendo versión local:", upErr);
-        clearInterval(progressInterval);
-        
-        // 3. Si falla: Se guarda local, mensaje Naranja
-        setRecordedVideos(prev => ({ ...prev, [key]: asset.uri }));
-        setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'error', text: 'Sin red. Guardado temporalmente 💾' }}));
-      } finally {
-        setTimeout(() => setVideoUploading(null), 1000); 
-      }
-    } catch (e) { 
-      console.error(e); 
-      setVideoUploading(null); 
-      setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'error', text: 'Fallo al acceder a la cámara.' }}));
+  // NUEVA FUNCIÓN: Redirige al chat de WhatsApp de Andre para enviar el vídeo de técnica
+  const handleRecordVideoOptions = (key: string) => {
+    // Número de teléfono de Andre (puedes introducir su número con prefijo internacional, ej: '+34600000000')
+    const ANDRE_PHONE = ''; 
+    
+    let exName = 'Ejercicio';
+    if (isHiit) {
+      const [bIdx, eIdx] = String(key).split('-').map(Number);
+      exName = workout?.exercises?.[bIdx]?.hiit_exercises?.[eIdx]?.name || 'HIIT';
+    } else {
+      const exIdx = parseInt(key, 10);
+      exName = workout?.exercises?.[exIdx]?.name || 'Ejercicio';
     }
+
+    const message = encodeURIComponent(`Hola Andre! Te mando el vídeo de técnica para ${exName}: 🎥`);
+    const whatsappUrl = ANDRE_PHONE 
+      ? `whatsapp://send?phone=${ANDRE_PHONE}&text=${message}`
+      : `whatsapp://send?text=${message}`;
+
+    Linking.openURL(whatsappUrl).catch(() => {
+      Alert.alert("WhatsApp", "No se pudo abrir WhatsApp. Comprueba que lo tienes instalado.");
+    });
   };
 
   const buildCompletionData = () => {
@@ -975,14 +846,6 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
   const handleFinish = async () => {
     if (workout.completed) { router.back(); return; }
     if (!stableWorkoutId) return;
-    
-    if (videoUploading) {
-      Alert.alert(
-        "Subida pendiente ⏳",
-        "Por favor, espera a que todos los vídeos de técnica terminen de subirse al 100% antes de finalizar."
-      );
-      return;
-    }
     
     stopAllTimers();
     const data = buildCompletionData();
@@ -1480,7 +1343,6 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.topBar}>
             <TouchableOpacity onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
-            {/* CHIVATO VISUAL: Título cambiado a 'Resumen de Sesión' */}
             <Text style={[styles.topTitle, { color: colors.textPrimary }]}>Resumen de Sesión</Text>
             <View style={{ width: 26 }} />
           </View>
@@ -1646,7 +1508,7 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
               onComplete={advanceHiit} onSkip={skipHiitEx} 
             />
             
-            <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} hiitSide={hiitSide} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={displayVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
+            <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} hiitSide={hiitSide} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={displayVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={null} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
           </ScrollView>
           <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
             <Ionicons name="list" size={24} color="#FFF" />
@@ -1765,71 +1627,15 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
               ))}
             </View>
             
-            {displayVideos[currentExIndex.toString()] && (
-              <View style={{ marginTop: 15 }}>
-                <MiniVideoPlayer 
-                  url={displayVideos[currentExIndex.toString()]} 
-                  onExpand={setExpandedVideo} 
-                />
-              </View>
-            )}
-
             <TouchableOpacity 
-              style={[styles.recordBtn, { marginTop: 15, borderColor: colors.border, opacity: videoUploading === currentExIndex.toString() ? 0.6 : 1 }]} 
-              onPress={() => {
-                if (videoUploading === currentExIndex.toString()) return;
-                handleRecordVideoOptions(currentExIndex.toString());
-              }}
+              style={[styles.recordBtn, { marginTop: 15, borderColor: colors.border }]} 
+              onPress={() => handleRecordVideoOptions(currentExIndex.toString())}
             >
-              {videoUploading === currentExIndex.toString() ? (
-                <View style={{ width: '100%', alignItems: 'center' }}>
-                   <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                      <ActivityIndicator color={colors.primary} size="small" />
-                      <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>
-                        Subiendo... {uploadProgress[currentExIndex.toString()] || 0}%
-                      </Text>
-                   </View>
-                   <View style={{ height: 4, width: '80%', backgroundColor: colors.border, borderRadius: 2, overflow: 'hidden' }}>
-                      <View style={{ height: '100%', width: `${uploadProgress[currentExIndex.toString()] || 0}%`, backgroundColor: colors.primary }} />
-                   </View>
-                </View>
-              ) : (
-                <>
-                  <Ionicons name="videocam" size={20} color={colors.primary} />
-                  {/* CHIVATO VISUAL: El texto ha cambiado para que sepas que el código ha cargado bien */}
-                  <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>
-                    {displayVideos[currentExIndex.toString()] ? "Reemplazar vídeo 📸" : "Subir Técnica 📸"}
-                  </Text>
-                </>
-              )}
+              <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
+              <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>
+                Enviar vídeo a Andre 🎥
+              </Text>
             </TouchableOpacity>
-
-            {/* MENSAJE DE ESTADO VISUAL DIRECTO EN LA PANTALLA */}
-            {uploadStatusMsg[currentExIndex.toString()] && (
-               <View style={{ 
-                   marginTop: 10, 
-                   padding: 12, 
-                   borderRadius: 10, 
-                   backgroundColor: uploadStatusMsg[currentExIndex.toString()].type === 'success' ? (colors.success + '20') : (colors.error + '20'), 
-                   flexDirection: 'row', 
-                   alignItems: 'center' 
-               }}>
-                  <Ionicons 
-                     name={uploadStatusMsg[currentExIndex.toString()].type === 'success' ? 'checkmark-circle' : 'alert-circle'} 
-                     size={22} 
-                     color={uploadStatusMsg[currentExIndex.toString()].type === 'success' ? colors.success : colors.error} 
-                  />
-                  <Text style={{ 
-                     color: uploadStatusMsg[currentExIndex.toString()].type === 'success' ? colors.success : colors.error, 
-                     fontSize: 13, 
-                     fontWeight: '700', 
-                     marginLeft: 8, 
-                     flex: 1 
-                  }}>
-                     {uploadStatusMsg[currentExIndex.toString()].text}
-                  </Text>
-               </View>
-            )}
 
          </View>
             <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
