@@ -93,15 +93,14 @@ export default function AthleteDetailScreen() {
   const [isChatVisible, setChatVisible] = useState(false);
   const [showWellnessModal, setShowWellnessModal] = useState(false);
   
-  // Estados para el Agente Manual (Píldoras)
-  const [showInjectPillModal, setShowInjectPillModal] = useState(false);
+  // Lista de píldoras para recuperar la asignada
   const [allPills, setAllPills] = useState<any[]>([]);
 
   const todayStr = useMemo(() => getLocalDateStr(new Date()), []);
 
   useEffect(() => { 
-      loadData(); 
-      api.getPills().then(setAllPills).catch(console.log);
+    loadData(); 
+    api.getPills().then(res => setAllPills(Array.isArray(res) ? res : [])).catch(console.log);
   }, []);
 
   const loadData = async () => {
@@ -219,28 +218,6 @@ export default function AthleteDetailScreen() {
       setWorkouts(prev => prev.map(w => w.id === workout.id ? payload : w));
     } catch (e) { console.log("Error guardando nota HIIT:", e); }
   }, []);
-  
-  const injectPillAsWorkout = async (pill: any) => {
-    setLoading(true);
-    try {
-        const payload = {
-            title: `💊 Píldora: ${pill.name}`,
-            date: todayStr,
-            notes: "Píldora inyectada por el entrenador.",
-            athlete_id: params.id!,
-            exercises: pill.exercises,
-            is_ai: true
-        };
-        await api.createWorkout(payload);
-        setShowInjectPillModal(false);
-        loadData();
-        if (Platform.OS !== 'web') Alert.alert("Éxito", "Píldora inyectada correctamente en la sesión de hoy.");
-    } catch (e) {
-        if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo inyectar la píldora.");
-    } finally {
-        setLoading(false);
-    }
-  };
 
   const getLevelColor = (val: number, inverse = false) => {
     if (!val) return colors.border + '50'; 
@@ -389,7 +366,7 @@ export default function AthleteDetailScreen() {
 
     return {
       activeWeekWorkouts: active.sort((a,b) => String(a.date).localeCompare(String(b.date))),
-      historyWorkouts: hist.sort((a,b) => String(b.date).localeCompare(String(a.date))), // Historial: más reciente arriba
+      historyWorkouts: hist.sort((a,b) => String(b.date).localeCompare(String(a.date))),
       futureWorkouts: future.sort((a,b) => String(a.date).localeCompare(String(b.date)))
     };
   }, [workouts, activeWindow]);
@@ -418,13 +395,16 @@ export default function AthleteDetailScreen() {
       msg += `También he tenido en cuenta que estás en ${phaseInfo.name} para adaptar la carga. `;
     }
     
-    Linking.openURL(`https://wa.me/${athlete.phone.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`);
+    Linking.openURL(`https://wa.me/${athlete?.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`);
   };
 
   const renderDashboard = () => {
     const discomfortsObj = summary?.latest_wellness?.discomforts || {};
     const discomfortsEntries = Object.entries(discomfortsObj);
     const needsRecovery = (summary?.latest_wellness?.fatigue >= 4 || summary?.latest_wellness?.soreness >= 4);
+
+    // Buscar si existe una píldora asignada a este deportista desde Ajustes
+    const assignedPill = allPills.find(p => p.assigned_athletes && p.assigned_athletes.includes(params.id));
 
     return (
       <View style={[styles.tabContainer, isDesktop && { paddingBottom: 40 }]}>
@@ -439,48 +419,68 @@ export default function AthleteDetailScreen() {
           </View>
         )}
 
+        {/* ALERTA DE FATIGA Y CONEXIÓN CON PÍLDORA */}
         {needsRecovery && (
-            <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '15', borderColor: colors.error || '#EF4444', marginTop: 0 }]}>
-                <Ionicons name="medical" size={22} color={colors.error || '#EF4444'} />
-                <View style={{flex:1, marginLeft: 12}}>
-                    <Text style={{color: colors.error || '#EF4444', fontWeight: '900'}}>ALERTA: Recuperación necesaria</Text>
-                    <Text style={{color: colors.textPrimary, fontSize: 13, marginVertical: 5}}>El deportista ha reportado fatiga alta. Inyecta una píldora de prehab o recuperación.</Text>
-                    <TouchableOpacity 
-                        style={{ backgroundColor: colors.error || '#EF4444', padding: 8, borderRadius: 8, alignSelf: 'flex-start', marginTop: 5 }}
-                        onPress={() => setShowInjectPillModal(true)}
-                    >
-                        <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>INYECTAR PÍLDORA</Text>
-                    </TouchableOpacity>
-                </View>
+          <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '15', borderColor: colors.error || '#EF4444', marginTop: 0 }]}>
+            <Ionicons name="medical" size={22} color={colors.error || '#EF4444'} />
+            <View style={{flex:1, marginLeft: 12}}>
+              <Text style={{color: colors.error || '#EF4444', fontWeight: '900'}}>ALERTA: Recuperación necesaria</Text>
+              
+              {assignedPill ? (
+                <>
+                  <Text style={{color: colors.textPrimary, fontSize: 13, marginVertical: 5}}>
+                    {params.name} ha registrado fatiga o dolor altos. Tiene asignada la píldora: <Text style={{fontWeight: '800'}}>{assignedPill.name}</Text>.
+                  </Text>
+                  <TouchableOpacity 
+                    style={{ backgroundColor: colors.error || '#EF4444', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignSelf: 'flex-start', marginTop: 4 }}
+                    onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name || '')}&pill_id=${assignedPill.id}`)}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>INYECTAR PÍLDORA EN ADD WORKOUT</Text>
+                  </TouchableOpacity>
+                </>
+              ) : (
+                <>
+                  <Text style={{color: colors.textPrimary, fontSize: 13, marginVertical: 5}}>
+                    El deportista ha reportado niveles altos de fatiga. Asigna una píldora para este atleta desde Ajustes para programarla en 1 clic.
+                  </Text>
+                  <TouchableOpacity 
+                    style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, alignSelf: 'flex-start', marginTop: 4 }}
+                    onPress={() => router.push('/settings')}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>IR A AJUSTES DE PÍLDORAS</Text>
+                  </TouchableOpacity>
+                </>
+              )}
             </View>
+          </View>
         )}
 
-        {/* <-- BOTONES DE ACCESO RÁPIDO A PESTAÑAS (CORREGIDOS) --> */}
-          <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25, marginTop: 5 }}>
-            <TouchableOpacity 
-              style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
-              onPress={() => router.push(`/(tabs)/calendar?athlete_id=${params.id}`)}
-            >
-              <Ionicons name="calendar-outline" size={22} color={colors.primary} />
-              <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Calendario</Text>
-            </TouchableOpacity>
-          
-            <TouchableOpacity 
-              style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
-              onPress={() => router.push(`/(tabs)/analytics?athlete_id=${params.id}`)}
-            >
-              <Ionicons name="trending-up-outline" size={22} color={colors.primary} />
-              <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Analíticas</Text>
-            </TouchableOpacity>
-    
-            <TouchableOpacity 
-              style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
-              onPress={() => router.push(`/(tabs)/tests?athlete_id=${params.id}`)}
-            >
-              <Ionicons name="fitness-outline" size={22} color={colors.primary} />
-              <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Tests</Text>
-            </TouchableOpacity>
-          </View>
+        {/* BOTONES DE ACCESO RÁPIDO */}
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25, marginTop: 5 }}>
+          <TouchableOpacity 
+            style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
+            onPress={() => router.push(`/(tabs)/calendar?athlete_id=${params.id}`)}
+          >
+            <Ionicons name="calendar-outline" size={22} color={colors.primary} />
+            <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Calendario</Text>
+          </TouchableOpacity>
+        
+          <TouchableOpacity 
+            style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
+            onPress={() => router.push(`/(tabs)/analytics?athlete_id=${params.id}`)}
+          >
+            <Ionicons name="trending-up-outline" size={22} color={colors.primary} />
+            <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Analíticas</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
+            onPress={() => router.push(`/(tabs)/tests?athlete_id=${params.id}`)}
+          >
+            <Ionicons name="fitness-outline" size={22} color={colors.primary} />
+            <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>Ver Tests</Text>
+          </TouchableOpacity>
+        </View>
 
         {/* PRÓXIMO ENTRENAMIENTO */}
         <Text style={[styles.sectionTitle, isDesktop && { fontSize: 13 }]}>PRÓXIMO ENTRENAMIENTO</Text>
@@ -903,7 +903,7 @@ export default function AthleteDetailScreen() {
         </TouchableOpacity>
       </View>
       
-      {/* RENDERIZADO CONDICIONAL: ORDENADOR VS MÓVIL */}
+      {/* RENDERIZADO CONDICIONAL: ESCRITORIO VS MÓVIL */}
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
           {/* Columna Izquierda: Dashboard/Resumen */}
@@ -942,7 +942,7 @@ export default function AthleteDetailScreen() {
         </TouchableOpacity>
       )}
 
-      {/* <-- BOTÓN FLOTANTE CHAT/GEMINI --> */}
+      {/* BOTÓN FLOTANTE GEMINI */}
       {isTrainer && (
         <TouchableOpacity 
           style={[styles.geminiFab, { backgroundColor: colors.primary }]} 
@@ -952,6 +952,7 @@ export default function AthleteDetailScreen() {
         </TouchableOpacity>
       )}
 
+      {/* MODAL DUPLICAR */}
       <Modal visible={showDuplicateModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -965,6 +966,7 @@ export default function AthleteDetailScreen() {
         </View>
       </Modal>
 
+      {/* MODAL VÍDEO COMPLETO */}
       <Modal visible={!!expandedVideo} transparent animationType="fade">
         <View style={styles.fullscreenVideoOverlay}>
           <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
@@ -972,14 +974,14 @@ export default function AthleteDetailScreen() {
         </View>
       </Modal>
 
-      {/* <-- MODAL DE GEMINI --> */}
+      {/* MODAL GEMINI */}
       <GeminiChatModal 
         isVisible={isChatVisible} 
         onClose={() => setChatVisible(false)} 
         athleteContext={summary?.latest_wellness} 
       />
 
-      {/* <-- MODAL DE WELLNESS --> */}
+      {/* MODAL WELLNESS */}
       <WellnessModal
         isVisible={showWellnessModal}
         onClose={() => {
@@ -988,29 +990,6 @@ export default function AthleteDetailScreen() {
         }}
         athleteId={params.id}
       />
-
-      {/* <-- MODAL INYECTAR PÍLDORA (AGENTE MANUAL) --> */}
-      <Modal visible={showInjectPillModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Píldora</Text>
-                <ScrollView style={{ maxHeight: 300 }}>
-                    {allPills.map(p => (
-                        <TouchableOpacity key={p.id} style={{ padding: 15, borderBottomWidth: 1, borderColor: colors.border }} onPress={() => injectPillAsWorkout(p)}>
-                            <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{p.name}</Text>
-                            <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{p.is_hiit ? 'Circuito' : 'Fuerza'} • {p.exercises?.length || 0} bloques</Text>
-                        </TouchableOpacity>
-                    ))}
-                    {allPills.length === 0 && (
-                        <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 20 }}>No hay píldoras creadas. Créalas desde Ajustes.</Text>
-                    )}
-                </ScrollView>
-                <TouchableOpacity style={{ marginTop: 20, padding: 15, alignItems: 'center' }} onPress={() => setShowInjectPillModal(false)}>
-                    <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Cancelar</Text>
-                </TouchableOpacity>
-            </View>
-        </View>
-      </Modal>
 
     </SafeAreaView>
   );
@@ -1027,7 +1006,6 @@ const styles = StyleSheet.create({
   tabText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 }, 
   tabContainer: { padding: 20, paddingBottom: 100 }, 
   alert: { flexDirection: 'row', padding: 18, borderRadius: 20, marginBottom: 25, borderLeftWidth: 6 }, 
-  cycleCard: { padding: 16, borderRadius: 20, marginBottom: 20, borderWidth: 1 }, 
   sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5 }, 
   mainCard: { padding: 20, borderRadius: 25, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8, elevation: 2 }, 
   wellnessRow: { flexDirection: 'row', justifyContent: 'space-around', marginBottom: 15 }, 
