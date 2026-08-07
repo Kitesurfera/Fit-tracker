@@ -145,6 +145,7 @@ export default function TrainingModeScreen() {
   const [logs, setLogs] = useState<Record<number, {weight: string, reps: string, note?: string, coach_note?: string}>>({});
   const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string, coach_note?: string}>>({});
   
+  // ESTADOS DE VÍDEO CORREGIDOS
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
   const [localVideoUris, setLocalVideoUris] = useState<Record<string, string>>({}); 
   const [videoUploading, setVideoUploading] = useState<string | null>(null);
@@ -152,8 +153,10 @@ export default function TrainingModeScreen() {
   
   // NUEVO: Estado para feedback visual explícito debajo del botón
   const [uploadStatusMsg, setUploadStatusMsg] = useState<Record<string, {type: 'success'|'error', text: string}>>({});
-  
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
+  
+  // EL MERGE CORRECTO: La nube (recordedVideos) tiene prioridad sobre los archivos locales para evitar errores al terminar
+  const displayVideos = { ...localVideoUris, ...recordedVideos };
   
   const [hiitBlockIdx, setHiitBlockIdx] = useState(0);
   const [hiitRound, setHiitRound] = useState(1);
@@ -175,7 +178,6 @@ export default function TrainingModeScreen() {
   const hasShownIndicationsRef = useRef(false);
 
   const [isPaused, setIsPaused] = useState(false);
-  
   const [isFatigueMode, setIsFatigueMode] = useState(false);
   const [fatigueModeTriggeredEx, setFatigueModeTriggeredEx] = useState<string | null>(null);
 
@@ -190,7 +192,6 @@ export default function TrainingModeScreen() {
   const [restTargetTime, setTargetTime] = useState<number | null>(null);
   const [restSeconds, setRestSeconds] = useState(0);
   const [restTotalSeconds, setRestTotalSeconds] = useState(1);
-  const [isResting, setIsWorkingRest] = useState(false); 
   const [isRestingStatus, setIsResting] = useState(false);
   const [restType, setRestType] = useState<'set' | 'exercise' | null>(null);
   const restIntervalRef = useRef<any>(null);
@@ -214,8 +215,6 @@ export default function TrainingModeScreen() {
   const [isLandmineMode, setIsLandmineMode] = useState(false);
   const [athleteHeight, setAthleteHeight] = useState('170'); 
 
-  // BUGFIX: El orden de spreading era incorrecto. 'recordedVideos' (URLs finales) debe sobreescribir 'localVideoUris'.
-  const displayVideos = { ...localVideoUris, ...recordedVideos };
 
   const adjustReps = (reps: string | number | undefined | null) => {
     if (!reps) return null;
@@ -706,6 +705,8 @@ export default function TrainingModeScreen() {
   const skipSet = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); setTradSide(1); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
   const skipEntireExercise = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); setTradSide(1); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
+
+  // FUNCIÓN DE GRABACIÓN PARA WEB REESCRITA COMPLETAMENTE
   const handleRecordVideoOptions = (key: string) => { 
     if (Platform.OS === 'web') { 
       const useCamera = window.confirm("¿Quieres grabar un vídeo ahora?\n\n[Aceptar] = Abrir Cámara\n[Cancelar] = Abrir Galería");
@@ -717,11 +718,11 @@ export default function TrainingModeScreen() {
         if (!file) return;
         
         const localUrl = URL.createObjectURL(file);
+        
+        // 1. Guardamos URL local y limpiamos mensajes anteriores
         setLocalVideoUris(prev => ({ ...prev, [key]: localUrl }));
         setVideoUploading(key);
         setUploadProgress(prev => ({ ...prev, [key]: 0 }));
-        
-        // Limpiamos mensajes anteriores
         setUploadStatusMsg(prev => { const next = {...prev}; delete next[key]; return next; });
         
         const progressInterval = setInterval(() => {
@@ -738,18 +739,17 @@ export default function TrainingModeScreen() {
           clearInterval(progressInterval);
           setUploadProgress(prev => ({ ...prev, [key]: 100 }));
           
-          // BUGFIX: Actualizamos el finalUrl remoto y borramos el local de la caché para que NO lo sobreescriba en displayVideos.
+          // 2. Si sube bien: Se guarda el Remote, se BORRA el local (para que no sobreescriba en displayVideos) y se pone mensaje ✅
           setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
           setLocalVideoUris(prev => { const next = {...prev}; delete next[key]; return next; });
-          
-          // Agregamos mensaje de éxito visible
-          setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'success', text: '¡Vídeo guardado y subido con éxito!' }}));
+          setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'success', text: 'Subido a la nube correctamente ✅' }}));
           
         } catch (err) { 
           console.error("Error subiendo video:", err);
           clearInterval(progressInterval);
+          // 3. Si falla: Se guarda local, mensaje en Naranja
           setRecordedVideos(prev => ({ ...prev, [key]: localUrl }));
-          setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'error', text: 'Error de red. Se guardará localmente.' }}));
+          setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'error', text: 'Sin red. Guardado temporalmente 💾' }}));
         } 
         finally { 
           setTimeout(() => setVideoUploading(null), 1000); 
@@ -765,6 +765,7 @@ export default function TrainingModeScreen() {
     ]); 
   };
   
+// FUNCIÓN DE GRABACIÓN NATIVA/EXPO REESCRITA
 const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     try {
       let result;
@@ -790,6 +791,7 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
       if (result.canceled || !result.assets) return;
       const asset = result.assets[0]; 
       
+      // 1. Preparamos local
       setLocalVideoUris(prev => ({ ...prev, [key]: asset.uri }));
       setVideoUploading(key); 
       setUploadProgress(prev => ({ ...prev, [key]: 0 }));
@@ -811,23 +813,25 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
         
         if (Platform.OS !== 'web') { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{}); }
         
-        // BUGFIX: Limpiar la URL local para evitar sobreescritura, priorizando el registro de la URL en la nube.
+        // 2. Si sube bien: Guarda remoto, limpia local, mensaje ✅
         setRecordedVideos(prev => ({ ...prev, [key]: finalUrl }));
         setLocalVideoUris(prev => { const next = {...prev}; delete next[key]; return next; });
-        setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'success', text: '¡Vídeo procesado y subido correctamente!' }}));
+        setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'success', text: 'Subido a la nube correctamente ✅' }}));
         
       } catch (upErr) {
         console.log("Upload falló, reteniendo versión local:", upErr);
         clearInterval(progressInterval);
+        
+        // 3. Si falla: Se guarda local, mensaje Naranja
         setRecordedVideos(prev => ({ ...prev, [key]: asset.uri }));
-        setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'error', text: 'Error de red. Se guardará localmente.' }}));
+        setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'error', text: 'Sin red. Guardado temporalmente 💾' }}));
       } finally {
         setTimeout(() => setVideoUploading(null), 1000); 
       }
     } catch (e) { 
       console.error(e); 
       setVideoUploading(null); 
-      setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'error', text: 'Fallo al acceder a la cámara o galería.' }}));
+      setUploadStatusMsg(prev => ({ ...prev, [key]: { type: 'error', text: 'Fallo al acceder a la cámara.' }}));
     }
   };
 
@@ -972,7 +976,6 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     if (workout.completed) { router.back(); return; }
     if (!stableWorkoutId) return;
     
-    // BLOQUEO ESTRICTO: Si hay algún vídeo subiéndose, impide terminar
     if (videoUploading) {
       Alert.alert(
         "Subida pendiente ⏳",
@@ -1343,11 +1346,11 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
                 {skipped > 0 && <Text style={{ color: colors.error, fontSize: 13, marginTop: 2 }}>⏭ Rondas saltadas: {skipped}</Text>}
                 {note ? <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 2 }}>📝 Nota: {note}</Text> : null}
                 
-                {vid ? (
+                {vid && (
                   <View style={{ marginTop: 12 }}>
                     <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
                   </View>
-                ) : null}
+                )}
                 
                 {isTrainer ? (
                   <View style={{ marginTop: 10 }}>
@@ -1401,11 +1404,11 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
             )}
             {log?.note && <Text style={{ color: colors.textSecondary, fontSize: 14, fontStyle: 'italic', marginTop: 6 }}>📝 Nota: {log.note}</Text>}
             
-            {vid ? (
+            {vid && (
               <View style={{ marginTop: 12 }}>
                 <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
               </View>
-            ) : null}
+            )}
 
             {isTrainer ? (
               <View style={{ marginTop: 10 }}>
@@ -1475,7 +1478,12 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
     main = (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={styles.topBar}><TouchableOpacity onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity><Text style={[styles.topTitle, { color: colors.textPrimary }]}>Resumen</Text><View style={{ width: 26 }} /></View>
+          <View style={styles.topBar}>
+            <TouchableOpacity onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
+            {/* CHIVATO VISUAL: Título cambiado a 'Resumen de Sesión' */}
+            <Text style={[styles.topTitle, { color: colors.textPrimary }]}>Resumen de Sesión</Text>
+            <View style={{ width: 26 }} />
+          </View>
           <ScrollView contentContainerStyle={[styles.content, { alignItems: 'center', paddingVertical: 40 }]} keyboardShouldPersistTaps="handled">
             <View style={styles.finishedIconContainer}><Ionicons name="trophy" size={80} color={colors.warning || '#F59E0B'} /></View>
             <Text style={[styles.finishedTitle, { color: colors.textPrimary }]}>¡Entrenamiento completado!</Text>
@@ -1638,26 +1646,7 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
               onComplete={advanceHiit} onSkip={skipHiitEx} 
             />
             
-            <HiitCard 
-               currentBlock={displayBlock} 
-               hiitRound={hiitRound} 
-               hiitPhase={hiitPhase} 
-               hiitExIdx={hiitExIdx} 
-               hiitBlockIdx={hiitBlockIdx} 
-               hiitExSet={hiitExSet} 
-               hiitSide={hiitSide} 
-               colors={colors} 
-               hiitLogs={hiitLogs} 
-               setHiitLogs={setHiitLogs} 
-               recordedVideos={displayVideos} 
-               handleRecordVideoOptions={handleRecordVideoOptions} 
-               videoUploading={videoUploading} 
-               renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} 
-               onAdvanceHiit={advanceHiit} 
-               onSkipHiitEx={skipHiitEx} 
-               /* Añadimos el objeto a HiitCard para que internamente sepa si pintar el feedback si lo hemos actualizado ahí. */
-               uploadStatusMsg={uploadStatusMsg as any}
-            />
+            <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} hiitSide={hiitSide} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={displayVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={videoUploading} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
           </ScrollView>
           <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
             <Ionicons name="list" size={24} color="#FFF" />
@@ -1776,14 +1765,14 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
               ))}
             </View>
             
-            {displayVideos[currentExIndex.toString()] ? (
+            {displayVideos[currentExIndex.toString()] && (
               <View style={{ marginTop: 15 }}>
                 <MiniVideoPlayer 
                   url={displayVideos[currentExIndex.toString()]} 
                   onExpand={setExpandedVideo} 
                 />
               </View>
-            ) : null}
+            )}
 
             <TouchableOpacity 
               style={[styles.recordBtn, { marginTop: 15, borderColor: colors.border, opacity: videoUploading === currentExIndex.toString() ? 0.6 : 1 }]} 
@@ -1807,14 +1796,15 @@ const launchVideoPicker = async (source: 'camera' | 'library', key: string) => {
               ) : (
                 <>
                   <Ionicons name="videocam" size={20} color={colors.primary} />
+                  {/* CHIVATO VISUAL: El texto ha cambiado para que sepas que el código ha cargado bien */}
                   <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>
-                    {displayVideos[currentExIndex.toString()] ? "Reemplazar vídeo" : "Grabar técnica"}
+                    {displayVideos[currentExIndex.toString()] ? "Reemplazar vídeo 📸" : "Subir Técnica 📸"}
                   </Text>
                 </>
               )}
             </TouchableOpacity>
 
-            {/* NUEVO FEEDBACK VISUAL EXPLICITO SOBRE LA SUBIDA DE VÍDEO */}
+            {/* MENSAJE DE ESTADO VISUAL DIRECTO EN LA PANTALLA */}
             {uploadStatusMsg[currentExIndex.toString()] && (
                <View style={{ 
                    marginTop: 10, 
