@@ -700,6 +700,14 @@ export default function CalendarScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       {/* --- CABECERA PRINCIPAL --- */}
       <View style={styles.topHeader}>
+        {isTrainer && selectedAthlete && (
+          <TouchableOpacity
+            style={{ marginRight: 12, justifyContent: 'center' }}
+            onPress={() => router.push({ pathname: '/athlete-detail', params: { id: selectedAthlete.id, name: selectedAthlete.name } })}
+          >
+            <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+          </TouchableOpacity>
+        )}
         <View style={{flex:1, marginRight: 8}}>
           <Text style={styles.headerSubtitle} numberOfLines={1}>{isTrainer ? 'AGENDA DEPORTISTA' : 'MI PLANIFICACIÓN'}</Text>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]} numberOfLines={1}>{selectedAthlete?.name || 'Calendario'}</Text>
