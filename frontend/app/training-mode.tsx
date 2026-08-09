@@ -843,41 +843,58 @@ export default function TrainingModeScreen() {
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
 
-  const handleFinish = async () => {
-    if (workout.completed) { router.back(); return; }
-    if (!stableWorkoutId) return;
-    
-    stopAllTimers();
-    const data = buildCompletionData();
-    
-    try {
-      const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises };
-      if (observations.trim()) update.observations = observations.trim();
-      await api.updateWorkout(stableWorkoutId, update);
+    const handleFinish = async () => {
+      if (workout.completed) { router.back(); return; }
+      if (!stableWorkoutId) return;
       
-      if (Platform.OS === 'web') {
-        const send = window.confirm("¡Buen trabajo! ¿Quieres enviar el resumen de la sesión por WhatsApp a tu entrenador?");
-        if (send) {
-          await sendWhatsAppMessage(data);
+      stopAllTimers();
+      const data = buildCompletionData();
+      
+      try {
+        const update: any = { completed: true, completion_data: data, title: workout.title, exercises: workout.exercises };
+        if (observations.trim()) update.observations = observations.trim();
+        
+        const res = await api.updateWorkout(stableWorkoutId, update);
+        
+        // ✅ DETECTAMOS SI SE GUARDÓ OFFLINE
+        if (res?.offline) {
+          if (Platform.OS === 'web') {
+             window.alert("Guardado Offline 📶. Tu sesión se ha guardado en el dispositivo y se sincronizará cuando recuperes la conexión.");
+             router.back();
+          } else {
+             Alert.alert(
+               "Guardado Offline 📶",
+               "No hay conexión. Tu sesión se ha guardado localmente y se sincronizará automáticamente cuando recuperes la cobertura.",
+               [{ text: "Entendido", onPress: () => router.back() }]
+             );
+          }
+          return; // Salimos aquí para no intentar abrir WhatsApp
         }
-        router.back();
-      } else {
-        Alert.alert(
-          "¡Buen trabajo!",
-          "¿Quieres enviar el resumen de la sesión por WhatsApp a tu entrenador?",
-          [
-            { text: "No", style: "cancel", onPress: () => router.back() },
-            { text: "Sí", onPress: async () => {
-                await sendWhatsAppMessage(data);
-                router.back();
-            }}
-          ]
-        );
+  
+        // Si todo fue online, flujo normal con WhatsApp
+        if (Platform.OS === 'web') {
+          const send = window.confirm("¡Buen trabajo! ¿Quieres enviar el resumen de la sesión por WhatsApp a tu entrenador?");
+          if (send) {
+            await sendWhatsAppMessage(data);
+          }
+          router.back();
+        } else {
+          Alert.alert(
+            "¡Buen trabajo!",
+            "¿Quieres enviar el resumen de la sesión por WhatsApp a tu entrenador?",
+            [
+              { text: "No", style: "cancel", onPress: () => router.back() },
+              { text: "Sí", onPress: async () => {
+                  await sendWhatsAppMessage(data);
+                  router.back();
+              }}
+            ]
+          );
+        }
+      } catch (e) { 
+        Alert.alert("Error", "No se pudo guardar el entrenamiento."); 
       }
-    } catch (e) { 
-      Alert.alert("Error", "No se pudo guardar el entrenamiento."); 
-    }
-  };
+    };
 
   const addPlate = (weight: number) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
