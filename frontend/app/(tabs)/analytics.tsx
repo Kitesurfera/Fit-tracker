@@ -11,7 +11,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LineChart } from 'react-native-chart-kit';
+import { LineChart, BarChart } from 'react-native-chart-kit'; // Añadido BarChart
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useTrainer } from '../../src/context/TrainerContext';
@@ -257,11 +257,13 @@ export default function AnalyticsScreen() {
     return workoutHistory.filter(w => w.completed && w.date >= limitDateStr).length;
   }, [workoutHistory]);
 
+  // --- ACTUALIZADO: RPE (Carga) incluido en la memoización ---
   const workloadData = useMemo(() => {
     const daysToMap = 14;
     const labels: string[] = [];
     const fatigueData: number[] = [];
     const sorenessData: number[] = [];
+    const rpeData: number[] = [];
 
     for (let i = daysToMap - 1; i >= 0; i--) {
       const d = new Date();
@@ -269,12 +271,21 @@ export default function AnalyticsScreen() {
       const dateStr = getLocalDateStr(d);
       
       labels.push(`${d.getDate()}/${d.getMonth() + 1}`);
+      
       const well = wellnessHistory.find(w => w.date === dateStr);
       fatigueData.push(well ? well.fatigue || 0 : 0);
       sorenessData.push(well ? well.soreness || well.muscle_soreness || 0 : 0);
+
+      const dayWorkouts = workoutHistory.filter(w => w.date === dateStr && w.completed);
+      let dayRpe = 0;
+      dayWorkouts.forEach(w => {
+        const rpe = w.completion_data?.rpe || 0;
+        if (rpe > dayRpe) dayRpe = rpe;
+      });
+      rpeData.push(dayRpe);
     }
-    return { labels, fatigueData, sorenessData };
-  }, [wellnessHistory]);
+    return { labels, fatigueData, sorenessData, rpeData };
+  }, [wellnessHistory, workoutHistory]);
 
   const allFeedbacks = useMemo(() => {
     const list: any[] = [];
@@ -326,6 +337,7 @@ export default function AnalyticsScreen() {
         }
       } catch (e) { console.log("Aviso: Error generando IA, usando template base."); }
 
+      // ACTUALIZADO: El PDF ahora genera un gráfico combinado (Barras + Líneas) con Chart.js
       const htmlContent = `
       <html>
         <head>
@@ -350,7 +362,7 @@ export default function AnalyticsScreen() {
             .recommendation-list { margin: 0; padding-left: 20px; }
             .recommendation-list li { margin-bottom: 8px; }
 
-            .chart-container { width: 100%; height: 300px; position: relative; margin-top: 20px; }
+            .chart-container { width: 100%; height: 350px; position: relative; margin-top: 20px; }
             
             .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #94a3b8; }
           </style>
@@ -380,7 +392,7 @@ export default function AnalyticsScreen() {
           </div>
 
           <div class="section">
-            <h2>Carga, Fatiga y Recuperación (Últimos 14 días)</h2>
+            <h2>Carga Interna (RPE) vs Fatiga (Últimos 14 días)</h2>
             <div class="text-content" style="margin-bottom: 15px;">
               <strong>Estado Actual del SNC:</strong><br/>
               ${aiAnalysis.workload_analysis}
@@ -418,27 +430,39 @@ export default function AnalyticsScreen() {
           <script>
             const ctx = document.getElementById('workloadChart').getContext('2d');
             new Chart(ctx, {
-                type: 'line',
+                type: 'bar',
                 data: {
                     labels: ${JSON.stringify(workloadData.labels)},
                     datasets: [
                         {
+                            type: 'bar',
+                            label: 'Carga (RPE)',
+                            data: ${JSON.stringify(workloadData.rpeData)},
+                            backgroundColor: 'rgba(16, 185, 129, 0.4)',
+                            borderColor: 'rgba(16, 185, 129, 1)',
+                            borderWidth: 1,
+                            yAxisID: 'y1'
+                        },
+                        {
+                            type: 'line',
                             label: 'Fatiga General',
                             data: ${JSON.stringify(workloadData.fatigueData)},
                             borderColor: '#EF4444',
-                            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                            backgroundColor: 'transparent',
                             borderWidth: 3,
                             tension: 0.4,
-                            fill: true
+                            yAxisID: 'y'
                         },
                         {
+                            type: 'line',
                             label: 'Agujetas / Dolor',
                             data: ${JSON.stringify(workloadData.sorenessData)},
                             borderColor: '#F59E0B',
                             backgroundColor: 'transparent',
                             borderWidth: 3,
                             borderDash: [5, 5],
-                            tension: 0.4
+                            tension: 0.4,
+                            yAxisID: 'y'
                         }
                     ]
                 },
@@ -446,7 +470,23 @@ export default function AnalyticsScreen() {
                     responsive: true,
                     maintainAspectRatio: false,
                     scales: {
-                        y: { beginAtZero: true, max: 5, ticks: { stepSize: 1 } }
+                        y: { 
+                          type: 'linear', 
+                          display: true, 
+                          position: 'left',
+                          beginAtZero: true, 
+                          max: 5, 
+                          title: { display: true, text: 'Nivel (0-5)' }
+                        },
+                        y1: { 
+                          type: 'linear', 
+                          display: true, 
+                          position: 'right',
+                          beginAtZero: true, 
+                          max: 10,
+                          grid: { drawOnChartArea: false },
+                          title: { display: true, text: 'RPE (0-10)' }
+                        }
                     },
                     plugins: {
                         legend: { position: 'bottom' }
@@ -517,6 +557,7 @@ export default function AnalyticsScreen() {
     );
   };
 
+  // --- ACTUALIZADO: Carga Interna (Barras) y SNC (Líneas) separados para mayor claridad ---
   const renderWorkloadDashboard = () => {
     const targetAthlete = selectedAthlete || user;
     const waterSessions = targetAthlete?.technical_sessions || [];
@@ -524,7 +565,7 @@ export default function AnalyticsScreen() {
     const sportIconKey = targetAthlete?.sport_icon || 'kite';
     const sportInfo = SPORT_ICON_MAP[sportIconKey] || SPORT_ICON_MAP['kite'];
 
-    const { labels, fatigueData, sorenessData } = workloadData;
+    const { labels, fatigueData, sorenessData, rpeData } = workloadData;
     
     const activityGrid: { date: string, gym: boolean, water: boolean }[] = [];
     const daysToMap = 14;
@@ -539,43 +580,80 @@ export default function AnalyticsScreen() {
 
     return (
       <View style={{ marginBottom: 30 }}>
-        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 5 }]}>Estrés Físico y Técnica</Text>
-        <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 20 }}>Cruza tus niveles de dolor y fatiga con tus sesiones de gimnasio y específicas de los últimos 14 días.</Text>
+        <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 5 }]}>Carga vs Recuperación</Text>
+        <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 20 }}>Analiza el impacto del entrenamiento (RPE) y tu estado de recuperación (SNC) en los últimos 14 días.</Text>
 
+        {/* 1. GRÁFICA DE BARRAS: CARGA (RPE) */}
+        <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 20, marginBottom: 15 }]}>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textPrimary, marginBottom: 15, textAlign: 'center' }}>Carga Interna de Entrenamientos (RPE)</Text>
+          <BarChart
+            data={{
+              labels,
+              datasets: [{ data: rpeData }]
+            }}
+            width={chartWidth}
+            height={180}
+            yAxisLabel=""
+            yAxisSuffix=""
+            fromZero
+            showValuesOnTopOfBars
+            chartConfig={{
+              backgroundColor: colors.surface,
+              backgroundGradientFrom: colors.surface,
+              backgroundGradientTo: colors.surface,
+              decimalPlaces: 0,
+              color: (opacity = 1) => `rgba(16, 185, 129, ${opacity})`, // Verde corporativo
+              labelColor: () => colors.textSecondary,
+              barPercentage: 0.5,
+              propsForLabels: { fontSize: 10 }
+            }}
+            style={{ borderRadius: 16, alignSelf: 'center' }}
+          />
+        </View>
+
+        {/* 2. GRÁFICA DE LÍNEAS: FATIGA Y AGUJETAS */}
         <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 20 }]}>
+          <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textPrimary, marginBottom: 15, textAlign: 'center' }}>Estado del SNC y Muscular</Text>
           <View style={{ flexDirection: 'row', gap: 15, marginBottom: 15, justifyContent: 'center' }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' }}/><Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Fatiga General</Text></View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#F59E0B' }}/><Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Agujetas / Dolor</Text></View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#EF4444' }}/><Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Fatiga</Text></View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5 }}><View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#F59E0B' }}/><Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Agujetas</Text></View>
           </View>
           
           <LineChart
             data={{
               labels,
               datasets: [
-                { data: fatigueData, color: () => '#EF4444', strokeWidth: 3 },
-                { data: sorenessData, color: () => '#F59E0B', strokeWidth: 3 }
+                { data: fatigueData.every(d => d===0) ? fatigueData.map(()=>0) : fatigueData, color: () => '#EF4444', strokeWidth: 3 },
+                { data: sorenessData.every(d => d===0) ? sorenessData.map(()=>0) : sorenessData, color: () => '#F59E0B', strokeWidth: 3 },
+                { data: [5], withDots: false, color: () => 'transparent' } // Truco para forzar el Eje Y a 5 como máximo siempre
               ]
             }}
             width={chartWidth}
-            height={200}
+            height={180}
             fromZero
             yAxisInterval={1}
+            segments={5}
             chartConfig={{
-              backgroundColor: colors.surface, backgroundGradientFrom: colors.surface, backgroundGradientTo: colors.surface,
-              decimalPlaces: 0, color: (opacity = 1) => colors.border, labelColor: () => colors.textSecondary,
+              backgroundColor: colors.surface, 
+              backgroundGradientFrom: colors.surface, 
+              backgroundGradientTo: colors.surface,
+              decimalPlaces: 0, 
+              color: (opacity = 1) => colors.border, 
+              labelColor: () => colors.textSecondary,
               propsForDots: { r: "4", strokeWidth: "2", stroke: colors.surface }
             }}
             bezier
-            style={{ borderRadius: 16, marginVertical: 8, alignSelf: 'center' }}
+            style={{ borderRadius: 16, alignSelf: 'center' }}
           />
 
+          {/* REGISTRO TIPO HEATMAP GITHUB */}
           <View style={{ marginTop: 20, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
-            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 15, textAlign: 'center', letterSpacing: 1 }}>REGISTRO DE SESIONES</Text>
+            <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 15, textAlign: 'center', letterSpacing: 1 }}>MAPA DE SESIONES</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{flexGrow: 1, justifyContent: 'center'}}>
                <View style={{ flexDirection: 'row', gap: 6, paddingBottom: 10, alignItems: 'center' }}>
                  {activityGrid.map((day, i) => (
                    <View key={i} style={{ alignItems: 'center', width: Math.max(30, (chartWidth - 60) / 14) }}>
-                      <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 8 }}>{labels[i]}</Text>
+                      <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 8 }}>{labels[i].split('/')[0]}</Text>
                       <View style={{ height: 28, justifyContent: 'center' }}>
                         {day.gym ? <Ionicons name="barbell" size={18} color={colors.primary} /> : <Text style={{ color: colors.border }}>-</Text>}
                       </View>
