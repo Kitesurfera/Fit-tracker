@@ -233,6 +233,17 @@ export default function TestsScreen() {
           ListHeaderComponent={
             <View style={{ marginBottom: 20 }}>
               <View style={styles.headerRow}>
+                {isTrainer && selectedAthlete && (
+                  <TouchableOpacity
+                    style={{ marginRight: 12, justifyContent: 'center' }}
+                    onPress={() => {
+                      const athleteName = athletes.find(a => a.id === selectedAthlete)?.name || '';
+                      router.push({ pathname: '/athlete-detail', params: { id: selectedAthlete, name: athleteName } });
+                    }}
+                  >
+                    <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+                  </TouchableOpacity>
+                )}
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={[styles.screenTitle, { color: colors.textPrimary }]} numberOfLines={1}>
                     {isTrainer ? (athletes.find(a => a.id === selectedAthlete)?.name || 'Tests del Deportista') : 'Tests Físicos'}
