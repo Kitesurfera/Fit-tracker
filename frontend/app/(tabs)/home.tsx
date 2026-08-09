@@ -112,7 +112,6 @@ export default function HomeScreen() {
 
     if (isNowOffline) {
       updated.push(id);
-      if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
       Alert.alert("Disponible Offline ☁️", "Los datos de esta sesión están guardados localmente. Puedes entrenar sin cobertura.");
     } else {
       updated = updated.filter(wId => wId !== id);
@@ -258,7 +257,6 @@ export default function HomeScreen() {
     try {
       if (isTrainer) {
         const data = await api.getAthletes();
-        // Cargamos el wellness de todos para el semáforo
         const athletesWithReadiness = await Promise.all(
           data.map(async (athlete: any) => {
             try {
@@ -489,20 +487,22 @@ export default function HomeScreen() {
             <View style={{ flex: 1 }}><Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }, isDesktop && { fontSize: 18 }]}>{String(item.title || 'Sesión')}</Text><Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>{item.date || 'Sin fecha'}</Text>{hasSessionFeedback && <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}><Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text></View>}{isSkipped && <Text style={{color: colors.error || '#EF4444', fontSize: 10, fontWeight: '800', marginTop: 4}}>SESIÓN SALTADA</Text>}</View>
           </TouchableOpacity>
 
-        {!item.completed && !isTrainer && (
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <TouchableOpacity style={{ padding: 10 }} onPress={() => toggleOfflineStatus(item.id)}>
-                        <Ionicons 
-                          name={offlineWorkouts.includes(item.id) ? "cloud-done" : "cloud-download-outline"} 
-                          size={26} 
-                          color={offlineWorkouts.includes(item.id) ? (colors.success || '#10B981') : colors.textSecondary} 
-                        />
-                      </TouchableOpacity>
-                      <TouchableOpacity style={{ padding: 10, marginRight: 5 }} onPress={() => { setSkipWorkoutId(item.id); setShowSkipModal(true); }}>
-                        <Ionicons name="close-circle-outline" size={26} color={colors.error || '#EF4444'} />
-                      </TouchableOpacity>
-                    </View>
-                  )}
+          {!item.completed && !isTrainer && (
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <TouchableOpacity style={{ padding: 10 }} onPress={() => toggleOfflineStatus(item.id)}>
+                <Ionicons 
+                  name={offlineWorkouts.includes(item.id) ? "cloud-done" : "cloud-download-outline"} 
+                  size={26} 
+                  color={offlineWorkouts.includes(item.id) ? (colors.success || '#10B981') : colors.textSecondary} 
+                />
+              </TouchableOpacity>
+              <TouchableOpacity style={{ padding: 10, marginRight: 5 }} onPress={() => { setSkipWorkoutId(item.id); setShowSkipModal(true); }}>
+                <Ionicons name="close-circle-outline" size={26} color={colors.error || '#EF4444'} />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+
         {isExpanded && (
           <View style={{ marginTop: 15, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 15 }}>
             <Text style={{fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, letterSpacing: 1}}>DETALLES DEL ENTRENAMIENTO</Text>
@@ -662,7 +662,6 @@ export default function HomeScreen() {
       );
     }
 
-    // Móvil: Todo en uno
     return (
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={loadData} tintColor={colors.primary} />}>
         {renderAthleteDashboard()}
@@ -676,7 +675,7 @@ export default function HomeScreen() {
 
     return (
       <FlatList
-        key={isDesktop ? 'desktop' : 'mobile'} // Fuerza re-render si se cambia el tamaño de la ventana
+        key={isDesktop ? 'desktop' : 'mobile'}
         numColumns={numColumns}
         style={{ flex: 1 }} 
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 40 }} 
@@ -710,8 +709,8 @@ export default function HomeScreen() {
                 <TouchableOpacity 
                 style={styles.athleteInfoArea}
                 onPress={() => {
-                 setSelectedAthlete(item); // 1. Guardamos el atleta en la memoria global
-                  router.push(`/athlete-detail?id=${item.id}&name=${encodeURIComponent(item.name)}`); // 2. Navegamos al detalle
+                   setSelectedAthlete(item);
+                   router.push(`/athlete-detail?id=${item.id}&name=${encodeURIComponent(item.name)}`);
                 }}
                 >
                 <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
@@ -732,7 +731,6 @@ export default function HomeScreen() {
                   </View>
                 </View>
 
-                {/* Semáforo */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1, borderColor: colorHex }}>
                   <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: colorHex }} />
                   <Text style={{ fontSize: 10, fontWeight: '800', color: colorHex, textTransform: 'uppercase' }}>
@@ -742,7 +740,6 @@ export default function HomeScreen() {
               </TouchableOpacity>
               </Link>
 
-              {/* Tira de Advertencia si está en Amarillo/Rojo */}
               {(item.readinessColor === 'RED' || item.readinessColor === 'YELLOW') && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 16, paddingVertical: 10, backgroundColor: colorHex + '15' }}>
                   <Ionicons name="warning-outline" size={14} color={colorHex} />
@@ -796,7 +793,6 @@ export default function HomeScreen() {
         </View>
       </Modal>
       
-      {/* MODAL PARA AÑADIR / EDITAR DEPORTISTA */}
       <Modal visible={showAthleteModal} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={[styles.modalContent, { backgroundColor: colors.surface }]}>
