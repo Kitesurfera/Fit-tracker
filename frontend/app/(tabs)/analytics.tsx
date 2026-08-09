@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useLocalSearchParams, useFocusEffect, useRouter } from 'expo-router';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
@@ -70,6 +70,7 @@ const getLocalDateStr = (date: Date) => {
 export default function AnalyticsScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const router = useRouter();
   const params = useLocalSearchParams();
   const isTrainer = user?.role === 'trainer';
   
@@ -689,9 +690,19 @@ export default function AnalyticsScreen() {
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <View style={[styles.mainWrapper, isDesktop && styles.desktopWrapper]}>
           <View style={styles.header}>
-            <View>
-              <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Tus Analíticas'}</Text>
-              {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>Vista Entrenador</Text>}
+            <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+              {isTrainer && selectedAthlete && (
+                <TouchableOpacity
+                  style={{ marginRight: 12, justifyContent: 'center' }}
+                  onPress={() => router.push({ pathname: '/athlete-detail', params: { id: selectedAthlete.id, name: selectedAthlete.name } })}
+                >
+                  <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
+                </TouchableOpacity>
+              )}
+              <View>
+                <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>{isTrainer ? (selectedAthlete?.name || 'Cargando...') : 'Tus Analíticas'}</Text>
+                {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>Vista Entrenador</Text>}
+              </View>
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
