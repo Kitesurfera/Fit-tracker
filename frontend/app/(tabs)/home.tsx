@@ -49,7 +49,6 @@ const extractDateString = (dateVal: any) => {
   return null;
 };
 
-// --- Tipos Semáforo ---
 type ReadinessStatus = 'RED' | 'YELLOW' | 'GREEN' | 'GRAY';
 
 export default function HomeScreen() {
@@ -92,7 +91,6 @@ export default function HomeScreen() {
 
   const [offlineWorkouts, setOfflineWorkouts] = useState<string[]>([]);
 
-  // Cargar las sesiones marcadas como offline al abrir la pantalla
   useFocusEffect(
     useCallback(() => {
       const loadOfflineFlags = async () => {
@@ -105,7 +103,6 @@ export default function HomeScreen() {
     }, [])
   );
 
-  // Función para alternar el estado de descarga
   const toggleOfflineStatus = async (id: string) => {
     let updated = [...offlineWorkouts];
     const isNowOffline = !updated.includes(id);
@@ -229,7 +226,6 @@ export default function HomeScreen() {
 
   const phaseInfo = useMemo(() => getPhaseForDate(todayStr), [getPhaseForDate, todayStr]);
 
-  // --- LÓGICA SEMÁFORO ---
   const calculateReadiness = (wellness: any): { readinessColor: ReadinessStatus, readinessLabel: string, fatigue: number, soreness: number, sleep: number } => {
     if (!wellness || !wellness.date || wellness.date !== todayStr) {
       return { readinessColor: 'GRAY', readinessLabel: 'Sin datos hoy', fatigue: 0, soreness: 0, sleep: 0 };
@@ -467,8 +463,6 @@ export default function HomeScreen() {
   const handleCloseMicroInfo = () => { setViewMicroInfo(null); setExpandedWorkoutId(null); };
   const microWorkouts = useMemo(() => { if (!viewMicroInfo) return []; return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))); }, [workouts, viewMicroInfo]);
 
-  // --- RENDERS ---
-
   const renderWorkoutCard = (item: any) => {
     let hasSessionFeedback = false;
     if (item.completed && item.completion_data) {
@@ -483,8 +477,15 @@ export default function HomeScreen() {
       <View key={item.id} style={[styles.sessionCardWrapper, { backgroundColor: colors.surface, opacity: item.completed && !isExpanded ? 0.7 : 1, borderColor: isExpanded ? colors.primary : 'transparent', borderWidth: isExpanded ? 1 : 0 }, isDesktop && { marginHorizontal: 0, marginBottom: 15 }]}>
         <View style={styles.sessionCardRow}>
           <TouchableOpacity style={{flexDirection: 'row', alignItems: 'center', flex: 1}} onPress={toggleExpand} activeOpacity={0.7}>
-            <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : colors.primary + '15' }]}><Ionicons name={item.completed ? "checkmark-done" : "calendar-outline"} size={20} color={item.completed ? (colors.success || '#10B981') : colors.primary} /></View>
-            <View style={{ flex: 1 }}><Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }, isDesktop && { fontSize: 18 }]}>{String(item.title || 'Sesión')}</Text><Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>{item.date || 'Sin fecha'}</Text>{hasSessionFeedback && <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}><Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text></View>}{isSkipped && <Text style={{color: colors.error || '#EF4444', fontSize: 10, fontWeight: '800', marginTop: 4}}>SESIÓN SALTADA</Text>}</View>
+            <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : (item.is_test_battery ? '#F59E0B15' : colors.primary + '15') }]}>
+              <Ionicons name={item.completed ? "checkmark-done" : (item.is_test_battery ? "trophy" : "calendar-outline")} size={20} color={item.completed ? (colors.success || '#10B981') : (item.is_test_battery ? "#F59E0B" : colors.primary)} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }, isDesktop && { fontSize: 18 }]}>{String(item.title || 'Sesión')}</Text>
+              <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>{item.date || 'Sin fecha'}</Text>
+              {hasSessionFeedback && <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}><Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text></View>}
+              {isSkipped && <Text style={{color: colors.error || '#EF4444', fontSize: 10, fontWeight: '800', marginTop: 4}}>SESIÓN SALTADA</Text>}
+            </View>
           </TouchableOpacity>
 
           {!item.completed && !isTrainer && (
@@ -512,17 +513,58 @@ export default function HomeScreen() {
                 const isBlockExpanded = expandedExerciseId === blockKey;
                 return (
                   <View key={idx} style={[styles.microWorkoutCard, { borderColor: colors.border, marginBottom: 8 }]}>
-                    <TouchableOpacity style={[styles.microWorkoutHeader, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setExpandedExerciseId(isBlockExpanded ? null : blockKey)}><Ionicons name={ex.is_hiit_block ? "flash" : "barbell-outline"} size={16} color={colors.primary} /><View style={{ flex: 1, marginLeft: 10 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: isDesktop ? 14 : 13 }}>{ex.name}</Text>{!ex.is_hiit_block && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 12 : 11 }}>{ex.sets} series x {ex.reps} reps</Text>}</View><Ionicons name={isBlockExpanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} /></TouchableOpacity>
+                    <TouchableOpacity style={[styles.microWorkoutHeader, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setExpandedExerciseId(isBlockExpanded ? null : blockKey)}>
+                      <Ionicons name={ex.is_hiit_block ? "flash" : (item.is_test_battery ? "trophy-outline" : "barbell-outline")} size={16} color={item.is_test_battery ? "#F59E0B" : colors.primary} />
+                      <View style={{ flex: 1, marginLeft: 10 }}>
+                        <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: isDesktop ? 14 : 13 }}>{ex.name}</Text>
+                        {!ex.is_hiit_block && !item.is_test_battery && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 12 : 11 }}>{ex.sets} series x {ex.reps} reps</Text>}
+                        {item.is_test_battery && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 12 : 11 }}>Unidad: {ex.unit} {ex.is_bilateral ? '• Bilateral' : ''}</Text>}
+                      </View>
+                      <Ionicons name={isBlockExpanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} />
+                    </TouchableOpacity>
                     {isBlockExpanded && (
                       <View style={[styles.microWorkoutExercises, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
-                        {ex.is_hiit_block ? (ex.hiit_exercises?.map((he: any, j: number) => (<Text key={j} style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginBottom: 4 }}>• {he.name} <Text style={{fontWeight: '700', color: colors.textPrimary}}>({he.duration_reps})</Text></Text>))) : (<View><Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>Objetivo: <Text style={{fontWeight: '700', color: colors.textPrimary}}>{ex.sets} series de {ex.reps} {ex.weight ? `con ${ex.weight}` : ''}</Text></Text>{ex.rest && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginTop: 2 }}>Descanso: {ex.rest}</Text>}{ex.exercise_notes && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginTop: 4, fontStyle: 'italic' }}>Nota: {ex.exercise_notes}</Text>}</View>)}
+                        {ex.is_hiit_block ? (ex.hiit_exercises?.map((he: any, j: number) => (<Text key={j} style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginBottom: 4 }}>• {he.name} <Text style={{fontWeight: '700', color: colors.textPrimary}}>({he.duration_reps})</Text></Text>))) : item.is_test_battery ? (<Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>Evaluación de test físico personalizado.</Text>) : (<View><Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>Objetivo: <Text style={{fontWeight: '700', color: colors.textPrimary}}>{ex.sets} series de {ex.reps} {ex.weight ? `con ${ex.weight}` : ''}</Text></Text>{ex.rest && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginTop: 2 }}>Descanso: {ex.rest}</Text>}{ex.exercise_notes && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginTop: 4, fontStyle: 'italic' }}>Nota: {ex.exercise_notes}</Text>}</View>)}
                       </View>
                     )}
                   </View>
                 );
               })
             ) : (<Text style={{color: colors.textSecondary, fontStyle: 'italic', fontSize: 12}}>No hay bloques definidos.</Text>)}
-            <TouchableOpacity style={{backgroundColor: item.completed ? colors.surfaceHighlight : colors.primary, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', padding: 16, borderRadius: 14, marginTop: 10, gap: 8}} onPress={() => router.push(`/training-mode?workoutId=${item.id}`)} activeOpacity={0.8}><Ionicons name={item.completed ? "stats-chart" : "play"} size={20} color={item.completed ? colors.textPrimary : "#FFF"} /><Text style={{color: item.completed ? colors.textPrimary : '#FFF', fontWeight: '800', fontSize: isDesktop ? 15 : 14}}>{item.completed ? "VER RESUMEN Y FEEDBACK" : "INICIAR ENTRENAMIENTO"}</Text></TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={{
+                backgroundColor: item.completed 
+                  ? colors.surfaceHighlight 
+                  : (item.is_test_battery ? '#F59E0B' : colors.primary), 
+                flexDirection: 'row', 
+                justifyContent: 'center', 
+                alignItems: 'center', 
+                padding: 16, 
+                borderRadius: 14, 
+                marginTop: 10, 
+                gap: 8
+              }} 
+              onPress={() => {
+                if (item.is_test_battery) {
+                  router.push(`/test-mode?workoutId=${item.id}`);
+                } else {
+                  router.push(`/training-mode?workoutId=${item.id}`);
+                }
+              }} 
+              activeOpacity={0.8}
+            >
+              <Ionicons 
+                name={item.completed ? "stats-chart" : (item.is_test_battery ? "trophy" : "play")} 
+                size={20} 
+                color={item.completed ? colors.textPrimary : "#FFF"} 
+              />
+              <Text style={{color: item.completed ? colors.textPrimary : '#FFF', fontWeight: '800', fontSize: isDesktop ? 15 : 14}}>
+                {item.completed 
+                  ? "VER RESUMEN Y FEEDBACK" 
+                  : (item.is_test_battery ? "REALIZAR BATERÍA DE TESTS" : "INICIAR ENTRENAMIENTO")}
+              </Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -883,10 +925,10 @@ export default function HomeScreen() {
                     {microWorkouts.map(wk => (
                       <View key={wk.id} style={[styles.microWorkoutCard, { borderColor: colors.border }]}>
                         <TouchableOpacity style={[styles.microWorkoutHeader, { backgroundColor: colors.surfaceHighlight }]} onPress={() => setExpandedWorkoutId(expandedWorkoutId === wk.id ? null : wk.id)}>
-                          <Ionicons name="barbell-outline" size={18} color={viewMicroInfo.color || colors.primary} />
+                          <Ionicons name={wk.is_test_battery ? "trophy" : "barbell-outline"} size={18} color={wk.is_test_battery ? "#F59E0B" : (viewMicroInfo.color || colors.primary)} />
                           <View style={{ flex: 1, marginLeft: 10 }}>
                             <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>{wk.title}</Text>
-                            <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{wk.date}</Text>
+                            <Text style={{ color: colors.textSecondary, fontSize: 11 }}>{wk.date} {wk.is_test_battery ? '• Batería de Tests' : ''}</Text>
                           </View>
                           <Ionicons name={expandedWorkoutId === wk.id ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
                         </TouchableOpacity>
@@ -896,7 +938,7 @@ export default function HomeScreen() {
                               if (ex.is_hiit_block) { 
                                 return (<View key={i} style={{ marginBottom: 8 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 12 }}>⚡ {ex.name}</Text>{ex.hiit_exercises?.map((he: any, j: number) => (<Text key={j} style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 15 }}>• {he.name} ({he.duration_reps})</Text>))}</View>); 
                               } else { 
-                                return (<Text key={i} style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>• {ex.name} <Text style={{fontWeight: '600', color: viewMicroInfo.color || colors.primary}}>{ex.sets}x{ex.reps}</Text></Text>); 
+                                return (<Text key={i} style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>• {ex.name} <Text style={{fontWeight: '600', color: viewMicroInfo.color || colors.primary}}>{ex.sets ? `${ex.sets}x${ex.reps}` : `${ex.unit}`}</Text></Text>); 
                               } 
                             })) : (<Text style={{ color: colors.textSecondary, fontSize: 12 }}>Sin ejercicios.</Text>)}
                           </View>
