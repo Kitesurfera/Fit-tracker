@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, 
   ActivityIndicator, ScrollView, TextInput, Alert, Platform,
-  KeyboardAvoidingView
+  KeyboardAvoidingView, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../src/hooks/useTheme';
+import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api';
 import * as ImagePicker from 'expo-image-picker';
 
@@ -15,15 +16,21 @@ export default function TestModeScreen() {
   const { workoutId } = useLocalSearchParams();
   const router = useRouter();
   const { colors } = useTheme();
+  const { user } = useAuth();
   
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [workout, setWorkout] = useState<any>(null);
   
+  const [workout, setWorkout] = useState<any>(null);
+  const [athleteName, setAthleteName] = useState<string>('Deportista');
   const [results, setResults] = useState<Record<string, any>>({});
   
+  // Estados para la pantalla final de revisión
+  const [showSummary, setShowSummary] = useState(false);
+  const [testCategories, setTestCategories] = useState<Record<string, string>>({});
+
   useEffect(() => {
-    const fetchWorkout = async () => {
+    const fetchWorkoutAndAthlete = async () => {
       try {
         const res = await api.getWorkouts({}); 
         const wks = Array.isArray(res) ? res : (res.data || []);
@@ -32,6 +39,17 @@ export default function TestModeScreen() {
         if (currentWorkout) {
           setWorkout(currentWorkout);
           
+          // Buscar el nombre del atleta
+          if (user?.role === 'trainer') {
+             const athletesRes = await api.getAthletes();
+             const athletesList = Array.isArray(athletesRes) ? athletesRes : (athletesRes?.data || []);
+             const ath = athletesList.find((a: any) => String(a.id) === String(currentWorkout.athlete_id));
+             if (ath) setAthleteName(ath.name);
+          } else if (user?.name) {
+             setAthleteName(user.name);
+          }
+          
+          // Inicializar campos de resultados
           const initialResults: Record<string, any> = {};
           currentWorkout.exercises?.forEach((ex: any) => {
              initialResults[ex.test_key] = {
@@ -51,7 +69,7 @@ export default function TestModeScreen() {
         setLoading(false);
       }
     };
-    if (workoutId) fetchWorkout();
+    if (workoutId) fetchWorkoutAndAthlete();
   }, [workoutId]);
 
   const updateResult = (testKey: string, field: string, value: string) => {
@@ -67,13 +85,11 @@ export default function TestModeScreen() {
       Alert.alert("Permiso Denegado", "Se necesita acceso a la cámara para grabar el test.");
       return;
     }
-
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       allowsEditing: true,
       quality: 1,
     });
-
     if (!result.canceled && result.assets && result.assets.length > 0) {
       updateResult(testKey, 'videoUri', result.assets[0].uri);
     }
@@ -82,13 +98,32 @@ export default function TestModeScreen() {
   const calculateRSI = (flightMs: string, contactMs: string) => {
     const f = parseFloat(flightMs);
     const c = parseFloat(contactMs);
-    if (!isNaN(f) && !isNaN(c) && c > 0) {
-      return (f / c).toFixed(2);
-    }
+    if (!isNaN(f) && !isNaN(c) && c > 0) return (f / c).toFixed(2);
     return '0.00';
   };
 
-  const handleFinishTests = async () => {
+  // 1. Botón "Revisar" abre la pantalla de guardado
+  const handleReviewTests = () => {
+    // Autodetectar categorías basadas en el grupo o nombre del test
+    const initialCats: Record<string, string> = {};
+    workout.exercises.forEach((ex: any) => {
+       const str = `${ex.group || ''} ${ex.name || ''}`.toLowerCase();
+       if (str.includes('fuerza') || str.includes('rm') || str.includes('sentadilla') || str.includes('deadlift')) {
+         initialCats[ex.test_key] = 'strength';
+       } else if (str.includes('plio') || str.includes('salto') || str.includes('cmj') || str.includes('dj') || str.includes('pop')) {
+         initialCats[ex.test_key] = 'plyometrics';
+       } else if (str.includes('max')) {
+         initialCats[ex.test_key] = 'max_force';
+       } else {
+         initialCats[ex.test_key] = 'custom';
+       }
+    });
+    setTestCategories(initialCats);
+    setShowSummary(true);
+  };
+
+  // 2. Guardar definitivamente en la BD y redirigir al Tab de Tests
+  const executeSave = async () => {
     setSaving(true);
     try {
       const exercisesToSave = workout.exercises.map((ex: any) => {
@@ -114,31 +149,39 @@ export default function TestModeScreen() {
         };
       });
 
+      // 1. Completar la sesión en el calendario
       await api.updateWorkout(workout.id || workout._id, {
         ...workout,
         completed: true,
         completion_data: { exercise_results: exercisesToSave }
       });
 
+      // 2. Inyectar cada test en el registro global del atleta (tests.tsx)
       if (api.postTest) {
         for (const ex of exercisesToSave) {
-           if (ex.logged_weight > 0) {
+           if (ex.logged_weight > 0 || parseFloat(ex.result_left) > 0 || parseFloat(ex.result_right) > 0) {
               await api.postTest({
                 athlete_id: workout.athlete_id,
-                test_name: ex.test_key || ex.name,
+                test_name: 'custom',
+                custom_name: ex.name,
+                test_type: testCategories[ex.test_key] || 'custom',
                 value: ex.logged_weight,
-                value_left: ex.result_left,
-                value_right: ex.result_right,
+                value_left: ex.is_bilateral && ex.result_left ? parseFloat(ex.result_left) : null,
+                value_right: ex.is_bilateral && ex.result_right ? parseFloat(ex.result_right) : null,
                 date: workout.date,
-                unit: ex.unit || 'kg'
+                unit: ex.unit || 'kg',
+                notes: `Test desde Batería: ${ex.is_bilateral ? 'Bilateral' : 'Unilateral'}`
               });
            }
         }
       }
 
-      router.back();
+      setShowSummary(false);
+      // Redirigimos a la pantalla de Tests del deportista específico
+      router.replace({ pathname: '/tests', params: { athlete_id: workout.athlete_id } });
+
     } catch (e) {
-      Alert.alert("Error", "No se pudieron guardar los resultados.");
+      Alert.alert("Error", "No se pudieron guardar los resultados en el registro.");
       setSaving(false);
     }
   };
@@ -154,12 +197,14 @@ export default function TestModeScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        
+        {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={{ padding: 8 }}>
             <Ionicons name="close" size={28} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Evaluación de Tests</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Tests: {athleteName}</Text>
             <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>
                {(workout?.date || '').split('-').reverse().join('/')}
             </Text>
@@ -167,6 +212,7 @@ export default function TestModeScreen() {
           <View style={{ width: 44 }} />
         </View>
 
+        {/* LISTA DE INPUTS */}
         <ScrollView contentContainerStyle={{ padding: 20 }}>
           {workout?.exercises?.map((ex: any, idx: number) => {
             const res = results[ex.test_key];
@@ -188,7 +234,6 @@ export default function TestModeScreen() {
                    </TouchableOpacity>
                 </View>
 
-                {/* MOTOR DINÁMICO DE INPUTS */}
                 {ex.unit === 'rsi' || ex.test_key === 'dj' ? (
                   <View style={{ backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
                     <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE RSI (VUELO / CONTACTO)</Text>
@@ -266,17 +311,96 @@ export default function TestModeScreen() {
         </ScrollView>
 
         <View style={styles.footer}>
-          <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#F59E0B' }]} onPress={handleFinishTests} disabled={saving}>
-            {saving ? <ActivityIndicator color="#FFF" /> : (
-              <>
-                <Ionicons name="checkmark-done-circle" size={24} color="#FFF" />
-                <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16, marginLeft: 8 }}>GUARDAR BATERÍA</Text>
-              </>
-            )}
+          <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#F59E0B' }]} onPress={handleReviewTests}>
+            <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16 }}>REVISAR RESULTADOS</Text>
+            <Ionicons name="arrow-forward" size={20} color="#FFF" style={{ marginLeft: 8 }} />
           </TouchableOpacity>
         </View>
 
       </KeyboardAvoidingView>
+
+      {/* MODAL: RESUMEN Y GUARDADO DE CATEGORÍAS */}
+      <Modal visible={showSummary} animationType="slide" transparent={false}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+           <View style={styles.header}>
+              <TouchableOpacity onPress={() => setShowSummary(false)} style={{ padding: 8 }}>
+                <Ionicons name="arrow-back" size={28} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <View style={{ flex: 1, alignItems: 'center' }}>
+                <Text style={[styles.title, { color: colors.textPrimary }]}>Guardar en Historial</Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Clasifica las métricas</Text>
+              </View>
+              <View style={{ width: 44 }} />
+           </View>
+
+           <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+             {workout?.exercises?.map((ex: any, idx: number) => {
+                const res = results[ex.test_key];
+                if (!res) return null;
+
+                let displayVal = res.valL || '0';
+                if (ex.unit === 'rsi' || ex.test_key === 'dj') displayVal = calculateRSI(res.flightTime, res.contactTime);
+                
+                return (
+                  <View key={idx} style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }}>
+                        <View style={{ flex: 1, paddingRight: 10 }}>
+                          <Text style={[styles.testName, { color: colors.textPrimary, marginLeft: 0, fontSize: 15 }]} numberOfLines={2}>{ex.name}</Text>
+                          <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                            <View style={[styles.pill, { backgroundColor: ex.is_bilateral ? '#3B82F615' : '#10B98115' }]}>
+                               <Text style={{ fontSize: 10, fontWeight: '800', color: ex.is_bilateral ? '#3B82F6' : '#10B981' }}>
+                                 {ex.is_bilateral ? 'BILATERAL' : 'UNILATERAL'}
+                               </Text>
+                            </View>
+                          </View>
+                        </View>
+                        
+                        <View style={{ alignItems: 'flex-end' }}>
+                          {ex.is_bilateral ? (
+                            <View style={{ alignItems: 'flex-end' }}>
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: '#3B82F6' }}>Izq: {res.valL || 0} {ex.unit}</Text>
+                              <Text style={{ fontSize: 12, fontWeight: '800', color: '#EF4444' }}>Der: {res.valR || 0} {ex.unit}</Text>
+                            </View>
+                          ) : (
+                            <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary }}>{displayVal} <Text style={{fontSize: 12, fontWeight: '700', color: colors.textSecondary}}>{ex.unit}</Text></Text>
+                          )}
+                        </View>
+                     </View>
+
+                     <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 8 }}>CATEGORÍA DE GUARDADO:</Text>
+                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                       {['strength', 'plyometrics', 'max_force', 'custom'].map(cat => {
+                          const labels: Record<string,string> = { strength: 'Fuerza', plyometrics: 'Pliometría', max_force: 'F. Máxima', custom: 'Personalizado' };
+                          const isSelected = testCategories[ex.test_key] === cat;
+                          return (
+                            <TouchableOpacity 
+                              key={cat}
+                              style={[styles.categoryChip, { borderColor: colors.border }, isSelected && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' }]}
+                              onPress={() => setTestCategories(prev => ({ ...prev, [ex.test_key]: cat }))}
+                            >
+                               <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#FFF' : colors.textSecondary }}>{labels[cat]}</Text>
+                            </TouchableOpacity>
+                          );
+                       })}
+                     </View>
+                  </View>
+                );
+             })}
+           </ScrollView>
+
+           <View style={[styles.footer, { backgroundColor: colors.background, position: 'absolute', bottom: 0, width: '100%' }]}>
+              <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#10B981' }]} onPress={executeSave} disabled={saving}>
+                {saving ? <ActivityIndicator color="#FFF" /> : (
+                  <>
+                    <Ionicons name="save" size={22} color="#FFF" />
+                    <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16, marginLeft: 8 }}>CONFIRMAR Y GUARDAR</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+           </View>
+        </SafeAreaView>
+      </Modal>
+
     </SafeAreaView>
   );
 }
@@ -285,11 +409,14 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   title: { fontSize: 20, fontWeight: '900' },
   testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
+  summaryCard: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 15 },
   testName: { fontSize: 16, fontWeight: '800', marginLeft: 10 },
   input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, textAlign: 'center' },
   inputLarge: { borderWidth: 1, borderRadius: 12, padding: 16, fontSize: 22, fontWeight: '900', textAlign: 'center' },
   inputWithUnitContainer: { flexDirection: 'row', alignItems: 'stretch' },
   unitBadge: { borderWidth: 1, borderLeftWidth: 0, borderTopRightRadius: 12, borderBottomRightRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)', paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
+  pill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
+  categoryChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
   footer: { padding: 20, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
   finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 16 }
 });
