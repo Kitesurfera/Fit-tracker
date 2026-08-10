@@ -20,14 +20,11 @@ export default function TestModeScreen() {
   const [saving, setSaving] = useState(false);
   const [workout, setWorkout] = useState<any>(null);
   
-  // Estado local para los resultados (clave: test_key -> valor: objeto con inputs)
   const [results, setResults] = useState<Record<string, any>>({});
   
   useEffect(() => {
     const fetchWorkout = async () => {
       try {
-        // En una app real, podrías necesitar api.getWorkout(workoutId).
-        // Si no existe el endpoint unitario, descargamos todos y filtramos.
         const res = await api.getWorkouts({}); 
         const wks = Array.isArray(res) ? res : (res.data || []);
         const currentWorkout = wks.find((w: any) => String(w.id || w._id) === String(workoutId));
@@ -35,7 +32,6 @@ export default function TestModeScreen() {
         if (currentWorkout) {
           setWorkout(currentWorkout);
           
-          // Inicializar estado para cada test
           const initialResults: Record<string, any> = {};
           currentWorkout.exercises?.forEach((ex: any) => {
              initialResults[ex.test_key] = {
@@ -87,7 +83,6 @@ export default function TestModeScreen() {
     const f = parseFloat(flightMs);
     const c = parseFloat(contactMs);
     if (!isNaN(f) && !isNaN(c) && c > 0) {
-      // Fórmula RSI estándar basada en tiempos: Tiempo Vuelo / Tiempo Contacto
       return (f / c).toFixed(2);
     }
     return '0.00';
@@ -96,49 +91,46 @@ export default function TestModeScreen() {
   const handleFinishTests = async () => {
     setSaving(true);
     try {
-      // Por cada test completado, debemos guardarlo en el backend.
-      // Dependiendo de tu API, o iteramos haciendo api.postTest(...) o lo guardamos en el workout.
       const exercisesToSave = workout.exercises.map((ex: any) => {
         const res = results[ex.test_key];
         let finalVal = 0;
         
-        if (ex.test_key === 'dj' && res.flightTime && res.contactTime) {
-          finalVal = parseFloat(calculateRSI(res.flightTime, res.contactTime));
+        if (ex.unit === 'rsi' || ex.test_key === 'dj') {
+          finalVal = parseFloat(calculateRSI(res.flightTime, res.contactTime)) || 0;
+        } else if (ex.is_bilateral) {
+          finalVal = Math.max(parseFloat(res.valL) || 0, parseFloat(res.valR) || 0);
         } else {
-           // Usamos el mayor valor entre izq y der como PR principal, o un campo único si existe.
-           finalVal = Math.max(parseFloat(res.valL) || 0, parseFloat(res.valR) || 0);
+          finalVal = parseFloat(res.valL) || 0;
         }
 
         return {
           ...ex,
-          logged_weight: finalVal, // Hack temporal por si lo lee tu analytics de fuerza
+          logged_weight: finalVal,
           result_left: res.valL,
           result_right: res.valR,
           flight_time: res.flightTime,
           contact_time: res.contactTime,
-          video_uri: res.videoUri // En prod habría que subirlo a AWS/S3 primero
+          video_uri: res.videoUri
         };
       });
 
-      // 1. Marcar el workout como completado con los datos incrustados (así el calendario se pone verde)
       await api.updateWorkout(workout.id || workout._id, {
         ...workout,
         completed: true,
         completion_data: { exercise_results: exercisesToSave }
       });
 
-      // 2. (OPCIONAL) Guardar los registros sueltos en api.postTest para que Analytics lo grafique
       if (api.postTest) {
         for (const ex of exercisesToSave) {
            if (ex.logged_weight > 0) {
               await api.postTest({
                 athlete_id: workout.athlete_id,
-                test_name: ex.test_key,
+                test_name: ex.test_key || ex.name,
                 value: ex.logged_weight,
                 value_left: ex.result_left,
                 value_right: ex.result_right,
                 date: workout.date,
-                unit: ex.test_key === 'dj' ? 'rsi' : (ex.test_key === 'cmj' ? 'cm' : 'kg')
+                unit: ex.unit || 'kg'
               });
            }
         }
@@ -146,7 +138,7 @@ export default function TestModeScreen() {
 
       router.back();
     } catch (e) {
-      Alert.alert("Error", "No se pudo guardar los resultados.");
+      Alert.alert("Error", "No se pudieron guardar los resultados.");
       setSaving(false);
     }
   };
@@ -167,7 +159,7 @@ export default function TestModeScreen() {
             <Ionicons name="close" size={28} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Día de Test</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]}>Evaluación de Tests</Text>
             <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>
                {(workout?.date || '').split('-').reverse().join('/')}
             </Text>
@@ -179,17 +171,14 @@ export default function TestModeScreen() {
           {workout?.exercises?.map((ex: any, idx: number) => {
             const res = results[ex.test_key];
             if (!res) return null;
-            
-            const isExplosive = ex.test_key === 'dj' || ex.test_key === 'cmj' || ex.test_key === 'sj';
 
             return (
               <View key={idx} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: '#F59E0B40' }]}>
                 
-                {/* Cabecera de la Tarjeta del Test */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
-                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                      <Ionicons name={isExplosive ? "flash" : "barbell"} size={20} color="#F59E0B" />
-                      <Text style={[styles.testName, { color: colors.textPrimary }]}>{ex.name}</Text>
+                   <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
+                      <Ionicons name={ex.unit === 'rsi' ? "flash" : "trophy"} size={20} color="#F59E0B" />
+                      <Text style={[styles.testName, { color: colors.textPrimary }]} numberOfLines={1}>{ex.name}</Text>
                    </View>
                    <TouchableOpacity 
                      onPress={() => captureVideo(ex.test_key)}
@@ -199,55 +188,76 @@ export default function TestModeScreen() {
                    </TouchableOpacity>
                 </View>
 
-                {/* Zona de Inputs Específicos por Test */}
-                {ex.test_key === 'dj' ? (
-                  // UI específica para Drop Jump (RSI)
+                {/* MOTOR DINÁMICO DE INPUTS */}
+                {ex.unit === 'rsi' || ex.test_key === 'dj' ? (
                   <View style={{ backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE ÍNDICE DE FUERZA REACTIVA (RSI)</Text>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE RSI (VUELO / CONTACTO)</Text>
                     <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Tiempo Vuelo (ms)</Text>
+                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Vuelo (ms)</Text>
                           <TextInput 
                             style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
-                            keyboardType="numeric" placeholder="Ej: 450" placeholderTextColor={colors.border}
+                            keyboardType="numeric" placeholder="450" placeholderTextColor={colors.border}
                             value={res.flightTime} onChangeText={(val) => updateResult(ex.test_key, 'flightTime', val)} 
                           />
                        </View>
                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>T. Contacto (ms)</Text>
+                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Contacto (ms)</Text>
                           <TextInput 
                             style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
-                            keyboardType="numeric" placeholder="Ej: 200" placeholderTextColor={colors.border}
+                            keyboardType="numeric" placeholder="200" placeholderTextColor={colors.border}
                             value={res.contactTime} onChangeText={(val) => updateResult(ex.test_key, 'contactTime', val)} 
                           />
                        </View>
                     </View>
                     <View style={{ alignItems: 'center', backgroundColor: '#F59E0B20', padding: 10, borderRadius: 8 }}>
-                       <Text style={{ fontSize: 11, fontWeight: '800', color: '#F59E0B' }}>RSI CALCULADO</Text>
+                       <Text style={{ fontSize: 10, fontWeight: '800', color: '#F59E0B' }}>RSI RESULTANTE</Text>
                        <Text style={{ fontSize: 24, fontWeight: '900', color: colors.textPrimary }}>
                          {calculateRSI(res.flightTime, res.contactTime)}
                        </Text>
                     </View>
                   </View>
-                ) : (
-                  // UI genérica para Izquierda / Derecha / Bilateral (Fuerza o Salto normal)
+                ) : ex.is_bilateral ? (
                   <View style={{ flexDirection: 'row', gap: 15 }}>
                      <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 11, fontWeight: '800', color: '#3B82F6', marginBottom: 6, textAlign: 'center' }}>PIERNA IZQ.</Text>
-                        <TextInput 
-                          style={[styles.inputLarge, { borderColor: colors.border, color: colors.textPrimary }]} 
-                          keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
-                          value={res.valL} onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
-                        />
+                        <View style={styles.inputWithUnitContainer}>
+                          <TextInput 
+                            style={[styles.inputLarge, { borderColor: colors.border, color: colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
+                            keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
+                            value={res.valL} onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
+                          />
+                          <View style={[styles.unitBadge, { borderColor: colors.border }]}>
+                            <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>{ex.unit}</Text>
+                          </View>
+                        </View>
                      </View>
                      <View style={{ flex: 1 }}>
                         <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444', marginBottom: 6, textAlign: 'center' }}>PIERNA DER.</Text>
-                        <TextInput 
-                          style={[styles.inputLarge, { borderColor: colors.border, color: colors.textPrimary }]} 
-                          keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
-                          value={res.valR} onChangeText={(val) => updateResult(ex.test_key, 'valR', val)} 
-                        />
+                        <View style={styles.inputWithUnitContainer}>
+                          <TextInput 
+                            style={[styles.inputLarge, { borderColor: colors.border, color: colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
+                            keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
+                            value={res.valR} onChangeText={(val) => updateResult(ex.test_key, 'valR', val)} 
+                          />
+                          <View style={[styles.unitBadge, { borderColor: colors.border }]}>
+                            <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>{ex.unit}</Text>
+                          </View>
+                        </View>
                      </View>
+                  </View>
+                ) : (
+                  <View style={{ alignItems: 'center' }}>
+                    <View style={[styles.inputWithUnitContainer, { width: '70%' }]}>
+                      <TextInput 
+                        style={[styles.inputLarge, { borderColor: colors.border, color: colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
+                        keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
+                        value={res.valL} onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
+                      />
+                      <View style={[styles.unitBadge, { borderColor: colors.border }]}>
+                        <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 14 }}>{ex.unit}</Text>
+                      </View>
+                    </View>
                   </View>
                 )}
               </View>
@@ -255,7 +265,6 @@ export default function TestModeScreen() {
           })}
         </ScrollView>
 
-        {/* Botón Flotante para Finalizar */}
         <View style={styles.footer}>
           <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#F59E0B' }]} onPress={handleFinishTests} disabled={saving}>
             {saving ? <ActivityIndicator color="#FFF" /> : (
@@ -276,9 +285,11 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   title: { fontSize: 20, fontWeight: '900' },
   testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
-  testName: { fontSize: 18, fontWeight: '800', marginLeft: 10 },
+  testName: { fontSize: 16, fontWeight: '800', marginLeft: 10 },
   input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, textAlign: 'center' },
-  inputLarge: { borderWidth: 1, borderRadius: 12, padding: 16, fontSize: 24, fontWeight: '900', textAlign: 'center' },
+  inputLarge: { borderWidth: 1, borderRadius: 12, padding: 16, fontSize: 22, fontWeight: '900', textAlign: 'center' },
+  inputWithUnitContainer: { flexDirection: 'row', alignItems: 'stretch' },
+  unitBadge: { borderWidth: 1, borderLeftWidth: 0, borderTopRightRadius: 12, borderBottomRightRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)', paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
   footer: { padding: 20, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
   finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 16 }
 });
