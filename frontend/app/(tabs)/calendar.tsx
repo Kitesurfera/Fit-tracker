@@ -99,6 +99,18 @@ export default function CalendarScreen() {
   const [rangeStart, setRangeStart] = useState('');
   const [rangeEnd, setRangeEnd] = useState('');
 
+  // === NUEVOS ESTADOS PARA LA BATERÍA DE TESTS ===
+  const [showTestModal, setShowTestModal] = useState(false);
+  const [selectedTests, setSelectedTests] = useState<string[]>([]);
+  
+  const AVAILABLE_TESTS = [
+    { id: 'cmj', name: 'Salto CMJ', group: 'pliometría y pop' },
+    { id: 'sj', name: 'Salto SJ (Squat Jump)', group: 'pliometría y pop' },
+    { id: 'dj', name: 'Drop Jump (RSI)', group: 'reactividad (recepciones)' },
+    { id: 'squat_rm', name: 'Sentadilla 1RM', group: 'fuerza máxima' },
+    { id: 'deadlift_rm', name: 'Peso Muerto 1RM', group: 'fuerza máxima' }
+  ];
+
   const isTrainer = user?.role === 'trainer';
   const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
   const isExtraSportEnabled = selectedAthlete?.has_extra_sport === true || selectedAthlete?.has_extra_sport === 1 || selectedAthlete?.has_extra_sport === 'true';
@@ -259,6 +271,46 @@ export default function CalendarScreen() {
     }
 
     handleSaveTechnicalSession(Array.from(newDates));
+  };
+
+  // === NUEVA FUNCIÓN: CREAR BATERÍA DE TESTS ===
+  const handleCreateTestBattery = async () => {
+    if (selectedTests.length === 0) {
+      if (Platform.OS === 'web') window.alert("Selecciona al menos un test.");
+      else Alert.alert("Aviso", "Selecciona al menos un test.");
+      return;
+    }
+
+    setUpdating(true);
+    try {
+      const payload = {
+        title: "Día de Mediciones 🏆",
+        date: selectedDate,
+        athlete_id: selectedAthlete.id,
+        is_test_battery: true, 
+        notes: "Evaluación de progreso físico y asimetrías.",
+        completed: false,
+        exercises: selectedTests.map(testId => ({
+          name: AVAILABLE_TESTS.find(t => t.id === testId)?.name || testId,
+          type: 'test_item',
+          test_key: testId 
+        }))
+      };
+
+      await api.createWorkout(payload);
+      setShowTestModal(false);
+      setSelectedTests([]);
+      refreshAthleteData(selectedAthlete);
+      
+      if (Platform.OS === 'web') window.alert("Batería programada correctamente.");
+      else Alert.alert("¡Hecho!", "Día de tests programado.");
+    } catch (e) {
+      console.error("Error creando batería:", e);
+      if (Platform.OS === 'web') window.alert("Error al guardar.");
+      else Alert.alert("Error", "No se pudo agendar la batería de tests.");
+    } finally {
+      setUpdating(false);
+    }
   };
 
   const startCopyWorkout = (workout: any) => {
@@ -602,7 +654,16 @@ export default function CalendarScreen() {
   const phaseInfo = getPhaseForDate(selectedDate);
 
   const handleDatePress = (dateStr: string) => { workoutToCopy ? pasteWorkout(dateStr) : setSelectedDate(dateStr); };
-  const handleWorkoutPress = (workout: any) => { router.push(isTrainer && !workout.completed ? `/edit-workout?workoutId=${workout.id}` : `/training-mode?workoutId=${workout.id}`); };
+  
+  // MODIFICADO: Navegar a test-mode si es batería, si no, comportamiento normal
+  const handleWorkoutPress = (workout: any) => { 
+    if (workout.is_test_battery) {
+      router.push(`/test-mode?workoutId=${workout.id || workout._id}`);
+    } else {
+      router.push(isTrainer && !workout.completed ? `/edit-workout?workoutId=${workout.id || workout._id}` : `/training-mode?workoutId=${workout.id || workout._id}`); 
+    }
+  };
+  
   const handleCloseMicroInfo = () => { setViewMicroInfo(null); setExpandedWorkoutId(null); };
 
   const handleSaveWorkoutFromAI = async (workoutData: any, targetDate: string) => {
@@ -754,9 +815,7 @@ export default function CalendarScreen() {
 
       <ScrollView contentContainerStyle={{ padding: isDesktop ? 40 : 16, paddingBottom: 100, flexDirection: isDesktop ? 'row' : 'column', gap: isDesktop ? 40 : 16 }} showsVerticalScrollIndicator={false}>
         
-        {/* === COLUMNA IZQUIERDA (Calendario / Vista Semana) === 
-            Fix: En móvil aplicamos width 100% (eliminando flex: 1) para evitar superposición
-        */}
+        {/* === COLUMNA IZQUIERDA (Calendario / Vista Semana) === */}
         <View style={isDesktop ? { flex: 1.5 } : { width: '100%' }}>
           
           <View style={[styles.card, { backgroundColor: colors.surface }]}>
@@ -794,29 +853,35 @@ export default function CalendarScreen() {
                         onPress={() => handleDatePress(dateStr)} 
                         style={[
                           styles.dayCell, 
-                          // Resalte de Microciclo (fondo de toda la celda)
                           status?.phaseColor && { backgroundColor: status.phaseColor + '20' },
-                          // Borde de selección
                           isSelected && !isCopyTarget && { borderWidth: 1.5, borderColor: colors.primary },
                           isCopyTarget && { backgroundColor: colors.success + '20', borderWidth: 1.5, borderColor: colors.success }
                         ]}
                       >
-                        {/* Círculo de número (resalta si hay entrenamiento) */}
                         <View style={[
                            styles.dateNumberContainer,
                            status?.hasWorkout && { backgroundColor: status.isCompleted ? colors.success : colors.primary, borderRadius: 14 }
                         ]}>
-                           <Text style={[
-                              styles.dayText, 
-                              { color: status?.hasWorkout ? '#FFF' : colors.textPrimary }, 
-                              isToday && !status?.hasWorkout && { color: colors.primary, fontWeight: '900' },
-                              status?.hasWorkout && { fontWeight: '800' }
-                           ]}>
-                             {day}
-                           </Text>
+                           {(() => {
+                              const dayWks = workouts?.filter(w => extractDateString(w.date) === dateStr);
+                              const hasTest = dayWks?.some(w => w.is_test_battery);
+                              
+                              if (hasTest) {
+                                return <Ionicons name="trophy" size={12} color="#FFF" />; 
+                              }
+                              return (
+                                <Text style={[
+                                   styles.dayText, 
+                                   { color: status?.hasWorkout ? '#FFF' : colors.textPrimary }, 
+                                   isToday && !status?.hasWorkout && { color: colors.primary, fontWeight: '900' },
+                                   status?.hasWorkout && { fontWeight: '800' }
+                                ]}>
+                                   {day}
+                                </Text>
+                              );
+                           })()}
                         </View>
 
-                        {/* Fila de Iconos: Deporte técnico y Gota menstrual */}
                         {(status?.isPeriod || isTechnical) && (
                           <View style={styles.cellIconsRow}>
                              {status?.isPeriod && <Ionicons name="water" size={12} color="#EF4444" />}
@@ -835,7 +900,6 @@ export default function CalendarScreen() {
                 </View>
               </>
             ) : (
-              /* --- NUEVA VISTA DE SEMANA DETALLADA HORIZONTAL --- */
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 5, paddingHorizontal: 2 }}>
                 {currentWeekDays.map((d, idx) => {
                   const dateStr = getLocalDateStr(d);
@@ -852,7 +916,6 @@ export default function CalendarScreen() {
                       style={[
                         styles.weekDayCard,
                         { width: isDesktop ? 320 : width * 0.75 },
-                        // Resalte de microciclo en el fondo y selección en borde
                         { backgroundColor: status.phaseColor ? status.phaseColor + '15' : colors.surfaceHighlight },
                         { borderColor: isSelected ? colors.primary : (status.phaseColor ? status.phaseColor + '40' : colors.border) }
                       ]}
@@ -881,12 +944,12 @@ export default function CalendarScreen() {
                         </View>
                       </View>
 
-                      {/* Resumen de entrenamientos en la semana */}
                       <View style={{ marginTop: 8, gap: 8 }}>
                         {dayWorkouts.length > 0 ? (
                           dayWorkouts.map((wk: any, wIdx: number) => (
-                            <View key={wIdx} style={[styles.weekWorkoutSnippet, { backgroundColor: colors.surface, borderColor: wk.completed ? colors.success + '40' : colors.border }]}>
+                            <View key={wIdx} style={[styles.weekWorkoutSnippet, { backgroundColor: colors.surface, borderColor: wk.completed ? colors.success + '40' : colors.border }, wk.is_test_battery && { borderLeftWidth: 4, borderLeftColor: '#F59E0B' }]}>
                               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                                {wk.is_test_battery && <Ionicons name="trophy" size={12} color="#F59E0B" style={{marginRight: 4}}/>}
                                 <Text style={[styles.weekWorkoutTitle, { color: colors.textPrimary }]} numberOfLines={1}>{wk.title}</Text>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                   <Ionicons name={wk.completed ? "checkmark-circle" : "time-outline"} size={12} color={wk.completed ? colors.success : colors.warning} />
@@ -894,12 +957,11 @@ export default function CalendarScreen() {
                                 </View>
                               </View>
 
-                              {/* Lista Detallada de Ejercicios */}
                               {wk.exercises && wk.exercises.length > 0 ? (
                                 <View style={{ marginTop: 6, gap: 4 }}>
                                   {wk.exercises.map((ex: any, eIdx: number) => (
                                     <View key={eIdx} style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: colors.textSecondary, marginRight: 6 }} />
+                                      <View style={{ width: 4, height: 4, borderRadius: 2, backgroundColor: wk.is_test_battery ? '#F59E0B' : colors.textSecondary, marginRight: 6 }} />
                                       <Text style={{ fontSize: 11, color: colors.textSecondary, flex: 1 }} numberOfLines={1}>{ex.name}</Text>
                                       {(ex.sets && (ex.reps || ex.time)) && (
                                          <Text style={{ fontSize: 11, fontWeight: '700', color: colors.textSecondary }}>
@@ -910,25 +972,7 @@ export default function CalendarScreen() {
                                   ))}
                                 </View>
                               ) : (
-                                <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 }}>Sin ejercicios especificados</Text>
-                              )}
-
-                              {/* Botones de acción (Entrenador) */}
-                              {isTrainer && (
-                                <View style={[styles.trainerActionsRow, { marginTop: 10, paddingTop: 10, gap: 6 }]}>
-                                  <TouchableOpacity onPress={(e) => { e.stopPropagation(); startCopyWorkout(wk); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight, paddingVertical: 6 }]}>
-                                    <Ionicons name="copy" size={12} color={colors.primary} />
-                                    <Text style={[styles.actionBtnTrainerText, { color: colors.primary, fontSize: 11 }]}>Duplicar</Text>
-                                  </TouchableOpacity>
-                                  <TouchableOpacity onPress={(e) => { e.stopPropagation(); router.push({ pathname: '/edit-workout', params: { workoutId: wk.id } }); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight, paddingVertical: 6 }]}>
-                                    <Ionicons name="pencil" size={12} color={colors.textSecondary} />
-                                    <Text style={[styles.actionBtnTrainerText, { color: colors.textSecondary, fontSize: 11 }]}>Editar</Text>
-                                  </TouchableOpacity>
-                                  <TouchableOpacity onPress={(e) => { e.stopPropagation(); handleDeleteWorkout(wk); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.error + '15', paddingVertical: 6 }]}>
-                                    <Ionicons name="trash" size={12} color={colors.error || '#EF4444'} />
-                                    <Text style={[styles.actionBtnTrainerText, { color: colors.error || '#EF4444', fontSize: 11 }]}>Borrar</Text>
-                                  </TouchableOpacity>
-                                </View>
+                                <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic', marginTop: 4 }}>Sin ejercicios</Text>
                               )}
                             </View>
                           ))
@@ -954,7 +998,6 @@ export default function CalendarScreen() {
             )}
           </View>
 
-          {/* INDICADORES DEL MES / MICROCICLOS (Solo Vista Mensual) */}
           {viewMode === 'month' && microciclosDelMes.length > 0 && (
             <View style={{ marginTop: 20 }}>
               <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, letterSpacing: 1 }}>FASES ESTE MES</Text>
@@ -976,16 +1019,13 @@ export default function CalendarScreen() {
           )}
         </View>
 
-        {/* === COLUMNA DERECHA (Detalles del día seleccionado) === 
-            Fix: En móvil aplicamos width 100% para evitar superposición
-        */}
+        {/* === COLUMNA DERECHA (Detalles del día seleccionado) === */}
         <View style={isDesktop ? { flex: 1 } : { width: '100%' }}>
           <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary, marginBottom: 15 }}>
             {selectedDate === localTodayStr ? 'Hoy, ' : ''}
             {selectedDate.split('-').reverse().join('/')}
           </Text>
 
-          {/* FASE DEL CICLO MENSTRUAL */}
           {isFemale && phaseInfo && (
             <View style={[styles.phaseCard, { borderColor: phaseInfo.color, backgroundColor: phaseInfo.color + '10' }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
@@ -998,7 +1038,6 @@ export default function CalendarScreen() {
             </View>
           )}
           
-          {/* REGISTRO TÉCNICO (DEPORTE EXTRA) */}
           {isExtraSportEnabled && sportSessions.includes(selectedDate) && (
             <View style={[styles.phaseCard, { borderColor: colors.primary, backgroundColor: colors.primary + '10' }]}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1017,14 +1056,26 @@ export default function CalendarScreen() {
             </View>
           )}
 
-          {/* SESIONES DEL DÍA */}
           {activeDetail.workouts.length > 0 ? (
             activeDetail.workouts.map((w: any) => (
-              <TouchableOpacity key={w.id || w._id} style={[styles.workoutCard, { backgroundColor: colors.surface, borderColor: w.completed ? colors.success : colors.border }]} onPress={() => handleWorkoutPress(w)}>
+              <TouchableOpacity 
+                key={w.id || w._id} 
+                style={[
+                  styles.workoutCard, 
+                  { backgroundColor: colors.surface, borderColor: w.completed ? colors.success : colors.border },
+                  w.is_test_battery && { borderLeftWidth: 4, borderLeftColor: '#F59E0B' } 
+                ]} 
+                onPress={() => handleWorkoutPress(w)}
+              >
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-                  <View style={{ flex: 1, marginRight: 8 }}>
-                    <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
-                    <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>{w.exercises?.length || 0} ejercicios programados</Text>
+                  <View style={{ flex: 1, marginRight: 8, flexDirection: 'row', alignItems: 'center' }}>
+                    {w.is_test_battery && <Ionicons name="trophy" size={18} color="#F59E0B" style={{marginRight: 6}}/>}
+                    <View>
+                      <Text style={[styles.workoutTitle, { color: colors.textPrimary }]}>{w.title}</Text>
+                      <Text style={{ fontSize: 12, color: colors.textSecondary, marginTop: 4 }}>
+                        {w.is_test_battery ? `${w.exercises?.length || 0} mediciones programadas` : `${w.exercises?.length || 0} ejercicios programados`}
+                      </Text>
+                    </View>
                   </View>
                   <View style={{ alignItems: 'flex-end', gap: 6 }}>
                     {w.is_ai && <View style={[styles.tag, { backgroundColor: '#8B5CF6' + '20' }]}><Ionicons name="sparkles" size={10} color="#8B5CF6" /><Text style={{ color: '#8B5CF6', fontSize: 10, fontWeight: '800', marginLeft: 4 }}>IA</Text></View>}
@@ -1038,20 +1089,22 @@ export default function CalendarScreen() {
                 {isTrainer && (
                   <View style={styles.trainerActionsRow}>
                     <TouchableOpacity onPress={(e) => { e.stopPropagation(); startCopyWorkout(w); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="copy" size={16} color={colors.primary} /><Text style={[styles.actionBtnTrainerText, { color: colors.primary }]}>Duplicar</Text></TouchableOpacity>
-                    <TouchableOpacity onPress={(e) => { e.stopPropagation(); router.push({ pathname: '/edit-workout', params: { workoutId: w.id } }); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="pencil" size={16} color={colors.textSecondary} /><Text style={[styles.actionBtnTrainerText, { color: colors.textSecondary }]}>Editar</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={(e) => { e.stopPropagation(); router.push({ pathname: '/edit-workout', params: { workoutId: w.id || w._id } }); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="pencil" size={16} color={colors.textSecondary} /><Text style={[styles.actionBtnTrainerText, { color: colors.textSecondary }]}>Editar</Text></TouchableOpacity>
                     <TouchableOpacity onPress={(e) => { e.stopPropagation(); handleDeleteWorkout(w); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.error + '15' }]}><Ionicons name="trash" size={16} color={colors.error || '#EF4444'} /><Text style={[styles.actionBtnTrainerText, { color: colors.error || '#EF4444' }]}>Borrar</Text></TouchableOpacity>
                   </View>
                 )}
 
                 {!isTrainer && !w.completed && (
                   <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
-                     <TouchableOpacity style={[styles.startWorkoutBtn, { flex: 1, backgroundColor: colors.primary }]} onPress={() => handleWorkoutPress(w)}>
-                       <Ionicons name="play" size={18} color="#FFF" />
-                       <Text style={{ color: '#FFF', fontWeight: '800', marginLeft: 6 }}>COMENZAR</Text>
+                     <TouchableOpacity style={[styles.startWorkoutBtn, { flex: 1, backgroundColor: w.is_test_battery ? '#F59E0B' : colors.primary }]} onPress={() => handleWorkoutPress(w)}>
+                       <Ionicons name={w.is_test_battery ? "bar-chart" : "play"} size={18} color="#FFF" />
+                       <Text style={{ color: '#FFF', fontWeight: '800', marginLeft: 6 }}>{w.is_test_battery ? 'REALIZAR TESTS' : 'COMENZAR'}</Text>
                      </TouchableOpacity>
-                     <TouchableOpacity style={[styles.startWorkoutBtn, { flex: 0.4, backgroundColor: colors.surfaceHighlight, borderWidth: 1, borderColor: colors.border }]} onPress={(e) => { e.stopPropagation(); setSkipWorkoutId(w.id); setShowSkipModal(true); }}>
-                       <Ionicons name="play-skip-forward" size={18} color={colors.textSecondary} />
-                     </TouchableOpacity>
+                     {!w.is_test_battery && (
+                       <TouchableOpacity style={[styles.startWorkoutBtn, { flex: 0.4, backgroundColor: colors.surfaceHighlight, borderWidth: 1, borderColor: colors.border }]} onPress={(e) => { e.stopPropagation(); setSkipWorkoutId(w.id || w._id); setShowSkipModal(true); }}>
+                         <Ionicons name="play-skip-forward" size={18} color={colors.textSecondary} />
+                       </TouchableOpacity>
+                     )}
                   </View>
                 )}
               </TouchableOpacity>
@@ -1064,10 +1117,17 @@ export default function CalendarScreen() {
           )}
 
           {isTrainer && (
-            <TouchableOpacity style={[styles.addBtn, { backgroundColor: colors.primary }]} onPress={() => router.push({ pathname: '/add-workout', params: { athlete_id: selectedAthlete.id, date: selectedDate } })}>
-              <Ionicons name="add" size={24} color="#FFF" />
-              <Text style={styles.addBtnText}>AÑADIR SESIÓN AL DÍA</Text>
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+              <TouchableOpacity style={[styles.addBtn, { flex: 1, backgroundColor: colors.primary }]} onPress={() => router.push({ pathname: '/add-workout', params: { athlete_id: selectedAthlete.id, date: selectedDate } })}>
+                <Ionicons name="barbell" size={20} color="#FFF" />
+                <Text style={styles.addBtnText}>AÑADIR SESIÓN</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity style={[styles.addBtn, { flex: 1, backgroundColor: '#F59E0B' }]} onPress={() => setShowTestModal(true)}>
+                <Ionicons name="trophy" size={20} color="#FFF" />
+                <Text style={styles.addBtnText}>AGENDAR TESTS</Text>
+              </TouchableOpacity>
+            </View>
           )}
         </View>
 
@@ -1108,8 +1168,8 @@ export default function CalendarScreen() {
                              style={{ padding: 16, backgroundColor: colors.surfaceHighlight, flexDirection: 'row', alignItems: 'center' }}
                              onPress={() => setExpandedWorkoutId(isExpanded ? null : wkId)}
                            >
-                             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: wk.completed ? colors.success + '20' : colors.primary + '20', justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
-                               <Ionicons name={wk.completed ? "checkmark" : "barbell"} size={20} color={wk.completed ? colors.success : colors.primary} />
+                             <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: wk.completed ? colors.success + '20' : (wk.is_test_battery ? '#F59E0B20' : colors.primary + '20'), justifyContent: 'center', alignItems: 'center', marginRight: 12 }}>
+                               <Ionicons name={wk.completed ? "checkmark" : (wk.is_test_battery ? "trophy" : "barbell")} size={20} color={wk.completed ? colors.success : (wk.is_test_battery ? '#F59E0B' : colors.primary)} />
                              </View>
                              <View style={{ flex: 1 }}>
                                <Text style={{ color: colors.textPrimary, fontSize: 15, fontWeight: '800' }}>{wk.title}</Text>
@@ -1125,7 +1185,7 @@ export default function CalendarScreen() {
                                 <Text style={{ color: colors.textPrimary, fontSize: 12, fontWeight: '800', marginBottom: 10 }}>EJERCICIOS ({wk.exercises?.length || 0}):</Text>
                                 {wk.exercises?.map((ex: any, idx: number) => (
                                   <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: colors.primary, marginRight: 8 }} />
+                                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: wk.is_test_battery ? '#F59E0B' : colors.primary, marginRight: 8 }} />
                                     <Text style={{ color: colors.textPrimary, fontSize: 13, flex: 1 }}>{ex.name}</Text>
                                     {(ex.sets && ex.reps) ? <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '700' }}>{ex.sets}x{ex.reps}</Text> : null}
                                   </View>
@@ -1182,7 +1242,6 @@ export default function CalendarScreen() {
               <Text style={[styles.label, { color: colors.textSecondary }]}>FECHA DEL ÚLTIMO PERIODO (AAAA-MM-DD)</Text>
               <TextInput style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} value={lastPeriodDateInput} onChangeText={setLastPeriodDateInput} placeholder="Ej: 2026-03-21" placeholderTextColor={colors.textSecondary} />
               
-              {/* Botones de acción rápida para facilitar la vida */}
               <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
                  <TouchableOpacity style={{ flex: 1, padding: 10, backgroundColor: colors.surfaceHighlight, borderRadius: 8, alignItems: 'center', borderWidth: 1, borderColor: colors.border }} onPress={() => setLastPeriodDateInput(localTodayStr)}>
                     <Text style={{ fontSize: 12, fontWeight: '700', color: colors.textPrimary }}>Empezó hoy</Text>
@@ -1199,6 +1258,51 @@ export default function CalendarScreen() {
 
             <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleSaveCycleSettings} disabled={updating}>
               {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Guardar Ajustes</Text>}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* --- MODAL PARA PROGRAMAR BATERÍA DE TESTS --- */}
+      <Modal visible={showTestModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, paddingBottom: 30 }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Programar Tests</Text>
+              <TouchableOpacity onPress={() => setShowTestModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+            </View>
+
+            <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 13 }}>Selecciona las métricas que quieres evaluar el {selectedDate}:</Text>
+            
+            <ScrollView style={{ maxHeight: 350, marginBottom: 20 }} showsVerticalScrollIndicator={false}>
+              {AVAILABLE_TESTS.map(test => {
+                const isSelected = selectedTests.includes(test.id);
+                return (
+                  <TouchableOpacity 
+                    key={test.id} 
+                    style={{ 
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+                      padding: 16, borderRadius: 12, borderWidth: 1, marginBottom: 10,
+                      borderColor: isSelected ? '#F59E0B' : colors.border,
+                      backgroundColor: isSelected ? '#F59E0B15' : 'transparent'
+                    }}
+                    onPress={() => {
+                      if (isSelected) setSelectedTests(selectedTests.filter(id => id !== test.id));
+                      else setSelectedTests([...selectedTests, test.id]);
+                    }}
+                  >
+                    <View>
+                      <Text style={{ color: colors.textPrimary, fontWeight: '800' }}>{test.name}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 10, textTransform: 'uppercase', marginTop: 4 }}>{test.group}</Text>
+                    </View>
+                    <Ionicons name={isSelected ? "checkbox" : "square-outline"} size={24} color={isSelected ? '#F59E0B' : colors.textSecondary} />
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            <TouchableOpacity style={{ backgroundColor: '#F59E0B', padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleCreateTestBattery} disabled={updating}>
+              {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Agendar Batería</Text>}
             </TouchableOpacity>
           </View>
         </View>
@@ -1335,18 +1439,15 @@ const styles = StyleSheet.create({
   arrowBtn: { padding: 8 },
   monthYearText: { fontSize: 18, fontWeight: '800', textAlign: 'center', textTransform: 'capitalize' },
   
-  // SOLUCIÓN A LOS MÁRGENES: Forzamos el ancho máximo.
   daysHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, width: '100%' },
   dayHeaderText: { width: '14.28%', textAlign: 'center', fontSize: 11, fontWeight: '700' },
   daysGrid: { flexDirection: 'row', flexWrap: 'wrap', width: '100%' },
   
-  // SOLUCIÓN AL SOLAPAMIENTO INTERNO EN MÓVIL: Quitamos aspectRatio y usamos padding para que se autoajuste.
   dayCell: { width: '14.28%', minHeight: 52, justifyContent: 'center', alignItems: 'center', borderRadius: 8, paddingVertical: 4, marginVertical: 2 },
   dateNumberContainer: { width: 26, height: 26, justifyContent: 'center', alignItems: 'center' },
   dayText: { fontSize: 14, fontWeight: '500' },
   cellIconsRow: { flexDirection: 'row', gap: 4, marginTop: 2, minHeight: 14, alignItems: 'center', justifyContent: 'center' },
   
-  /* Estilos para la Vista Semanal */
   weekDayCard: { padding: 12, borderRadius: 14, borderWidth: 1 },
   weekDayHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   weekDayNumBadge: { width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.06)', justifyContent: 'center', alignItems: 'center' },
