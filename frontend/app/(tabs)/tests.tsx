@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator,
-  Alert, Modal, TextInput, Platform, ScrollView, KeyboardAvoidingView, Dimensions
+import { 
+  View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator, 
+  Alert, Modal, TextInput, Platform, ScrollView, KeyboardAvoidingView, Dimensions 
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -20,7 +20,7 @@ const TEST_TRANSLATIONS: Record<string, string> = {
   deadlift_rm: 'Peso Muerto RM',
   cmj: 'CMJ',
   sj: 'SJ',
-  dj: 'DJ',
+  dj: 'Drop Jump (RSI)',
   hamstring: 'Isquiotibiales',
   calf: 'Gemelo',
   quadriceps: 'Cuadriceps',
@@ -47,7 +47,7 @@ export default function TestsScreen() {
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   
-  // <-- INICIALIZAMOS CON EL PARÁMETRO DE LA RUTA SI EXISTE -->
+  // Inicializamos con el parámetro de la ruta si existe (Ej: tras guardar la batería)
   const [selectedAthlete, setSelectedAthlete] = useState<string | null>(params.athlete_id || null);
   
   const [loading, setLoading] = useState(true);
@@ -58,7 +58,6 @@ export default function TestsScreen() {
   const [showCustomModal, setShowCustomModal] = useState(false);
   
   const [showPicker, setShowPicker] = useState(false);
-  
   const [editTest, setEditTest] = useState<any>(null);
   const [saving, setSaving] = useState(false);
 
@@ -85,7 +84,17 @@ export default function TestsScreen() {
       const rawTests = Array.isArray(ts) ? ts : (ts?.data || []);
       const filteredTests = rawTests.filter(t => t.test_type !== 'medicion');
 
-      setTests(filteredTests);
+      // Extraer categorías dinámicas si las hay
+      const fetchedCats = new Set(filteredTests.map(t => t.test_type).filter(c => c && c !== 'medicion'));
+      const newCats = [...INITIAL_CATEGORIES];
+      fetchedCats.forEach(c => {
+        if (!newCats.find(cat => cat.key === c)) {
+          newCats.push({ key: c, label: c.charAt(0).toUpperCase() + c.slice(1) });
+        }
+      });
+      setDynamicCategories(newCats);
+      setTests(filteredTests.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
+
     } catch (e) {
       console.log("Error cargando tests:", e);
     } finally {
@@ -102,7 +111,6 @@ export default function TestsScreen() {
           const athList = Array.isArray(ath) ? ath : (ath?.data || []);
           setAthletes(athList);
 
-          // Si nos pasan un athlete_id por parámetro, nos aseguramos de usarlo
           if (params.athlete_id) {
             setSelectedAthlete(params.athlete_id);
             loadData(params.athlete_id);
@@ -123,7 +131,6 @@ export default function TestsScreen() {
     initTrainer();
   }, [selectedCategory, params.athlete_id]);
 
-  // Recargar al cambiar de deportista desde el selector interno
   const handleSelectAthlete = (athleteId: string) => {
     setSelectedAthlete(athleteId);
     setShowPicker(false);
@@ -168,11 +175,9 @@ export default function TestsScreen() {
   const handleSaveCategory = () => {
     if (!newCategoryName.trim()) return;
     const newKey = newCategoryName.trim().toLowerCase().replace(/\s+/g, '_');
-    
     if (!dynamicCategories.find(c => c.key === newKey)) {
       setDynamicCategories([...dynamicCategories, { key: newKey, label: newCategoryName.trim() }]);
     }
-    
     setNewCategoryName('');
     setShowCategoryModal(false);
     setSelectedCategory(newKey);
@@ -187,8 +192,6 @@ export default function TestsScreen() {
     setSaving(true);
     try {
       const todayStr = new Date().toISOString().split('T')[0];
-      const inputName = formData.name.trim();
-
       const payload: any = {
         unit: formData.unit.trim(),
         notes: formData.notes.trim(),
@@ -198,7 +201,7 @@ export default function TestsScreen() {
         value_right: formData.isBilateral ? parseFloat(String(formData.valueRight).replace(',', '.') || '0') : null,
         date: todayStr,
         test_name: 'custom', 
-        custom_name: inputName,
+        custom_name: formData.name.trim(),
         athlete_id: isTrainer ? selectedAthlete : user?.id
       };
 
@@ -210,9 +213,7 @@ export default function TestsScreen() {
 
       await loadData(selectedAthlete);
       setShowCustomModal(false);
-
     } catch (e: any) {
-      console.log("Error guardando test:", e);
       Alert.alert("Error", e?.message || "Falló la comunicación con el servidor al guardar.");
     } finally {
       setSaving(false);
@@ -237,8 +238,8 @@ export default function TestsScreen() {
                   <TouchableOpacity
                     style={{ marginRight: 12, justifyContent: 'center' }}
                     onPress={() => {
-                      const athleteName = athletes.find(a => a.id === selectedAthlete)?.name || '';
-                      router.push({ pathname: '/athlete-detail', params: { id: selectedAthlete, name: athleteName } });
+                      const ath = athletes.find(a => a.id === selectedAthlete);
+                      router.push({ pathname: '/athlete-detail', params: { id: selectedAthlete, name: ath?.name || '' } });
                     }}
                   >
                     <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
@@ -246,7 +247,7 @@ export default function TestsScreen() {
                 )}
                 <View style={{ flex: 1, marginRight: 10 }}>
                   <Text style={[styles.screenTitle, { color: colors.textPrimary }]} numberOfLines={1}>
-                    {isTrainer ? (athletes.find(a => a.id === selectedAthlete)?.name || 'Tests del Deportista') : 'Tests Físicos'}
+                    {isTrainer ? (athletes.find(a => a.id === selectedAthlete)?.name || 'Tests del Deportista') : 'Historial de Tests'}
                   </Text>
                   {isTrainer && <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Vista Entrenador</Text>}
                 </View>
@@ -282,7 +283,6 @@ export default function TestsScreen() {
                     <Text style={[styles.filterText, { color: colors.textSecondary }, selectedCategory === cat.key && { color: '#FFF' }]}>{cat.label}</Text>
                   </TouchableOpacity>
                 ))}
-                
                 <TouchableOpacity 
                   style={[styles.filterChip, { borderColor: colors.primary, backgroundColor: colors.primary + '10', borderStyle: 'dashed' }]} 
                   onPress={() => setShowCategoryModal(true)}
@@ -292,38 +292,53 @@ export default function TestsScreen() {
               </ScrollView>
             </View>
           }
-          renderItem={({ item }) => (
-            <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, flex: isDesktop ? 0.5 : 1 }]}>
-              <View style={styles.testHeader}>
-                <View style={[styles.typeBadge, { backgroundColor: colors.primary + '15' }]}>
-                  <Text style={[styles.typeBadgeText, { color: colors.primary }]}>{item.test_type?.toUpperCase()}</Text>
+          renderItem={({ item }) => {
+            const isBilateral = item.value_left != null || item.value_right != null;
+            const categoryLabel = dynamicCategories.find(c => c.key === item.test_type)?.label || item.test_type || 'General';
+
+            return (
+              <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, flex: isDesktop ? 0.5 : 1 }]}>
+                <View style={styles.testHeader}>
+                  <View style={{ flexDirection: 'row', gap: 6 }}>
+                    <View style={[styles.typeBadge, { backgroundColor: colors.primary + '15' }]}>
+                      <Text style={[styles.typeBadgeText, { color: colors.primary }]}>{categoryLabel.toUpperCase()}</Text>
+                    </View>
+                    {/* ETIQUETA BILATERAL/UNILATERAL */}
+                    <View style={[styles.typeBadge, { backgroundColor: isBilateral ? '#3B82F615' : '#10B98115' }]}>
+                      <Text style={[styles.typeBadgeText, { color: isBilateral ? '#3B82F6' : '#10B981' }]}>
+                        {isBilateral ? 'BILATERAL' : 'UNILATERAL'}
+                      </Text>
+                    </View>
+                  </View>
+                  <View style={styles.cardActions}>
+                    <TouchableOpacity onPress={() => openEditModal(item)}><Ionicons name="create-outline" size={20} color={colors.primary} /></TouchableOpacity>
+                    <TouchableOpacity onPress={() => deleteTest(item.id, item.custom_name || item.test_name)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
+                  </View>
                 </View>
-                <View style={styles.cardActions}>
-                  <TouchableOpacity onPress={() => openEditModal(item)}><Ionicons name="create-outline" size={20} color={colors.primary} /></TouchableOpacity>
-                  <TouchableOpacity onPress={() => deleteTest(item.id, item.custom_name || item.test_name)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
-                </View>
+                
+                <Text style={[styles.testName, { color: colors.textPrimary }]}>{item.custom_name || TEST_TRANSLATIONS[item.test_name] || item.test_name}</Text>
+                
+                {isBilateral ? (
+                  <View style={styles.bilateralRow}>
+                    <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value_left}</Text><Text style={styles.sideLabel}>IZQ ({item.unit})</Text></View>
+                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                    <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value_right}</Text><Text style={styles.sideLabel}>DER ({item.unit})</Text></View>
+                  </View>
+                ) : (
+                  <View style={styles.valueRow}>
+                    <Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value}</Text>
+                    <Text style={[styles.unitText, { color: colors.textSecondary }]}>{item.unit}</Text>
+                  </View>
+                )}
+                
+                <Text style={[styles.dateText, { color: colors.textSecondary }]}>{item.date.split('-').reverse().join('/')}</Text>
               </View>
-              <Text style={[styles.testName, { color: colors.textPrimary }]}>{item.custom_name || TEST_TRANSLATIONS[item.test_name] || item.test_name}</Text>
-              
-              {item.value_left != null || item.value_right != null ? (
-                <View style={styles.bilateralRow}>
-                  <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value_left}</Text><Text style={styles.sideLabel}>IZQ ({item.unit})</Text></View>
-                  <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                  <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value_right}</Text><Text style={styles.sideLabel}>DER ({item.unit})</Text></View>
-                </View>
-              ) : (
-                <View style={styles.valueRow}>
-                  <Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value}</Text>
-                  <Text style={[styles.unitText, { color: colors.textSecondary }]}>{item.unit}</Text>
-                </View>
-              )}
-              <Text style={[styles.dateText, { color: colors.textSecondary }]}>{item.date}</Text>
-            </View>
-          )}
+            );
+          }}
         />
       </View>
 
-      {/* MODAL SELECTOR DE DEPORTISTA */}
+      {/* RESTO DE MODALES (Picker de atleta, Nueva Categoría y Crear Test Manual) SE MANTIENEN IGUAL... */}
       <Modal visible={showPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}>
           <View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}>
@@ -343,7 +358,7 @@ export default function TestsScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* MODAL NUEVA CATEGORÍA */}
+      {/* Modal Nueva Categoría */}
       <Modal visible={showCategoryModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboard}>
@@ -370,7 +385,7 @@ export default function TestsScreen() {
         </View>
       </Modal>
 
-      {/* MODAL NUEVO/EDITAR TEST */}
+      {/* Modal Nuevo/Editar Test Manual */}
       <Modal visible={showCustomModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboard}>
@@ -409,22 +424,16 @@ export default function TestsScreen() {
                       <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR IZQUIERDA</Text>
                       <TextInput 
                         style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                        keyboardType="decimal-pad"
-                        placeholder="0.0" 
-                        placeholderTextColor={colors.textSecondary}
-                        value={formData.valueLeft} 
-                        onChangeText={(t) => setFormData({...formData, valueLeft: t})} 
+                        keyboardType="decimal-pad" placeholder="0.0" placeholderTextColor={colors.textSecondary}
+                        value={formData.valueLeft} onChangeText={(t) => setFormData({...formData, valueLeft: t})} 
                       />
                     </View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR DERECHA</Text>
                       <TextInput 
                         style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                        keyboardType="decimal-pad"
-                        placeholder="0.0" 
-                        placeholderTextColor={colors.textSecondary}
-                        value={formData.valueRight} 
-                        onChangeText={(t) => setFormData({...formData, valueRight: t})} 
+                        keyboardType="decimal-pad" placeholder="0.0" placeholderTextColor={colors.textSecondary}
+                        value={formData.valueRight} onChangeText={(t) => setFormData({...formData, valueRight: t})} 
                       />
                     </View>
                   </View>
@@ -433,11 +442,8 @@ export default function TestsScreen() {
                     <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR DEL TEST</Text>
                     <TextInput 
                       style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                      keyboardType="decimal-pad"
-                      placeholder="Ej. 120" 
-                      placeholderTextColor={colors.textSecondary}
-                      value={formData.value} 
-                      onChangeText={(t) => setFormData({...formData, value: t})} 
+                      keyboardType="decimal-pad" placeholder="Ej. 120" placeholderTextColor={colors.textSecondary}
+                      value={formData.value} onChangeText={(t) => setFormData({...formData, value: t})} 
                     />
                   </View>
                 )}
@@ -461,7 +467,7 @@ export default function TestsScreen() {
                   <View style={{ width: 80 }}>
                     <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>UNIDAD</Text>
                     <View style={{ gap: 5, marginBottom: 20 }}>
-                      {['kg', 'cm', 'seg', 'reps', 'N'].map(u => (
+                      {['kg', 'cm', 'seg', 'reps', 'N', 'rsi'].map(u => (
                         <TouchableOpacity 
                           key={u} 
                           style={[styles.chipSelect, { borderColor: colors.border, paddingVertical: 6 }, formData.unit === u && { backgroundColor: colors.primary, borderColor: colors.primary }]} 
@@ -487,6 +493,7 @@ export default function TestsScreen() {
           </KeyboardAvoidingView>
         </View>
       </Modal>
+
     </SafeAreaView>
   );
 }
