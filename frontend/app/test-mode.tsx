@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, 
   ActivityIndicator, ScrollView, TextInput, Alert, Platform,
@@ -25,9 +25,24 @@ export default function TestModeScreen() {
   const [athleteName, setAthleteName] = useState<string>('Deportista');
   const [results, setResults] = useState<Record<string, any>>({});
   
+  // Estado para el Modo Fantasma (Últimas marcas)
+  const [historicalData, setHistoricalData] = useState<Record<string, any>>({});
+
+  // Estados para Cronómetros Integrados
+  const timerRefs = useRef<Record<string, NodeJS.Timeout>>({});
+  const [activeTimers, setActiveTimers] = useState<Record<string, number>>({}); 
+  const [runningTimers, setRunningTimers] = useState<Record<string, boolean>>({});
+
   // Estados para la pantalla final de revisión
   const [showSummary, setShowSummary] = useState(false);
   const [testCategories, setTestCategories] = useState<Record<string, string>>({});
+
+  // Limpiar timers al desmontar el componente
+  useEffect(() => {
+    return () => {
+       Object.values(timerRefs.current).forEach(clearInterval);
+    };
+  }, []);
 
   useEffect(() => {
     const fetchWorkoutAndAthlete = async () => {
@@ -39,14 +54,17 @@ export default function TestModeScreen() {
         if (currentWorkout) {
           setWorkout(currentWorkout);
           
+          let athleteId = currentWorkout.athlete_id;
+
           // Buscar el nombre del atleta
           if (user?.role === 'trainer') {
              const athletesRes = await api.getAthletes();
              const athletesList = Array.isArray(athletesRes) ? athletesRes : (athletesRes?.data || []);
-             const ath = athletesList.find((a: any) => String(a.id) === String(currentWorkout.athlete_id));
+             const ath = athletesList.find((a: any) => String(a.id) === String(athleteId));
              if (ath) setAthleteName(ath.name);
           } else if (user?.name) {
              setAthleteName(user.name);
+             athleteId = user.id;
           }
           
           // Inicializar campos de resultados
@@ -59,6 +77,26 @@ export default function TestModeScreen() {
              };
           });
           setResults(initialResults);
+
+          // Cargar Historial para "Modo Fantasma"
+          if (athleteId) {
+             const testsHistory = await api.getTests({ athlete_id: athleteId }).catch(() => []);
+             const pastTests = Array.isArray(testsHistory) ? testsHistory : (testsHistory?.data || []);
+             
+             // Ordenamos de más reciente a más antiguo
+             pastTests.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+             
+             const historyMap: Record<string, any> = {};
+             currentWorkout.exercises?.forEach((ex: any) => {
+                // Buscamos la última coincidencia por nombre o clave
+                const previous = pastTests.find((pt: any) => pt.custom_name === ex.name || pt.test_name === ex.test_key);
+                if (previous) {
+                    historyMap[ex.test_key] = previous;
+                }
+             });
+             setHistoricalData(historyMap);
+          }
+          
         } else {
           Alert.alert("Error", "No se encontró la batería de tests.");
           router.back();
@@ -70,13 +108,32 @@ export default function TestModeScreen() {
       }
     };
     if (workoutId) fetchWorkoutAndAthlete();
-  }, [workoutId]);
+  }, [workoutId, user]);
 
   const updateResult = (testKey: string, field: string, value: string) => {
     setResults(prev => ({
       ...prev,
       [testKey]: { ...prev[testKey], [field]: value }
     }));
+  };
+
+  // Motor del Cronómetro Integrado
+  const toggleTimer = (testKey: string, side: 'valL' | 'valR' = 'valL') => {
+    const timerKey = `${testKey}_${side}`;
+    
+    if (runningTimers[timerKey]) {
+        // Pausar Cronómetro
+        clearInterval(timerRefs.current[timerKey]);
+        setRunningTimers(prev => ({ ...prev, [timerKey]: false }));
+        updateResult(testKey, side, activeTimers[timerKey].toFixed(1));
+    } else {
+        // Iniciar Cronómetro
+        setActiveTimers(prev => ({ ...prev, [timerKey]: 0 }));
+        setRunningTimers(prev => ({ ...prev, [timerKey]: true }));
+        timerRefs.current[timerKey] = setInterval(() => {
+            setActiveTimers(prev => ({ ...prev, [timerKey]: (prev[timerKey] || 0) + 0.1 }));
+        }, 100);
+    }
   };
 
   const captureVideo = async (testKey: string) => {
@@ -102,9 +159,25 @@ export default function TestModeScreen() {
     return '0.00';
   };
 
-  // 1. Botón "Revisar" abre la pantalla de guardado
+  const renderGhostMode = (ex: any) => {
+    const past = historicalData[ex.test_key];
+    if (!past) return null;
+    
+    let text = '';
+    if (ex.is_bilateral) {
+       text = `Izq ${past.value_left || 0} | Der ${past.value_right || 0} ${past.unit}`;
+    } else {
+       text = `${past.value || 0} ${past.unit}`;
+    }
+    
+    return (
+       <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8, textAlign: 'center', fontWeight: '600' }}>
+          <Ionicons name="time" size={12} color={colors.textSecondary} /> Última vez: {text}
+       </Text>
+    );
+  };
+
   const handleReviewTests = () => {
-    // Autodetectar categorías basadas en el grupo o nombre del test
     const initialCats: Record<string, string> = {};
     workout.exercises.forEach((ex: any) => {
        const str = `${ex.group || ''} ${ex.name || ''}`.toLowerCase();
@@ -122,7 +195,6 @@ export default function TestModeScreen() {
     setShowSummary(true);
   };
 
-  // 2. Guardar definitivamente en la BD y redirigir al Tab de Tests
   const executeSave = async () => {
     setSaving(true);
     try {
@@ -149,14 +221,12 @@ export default function TestModeScreen() {
         };
       });
 
-      // 1. Completar la sesión en el calendario
       await api.updateWorkout(workout.id || workout._id, {
         ...workout,
         completed: true,
         completion_data: { exercise_results: exercisesToSave }
       });
 
-      // 2. Inyectar cada test en el registro global del atleta (tests.tsx)
       if (api.postTest) {
         for (const ex of exercisesToSave) {
            if (ex.logged_weight > 0 || parseFloat(ex.result_left) > 0 || parseFloat(ex.result_right) > 0) {
@@ -177,11 +247,10 @@ export default function TestModeScreen() {
       }
 
       setShowSummary(false);
-      // Redirigimos a la pantalla de Tests del deportista específico
       router.replace({ pathname: '/tests', params: { athlete_id: workout.athlete_id } });
 
     } catch (e) {
-      Alert.alert("Error", "No se pudieron guardar los resultados en el registro.");
+      Alert.alert("Error", "No se pudieron guardar los resultados.");
       setSaving(false);
     }
   };
@@ -218,12 +287,14 @@ export default function TestModeScreen() {
             const res = results[ex.test_key];
             if (!res) return null;
 
+            const hasTimer = ex.unit === 'seg' || ex.unit === 'segundos';
+
             return (
               <View key={idx} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: '#F59E0B40' }]}>
                 
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
-                      <Ionicons name={ex.unit === 'rsi' ? "flash" : "trophy"} size={20} color="#F59E0B" />
+                      <Ionicons name={ex.unit === 'rsi' ? "flash" : (hasTimer ? "timer" : "trophy")} size={20} color="#F59E0B" />
                       <Text style={[styles.testName, { color: colors.textPrimary }]} numberOfLines={1}>{ex.name}</Text>
                    </View>
                    <TouchableOpacity 
@@ -234,6 +305,7 @@ export default function TestModeScreen() {
                    </TouchableOpacity>
                 </View>
 
+                {/* CASO 1: RSI */}
                 {ex.unit === 'rsi' || ex.test_key === 'dj' ? (
                   <View style={{ backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
                     <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE RSI (VUELO / CONTACTO)</Text>
@@ -261,48 +333,84 @@ export default function TestModeScreen() {
                          {calculateRSI(res.flightTime, res.contactTime)}
                        </Text>
                     </View>
+                    {renderGhostMode(ex)}
                   </View>
+                
+                /* CASO 2: BILATERAL */
                 ) : ex.is_bilateral ? (
-                  <View style={{ flexDirection: 'row', gap: 15 }}>
-                     <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#3B82F6', marginBottom: 6, textAlign: 'center' }}>PIERNA IZQ.</Text>
-                        <View style={styles.inputWithUnitContainer}>
-                          <TextInput 
-                            style={[styles.inputLarge, { borderColor: colors.border, color: colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
-                            keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
-                            value={res.valL} onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
-                          />
-                          <View style={[styles.unitBadge, { borderColor: colors.border }]}>
-                            <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>{ex.unit}</Text>
+                  <View>
+                    <View style={{ flexDirection: 'row', gap: 15 }}>
+                       <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#3B82F6', marginBottom: 6, textAlign: 'center' }}>PIERNA IZQ.</Text>
+                          <View style={styles.inputWithUnitContainer}>
+                            <TextInput 
+                              style={[styles.inputLarge, { borderColor: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.border, color: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
+                              keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
+                              value={runningTimers[`${ex.test_key}_valL`] ? activeTimers[`${ex.test_key}_valL`]?.toFixed(1) : res.valL} 
+                              onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
+                            />
+                            <View style={[styles.unitBadge, { borderColor: colors.border, borderTopRightRadius: hasTimer ? 0 : 12, borderBottomRightRadius: hasTimer ? 0 : 12 }]}>
+                              <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>{ex.unit}</Text>
+                            </View>
+                            {hasTimer && (
+                              <TouchableOpacity 
+                                style={[styles.timerBtn, { backgroundColor: runningTimers[`${ex.test_key}_valL`] ? '#EF4444' : colors.primary }]}
+                                onPress={() => toggleTimer(ex.test_key, 'valL')}
+                              >
+                                <Ionicons name={runningTimers[`${ex.test_key}_valL`] ? "stop" : "play"} size={20} color="#FFF" />
+                              </TouchableOpacity>
+                            )}
                           </View>
-                        </View>
-                     </View>
-                     <View style={{ flex: 1 }}>
-                        <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444', marginBottom: 6, textAlign: 'center' }}>PIERNA DER.</Text>
-                        <View style={styles.inputWithUnitContainer}>
-                          <TextInput 
-                            style={[styles.inputLarge, { borderColor: colors.border, color: colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
-                            keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
-                            value={res.valR} onChangeText={(val) => updateResult(ex.test_key, 'valR', val)} 
-                          />
-                          <View style={[styles.unitBadge, { borderColor: colors.border }]}>
-                            <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>{ex.unit}</Text>
+                       </View>
+                       <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444', marginBottom: 6, textAlign: 'center' }}>PIERNA DER.</Text>
+                          <View style={styles.inputWithUnitContainer}>
+                            <TextInput 
+                              style={[styles.inputLarge, { borderColor: runningTimers[`${ex.test_key}_valR`] ? colors.primary : colors.border, color: runningTimers[`${ex.test_key}_valR`] ? colors.primary : colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
+                              keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
+                              value={runningTimers[`${ex.test_key}_valR`] ? activeTimers[`${ex.test_key}_valR`]?.toFixed(1) : res.valR} 
+                              onChangeText={(val) => updateResult(ex.test_key, 'valR', val)} 
+                            />
+                            <View style={[styles.unitBadge, { borderColor: colors.border, borderTopRightRadius: hasTimer ? 0 : 12, borderBottomRightRadius: hasTimer ? 0 : 12 }]}>
+                              <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>{ex.unit}</Text>
+                            </View>
+                            {hasTimer && (
+                              <TouchableOpacity 
+                                style={[styles.timerBtn, { backgroundColor: runningTimers[`${ex.test_key}_valR`] ? '#EF4444' : colors.primary }]}
+                                onPress={() => toggleTimer(ex.test_key, 'valR')}
+                              >
+                                <Ionicons name={runningTimers[`${ex.test_key}_valR`] ? "stop" : "play"} size={20} color="#FFF" />
+                              </TouchableOpacity>
+                            )}
                           </View>
-                        </View>
-                     </View>
+                       </View>
+                    </View>
+                    {renderGhostMode(ex)}
                   </View>
+                
+                /* CASO 3: UNILATERAL / GENERAL */
                 ) : (
                   <View style={{ alignItems: 'center' }}>
-                    <View style={[styles.inputWithUnitContainer, { width: '70%' }]}>
+                    <View style={[styles.inputWithUnitContainer, { width: hasTimer ? '85%' : '70%' }]}>
                       <TextInput 
-                        style={[styles.inputLarge, { borderColor: colors.border, color: colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
+                        style={[styles.inputLarge, { borderColor: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.border, color: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
                         keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
-                        value={res.valL} onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
+                        value={runningTimers[`${ex.test_key}_valL`] ? activeTimers[`${ex.test_key}_valL`]?.toFixed(1) : res.valL} 
+                        onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
                       />
-                      <View style={[styles.unitBadge, { borderColor: colors.border }]}>
+                      <View style={[styles.unitBadge, { borderColor: colors.border, borderTopRightRadius: hasTimer ? 0 : 12, borderBottomRightRadius: hasTimer ? 0 : 12 }]}>
                         <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 14 }}>{ex.unit}</Text>
                       </View>
+                      {hasTimer && (
+                        <TouchableOpacity 
+                          style={[styles.timerBtn, { backgroundColor: runningTimers[`${ex.test_key}_valL`] ? '#EF4444' : colors.primary }]}
+                          onPress={() => toggleTimer(ex.test_key, 'valL')}
+                        >
+                          <Ionicons name={runningTimers[`${ex.test_key}_valL`] ? "stop" : "play"} size={24} color="#FFF" />
+                        </TouchableOpacity>
+                      )}
                     </View>
+                    {renderGhostMode(ex)}
                   </View>
                 )}
               </View>
@@ -415,6 +523,7 @@ const styles = StyleSheet.create({
   inputLarge: { borderWidth: 1, borderRadius: 12, padding: 16, fontSize: 22, fontWeight: '900', textAlign: 'center' },
   inputWithUnitContainer: { flexDirection: 'row', alignItems: 'stretch' },
   unitBadge: { borderWidth: 1, borderLeftWidth: 0, borderTopRightRadius: 12, borderBottomRightRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)', paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
+  timerBtn: { paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', borderTopRightRadius: 12, borderBottomRightRadius: 12 },
   pill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   categoryChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
   footer: { padding: 20, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
