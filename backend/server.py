@@ -186,6 +186,7 @@ class WorkoutUpdate(BaseModel):
     observations: Optional[str] = None
     microciclo_id: Optional[str] = None
     is_ai: Optional[bool] = False
+    is_test_battery: Optional[bool] = False
 
 class WorkoutCreate(BaseModel):
     title: str
@@ -195,6 +196,7 @@ class WorkoutCreate(BaseModel):
     athlete_id: str
     microciclo_id: Optional[str] = None
     is_ai: Optional[bool] = False
+    is_test_battery: Optional[bool] = False
     
 class WorkoutBulkCreate(BaseModel):
     workouts: List[WorkoutCreate]
