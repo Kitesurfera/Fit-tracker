@@ -12,48 +12,6 @@ import { api } from '../../src/api';
 import GeminiChatModal from '../../src/components/GeminiChatModal';
 import { useTrainer } from '../../src/context/TrainerContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
-// Estados para las plantillas
-const [templates, setTemplates] = useState<any[]>([]);
-const [showTemplateModal, setShowTemplateModal] = useState(false);
-const [templateName, setTemplateName] = useState('');
-
-// Cargar plantillas al iniciar
-useEffect(() => {
-  const loadTemplates = async () => {
-    try {
-      const stored = await AsyncStorage.getItem('@battery_templates');
-      if (stored) setTemplates(JSON.parse(stored));
-    } catch (e) { console.error("Error cargando plantillas", e); }
-  };
-  loadTemplates();
-}, []);
-
-// Función para guardar la batería actual como plantilla
-const saveAsTemplate = async () => {
-  if (!templateName.trim() || newWorkoutExercises.length === 0) {
-    Alert.alert("Error", "Añade un nombre y al menos un ejercicio a la plantilla.");
-    return;
-  }
-  try {
-    const newTemplate = { id: Date.now().toString(), name: templateName, exercises: newWorkoutExercises };
-    const updatedTemplates = [...templates, newTemplate];
-    await AsyncStorage.setItem('@battery_templates', JSON.stringify(updatedTemplates));
-    setTemplates(updatedTemplates);
-    setTemplateName('');
-    Alert.alert("Éxito", "Plantilla guardada correctamente");
-  } catch (e) {
-    Alert.alert("Error", "No se pudo guardar la plantilla");
-  }
-};
-
-// Función para aplicar una plantilla
-const applyTemplate = (template: any) => {
-  setNewWorkoutExercises(template.exercises);
-  setNewWorkoutName(template.name);
-  setShowTemplateModal(false);
-};
 
 const DAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -154,19 +112,33 @@ export default function CalendarScreen() {
   const [customTests, setCustomTests] = useState<any[]>(DEFAULT_TESTS);
   const [selectedTests, setSelectedTests] = useState<string[]>([]);
 
-  // Campos para crear un nuevo test personalizado en el modal de configuración
+  // Campos para crear un nuevo test personalizado
   const [newTestName, setNewTestName] = useState('');
   const [newTestGroup, setNewTestGroup] = useState('general');
   const [newTestUnit, setNewTestUnit] = useState('kg');
   const [newTestBilateral, setNewTestBilateral] = useState(false);
 
+  // Estados para Plantillas de Baterías
+  const [templates, setTemplates] = useState<any[]>([]);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+
   const isTrainer = user?.role === 'trainer';
   const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
   const isExtraSportEnabled = selectedAthlete?.has_extra_sport === true || selectedAthlete?.has_extra_sport === 1 || selectedAthlete?.has_extra_sport === 'true';
-
   const sportConfig = getSportConfig(selectedAthlete?.sport_icon);
 
-  // Cargar catálogo de tests personalizados desde AsyncStorage al enfocar
+  // 1. CARGA DE PLANTILLAS Y CATÁLOGOS
+  useEffect(() => {
+    const loadTemplates = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('@battery_templates');
+        if (stored) setTemplates(JSON.parse(stored));
+      } catch (e) { console.error("Error cargando plantillas", e); }
+    };
+    loadTemplates();
+  }, []);
+
   useFocusEffect(
     useCallback(() => {
       AsyncStorage.getItem('custom_tests_catalog').then(res => {
@@ -177,6 +149,33 @@ export default function CalendarScreen() {
     }, [])
   );
 
+  // 2. FUNCIONES DE PLANTILLAS
+  const saveAsTemplate = async () => {
+    if (!templateName.trim() || selectedTests.length === 0) {
+      if (Platform.OS === 'web') window.alert("Añade un nombre y selecciona al menos un test.");
+      else Alert.alert("Error", "Añade un nombre y selecciona al menos un test.");
+      return;
+    }
+    try {
+      const newTemplate = { id: Date.now().toString(), name: templateName, tests: selectedTests };
+      const updatedTemplates = [...templates, newTemplate];
+      await AsyncStorage.setItem('@battery_templates', JSON.stringify(updatedTemplates));
+      setTemplates(updatedTemplates);
+      setTemplateName('');
+      if (Platform.OS === 'web') window.alert("Plantilla guardada");
+      else Alert.alert("Éxito", "Plantilla guardada correctamente");
+    } catch (e) {
+      if (Platform.OS === 'web') window.alert("No se pudo guardar la plantilla");
+      else Alert.alert("Error", "No se pudo guardar la plantilla");
+    }
+  };
+
+  const applyTemplate = (template: any) => {
+    setSelectedTests(template.tests || []);
+    setShowTemplateModal(false);
+  };
+
+  // 3. CARGA DE DATOS DEL ATLETA
   const refreshAthleteData = async (athlete: any) => {
     if (!athlete || !athlete.id) return;
     try {
@@ -262,10 +261,7 @@ export default function CalendarScreen() {
       };
 
       loadFreshData();
-
-      return () => {
-        isActive = false;
-      };
+      return () => { isActive = false; };
     }, [authLoading, user?.id, isTrainer])
   );
 
@@ -1148,38 +1144,33 @@ export default function CalendarScreen() {
             </View>
           )}
         </View>
-
       </ScrollView>
 
-      {/* MODAL: PROGRAMAR BATERÍA DE TESTS */}
-      {/* Botón para abrir el selector de plantillas */}
-        <TouchableOpacity 
-          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary+'20', padding: 12, borderRadius: 10, marginBottom: 15 }}
-          onPress={() => setShowTemplateModal(true)}
-        >
-          <Ionicons name="copy-outline" size={20} color={colors.primary} />
-          <Text style={{ marginLeft: 8, color: colors.primary, fontWeight: '800' }}>CARGAR DESDE PLANTILLA</Text>
-        </TouchableOpacity>
-        
-        {/* Modal secundario para listar plantillas */}
-        <Modal visible={showTemplateModal} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
-              <Text style={styles.modalTitle}>Mis Plantillas</Text>
-              <ScrollView>
-                {templates.map(temp => (
-                   <TouchableOpacity key={temp.id} style={styles.templateItem} onPress={() => applyTemplate(temp)}>
-                      <Text style={{fontWeight: '700', color: colors.textPrimary}}>{temp.name}</Text>
-                      <Text style={{fontSize: 12, color: colors.textSecondary}}>{temp.exercises.length} ejercicios</Text>
-                   </TouchableOpacity>
-                ))}
-              </ScrollView>
-              <TouchableOpacity style={[styles.finishBtn, {backgroundColor: colors.border}]} onPress={() => setShowTemplateModal(false)}>
-                 <Text style={{fontWeight: '800'}}>CERRAR</Text>
-              </TouchableOpacity>
-            </View>
+      {/* MODAL SECUNDARIO: MIS PLANTILLAS */}
+      <Modal visible={showTemplateModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <Text style={styles.modalTitle}>Mis Plantillas</Text>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {templates.length === 0 ? (
+                <Text style={{color: colors.textSecondary, textAlign: 'center', marginTop: 20}}>No tienes plantillas guardadas.</Text>
+              ) : (
+                templates.map(temp => (
+                  <TouchableOpacity key={temp.id} style={styles.templateItem} onPress={() => applyTemplate(temp)}>
+                    <Text style={{fontWeight: '700', color: colors.textPrimary}}>{temp.name}</Text>
+                    <Text style={{fontSize: 12, color: colors.textSecondary}}>{temp.tests?.length || 0} mediciones</Text>
+                  </TouchableOpacity>
+                ))
+              )}
+            </ScrollView>
+            <TouchableOpacity style={[styles.finishBtn, {backgroundColor: colors.border}]} onPress={() => setShowTemplateModal(false)}>
+               <Text style={{fontWeight: '800', color: colors.textPrimary}}>CERRAR</Text>
+            </TouchableOpacity>
           </View>
-        </Modal>
+        </View>
+      </Modal>
+
+      {/* MODAL: PROGRAMAR BATERÍA DE TESTS */}
       <Modal visible={showTestModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface, paddingBottom: 30 }]}>
@@ -1187,6 +1178,15 @@ export default function CalendarScreen() {
               <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Programar Tests</Text>
               <TouchableOpacity onPress={() => setShowTestModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
             </View>
+
+            {/* BOTÓN PARA CARGAR PLANTILLA */}
+            <TouchableOpacity 
+              style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary+'20', padding: 12, borderRadius: 10, marginBottom: 15 }}
+              onPress={() => setShowTemplateModal(true)}
+            >
+              <Ionicons name="copy-outline" size={20} color={colors.primary} />
+              <Text style={{ marginLeft: 8, color: colors.primary, fontWeight: '800' }}>CARGAR DESDE PLANTILLA</Text>
+            </TouchableOpacity>
 
             <TouchableOpacity 
               style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 10, backgroundColor: colors.primary + '15', marginBottom: 15, gap: 6 }}
@@ -1198,7 +1198,7 @@ export default function CalendarScreen() {
 
             <Text style={{ color: colors.textSecondary, marginBottom: 10, fontSize: 12, fontWeight: '700' }}>SELECCIONA PARA EL {selectedDate}:</Text>
             
-            <ScrollView style={{ maxHeight: 280, marginBottom: 20 }} showsVerticalScrollIndicator={false}>
+            <ScrollView style={{ maxHeight: 200, marginBottom: 15 }} showsVerticalScrollIndicator={false}>
               {customTests.map(test => {
                 const isSelected = selectedTests.includes(test.id);
                 return (
@@ -1224,6 +1224,22 @@ export default function CalendarScreen() {
                 );
               })}
             </ScrollView>
+
+            {/* GUARDAR COMO PLANTILLA */}
+            {selectedTests.length > 0 && (
+              <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                <TextInput 
+                  style={[styles.input, { flex: 1, borderColor: colors.border, color: colors.textPrimary }]} 
+                  placeholder="Nombre plantilla..." 
+                  placeholderTextColor={colors.textSecondary}
+                  value={templateName}
+                  onChangeText={setTemplateName}
+                />
+                <TouchableOpacity style={{ backgroundColor: colors.surfaceHighlight, justifyContent: 'center', paddingHorizontal: 15, borderRadius: 12 }} onPress={saveAsTemplate}>
+                  <Ionicons name="save" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+            )}
 
             <TouchableOpacity style={{ backgroundColor: '#F59E0B', padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleCreateTestBattery} disabled={updating}>
               {updating ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Agendar Batería</Text>}
@@ -1262,7 +1278,7 @@ export default function CalendarScreen() {
               onPress={() => setNewTestBilateral(!newTestBilateral)}
             >
               <Ionicons name={newTestBilateral ? "checkbox" : "square-outline"} size={22} color={colors.primary} />
-              <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>¿Es Bilateral (Izquierda y Derecha separadas)?</Text>
+              <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 14 }}>¿Es Bilateral (Izq y Der)?</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleAddNewCustomTest}>
@@ -1373,5 +1389,8 @@ const styles = StyleSheet.create({
   modalContent: { width: '85%', maxWidth: 400, borderRadius: 24, padding: 24 },
   pickerItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1 },
   label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
-  input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15 }
+  input: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 15 },
+  templateItem: { paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  finishBtn: { padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 15 },
+  modalTitle: { fontSize: 20, fontWeight: '900', marginBottom: 20 },
 });
