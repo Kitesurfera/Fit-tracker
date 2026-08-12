@@ -11,7 +11,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { LineChart, BarChart } from 'react-native-chart-kit'; // Añadido BarChart
+import { LineChart, BarChart } from 'react-native-chart-kit';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useTrainer } from '../../src/context/TrainerContext';
@@ -19,7 +19,6 @@ import { Video, ResizeMode } from 'expo-av';
 
 const MAX_CONTENT_WIDTH = 1200;
 
-// Mapa de iconos dinámico para deportes
 const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'kite': { icon: 'kitesurfing', lib: 'MaterialCommunityIcons' },
   'football': { icon: 'football', lib: 'Ionicons' },
@@ -66,6 +65,9 @@ const normalizeName = (name: string) => {
 const getLocalDateStr = (date: Date) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
+
+// Función auxiliar para parsear seguramente números que pueden tener comas
+const parseSafe = (v: any) => v != null && v !== '' ? parseFloat(String(v).replace(',', '.')) : NaN;
 
 export default function AnalyticsScreen() {
   const { colors } = useTheme();
@@ -212,17 +214,32 @@ export default function AnalyticsScreen() {
         }
       });
     });
+
     testHistory.forEach(t => {
       if (t.test_type === 'medicion') return;
       const rawName = t.custom_name || TEST_TRANSLATIONS[t.test_name] || t.test_name;
       if (!rawName) return;
       const normKey = `test_${normalizeName(rawName)}`;
-      const valL = parseFloat(t.value_left); const valR = parseFloat(t.value_right); const val = parseFloat(t.value);
-      const hasSides = !isNaN(valL) && !isNaN(valR);
-      const maxVal = hasSides ? Math.max(valL || 0, valR || 0) : (val || 0);
-      if (!items[normKey]) { items[normKey] = { id: normKey, name: rawName, history: [], maxW: 0, type: 'test', unit: t.unit || 'kg', testDoc: t }; }
+      
+      const valL = parseSafe(t.value_left);
+      const valR = parseSafe(t.value_right);
+      const val = parseSafe(t.value);
+      
+      const hasSides = !isNaN(valL) || !isNaN(valR);
+      const maxVal = hasSides ? Math.max(!isNaN(valL) ? valL : 0, !isNaN(valR) ? valR : 0) : (!isNaN(val) ? val : 0);
+      
+      if (!items[normKey]) { 
+        items[normKey] = { id: normKey, name: rawName, history: [], maxW: 0, type: 'test', unit: t.unit || 'kg', testDoc: t }; 
+      }
       if (maxVal > items[normKey].maxW) items[normKey].maxW = maxVal;
-      items[normKey].history.push({ date: t.date, val: maxVal, valL: hasSides ? (valL || 0) : null, valR: hasSides ? (valR || 0) : null, isBilateral: hasSides });
+      
+      items[normKey].history.push({ 
+        date: t.date, 
+        val: maxVal, 
+        valL: hasSides ? (!isNaN(valL) ? valL : 0) : null, 
+        valR: hasSides ? (!isNaN(valR) ? valR : 0) : null, 
+        isBilateral: hasSides 
+      });
     });
     return items;
   }, [workoutHistory, testHistory]);
@@ -257,7 +274,6 @@ export default function AnalyticsScreen() {
     return workoutHistory.filter(w => w.completed && w.date >= limitDateStr).length;
   }, [workoutHistory]);
 
-  // --- ACTUALIZADO: RPE (Carga) incluido en la memoización ---
   const workloadData = useMemo(() => {
     const daysToMap = 14;
     const labels: string[] = [];
@@ -337,7 +353,6 @@ export default function AnalyticsScreen() {
         }
       } catch (e) { console.log("Aviso: Error generando IA, usando template base."); }
 
-      // ACTUALIZADO: El PDF ahora genera un gráfico combinado (Barras + Líneas) con Chart.js
       const htmlContent = `
       <html>
         <head>
@@ -557,7 +572,6 @@ export default function AnalyticsScreen() {
     );
   };
 
-  // --- ACTUALIZADO: Carga Interna (Barras) y SNC (Líneas) separados para mayor claridad ---
   const renderWorkloadDashboard = () => {
     const targetAthlete = selectedAthlete || user;
     const waterSessions = targetAthlete?.technical_sessions || [];
@@ -583,35 +597,22 @@ export default function AnalyticsScreen() {
         <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 5 }]}>Carga vs Recuperación</Text>
         <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 20 }}>Analiza el impacto del entrenamiento (RPE) y tu estado de recuperación (SNC) en los últimos 14 días.</Text>
 
-        {/* 1. GRÁFICA DE BARRAS: CARGA (RPE) */}
+        {/* GRÁFICA DE BARRAS: CARGA (RPE) */}
         <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 20, marginBottom: 15 }]}>
           <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textPrimary, marginBottom: 15, textAlign: 'center' }}>Carga Interna de Entrenamientos (RPE)</Text>
           <BarChart
-            data={{
-              labels,
-              datasets: [{ data: rpeData }]
-            }}
-            width={chartWidth}
-            height={180}
-            yAxisLabel=""
-            yAxisSuffix=""
-            fromZero
-            showValuesOnTopOfBars
+            data={{ labels, datasets: [{ data: rpeData }] }}
+            width={chartWidth} height={180} yAxisLabel="" yAxisSuffix="" fromZero showValuesOnTopOfBars
             chartConfig={{
-              backgroundColor: colors.surface,
-              backgroundGradientFrom: colors.surface,
-              backgroundGradientTo: colors.surface,
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(16, 185, 129, ${opacity})`, // Verde corporativo
-              labelColor: () => colors.textSecondary,
-              barPercentage: 0.5,
-              propsForLabels: { fontSize: 10 }
+              backgroundColor: colors.surface, backgroundGradientFrom: colors.surface, backgroundGradientTo: colors.surface,
+              decimalPlaces: 0, color: (opacity = 1) => `rgba(16, 185, 129, ${opacity})`,
+              labelColor: () => colors.textSecondary, barPercentage: 0.5, propsForLabels: { fontSize: 10 }
             }}
             style={{ borderRadius: 16, alignSelf: 'center' }}
           />
         </View>
 
-        {/* 2. GRÁFICA DE LÍNEAS: FATIGA Y AGUJETAS */}
+        {/* GRÁFICA DE LÍNEAS: FATIGA Y AGUJETAS */}
         <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 20 }]}>
           <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textPrimary, marginBottom: 15, textAlign: 'center' }}>Estado del SNC y Muscular</Text>
           <View style={{ flexDirection: 'row', gap: 15, marginBottom: 15, justifyContent: 'center' }}>
@@ -625,28 +626,18 @@ export default function AnalyticsScreen() {
               datasets: [
                 { data: fatigueData.every(d => d===0) ? fatigueData.map(()=>0) : fatigueData, color: () => '#EF4444', strokeWidth: 3 },
                 { data: sorenessData.every(d => d===0) ? sorenessData.map(()=>0) : sorenessData, color: () => '#F59E0B', strokeWidth: 3 },
-                { data: [5], withDots: false, color: () => 'transparent' } // Truco para forzar el Eje Y a 5 como máximo siempre
+                { data: [5], withDots: false, color: () => 'transparent' } 
               ]
             }}
-            width={chartWidth}
-            height={180}
-            fromZero
-            yAxisInterval={1}
-            segments={5}
+            width={chartWidth} height={180} fromZero yAxisInterval={1} segments={5}
             chartConfig={{
-              backgroundColor: colors.surface, 
-              backgroundGradientFrom: colors.surface, 
-              backgroundGradientTo: colors.surface,
-              decimalPlaces: 0, 
-              color: (opacity = 1) => colors.border, 
-              labelColor: () => colors.textSecondary,
+              backgroundColor: colors.surface, backgroundGradientFrom: colors.surface, backgroundGradientTo: colors.surface,
+              decimalPlaces: 0, color: (opacity = 1) => colors.border, labelColor: () => colors.textSecondary,
               propsForDots: { r: "4", strokeWidth: "2", stroke: colors.surface }
             }}
-            bezier
-            style={{ borderRadius: 16, alignSelf: 'center' }}
+            bezier style={{ borderRadius: 16, alignSelf: 'center' }}
           />
 
-          {/* REGISTRO TIPO HEATMAP GITHUB */}
           <View style={{ marginTop: 20, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
             <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 15, textAlign: 'center', letterSpacing: 1 }}>MAPA DE SESIONES</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{flexGrow: 1, justifyContent: 'center'}}>
@@ -659,11 +650,7 @@ export default function AnalyticsScreen() {
                       </View>
                       <View style={{ height: 28, justifyContent: 'center' }}>
                         {day.water ? (
-                           sportInfo.lib === 'Ionicons' ? (
-                             <Ionicons name={sportInfo.icon as any} size={20} color="#0EA5E9" />
-                           ) : (
-                             <MaterialCommunityIcons name={sportInfo.icon as any} size={20} color="#0EA5E9" />
-                           )
+                           sportInfo.lib === 'Ionicons' ? <Ionicons name={sportInfo.icon as any} size={20} color="#0EA5E9" /> : <MaterialCommunityIcons name={sportInfo.icon as any} size={20} color="#0EA5E9" />
                         ) : <Text style={{ color: colors.border }}>-</Text>}
                       </View>
                    </View>
@@ -712,9 +699,9 @@ export default function AnalyticsScreen() {
 
   const renderTestCard = (mergedItem: any, index: number) => { 
     const test = mergedItem.testDoc;
-    const valL = test ? parseFloat(test.value_left) : NaN; 
-    const valR = test ? parseFloat(test.value_right) : NaN;
-    const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
+    const valL = test ? parseSafe(test.value_left) : NaN; 
+    const valR = test ? parseSafe(test.value_right) : NaN;
+    const hasSides = !isNaN(valL) || !isNaN(valR);
     const isSelected = selectedTestKey === mergedItem.id;
     return (
       <View key={index} style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, width: isDesktop ? '48%' : '100%' }]}>
@@ -736,8 +723,8 @@ export default function AnalyticsScreen() {
             <View style={{ flexDirection: 'row', flex: 1 }}>
               {hasSides ? (
                 <>
-                  <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#3B82F6' }]}>{valL}</Text><Text style={styles.sideLabel}>IZQ</Text></View>
-                  <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#EF4444' }]}>{valR}</Text><Text style={styles.sideLabel}>DER</Text></View>
+                  <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#3B82F6' }]}>{!isNaN(valL) ? valL : 0}</Text><Text style={styles.sideLabel}>IZQ</Text></View>
+                  <View style={{ flex: 1 }}><Text style={[styles.testValue, { color: '#EF4444' }]}>{!isNaN(valR) ? valR : 0}</Text><Text style={styles.sideLabel}>DER</Text></View>
                 </>
               ) : (
                 <Text style={[styles.testValue, { color: colors.textPrimary }]}>{mergedItem.maxW} <Text style={{fontSize: 14, color: colors.textSecondary}}>{mergedItem.unit}</Text></Text>
