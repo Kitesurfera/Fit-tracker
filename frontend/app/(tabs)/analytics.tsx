@@ -95,7 +95,7 @@ export default function AnalyticsScreen() {
   const [testHistory, setTestHistory] = useState<any[]>([]);
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [wellnessHistory, setWellnessHistory] = useState<any[]>([]);
-  const [macros, setMacros] = useState<any[]>([]); // Pilar 3: Árbol de Periodización
+  const [macros, setMacros] = useState<any[]>([]); 
   
   const [athletes, setAthletes] = useState<any[]>([]);
   const { selectedAthlete, setSelectedAthlete } = useTrainer();
@@ -203,7 +203,6 @@ export default function AnalyticsScreen() {
     });
   };
 
-  // PILAR 3: Cálculo del microciclo actual
   const currentPeriodizationPhase = useMemo(() => {
     const todayStr = getLocalDateStr(new Date());
     if (!macros || macros.length === 0) return 'Fase de Preparación / Mantenimiento';
@@ -230,10 +229,9 @@ export default function AnalyticsScreen() {
   const rawItems = useMemo(() => {
     const items: Record<string, any> = {};
     
-    // 1. Extraer ejercicios y NUEVAS baterías de tests desde Workouts
     workoutHistory.forEach(w => {
       if (!w.completed) return; 
-      const isBattery = w.is_test_battery; // Pilar 4: Tests como workouts
+      const isBattery = w.is_test_battery;
 
       w.completion_data?.exercise_results?.forEach((r: any) => {
         if ((r.completed_sets > 0 || isBattery) && r.name) {
@@ -275,7 +273,6 @@ export default function AnalyticsScreen() {
       });
     });
 
-    // 2. Extraer histórico de Tests del sistema antiguo
     testHistory.forEach(t => {
       if (t.test_type === 'medicion') return;
       const rawName = t.custom_name || TEST_TRANSLATIONS[t.test_name] || t.test_name;
@@ -410,7 +407,7 @@ export default function AnalyticsScreen() {
                 soreness_data: workloadData.sorenessData,
                 recent_workouts_count: recentWorkoutsCount,
                 recent_prs: topPRs,
-                current_phase: currentPeriodizationPhase // Contexto extra para la IA
+                current_phase: currentPeriodizationPhase
             });
         }
       } catch (e) { console.log("Aviso: Error generando IA, usando template base."); }
@@ -601,7 +598,6 @@ export default function AnalyticsScreen() {
   const renderPerformanceSummary = () => {
     return (
       <View>
-        {/* PILAR 3: UI Periodización actual */}
         <View style={[styles.phaseContainer, { backgroundColor: colors.surfaceHighlight }]}>
           <View style={[styles.iconWrapper, { backgroundColor: colors.primary + '20' }]}>
             <Ionicons name="analytics" size={24} color={colors.primary} />
@@ -929,11 +925,114 @@ export default function AnalyticsScreen() {
           </ScrollView>
         </View>
 
-        <Modal visible={showPicker} transparent animationType="slide"><TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}><View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}><Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text><ScrollView>{athletes.map(a => (<TouchableOpacity key={a.id} style={[styles.athleteItem, { borderBottomColor: colors.border }]} onPress={() => { handleSelectAthlete(a); setShowPicker(false); }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text></TouchableOpacity>))}</ScrollView></View></TouchableOpacity></Modal>
+        {/* MODAL: SELECCIONAR ATLETA */}
+        <Modal visible={showPicker} transparent animationType="slide">
+          <TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}>
+            <View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}>
+              <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text>
+              <ScrollView>
+                {athletes.map(a => (
+                  <TouchableOpacity 
+                    key={a.id} 
+                    style={[styles.athleteItem, { borderBottomColor: colors.border }]} 
+                    onPress={() => { handleSelectAthlete(a); setShowPicker(false); }}
+                  >
+                    <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
         
-        <Modal visible={showMergeModal} transparent animationType="slide"><View style={styles.modalOverlay}><View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>{!mergeTargetItem ? (<><Text style={styles.modalTitle}>1. Test Principal</Text><ScrollView>{Object.values(rawItems).sort((a: any, b: any) => a.name.localeCompare(b.name)).map((item: any) => (<TouchableOpacity key={item.id} style={[styles.dictSelectBtn, { borderColor: colors.border, marginBottom: 10 }]} onPress={() => setMergeTargetItem(item)}><Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{item.name} ({item.type.toUpperCase()})</Text></TouchableOpacity>))}</ScrollView></>) : (<><Text style={styles.modalTitle}>2. Unificar con {mergeTargetItem.name}</Text><ScrollView>{Object.values(rawItems).filter((r: any) => r.id !== mergeTargetItem.id).map((r: any) => (<TouchableOpacity key={r.id} style={[styles.dictSelectBtn, { borderColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary : colors.border, backgroundColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary + '10', marginBottom: 10 }]} onPress={() => toggleMerge(r.id)}><Text style={{ color: colors.textPrimary }}>{r.name}</Text></TouchableOpacity>))}</ScrollView><TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={() => setShowMergeModal(false)}><Text style={{ color: '#FFF', fontWeight: '800' }}>TERMINAR</Text></TouchableOpacity></>)}<TouchableOpacity onPress={() => setShowMergeModal(false)} style={{marginTop:15, alignItems:'center'}}><Text style={{color:colors.textSecondary}}>Cancelar</Text></TouchableOpacity></View></View></Modal>
+        {/* MODAL: UNIFICAR TESTS/EJERCICIOS */}
+        <Modal visible={showMergeModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
+              {!mergeTargetItem ? (
+                <>
+                  <Text style={styles.modalTitle}>1. Test Principal</Text>
+                  <ScrollView>
+                    {Object.values(rawItems).sort((a: any, b: any) => a.name.localeCompare(b.name)).map((item: any) => (
+                      <TouchableOpacity 
+                        key={item.id} 
+                        style={[styles.dictSelectBtn, { borderColor: colors.border, marginBottom: 10 }]} 
+                        onPress={() => setMergeTargetItem(item)}
+                      >
+                        <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>
+                          {item.name} ({item.type.toUpperCase()})
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
+              ) : (
+                <>
+                  <Text style={styles.modalTitle}>2. Unificar con {mergeTargetItem.name}</Text>
+                  <ScrollView>
+                    {Object.values(rawItems).filter((r: any) => r.id !== mergeTargetItem.id).map((r: any) => (
+                      <TouchableOpacity 
+                        key={r.id} 
+                        style={[
+                          styles.dictSelectBtn, 
+                          { 
+                            borderColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary : colors.border, 
+                            backgroundColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary + '10' : 'transparent', 
+                            marginBottom: 10 
+                          }
+                        ]} 
+                        onPress={() => toggleMerge(r.id)}
+                      >
+                        <Text style={{ color: colors.textPrimary }}>{r.name}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                  <TouchableOpacity 
+                    style={[styles.confirmBtn, { backgroundColor: colors.primary }]} 
+                    onPress={() => setShowMergeModal(false)}
+                  >
+                    <Text style={{ color: '#FFF', fontWeight: '800' }}>TERMINAR</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+              <TouchableOpacity onPress={() => setShowMergeModal(false)} style={{marginTop:15, alignItems:'center'}}>
+                <Text style={{color:colors.textSecondary}}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
-        <Modal visible={showDictModal} transparent animationType="slide"><View style={styles.modalOverlay}><View style={[styles.modalContent, { backgroundColor: colors.surface }]}><Text style={styles.modalTitle}>Editar Diccionario: {dictTargetExercise}</Text><ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{ALL_MUSCLES.map(m => (<TouchableOpacity key={m} style={[styles.dictSelectBtn, { borderColor: colors.border, backgroundColor: dictSelectedMuscles.includes(m) ? colors.primary : 'transparent' }]} onPress={() => toggleDictMuscle(m)}><Text style={{ color: dictSelectedMuscles.includes(m) ? '#FFF' : colors.textPrimary }}>{m}</Text></TouchableOpacity>))}</ScrollView><TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={saveDictMuscles}><Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR</Text></TouchableOpacity></View></View></Modal>
+        {/* MODAL: DICCIONARIO DE MÚSCULOS */}
+        <Modal visible={showDictModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+              <Text style={styles.modalTitle}>Editar Diccionario: {dictTargetExercise}</Text>
+              <ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+                {ALL_MUSCLES.map(m => (
+                  <TouchableOpacity 
+                    key={m} 
+                    style={[
+                      styles.dictSelectBtn, 
+                      { 
+                        borderColor: colors.border, 
+                        backgroundColor: dictSelectedMuscles.includes(m) ? colors.primary : 'transparent' 
+                      }
+                    ]} 
+                    onPress={() => toggleDictMuscle(m)}
+                  >
+                    <Text style={{ color: dictSelectedMuscles.includes(m) ? '#FFF' : colors.textPrimary }}>{m}</Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity 
+                style={[styles.confirmBtn, { backgroundColor: colors.primary }]} 
+                onPress={saveDictMuscles}
+              >
+                <Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
         
         {renderVideoModal()}
       </KeyboardAvoidingView>
