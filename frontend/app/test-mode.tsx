@@ -319,7 +319,7 @@ export default function TestModeScreen() {
                     {renderGhostMode(ex)}
                   </View>
                 
-              {/* CASO 2: BILATERAL */}
+                {/* CASO 2: BILATERAL */}
                 ) : ex.is_bilateral ? (
                   <View>
                     <View style={{ flexDirection: 'row', gap: 15 }}>
@@ -370,7 +370,7 @@ export default function TestModeScreen() {
                     </View>
                     {renderGhostMode(ex)}
                     
-                {/* CÁLCULO DE ASIMETRÍA (LSI) EN VIVO */}
+                    {/* CÁLCULO DE ASIMETRÍA (LSI) EN VIVO */}
                     {(() => {
                       const valLNum = parseFloat(String(res.valL).replace(',', '.')) || 0;
                       const valRNum = parseFloat(String(res.valR).replace(',', '.')) || 0;
