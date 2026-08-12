@@ -371,6 +371,35 @@ export default function TestModeScreen() {
                     </View>
                     {renderGhostMode(ex)}
                   </View>
+
+                {/* CÁLCULO DE ASIMETRÍA (LSI) EN VIVO */}
+              {(() => {
+                const valLNum = parseFloat(String(res.valL).replace(',', '.')) || 0;
+                const valRNum = parseFloat(String(res.valR).replace(',', '.')) || 0;
+                
+                if (valLNum > 0 && valRNum > 0) {
+                  const maxVal = Math.max(valLNum, valRNum);
+                  const minVal = Math.min(valLNum, valRNum);
+                  const deficit = ((maxVal - minVal) / maxVal) * 100;
+                  
+                  // Si la diferencia es mayor al 10%, es una alerta roja (riesgo de lesión/descompensación)
+                  const isWarning = deficit > 10;
+                  
+                  return (
+                    <View style={{ 
+                      marginTop: 15, padding: 10, borderRadius: 8, 
+                      backgroundColor: isWarning ? '#EF444415' : '#10B98115',
+                      flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 
+                    }}>
+                      <Ionicons name={isWarning ? "warning" : "checkmark-circle"} size={18} color={isWarning ? "#EF4444" : "#10B981"} />
+                      <Text style={{ fontSize: 12, fontWeight: '800', color: isWarning ? "#EF4444" : "#10B981" }}>
+                        DÉFICIT BILATERAL: {deficit.toFixed(1)}% {isWarning ? '(Descompensación)' : '(Óptimo)'}
+                      </Text>
+                    </View>
+                  );
+                }
+                return null;
+              })()}
                 
                 /* CASO 3: UNILATERAL / GENERAL */
                 ) : (
