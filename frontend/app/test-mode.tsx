@@ -10,9 +10,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api';
-
-// IMPORTAMOS EL COMPONENTE DE SUBIDA DE VÍDEOS
-// Ajusta la ruta si es necesario (ej: '../components/VideoUploader')
 import VideoUploader from '../src/components/VideoUploader';
 
 export default function TestModeScreen() {
@@ -169,7 +166,6 @@ export default function TestModeScreen() {
         const res = results[ex.test_key] || {};
         let finalVal = 0;
         
-        // Parseo seguro (cambiar comas por puntos)
         const vLStr = res.valL ? String(res.valL).replace(',', '.') : '';
         const vRStr = res.valR ? String(res.valR).replace(',', '.') : '';
         
@@ -238,7 +234,6 @@ export default function TestModeScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         
-        {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={{ padding: 8 }}>
             <Ionicons name="close" size={28} color={colors.textPrimary} />
@@ -252,7 +247,6 @@ export default function TestModeScreen() {
           <View style={{ width: 44 }} />
         </View>
 
-        {/* LISTA DE INPUTS */}
         <ScrollView contentContainerStyle={{ padding: 20 }}>
           {workout?.exercises?.map((ex: any, idx: number) => {
             const res = results[ex.test_key];
@@ -269,7 +263,6 @@ export default function TestModeScreen() {
                       <Text style={[styles.testName, { color: colors.textPrimary }]} numberOfLines={1}>{ex.name}</Text>
                    </View>
                    
-                   {/* NUEVO COMPONENTE VIDEOUPLOADER CONECTADO */}
                    <VideoUploader 
                      currentVideo={res.videoUri} 
                      onUploadSuccess={(url) => updateResult(ex.test_key, 'videoUri', url)} 
@@ -277,7 +270,6 @@ export default function TestModeScreen() {
                    />
                 </View>
 
-                {/* CASO 1: RSI */}
                 {ex.unit === 'rsi' || ex.test_key === 'dj' ? (
                   <View style={{ backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
                     <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE RSI (VUELO / CONTACTO)</Text>
@@ -307,8 +299,6 @@ export default function TestModeScreen() {
                     </View>
                     {renderGhostMode(ex)}
                   </View>
-                
-                /* CASO 2: BILATERAL */
                 ) : ex.is_bilateral ? (
                   <View>
                     <View style={{ flexDirection: 'row', gap: 15 }}>
@@ -359,8 +349,6 @@ export default function TestModeScreen() {
                     </View>
                     {renderGhostMode(ex)}
                   </View>
-                
-                /* CASO 3: UNILATERAL / GENERAL */
                 ) : (
                   <View style={{ alignItems: 'center' }}>
                     <View style={[styles.inputWithUnitContainer, { width: hasTimer ? '85%' : '70%' }]}>
@@ -398,7 +386,6 @@ export default function TestModeScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* MODAL: RESUMEN Y GUARDADO DE CATEGORÍAS */}
       <Modal visible={showSummary} animationType="slide" transparent={false}>
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
            <View style={styles.header}>
@@ -425,12 +412,23 @@ export default function TestModeScreen() {
                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }}>
                         <View style={{ flex: 1, paddingRight: 10 }}>
                           <Text style={[styles.testName, { color: colors.textPrimary, marginLeft: 0, fontSize: 15 }]} numberOfLines={2}>{ex.name}</Text>
-                          <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                          <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                             <View style={[styles.pill, { backgroundColor: ex.is_bilateral ? '#3B82F615' : '#10B98115' }]}>
                                <Text style={{ fontSize: 10, fontWeight: '800', color: ex.is_bilateral ? '#3B82F6' : '#10B981' }}>
                                  {ex.is_bilateral ? 'BILATERAL' : 'UNILATERAL'}
                                </Text>
                             </View>
+
+                            {/* INYECCIÓN DEL REPRODUCTOR EN MODO LECTURA */}
+                            {res.videoUri && (
+                               <VideoUploader 
+                                 currentVideo={res.videoUri} 
+                                 onUploadSuccess={() => {}} 
+                                 colors={colors} 
+                                 readOnly={true} 
+                               />
+                            )}
+
                           </View>
                         </View>
                         
