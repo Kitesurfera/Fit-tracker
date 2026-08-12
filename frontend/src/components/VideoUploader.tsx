@@ -50,7 +50,7 @@ const handleMediaUpload = async (pickerResult: ImagePicker.ImagePickerResult) =>
       }
 
       // 1. Añade tu upload_preset que acabamos de crear en Cloudinary
-      formData.append('fit_tracker_videos', 'fit_tracker_videos'); 
+      formData.append('upload_preset', 'fit_tracker_videos'); 
 
       // 2. Realiza la petición POST directa a la API de Cloudinary
       // Reemplaza 'TU_CLOUD_NAME' por el Cloud name de tu panel de Cloudinary
@@ -64,7 +64,7 @@ const handleMediaUpload = async (pickerResult: ImagePicker.ImagePickerResult) =>
 
       if (data.secure_url) {
         // ¡Éxito! Cloudinary nos devuelve la URL pública y permanente del vídeo
-        onUploadSuccess(data.secure_url);[cite: 2]
+        onUploadSuccess(data.secure_url);
       } else {
         throw new Error(data.error?.message || 'Error al subir a Cloudinary');
       }
