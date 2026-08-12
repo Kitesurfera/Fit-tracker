@@ -25,19 +25,15 @@ export default function TestModeScreen() {
   const [athleteName, setAthleteName] = useState<string>('Deportista');
   const [results, setResults] = useState<Record<string, any>>({});
   
-  // Estado para el Modo Fantasma (Últimas marcas)
   const [historicalData, setHistoricalData] = useState<Record<string, any>>({});
 
-  // Estados para Cronómetros Integrados
   const timerRefs = useRef<Record<string, NodeJS.Timeout>>({});
   const [activeTimers, setActiveTimers] = useState<Record<string, number>>({}); 
   const [runningTimers, setRunningTimers] = useState<Record<string, boolean>>({});
 
-  // Estados para la pantalla final de revisión
   const [showSummary, setShowSummary] = useState(false);
   const [testCategories, setTestCategories] = useState<Record<string, string>>({});
 
-  // Limpiar timers al desmontar el componente
   useEffect(() => {
     return () => {
        Object.values(timerRefs.current).forEach(clearInterval);
@@ -56,7 +52,6 @@ export default function TestModeScreen() {
           
           let athleteId = currentWorkout.athlete_id;
 
-          // Buscar el nombre del atleta
           if (user?.role === 'trainer') {
              const athletesRes = await api.getAthletes();
              const athletesList = Array.isArray(athletesRes) ? athletesRes : (athletesRes?.data || []);
@@ -67,7 +62,6 @@ export default function TestModeScreen() {
              athleteId = user.id;
           }
           
-          // Inicializar campos de resultados
           const initialResults: Record<string, any> = {};
           currentWorkout.exercises?.forEach((ex: any) => {
              initialResults[ex.test_key] = {
@@ -78,21 +72,16 @@ export default function TestModeScreen() {
           });
           setResults(initialResults);
 
-          // Cargar Historial para "Modo Fantasma"
           if (athleteId) {
              const testsHistory = await api.getTests({ athlete_id: athleteId }).catch(() => []);
              const pastTests = Array.isArray(testsHistory) ? testsHistory : (testsHistory?.data || []);
              
-             // Ordenamos de más reciente a más antiguo
              pastTests.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
              
              const historyMap: Record<string, any> = {};
              currentWorkout.exercises?.forEach((ex: any) => {
-                // Buscamos la última coincidencia por nombre o clave
                 const previous = pastTests.find((pt: any) => pt.custom_name === ex.name || pt.test_name === ex.test_key);
-                if (previous) {
-                    historyMap[ex.test_key] = previous;
-                }
+                if (previous) historyMap[ex.test_key] = previous;
              });
              setHistoricalData(historyMap);
           }
@@ -111,23 +100,16 @@ export default function TestModeScreen() {
   }, [workoutId, user]);
 
   const updateResult = (testKey: string, field: string, value: string) => {
-    setResults(prev => ({
-      ...prev,
-      [testKey]: { ...prev[testKey], [field]: value }
-    }));
+    setResults(prev => ({ ...prev, [testKey]: { ...prev[testKey], [field]: value } }));
   };
 
-  // Motor del Cronómetro Integrado
   const toggleTimer = (testKey: string, side: 'valL' | 'valR' = 'valL') => {
     const timerKey = `${testKey}_${side}`;
-    
     if (runningTimers[timerKey]) {
-        // Pausar Cronómetro
         clearInterval(timerRefs.current[timerKey]);
         setRunningTimers(prev => ({ ...prev, [timerKey]: false }));
         updateResult(testKey, side, activeTimers[timerKey].toFixed(1));
     } else {
-        // Iniciar Cronómetro
         setActiveTimers(prev => ({ ...prev, [timerKey]: 0 }));
         setRunningTimers(prev => ({ ...prev, [timerKey]: true }));
         timerRefs.current[timerKey] = setInterval(() => {
@@ -162,14 +144,12 @@ export default function TestModeScreen() {
   const renderGhostMode = (ex: any) => {
     const past = historicalData[ex.test_key];
     if (!past) return null;
-    
     let text = '';
     if (ex.is_bilateral) {
        text = `Izq ${past.value_left || 0} | Der ${past.value_right || 0} ${past.unit}`;
     } else {
        text = `${past.value || 0} ${past.unit}`;
     }
-    
     return (
        <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8, textAlign: 'center', fontWeight: '600' }}>
           <Ionicons name="time" size={12} color={colors.textSecondary} /> Última vez: {text}
@@ -199,22 +179,26 @@ export default function TestModeScreen() {
     setSaving(true);
     try {
       const exercisesToSave = workout.exercises.map((ex: any) => {
-        const res = results[ex.test_key];
+        const res = results[ex.test_key] || {};
         let finalVal = 0;
+        
+        // Parseo seguro (cambiar comas por puntos)
+        const vLStr = res.valL ? String(res.valL).replace(',', '.') : '';
+        const vRStr = res.valR ? String(res.valR).replace(',', '.') : '';
         
         if (ex.unit === 'rsi' || ex.test_key === 'dj') {
           finalVal = parseFloat(calculateRSI(res.flightTime, res.contactTime)) || 0;
         } else if (ex.is_bilateral) {
-          finalVal = Math.max(parseFloat(res.valL) || 0, parseFloat(res.valR) || 0);
+          finalVal = Math.max(parseFloat(vLStr) || 0, parseFloat(vRStr) || 0);
         } else {
-          finalVal = parseFloat(res.valL) || 0;
+          finalVal = parseFloat(vLStr) || 0;
         }
 
         return {
           ...ex,
           logged_weight: finalVal,
-          result_left: res.valL,
-          result_right: res.valR,
+          result_left: vLStr,
+          result_right: vRStr,
           flight_time: res.flightTime,
           contact_time: res.contactTime,
           video_uri: res.videoUri
@@ -424,7 +408,6 @@ export default function TestModeScreen() {
             <Ionicons name="arrow-forward" size={20} color="#FFF" style={{ marginLeft: 8 }} />
           </TouchableOpacity>
         </View>
-
       </KeyboardAvoidingView>
 
       {/* MODAL: RESUMEN Y GUARDADO DE CATEGORÍAS */}
@@ -508,7 +491,6 @@ export default function TestModeScreen() {
            </View>
         </SafeAreaView>
       </Modal>
-
     </SafeAreaView>
   );
 }
