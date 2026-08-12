@@ -250,7 +250,6 @@ export default function TestModeScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         
-        {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={{ padding: 8 }}>
             <Ionicons name="close" size={28} color={colors.textPrimary} />
@@ -264,7 +263,6 @@ export default function TestModeScreen() {
           <View style={{ width: 44 }} />
         </View>
 
-        {/* LISTA DE INPUTS */}
         <ScrollView contentContainerStyle={{ padding: 20 }}>
           {workout?.exercises?.map((ex: any, idx: number) => {
             const res = results[ex.test_key];
@@ -288,7 +286,7 @@ export default function TestModeScreen() {
                    </TouchableOpacity>
                 </View>
 
-                {/* CASO 1: RSI */}
+                {/* LÓGICA DE RENDERIZADO */}
                 {ex.unit === 'rsi' || ex.test_key === 'dj' ? (
                   <View style={{ backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
                     <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE RSI (VUELO / CONTACTO)</Text>
@@ -318,8 +316,6 @@ export default function TestModeScreen() {
                     </View>
                     {renderGhostMode(ex)}
                   </View>
-                
-                {/* CASO 2: BILATERAL */}
                 ) : ex.is_bilateral ? (
                   <View>
                     <View style={{ flexDirection: 'row', gap: 15 }}>
@@ -370,7 +366,6 @@ export default function TestModeScreen() {
                     </View>
                     {renderGhostMode(ex)}
                     
-                    {/* CÁLCULO DE ASIMETRÍA (LSI) EN VIVO */}
                     {(() => {
                       const valLNum = parseFloat(String(res.valL).replace(',', '.')) || 0;
                       const valRNum = parseFloat(String(res.valR).replace(',', '.')) || 0;
@@ -397,8 +392,6 @@ export default function TestModeScreen() {
                       return null;
                     })()}
                   </View>
-                
-                {/* CASO 3: UNILATERAL / GENERAL */}
                 ) : (
                   <View style={{ alignItems: 'center' }}>
                     <View style={[styles.inputWithUnitContainer, { width: hasTimer ? '85%' : '70%' }]}>
@@ -436,7 +429,6 @@ export default function TestModeScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* MODAL: RESUMEN Y GUARDADO DE CATEGORÍAS */}
       <Modal visible={showSummary} animationType="slide" transparent={false}>
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
            <View style={styles.header}>
