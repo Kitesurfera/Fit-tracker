@@ -1,6 +1,3 @@
-import os
-
-video_uploader_code = """import React, { useState } from 'react';
 import { View, TouchableOpacity, ActivityIndicator, Alert, Platform, Modal, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
