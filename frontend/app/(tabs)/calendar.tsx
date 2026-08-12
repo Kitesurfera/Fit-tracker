@@ -12,6 +12,48 @@ import { api } from '../../src/api';
 import GeminiChatModal from '../../src/components/GeminiChatModal';
 import { useTrainer } from '../../src/context/TrainerContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// Estados para las plantillas
+const [templates, setTemplates] = useState<any[]>([]);
+const [showTemplateModal, setShowTemplateModal] = useState(false);
+const [templateName, setTemplateName] = useState('');
+
+// Cargar plantillas al iniciar
+useEffect(() => {
+  const loadTemplates = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('@battery_templates');
+      if (stored) setTemplates(JSON.parse(stored));
+    } catch (e) { console.error("Error cargando plantillas", e); }
+  };
+  loadTemplates();
+}, []);
+
+// Función para guardar la batería actual como plantilla
+const saveAsTemplate = async () => {
+  if (!templateName.trim() || newWorkoutExercises.length === 0) {
+    Alert.alert("Error", "Añade un nombre y al menos un ejercicio a la plantilla.");
+    return;
+  }
+  try {
+    const newTemplate = { id: Date.now().toString(), name: templateName, exercises: newWorkoutExercises };
+    const updatedTemplates = [...templates, newTemplate];
+    await AsyncStorage.setItem('@battery_templates', JSON.stringify(updatedTemplates));
+    setTemplates(updatedTemplates);
+    setTemplateName('');
+    Alert.alert("Éxito", "Plantilla guardada correctamente");
+  } catch (e) {
+    Alert.alert("Error", "No se pudo guardar la plantilla");
+  }
+};
+
+// Función para aplicar una plantilla
+const applyTemplate = (template: any) => {
+  setNewWorkoutExercises(template.exercises);
+  setNewWorkoutName(template.name);
+  setShowTemplateModal(false);
+};
 
 const DAYS = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 const MONTHS = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -1110,6 +1152,34 @@ export default function CalendarScreen() {
       </ScrollView>
 
       {/* MODAL: PROGRAMAR BATERÍA DE TESTS */}
+      {/* Botón para abrir el selector de plantillas */}
+        <TouchableOpacity 
+          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary+'20', padding: 12, borderRadius: 10, marginBottom: 15 }}
+          onPress={() => setShowTemplateModal(true)}
+        >
+          <Ionicons name="copy-outline" size={20} color={colors.primary} />
+          <Text style={{ marginLeft: 8, color: colors.primary, fontWeight: '800' }}>CARGAR DESDE PLANTILLA</Text>
+        </TouchableOpacity>
+        
+        {/* Modal secundario para listar plantillas */}
+        <Modal visible={showTemplateModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+              <Text style={styles.modalTitle}>Mis Plantillas</Text>
+              <ScrollView>
+                {templates.map(temp => (
+                   <TouchableOpacity key={temp.id} style={styles.templateItem} onPress={() => applyTemplate(temp)}>
+                      <Text style={{fontWeight: '700', color: colors.textPrimary}}>{temp.name}</Text>
+                      <Text style={{fontSize: 12, color: colors.textSecondary}}>{temp.exercises.length} ejercicios</Text>
+                   </TouchableOpacity>
+                ))}
+              </ScrollView>
+              <TouchableOpacity style={[styles.finishBtn, {backgroundColor: colors.border}]} onPress={() => setShowTemplateModal(false)}>
+                 <Text style={{fontWeight: '800'}}>CERRAR</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       <Modal visible={showTestModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface, paddingBottom: 30 }]}>
