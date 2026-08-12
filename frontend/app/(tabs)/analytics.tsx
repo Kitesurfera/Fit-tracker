@@ -66,7 +66,13 @@ const getLocalDateStr = (date: Date) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-// Función auxiliar para parsear seguramente números que pueden tener comas
+const extractDateString = (dateVal: any) => {
+  if (!dateVal) return null;
+  if (typeof dateVal === 'string') return dateVal.split('T')[0]; 
+  if (dateVal instanceof Date && !isNaN(dateVal.getTime())) return getLocalDateStr(dateVal);
+  return null;
+};
+
 const parseSafe = (v: any) => v != null && v !== '' ? parseFloat(String(v).replace(',', '.')) : NaN;
 
 export default function AnalyticsScreen() {
@@ -89,6 +95,7 @@ export default function AnalyticsScreen() {
   const [testHistory, setTestHistory] = useState<any[]>([]);
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [wellnessHistory, setWellnessHistory] = useState<any[]>([]);
+  const [macros, setMacros] = useState<any[]>([]); // Pilar 3: Árbol de Periodización
   
   const [athletes, setAthletes] = useState<any[]>([]);
   const { selectedAthlete, setSelectedAthlete } = useTrainer();
@@ -137,14 +144,16 @@ export default function AnalyticsScreen() {
     if (!athleteId) return;
     setLoading(true);
     try {
-      const [ts, wk, wl] = await Promise.all([
+      const [ts, wk, wl, tree] = await Promise.all([
         api.getTests({ athlete_id: athleteId }).catch(() => []),
         api.getWorkouts({ athlete_id: athleteId }).catch(() => []),
-        api.getWellnessHistory(athleteId).catch(() => [])
+        api.getWellnessHistory(athleteId).catch(() => []),
+        api.getPeriodizationTree(athleteId).catch(() => ({ macros: [] }))
       ]);
       setTestHistory(Array.isArray(ts) ? [...ts].sort((a,b) => b.date.localeCompare(a.date)) : []);
       setWorkoutHistory(Array.isArray(wk) ? wk : []);
       setWellnessHistory(Array.isArray(wl) ? wl : (wl?.data || []));
+      setMacros(Array.isArray(tree) ? tree : (tree?.macros || []));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -194,6 +203,24 @@ export default function AnalyticsScreen() {
     });
   };
 
+  // PILAR 3: Cálculo del microciclo actual
+  const currentPeriodizationPhase = useMemo(() => {
+    const todayStr = getLocalDateStr(new Date());
+    if (!macros || macros.length === 0) return 'Fase de Preparación / Mantenimiento';
+    
+    for (const macro of macros) {
+      const micros = macro.microciclos || macro.microcycles || [];
+      for (const m of micros) {
+        const start = extractDateString(m.fecha_inicio || m.start_date);
+        const end = extractDateString(m.fecha_fin || m.end_date);
+        if (start && end && todayStr >= start && todayStr <= end) {
+          return `${m.nombre || 'Microciclo'} (${m.tipo || m.type || 'BASE'})`;
+        }
+      }
+    }
+    return 'Transición / Mantenimiento';
+  }, [macros]);
+
   const latestMeasurements = useMemo(() => {
     const measures: Record<string, any> = {};
     testHistory.forEach(test => { if (test.test_type === 'medicion') { if (!measures[test.test_name] || test.date >= measures[test.test_name].date) { measures[test.test_name] = test; } } });
@@ -202,19 +229,53 @@ export default function AnalyticsScreen() {
 
   const rawItems = useMemo(() => {
     const items: Record<string, any> = {};
+    
+    // 1. Extraer ejercicios y NUEVAS baterías de tests desde Workouts
     workoutHistory.forEach(w => {
       if (!w.completed) return; 
+      const isBattery = w.is_test_battery; // Pilar 4: Tests como workouts
+
       w.completion_data?.exercise_results?.forEach((r: any) => {
-        if (r.completed_sets > 0 && r.name) {
-          const normKey = `ex_${normalizeName(r.name)}`;
-          const val = parseFloat(String(r.logged_weight || '0').replace(',', '.')) || 0;
-          if (!items[normKey]) items[normKey] = { id: normKey, name: r.name, history: [], maxW: 0, type: 'ejercicio', unit: 'kg' };
-          if (val > items[normKey].maxW) items[normKey].maxW = val;
-          items[normKey].history.push({ date: w.date, val });
+        if ((r.completed_sets > 0 || isBattery) && r.name) {
+          const isTestItem = isBattery || r.type === 'test_item';
+          const typeLabel = isTestItem ? 'test' : 'ejercicio';
+          const prefix = isTestItem ? 'test' : 'ex';
+          const normKey = `${prefix}_${normalizeName(r.name)}`;
+          
+          let val = parseFloat(String(r.logged_weight || r.value || '0').replace(',', '.')) || 0;
+          let valL = parseFloat(String(r.logged_weight_left || r.value_left || r.left_val || '0').replace(',', '.'));
+          let valR = parseFloat(String(r.logged_weight_right || r.value_right || r.right_val || '0').replace(',', '.'));
+          
+          if (isNaN(valL)) valL = NaN;
+          if (isNaN(valR)) valR = NaN;
+          
+          const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
+          const maxVal = hasSides ? Math.max(valL, valR) : val;
+
+          if (!items[normKey]) { 
+            items[normKey] = { 
+              id: normKey, 
+              name: r.name, 
+              history: [], 
+              maxW: 0, 
+              type: typeLabel, 
+              unit: r.unit || (isTestItem ? '' : 'kg') 
+            }; 
+          }
+          if (maxVal > items[normKey].maxW) items[normKey].maxW = maxVal;
+          
+          items[normKey].history.push({ 
+            date: w.date, 
+            val: maxVal,
+            valL: hasSides ? valL : null,
+            valR: hasSides ? valR : null,
+            isBilateral: hasSides
+          });
         }
       });
     });
 
+    // 2. Extraer histórico de Tests del sistema antiguo
     testHistory.forEach(t => {
       if (t.test_type === 'medicion') return;
       const rawName = t.custom_name || TEST_TRANSLATIONS[t.test_name] || t.test_name;
@@ -348,7 +409,8 @@ export default function AnalyticsScreen() {
                 fatigue_data: workloadData.fatigueData,
                 soreness_data: workloadData.sorenessData,
                 recent_workouts_count: recentWorkoutsCount,
-                recent_prs: topPRs
+                recent_prs: topPRs,
+                current_phase: currentPeriodizationPhase // Contexto extra para la IA
             });
         }
       } catch (e) { console.log("Aviso: Error generando IA, usando template base."); }
@@ -398,6 +460,10 @@ export default function AnalyticsScreen() {
               <div class="stat-box">
                 <div class="stat-value">${topPRs.length}</div>
                 <div class="stat-label">Récords Activos</div>
+              </div>
+              <div class="stat-box">
+                <div class="stat-value" style="font-size: 15px; margin-top: 8px;">${currentPeriodizationPhase}</div>
+                <div class="stat-label" style="margin-top: 10px;">Fase Actual</div>
               </div>
             </div>
             <div class="text-content">
@@ -534,17 +600,30 @@ export default function AnalyticsScreen() {
 
   const renderPerformanceSummary = () => {
     return (
-      <View style={[styles.summaryBoard, { backgroundColor: colors.surfaceHighlight }]}>
-        <View style={styles.summaryItem}>
-          <Ionicons name="calendar-outline" size={24} color={colors.primary} />
-          <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{recentWorkoutsCount}</Text>
-          <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Entrenos (30d)</Text>
+      <View>
+        {/* PILAR 3: UI Periodización actual */}
+        <View style={[styles.phaseContainer, { backgroundColor: colors.surfaceHighlight }]}>
+          <View style={[styles.iconWrapper, { backgroundColor: colors.primary + '20' }]}>
+            <Ionicons name="analytics" size={24} color={colors.primary} />
+          </View>
+          <View style={{ marginLeft: 12, flex: 1 }}>
+            <Text style={[styles.phaseLabel, { color: colors.textSecondary }]}>BLOQUE DE ENTRENAMIENTO ACTUAL</Text>
+            <Text style={[styles.phaseValue, { color: colors.textPrimary }]}>{currentPeriodizationPhase}</Text>
+          </View>
         </View>
-        <View style={styles.summaryDivider} />
-        <View style={styles.summaryItem}>
-          <Ionicons name="flame-outline" size={24} color="#EF4444" />
-          <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{Object.keys(rawItems).length}</Text>
-          <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Ejercicios Trackeados</Text>
+
+        <View style={[styles.summaryBoard, { backgroundColor: colors.surfaceHighlight }]}>
+          <View style={styles.summaryItem}>
+            <Ionicons name="calendar-outline" size={24} color={colors.primary} />
+            <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{recentWorkoutsCount}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Entrenos (30d)</Text>
+          </View>
+          <View style={styles.summaryDivider} />
+          <View style={styles.summaryItem}>
+            <Ionicons name="flame-outline" size={24} color="#EF4444" />
+            <Text style={[styles.summaryValue, { color: colors.textPrimary }]}>{Object.keys(rawItems).length}</Text>
+            <Text style={[styles.summaryLabel, { color: colors.textSecondary }]}>Tests & Trackeados</Text>
+          </View>
         </View>
       </View>
     );
@@ -852,7 +931,7 @@ export default function AnalyticsScreen() {
 
         <Modal visible={showPicker} transparent animationType="slide"><TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}><View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}><Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Seleccionar Deportista</Text><ScrollView>{athletes.map(a => (<TouchableOpacity key={a.id} style={[styles.athleteItem, { borderBottomColor: colors.border }]} onPress={() => { handleSelectAthlete(a); setShowPicker(false); }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 16 }}>{a.name}</Text></TouchableOpacity>))}</ScrollView></View></TouchableOpacity></Modal>
         
-        <Modal visible={showMergeModal} transparent animationType="slide"><View style={styles.modalOverlay}><View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>{!mergeTargetItem ? (<><Text style={styles.modalTitle}>1. Test Principal</Text><ScrollView>{Object.values(rawItems).sort((a: any, b: any) => a.name.localeCompare(b.name)).map((item: any) => (<TouchableOpacity key={item.id} style={[styles.dictSelectBtn, { borderColor: colors.border, marginBottom: 10 }]} onPress={() => setMergeTargetItem(item)}><Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{item.name} ({item.type.toUpperCase()})</Text></TouchableOpacity>))}</ScrollView></>) : (<><Text style={styles.modalTitle}>2. Unificar con {mergeTargetItem.name}</Text><ScrollView>{Object.values(rawItems).filter((r: any) => r.id !== mergeTargetItem.id).map((r: any) => (<TouchableOpacity key={r.id} style={[styles.dictSelectBtn, { borderColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary : colors.border, backgroundColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary + '10' : 'transparent', marginBottom: 10 }]} onPress={() => toggleMerge(r.id)}><Text style={{ color: colors.textPrimary }}>{r.name}</Text></TouchableOpacity>))}</ScrollView><TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={() => setShowMergeModal(false)}><Text style={{ color: '#FFF', fontWeight: '800' }}>TERMINAR</Text></TouchableOpacity></>)}<TouchableOpacity onPress={() => setShowMergeModal(false)} style={{marginTop:15, alignItems:'center'}}><Text style={{color:colors.textSecondary}}>Cancelar</Text></TouchableOpacity></View></View></Modal>
+        <Modal visible={showMergeModal} transparent animationType="slide"><View style={styles.modalOverlay}><View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>{!mergeTargetItem ? (<><Text style={styles.modalTitle}>1. Test Principal</Text><ScrollView>{Object.values(rawItems).sort((a: any, b: any) => a.name.localeCompare(b.name)).map((item: any) => (<TouchableOpacity key={item.id} style={[styles.dictSelectBtn, { borderColor: colors.border, marginBottom: 10 }]} onPress={() => setMergeTargetItem(item)}><Text style={{ color: colors.textPrimary, fontWeight: '700' }}>{item.name} ({item.type.toUpperCase()})</Text></TouchableOpacity>))}</ScrollView></>) : (<><Text style={styles.modalTitle}>2. Unificar con {mergeTargetItem.name}</Text><ScrollView>{Object.values(rawItems).filter((r: any) => r.id !== mergeTargetItem.id).map((r: any) => (<TouchableOpacity key={r.id} style={[styles.dictSelectBtn, { borderColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary : colors.border, backgroundColor: mergeMap[r.id] === mergeTargetItem.id ? colors.primary + '10', marginBottom: 10 }]} onPress={() => toggleMerge(r.id)}><Text style={{ color: colors.textPrimary }}>{r.name}</Text></TouchableOpacity>))}</ScrollView><TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={() => setShowMergeModal(false)}><Text style={{ color: '#FFF', fontWeight: '800' }}>TERMINAR</Text></TouchableOpacity></>)}<TouchableOpacity onPress={() => setShowMergeModal(false)} style={{marginTop:15, alignItems:'center'}}><Text style={{color:colors.textSecondary}}>Cancelar</Text></TouchableOpacity></View></View></Modal>
 
         <Modal visible={showDictModal} transparent animationType="slide"><View style={styles.modalOverlay}><View style={[styles.modalContent, { backgroundColor: colors.surface }]}><Text style={styles.modalTitle}>Editar Diccionario: {dictTargetExercise}</Text><ScrollView contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{ALL_MUSCLES.map(m => (<TouchableOpacity key={m} style={[styles.dictSelectBtn, { borderColor: colors.border, backgroundColor: dictSelectedMuscles.includes(m) ? colors.primary : 'transparent' }]} onPress={() => toggleDictMuscle(m)}><Text style={{ color: dictSelectedMuscles.includes(m) ? '#FFF' : colors.textPrimary }}>{m}</Text></TouchableOpacity>))}</ScrollView><TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.primary }]} onPress={saveDictMuscles}><Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR</Text></TouchableOpacity></View></View></Modal>
         
@@ -905,5 +984,9 @@ const styles = StyleSheet.create({
   athleteItem: { paddingVertical: 18, borderBottomWidth: 1 },
   fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
   fullVideo: { width: '100%', height: '80%' },
-  closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 }
+  closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
+  phaseContainer: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 20 },
+  iconWrapper: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' },
+  phaseLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase', marginBottom: 2 },
+  phaseValue: { fontSize: 15, fontWeight: '800' }
 });
