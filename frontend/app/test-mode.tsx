@@ -10,7 +10,8 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api';
-import * as ImagePicker from 'expo-image-picker';
+// IMPORTANTE: Asegúrate de que la ruta al motor de video sea la correcta en tu proyecto
+import VideoUploader from '../src/components/VideoUploader'; 
 
 export default function TestModeScreen() {
   const { workoutId } = useLocalSearchParams();
@@ -115,22 +116,6 @@ export default function TestModeScreen() {
         timerRefs.current[timerKey] = setInterval(() => {
             setActiveTimers(prev => ({ ...prev, [timerKey]: (prev[timerKey] || 0) + 0.1 }));
         }, 100);
-    }
-  };
-
-  const captureVideo = async (testKey: string) => {
-    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert("Permiso Denegado", "Se necesita acceso a la cámara para grabar el test.");
-      return;
-    }
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-      allowsEditing: true,
-      quality: 1,
-    });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
-      updateResult(testKey, 'videoUri', result.assets[0].uri);
     }
   };
 
@@ -283,12 +268,14 @@ export default function TestModeScreen() {
                       <Ionicons name={ex.unit === 'rsi' ? "flash" : (hasTimer ? "timer" : "trophy")} size={20} color="#F59E0B" />
                       <Text style={[styles.testName, { color: colors.textPrimary }]} numberOfLines={1}>{ex.name}</Text>
                    </View>
-                   <TouchableOpacity 
-                     onPress={() => captureVideo(ex.test_key)}
-                     style={{ padding: 8, backgroundColor: res.videoUri ? '#10B98120' : colors.surfaceHighlight, borderRadius: 8 }}
-                   >
-                     <Ionicons name={res.videoUri ? "videocam" : "videocam-outline"} size={20} color={res.videoUri ? "#10B981" : colors.textSecondary} />
-                   </TouchableOpacity>
+                   
+                   {/* AQUÍ INYECTAMOS EL NUEVO MOTOR DE VÍDEOS */}
+                   <VideoUploader 
+                      currentVideo={res.videoUri} 
+                      onUploadSuccess={(url) => updateResult(ex.test_key, 'videoUri', url)} 
+                      colors={colors} 
+                   />
+
                 </View>
 
                 {/* CASO 1: DRI (DROP REACTIVE INDEX) */}
