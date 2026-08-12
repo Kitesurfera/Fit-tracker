@@ -10,8 +10,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api';
-// IMPORTANTE: Asegúrate de que la ruta al motor de video sea la correcta en tu proyecto
-import VideoUploader from '../src/components/VideoUploader'; 
+import * as ImagePicker from 'expo-image-picker';
 
 export default function TestModeScreen() {
   const { workoutId } = useLocalSearchParams();
@@ -67,7 +66,7 @@ export default function TestModeScreen() {
           currentWorkout.exercises?.forEach((ex: any) => {
              initialResults[ex.test_key] = {
                valL: '', valR: '', 
-               jumpHeight: '', dropHeight: '', contactSec: '',
+               flightTime: '', contactTime: '',
                videoUri: null
              };
           });
@@ -119,14 +118,26 @@ export default function TestModeScreen() {
     }
   };
 
-  // Cálculo de DRI: (h_salto + h_caída) / (g * t_contacto²)
-  const calculateDRI = (jumpHStr: string, dropHStr: string, contactSecStr: string) => {
-    const hSalto = parseFloat(jumpHStr);
-    const hCaida = parseFloat(dropHStr);
-    const tContacto = parseFloat(contactSecStr);
-    if (!isNaN(hSalto) && !isNaN(hCaida) && !isNaN(tContacto) && tContacto > 0) {
-      return ((hSalto + hCaida) / (9.81 * Math.pow(tContacto, 2))).toFixed(2);
+  const captureVideo = async (testKey: string) => {
+    const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert("Permiso Denegado", "Se necesita acceso a la cámara para grabar el test.");
+      return;
     }
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+      allowsEditing: true,
+      quality: 1,
+    });
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      updateResult(testKey, 'videoUri', result.assets[0].uri);
+    }
+  };
+
+  const calculateRSI = (flightMs: string, contactMs: string) => {
+    const f = parseFloat(flightMs);
+    const c = parseFloat(contactMs);
+    if (!isNaN(f) && !isNaN(c) && c > 0) return (f / c).toFixed(2);
     return '0.00';
   };
 
@@ -171,11 +182,12 @@ export default function TestModeScreen() {
         const res = results[ex.test_key] || {};
         let finalVal = 0;
         
+        // Parseo seguro (cambiar comas por puntos)
         const vLStr = res.valL ? String(res.valL).replace(',', '.') : '';
         const vRStr = res.valR ? String(res.valR).replace(',', '.') : '';
         
         if (ex.unit === 'rsi' || ex.test_key === 'dj') {
-          finalVal = parseFloat(calculateDRI(res.jumpHeight, res.dropHeight, res.contactSec)) || 0;
+          finalVal = parseFloat(calculateRSI(res.flightTime, res.contactTime)) || 0;
         } else if (ex.is_bilateral) {
           finalVal = Math.max(parseFloat(vLStr) || 0, parseFloat(vRStr) || 0);
         } else {
@@ -187,9 +199,8 @@ export default function TestModeScreen() {
           logged_weight: finalVal,
           result_left: vLStr,
           result_right: vRStr,
-          jump_height: res.jumpHeight,
-          drop_height: res.dropHeight,
-          contact_time: res.contactSec,
+          flight_time: res.flightTime,
+          contact_time: res.contactTime,
           video_uri: res.videoUri
         };
       });
@@ -240,6 +251,7 @@ export default function TestModeScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         
+        {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={{ padding: 8 }}>
             <Ionicons name="close" size={28} color={colors.textPrimary} />
@@ -253,6 +265,7 @@ export default function TestModeScreen() {
           <View style={{ width: 44 }} />
         </View>
 
+        {/* LISTA DE INPUTS */}
         <ScrollView contentContainerStyle={{ padding: 20 }}>
           {workout?.exercises?.map((ex: any, idx: number) => {
             const res = results[ex.test_key];
@@ -268,54 +281,46 @@ export default function TestModeScreen() {
                       <Ionicons name={ex.unit === 'rsi' ? "flash" : (hasTimer ? "timer" : "trophy")} size={20} color="#F59E0B" />
                       <Text style={[styles.testName, { color: colors.textPrimary }]} numberOfLines={1}>{ex.name}</Text>
                    </View>
-                   
-                   {/* AQUÍ INYECTAMOS EL NUEVO MOTOR DE VÍDEOS */}
-                   <VideoUploader 
-                      currentVideo={res.videoUri} 
-                      onUploadSuccess={(url) => updateResult(ex.test_key, 'videoUri', url)} 
-                      colors={colors} 
-                   />
-
+                   <TouchableOpacity 
+                     onPress={() => captureVideo(ex.test_key)}
+                     style={{ padding: 8, backgroundColor: res.videoUri ? '#10B98120' : colors.surfaceHighlight, borderRadius: 8 }}
+                   >
+                     <Ionicons name={res.videoUri ? "videocam" : "videocam-outline"} size={20} color={res.videoUri ? "#10B981" : colors.textSecondary} />
+                   </TouchableOpacity>
                 </View>
 
-                {/* CASO 1: DRI (DROP REACTIVE INDEX) */}
+                {/* CASO 1: RSI */}
                 {ex.unit === 'rsi' || ex.test_key === 'dj' ? (
                   <View style={{ backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE DRI (ALTURA SALTO + CAÍDA / G * T_CONT²)</Text>
-                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 15 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE RSI (VUELO / CONTACTO)</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>H. Salto (m)</Text>
+                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Vuelo (ms)</Text>
                           <TextInput 
-                            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, padding: 8, fontSize: 14 }]} 
-                            keyboardType="numeric" placeholder="0.35" placeholderTextColor={colors.border}
-                            value={res.jumpHeight} onChangeText={(val) => updateResult(ex.test_key, 'jumpHeight', val)} 
+                            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
+                            keyboardType="numeric" placeholder="450" placeholderTextColor={colors.border}
+                            value={res.flightTime} onChangeText={(val) => updateResult(ex.test_key, 'flightTime', val)} 
                           />
                        </View>
                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>H. Caída (m)</Text>
+                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Contacto (ms)</Text>
                           <TextInput 
-                            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, padding: 8, fontSize: 14 }]} 
-                            keyboardType="numeric" placeholder="0.40" placeholderTextColor={colors.border}
-                            value={res.dropHeight} onChangeText={(val) => updateResult(ex.test_key, 'dropHeight', val)} 
-                          />
-                       </View>
-                       <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>T. Cont. (s)</Text>
-                          <TextInput 
-                            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, padding: 8, fontSize: 14 }]} 
-                            keyboardType="numeric" placeholder="0.18" placeholderTextColor={colors.border}
-                            value={res.contactSec} onChangeText={(val) => updateResult(ex.test_key, 'contactSec', val)} 
+                            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
+                            keyboardType="numeric" placeholder="200" placeholderTextColor={colors.border}
+                            value={res.contactTime} onChangeText={(val) => updateResult(ex.test_key, 'contactTime', val)} 
                           />
                        </View>
                     </View>
                     <View style={{ alignItems: 'center', backgroundColor: '#F59E0B20', padding: 10, borderRadius: 8 }}>
-                       <Text style={{ fontSize: 10, fontWeight: '800', color: '#F59E0B' }}>DRI RESULTANTE</Text>
+                       <Text style={{ fontSize: 10, fontWeight: '800', color: '#F59E0B' }}>RSI RESULTANTE</Text>
                        <Text style={{ fontSize: 24, fontWeight: '900', color: colors.textPrimary }}>
-                          {calculateDRI(res.jumpHeight, res.dropHeight, res.contactSec)}
+                         {calculateRSI(res.flightTime, res.contactTime)}
                        </Text>
                     </View>
                     {renderGhostMode(ex)}
                   </View>
+                
+                /* CASO 2: BILATERAL */
                 ) : ex.is_bilateral ? (
                   <View>
                     <View style={{ flexDirection: 'row', gap: 15 }}>
@@ -365,33 +370,9 @@ export default function TestModeScreen() {
                        </View>
                     </View>
                     {renderGhostMode(ex)}
-                    
-                    {(() => {
-                      const valLNum = parseFloat(String(res.valL).replace(',', '.')) || 0;
-                      const valRNum = parseFloat(String(res.valR).replace(',', '.')) || 0;
-                      
-                      if (valLNum > 0 && valRNum > 0) {
-                        const maxVal = Math.max(valLNum, valRNum);
-                        const minVal = Math.min(valLNum, valRNum);
-                        const deficit = ((maxVal - minVal) / maxVal) * 100;
-                        const isWarning = deficit > 10;
-                        
-                        return (
-                          <View style={{ 
-                            marginTop: 15, padding: 10, borderRadius: 8, 
-                            backgroundColor: isWarning ? '#EF444415' : '#10B98115',
-                            flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 
-                          }}>
-                            <Ionicons name={isWarning ? "warning" : "checkmark-circle"} size={18} color={isWarning ? "#EF4444" : "#10B981"} />
-                            <Text style={{ fontSize: 12, fontWeight: '800', color: isWarning ? "#EF4444" : "#10B981" }}>
-                              DÉFICIT BILATERAL: {deficit.toFixed(1)}% {isWarning ? '(Descompensación)' : '(Óptimo)'}
-                            </Text>
-                          </View>
-                        );
-                      }
-                      return null;
-                    })()}
                   </View>
+                
+                /* CASO 3: UNILATERAL / GENERAL */
                 ) : (
                   <View style={{ alignItems: 'center' }}>
                     <View style={[styles.inputWithUnitContainer, { width: hasTimer ? '85%' : '70%' }]}>
@@ -429,6 +410,7 @@ export default function TestModeScreen() {
         </View>
       </KeyboardAvoidingView>
 
+      {/* MODAL: RESUMEN Y GUARDADO DE CATEGORÍAS */}
       <Modal visible={showSummary} animationType="slide" transparent={false}>
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
            <View style={styles.header}>
@@ -448,7 +430,7 @@ export default function TestModeScreen() {
                 if (!res) return null;
 
                 let displayVal = res.valL || '0';
-                if (ex.unit === 'rsi' || ex.test_key === 'dj') displayVal = calculateDRI(res.jumpHeight, res.dropHeight, res.contactSec);
+                if (ex.unit === 'rsi' || ex.test_key === 'dj') displayVal = calculateRSI(res.flightTime, res.contactTime);
                 
                 return (
                   <View key={idx} style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
