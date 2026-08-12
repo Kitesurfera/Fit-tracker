@@ -7,7 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Video, ResizeMode } from 'expo-av';
 
 // IMPORTANTE: Ajusta esta ruta a donde tengas tu instancia de 'api'
-// import { api } from '../api'; 
+import { api } from '../api'; 
 
 interface VideoUploaderProps {
   currentVideo: string | null;
@@ -19,7 +19,7 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors }:
   const [uploading, setUploading] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
 
-  const handleMediaUpload = async (pickerResult: ImagePicker.ImagePickerResult) => {
+const handleMediaUpload = async (pickerResult: ImagePicker.ImagePickerResult) => {
     if (pickerResult.canceled || !pickerResult.assets || pickerResult.assets.length === 0) return;
     
     const asset = pickerResult.assets[0];
@@ -29,8 +29,6 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors }:
       const formData = new FormData();
       
       if (Platform.OS === 'web') {
-        // En Web: si la API de Expo devuelve un File nativo, lo usamos. 
-        // Si no, hacemos un fetch() al blob URI generado por el navegador para pasarlo a archivo real.
         if ((asset as any).file) {
           formData.append('file', (asset as any).file);
         } else {
@@ -40,9 +38,8 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors }:
           formData.append('file', blob, filename);
         }
       } else {
-        // Nativo (iOS / Android)
         const filename = asset.uri.split('/').pop() || 'video.mp4';
-        const match = /\\.(\\w+)$/.exec(filename);
+        const match = /\.(\w+)$/.exec(filename);
         const type = match ? `video/${match[1]}` : `video/mp4`;
         
         formData.append('file', {
@@ -52,22 +49,30 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors }:
         } as any);
       }
 
-      // ---------------------------------------------------------
-      // AQUÍ VA TU LLAMADA REAL A LA API PARA SUBIR EL ARCHIVO
-      // Ejemplo:
-      // const response = await api.uploadMedia(formData);
-      // onUploadSuccess(response.url); // Guardamos la URL pública (Cloudinary/S3)
-      // ---------------------------------------------------------
+      // 1. Añade tu upload_preset que acabamos de crear en Cloudinary
+      formData.append('fit_tracker_videos', 'fit_tracker_videos'); 
 
-      // SIMULACIÓN (Borra esto cuando conectes la API):
-      setTimeout(() => {
-        onUploadSuccess(asset.uri); 
-        setUploading(false);
-      }, 1500);
+      // 2. Realiza la petición POST directa a la API de Cloudinary
+      // Reemplaza 'TU_CLOUD_NAME' por el Cloud name de tu panel de Cloudinary
+      const cloudName = 'slsdfq8t';
+      const response = await fetch(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (data.secure_url) {
+        // ¡Éxito! Cloudinary nos devuelve la URL pública y permanente del vídeo
+        onUploadSuccess(data.secure_url);[cite: 2]
+      } else {
+        throw new Error(data.error?.message || 'Error al subir a Cloudinary');
+      }
 
     } catch (error) {
       console.error("Error al subir video:", error);
-      Alert.alert("Error", "Ocurrió un problema al procesar el vídeo.");
+      Alert.alert("Error", "Ocurrió un problema al subir el vídeo a la nube.");
+    } finally {
       setUploading(false);
     }
   };
