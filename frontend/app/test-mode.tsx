@@ -372,7 +372,7 @@ export default function TestModeScreen() {
                     {renderGhostMode(ex)}
                   </View>
 
-                {/* CÁLCULO DE ASIMETRÍA (LSI) EN VIVO */}
+                /* CÁLCULO DE ASIMETRÍA (LSI) EN VIVO */
               {(() => {
                 const valLNum = parseFloat(String(res.valL).replace(',', '.')) || 0;
                 const valRNum = parseFloat(String(res.valR).replace(',', '.')) || 0;
