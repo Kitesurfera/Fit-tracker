@@ -50,7 +50,7 @@ const localTodayStr = getLocalDateStr(now);
 const DEFAULT_TESTS = [
   { id: 'cmj', name: 'Salto CMJ', group: 'pliometría', unit: 'cm', is_bilateral: false },
   { id: 'sj', name: 'Salto SJ (Squat Jump)', group: 'pliometría', unit: 'cm', is_bilateral: false },
-  { id: 'dj', name: 'Drop Jump (RSI)', group: 'reactividad', unit: 'rsi', is_bilateral: false },
+  { id: 'dj', name: 'Drop Jump (DRI)', group: 'reactividad', unit: 'dri', is_bilateral: false },
   { id: 'squat_rm', name: 'Sentadilla 1RM', group: 'fuerza máxima', unit: 'kg', is_bilateral: false },
   { id: 'deadlift_rm', name: 'Peso Muerto 1RM', group: 'fuerza máxima', unit: 'kg', is_bilateral: false }
 ];
