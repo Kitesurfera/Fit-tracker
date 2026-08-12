@@ -66,7 +66,7 @@ export default function TestModeScreen() {
           currentWorkout.exercises?.forEach((ex: any) => {
              initialResults[ex.test_key] = {
                valL: '', valR: '', 
-               flightTime: '', contactTime: '',
+               jumpHeight: '', dropHeight: '', contactSec: '',
                videoUri: null
              };
           });
@@ -134,10 +134,14 @@ export default function TestModeScreen() {
     }
   };
 
-  const calculateRSI = (flightMs: string, contactMs: string) => {
-    const f = parseFloat(flightMs);
-    const c = parseFloat(contactMs);
-    if (!isNaN(f) && !isNaN(c) && c > 0) return (f / c).toFixed(2);
+  // Cálculo de DRI: (h_salto + h_caída) / (g * t_contacto²)
+  const calculateDRI = (jumpHStr: string, dropHStr: string, contactSecStr: string) => {
+    const hSalto = parseFloat(jumpHStr);
+    const hCaida = parseFloat(dropHStr);
+    const tContacto = parseFloat(contactSecStr);
+    if (!isNaN(hSalto) && !isNaN(hCaida) && !isNaN(tContacto) && tContacto > 0) {
+      return ((hSalto + hCaida) / (9.81 * Math.pow(tContacto, 2))).toFixed(2);
+    }
     return '0.00';
   };
 
@@ -186,7 +190,7 @@ export default function TestModeScreen() {
         const vRStr = res.valR ? String(res.valR).replace(',', '.') : '';
         
         if (ex.unit === 'rsi' || ex.test_key === 'dj') {
-          finalVal = parseFloat(calculateRSI(res.flightTime, res.contactTime)) || 0;
+          finalVal = parseFloat(calculateDRI(res.jumpHeight, res.dropHeight, res.contactSec)) || 0;
         } else if (ex.is_bilateral) {
           finalVal = Math.max(parseFloat(vLStr) || 0, parseFloat(vRStr) || 0);
         } else {
@@ -198,8 +202,9 @@ export default function TestModeScreen() {
           logged_weight: finalVal,
           result_left: vLStr,
           result_right: vRStr,
-          flight_time: res.flightTime,
-          contact_time: res.contactTime,
+          jump_height: res.jumpHeight,
+          drop_height: res.dropHeight,
+          contact_time: res.contactSec,
           video_uri: res.videoUri
         };
       });
@@ -286,32 +291,40 @@ export default function TestModeScreen() {
                    </TouchableOpacity>
                 </View>
 
-                {/* LÓGICA DE RENDERIZADO */}
+                {/* CASO 1: DRI (DROP REACTIVE INDEX) */}
                 {ex.unit === 'rsi' || ex.test_key === 'dj' ? (
                   <View style={{ backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE RSI (VUELO / CONTACTO)</Text>
-                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE DRI (ALTURA SALTO + CAÍDA / G * T_CONT²)</Text>
+                    <View style={{ flexDirection: 'row', gap: 8, marginBottom: 15 }}>
                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Vuelo (ms)</Text>
+                          <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>H. Salto (m)</Text>
                           <TextInput 
-                            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
-                            keyboardType="numeric" placeholder="450" placeholderTextColor={colors.border}
-                            value={res.flightTime} onChangeText={(val) => updateResult(ex.test_key, 'flightTime', val)} 
+                            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, padding: 8, fontSize: 14 }]} 
+                            keyboardType="numeric" placeholder="0.35" placeholderTextColor={colors.border}
+                            value={res.jumpHeight} onChangeText={(val) => updateResult(ex.test_key, 'jumpHeight', val)} 
                           />
                        </View>
                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Contacto (ms)</Text>
+                          <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>H. Caída (m)</Text>
                           <TextInput 
-                            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
-                            keyboardType="numeric" placeholder="200" placeholderTextColor={colors.border}
-                            value={res.contactTime} onChangeText={(val) => updateResult(ex.test_key, 'contactTime', val)} 
+                            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, padding: 8, fontSize: 14 }]} 
+                            keyboardType="numeric" placeholder="0.40" placeholderTextColor={colors.border}
+                            value={res.dropHeight} onChangeText={(val) => updateResult(ex.test_key, 'dropHeight', val)} 
+                          />
+                       </View>
+                       <View style={{ flex: 1 }}>
+                          <Text style={{ fontSize: 10, color: colors.textSecondary, marginBottom: 4 }}>T. Cont. (s)</Text>
+                          <TextInput 
+                            style={[styles.input, { borderColor: colors.border, color: colors.textPrimary, padding: 8, fontSize: 14 }]} 
+                            keyboardType="numeric" placeholder="0.18" placeholderTextColor={colors.border}
+                            value={res.contactSec} onChangeText={(val) => updateResult(ex.test_key, 'contactSec', val)} 
                           />
                        </View>
                     </View>
                     <View style={{ alignItems: 'center', backgroundColor: '#F59E0B20', padding: 10, borderRadius: 8 }}>
-                       <Text style={{ fontSize: 10, fontWeight: '800', color: '#F59E0B' }}>RSI RESULTANTE</Text>
+                       <Text style={{ fontSize: 10, fontWeight: '800', color: '#F59E0B' }}>DRI RESULTANTE</Text>
                        <Text style={{ fontSize: 24, fontWeight: '900', color: colors.textPrimary }}>
-                          {calculateRSI(res.flightTime, res.contactTime)}
+                          {calculateDRI(res.jumpHeight, res.dropHeight, res.contactSec)}
                        </Text>
                     </View>
                     {renderGhostMode(ex)}
@@ -448,7 +461,7 @@ export default function TestModeScreen() {
                 if (!res) return null;
 
                 let displayVal = res.valL || '0';
-                if (ex.unit === 'rsi' || ex.test_key === 'dj') displayVal = calculateRSI(res.flightTime, res.contactTime);
+                if (ex.unit === 'rsi' || ex.test_key === 'dj') displayVal = calculateDRI(res.jumpHeight, res.dropHeight, res.contactSec);
                 
                 return (
                   <View key={idx} style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
