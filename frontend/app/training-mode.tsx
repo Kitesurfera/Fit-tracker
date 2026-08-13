@@ -17,6 +17,7 @@ import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
 import HiitCard from '../src/components/training/HiitCard';
+import VideoUploader from '../src/components/VideoUploader';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -96,27 +97,6 @@ const normalizeHiitReps = (val: string | number | undefined | null) => {
   let str = String(val).trim();
   if (/^\d+$/.test(str)) return str + 'r';
   return str;
-};
-
-const MiniVideoPlayer = ({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
-  if (!url) return null;
-  return (
-    <View style={styles.videoPreviewCard}>
-      <Video 
-        source={{ uri: url }} 
-        style={styles.videoPreview} 
-        resizeMode={ResizeMode.COVER} 
-        shouldPlay={false} 
-        isMuted={true} 
-      />
-      <View style={styles.videoOverlay}>
-         <TouchableOpacity style={styles.playExpandBtn} onPress={() => onExpand(url)}>
-            <Ionicons name="play-circle" size={54} color="#FFF" />
-            <Text style={{color: '#FFF', fontWeight: '800', marginTop: 8, fontSize: 13, letterSpacing: 0.5}}>VER TÉCNICA</Text>
-         </TouchableOpacity>
-      </View>
-    </View>
-  );
 };
 
 export default function TrainingModeScreen() {
@@ -682,30 +662,6 @@ export default function TrainingModeScreen() {
   const skipSet = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); setTradSide(1); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
   const skipEntireExercise = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); setTradSide(1); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
-  // NUEVA FUNCIÓN: Redirige al chat de WhatsApp de Andre para enviar el vídeo de técnica
-  const handleRecordVideoOptions = (key: string) => {
-    // Número de teléfono de Andre (puedes introducir su número con prefijo internacional, ej: '+34600000000')
-    const ANDRE_PHONE = ''; 
-    
-    let exName = 'Ejercicio';
-    if (isHiit) {
-      const [bIdx, eIdx] = String(key).split('-').map(Number);
-      exName = workout?.exercises?.[bIdx]?.hiit_exercises?.[eIdx]?.name || 'HIIT';
-    } else {
-      const exIdx = parseInt(key, 10);
-      exName = workout?.exercises?.[exIdx]?.name || 'Ejercicio';
-    }
-
-    const message = encodeURIComponent(`Hola Andre! Te mando el vídeo de técnica para ${exName}: 🎥`);
-    const whatsappUrl = ANDRE_PHONE 
-      ? `whatsapp://send?phone=${ANDRE_PHONE}&text=${message}`
-      : `whatsapp://send?text=${message}`;
-
-    Linking.openURL(whatsappUrl).catch(() => {
-      Alert.alert("WhatsApp", "No se pudo abrir WhatsApp. Comprueba que lo tienes instalado.");
-    });
-  };
-
   const buildCompletionData = () => {
     const common = {
       duration_seconds: globalSeconds,
@@ -868,7 +824,7 @@ export default function TrainingModeScreen() {
                [{ text: "Entendido", onPress: () => router.back() }]
              );
           }
-          return; // Salimos aquí para no intentar abrir WhatsApp
+          return; 
         }
   
         // Si todo fue online, flujo normal con WhatsApp
@@ -1010,7 +966,7 @@ export default function TrainingModeScreen() {
                   {showCustomBarInput ? (
                     <TextInput
                       style={[styles.barTypeBtn, { flex: 1, borderColor: colors.primary, color: colors.textPrimary, textAlign: 'center', fontWeight: '800', paddingVertical: 0 }]}
-                      keyboardType="numeric"
+                      keyboardType="decimal-pad"
                       autoFocus
                       placeholder="0"
                       placeholderTextColor={colors.textSecondary}
@@ -1059,7 +1015,7 @@ export default function TrainingModeScreen() {
                         <Text style={{ color: colors.textSecondary, fontWeight: '700' }}>Tu altura (cm):</Text>
                         <TextInput 
                           style={[styles.logInput, { flex: 1, padding: 8, borderColor: colors.border, backgroundColor: colors.background, color: colors.textPrimary }]} 
-                          keyboardType="numeric" 
+                          keyboardType="decimal-pad" 
                           value={athleteHeight} 
                           onChangeText={setAthleteHeight} 
                         />
@@ -1227,8 +1183,14 @@ export default function TrainingModeScreen() {
                 {note ? <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 2 }}>📝 Nota: {note}</Text> : null}
                 
                 {vid && (
-                  <View style={{ marginTop: 12 }}>
-                    <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
+                  <View style={{ marginTop: 12, alignItems: 'flex-start' }}>
+                    <VideoUploader 
+                      currentVideo={vid} 
+                      onUploadSuccess={() => {}} 
+                      colors={colors} 
+                      readOnly={true} 
+                      onPlay={() => setExpandedVideo(vid)} 
+                    />
                   </View>
                 )}
                 
@@ -1285,8 +1247,14 @@ export default function TrainingModeScreen() {
             {log?.note && <Text style={{ color: colors.textSecondary, fontSize: 14, fontStyle: 'italic', marginTop: 6 }}>📝 Nota: {log.note}</Text>}
             
             {vid && (
-              <View style={{ marginTop: 12 }}>
-                <MiniVideoPlayer url={vid} onExpand={setExpandedVideo} />
+              <View style={{ marginTop: 12, alignItems: 'flex-start' }}>
+                <VideoUploader 
+                  currentVideo={vid} 
+                  onUploadSuccess={() => {}} 
+                  colors={colors} 
+                  readOnly={true} 
+                  onPlay={() => setExpandedVideo(vid)} 
+                />
               </View>
             )}
 
@@ -1525,7 +1493,32 @@ export default function TrainingModeScreen() {
               onComplete={advanceHiit} onSkip={skipHiitEx} 
             />
             
-            <HiitCard currentBlock={displayBlock} hiitRound={hiitRound} hiitPhase={hiitPhase} hiitExIdx={hiitExIdx} hiitBlockIdx={hiitBlockIdx} hiitExSet={hiitExSet} hiitSide={hiitSide} colors={colors} hiitLogs={hiitLogs} setHiitLogs={setHiitLogs} recordedVideos={displayVideos} handleRecordVideoOptions={handleRecordVideoOptions} videoUploading={null} renderVideoPlayer={(u: string) => <MiniVideoPlayer url={u} onExpand={setExpandedVideo} />} onAdvanceHiit={advanceHiit} onSkipHiitEx={skipHiitEx} />
+            <HiitCard 
+              currentBlock={displayBlock} 
+              hiitRound={hiitRound} 
+              hiitPhase={hiitPhase} 
+              hiitExIdx={hiitExIdx} 
+              hiitBlockIdx={hiitBlockIdx} 
+              hiitExSet={hiitExSet} 
+              hiitSide={hiitSide} 
+              colors={colors} 
+              hiitLogs={hiitLogs} 
+              setHiitLogs={setHiitLogs} 
+              recordedVideos={displayVideos} 
+              onVideoUpload={(key: string, url: string) => setRecordedVideos(prev => ({...prev, [key]: url}))}
+              videoUploading={null} 
+              renderVideoPlayer={(u: string) => (
+                <VideoUploader 
+                  currentVideo={u} 
+                  onUploadSuccess={() => {}} 
+                  colors={colors} 
+                  readOnly={true} 
+                  onPlay={() => setExpandedVideo(u)} 
+                />
+              )} 
+              onAdvanceHiit={advanceHiit} 
+              onSkipHiitEx={skipHiitEx} 
+            />
           </ScrollView>
           <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
             <Ionicons name="list" size={24} color="#FFF" />
@@ -1644,15 +1637,14 @@ export default function TrainingModeScreen() {
               ))}
             </View>
             
-            <TouchableOpacity 
-              style={[styles.recordBtn, { marginTop: 15, borderColor: colors.border }]} 
-              onPress={() => handleRecordVideoOptions(currentExIndex.toString())}
-            >
-              <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
-              <Text style={{ color: colors.primary, marginLeft: 8, fontWeight: '700' }}>
-                Enviar vídeo a Andre 🎥
-              </Text>
-            </TouchableOpacity>
+            <View style={{ marginTop: 15 }}>
+              <VideoUploader 
+                currentVideo={displayVideos[currentExIndex.toString()]} 
+                onUploadSuccess={(url) => setRecordedVideos(prev => ({...prev, [currentExIndex.toString()]: url}))} 
+                colors={colors} 
+                onPlay={() => setExpandedVideo(displayVideos[currentExIndex.toString()])} 
+              />
+            </View>
 
          </View>
             <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
@@ -1662,7 +1654,7 @@ export default function TrainingModeScreen() {
                     style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} 
                     placeholder="Kilos" 
                     placeholderTextColor={colors.textSecondary} 
-                    keyboardType="numeric" 
+                    keyboardType="decimal-pad" 
                     value={logs[currentExIndex]?.weight || ''} 
                     onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} 
                   />
@@ -1671,7 +1663,7 @@ export default function TrainingModeScreen() {
                     style={[styles.logInput, { borderColor: colors.border, flex: 1, backgroundColor: colors.background, color: colors.textPrimary }]} 
                     placeholder="Reps" 
                     placeholderTextColor={colors.textSecondary} 
-                    keyboardType="numeric" 
+                    keyboardType="decimal-pad" 
                     value={logs[currentExIndex]?.reps || ''} 
                     onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], reps: t}}))} 
                   />
@@ -1718,11 +1710,6 @@ const styles = StyleSheet.create({
   finishedIconContainer: { width: 120, height: 120, borderRadius: 60, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(245, 158, 11, 0.1)' }, finishedTitle: { fontSize: 26, fontWeight: '900', textAlign: 'center' }, finishedSubtitle: { fontSize: 15, textAlign: 'center', marginBottom: 20 }, finishWorkoutBtn: { padding: 18, borderRadius: 16, alignItems: 'center', alignSelf: 'stretch', marginTop: 20 }, finishWorkoutBtnText: { color: '#FFF', fontSize: 17, fontWeight: '800' },
   label: { fontSize: 11, fontWeight: '800', letterSpacing: 0.5 }, rpeCircle: { width: 32, height: 32, borderRadius: 16, borderWidth: 1, justifyContent: 'center', alignItems: 'center' }, rpeText: { fontSize: 12, fontWeight: '700' }, sleepPill: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 20, borderWidth: 1 }, sleepPillText: { fontSize: 13, fontWeight: '600' }, obsInput: { borderWidth: 1, borderRadius: 12, padding: 16, minHeight: 100, fontSize: 15, textAlignVertical: 'top' },
   summaryCard: { padding: 16, borderRadius: 16, marginBottom: 12, alignSelf: 'stretch' },
-  
-  videoPreviewCard: { width: '100%', height: 160, borderRadius: 12, overflow: 'hidden', backgroundColor: '#000', marginTop: 10 }, 
-  videoPreview: { width: '100%', height: '100%', opacity: 0.7 }, 
-  videoOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
-  playExpandBtn: { alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.4)', paddingVertical: 12, paddingHorizontal: 24, borderRadius: 16 },
   
   fullscreenVideoOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' }, fullVideo: { width: '100%', height: '80%' }, closeModalBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', alignItems: 'center' }, indicationsModalContent: { width: '85%', padding: 24, borderRadius: 24 },
