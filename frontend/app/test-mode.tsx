@@ -69,10 +69,29 @@ export default function TestModeScreen() {
           }
           
           const initialResults: Record<string, any> = {};
-          currentWorkout.exercises?.forEach((ex: any) => {
-             initialResults[ex.test_key] = { valL: '', valR: '', flightTime: '', contactTime: '', videoUri: null };
-          });
-          setResults(initialResults);
+          
+          // =========================================================================
+          // CORRECCIÓN: Si el test está completado, cargar los datos guardados
+          // =========================================================================
+          if (currentWorkout.completed && currentWorkout.completion_data?.exercise_results) {
+             currentWorkout.completion_data.exercise_results.forEach((ex: any) => {
+                initialResults[ex.test_key] = { 
+                   valL: ex.result_left || '', 
+                   valR: ex.result_right || '', 
+                   flightTime: ex.flight_time || '', 
+                   contactTime: ex.contact_time || '', 
+                   videoUri: ex.video_uri || null 
+                };
+             });
+             setResults(initialResults);
+             setShowSummary(true); // Saltar directamente a la vista de resumen
+          } else {
+             // Si no está completado, se inicializa en blanco
+             currentWorkout.exercises?.forEach((ex: any) => {
+                initialResults[ex.test_key] = { valL: '', valR: '', flightTime: '', contactTime: '', videoUri: null };
+             });
+             setResults(initialResults);
+          }
 
           if (athleteId) {
              const testsHistory = await api.getTests({ athlete_id: athleteId }).catch(() => []);
@@ -231,12 +250,16 @@ export default function TestModeScreen() {
       {showSummary ? (
         <View style={{ flex: 1 }}>
            <View style={styles.header}>
-              <TouchableOpacity onPress={() => setShowSummary(false)} style={{ padding: 8 }}>
+              <TouchableOpacity onPress={() => workout?.completed ? router.back() : setShowSummary(false)} style={{ padding: 8 }}>
                 <Ionicons name="arrow-back" size={28} color={colors.textPrimary} />
               </TouchableOpacity>
               <View style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={[styles.title, { color: colors.textPrimary }]}>Guardar en Historial</Text>
-                <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Clasifica las métricas</Text>
+                <Text style={[styles.title, { color: colors.textPrimary }]}>
+                   {workout?.completed ? 'Resultados Guardados' : 'Guardar en Historial'}
+                </Text>
+                <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>
+                   {workout?.completed ? 'Modo revisión' : 'Clasifica las métricas'}
+                </Text>
               </View>
               <View style={{ width: 44 }} />
            </View>
@@ -287,36 +310,48 @@ export default function TestModeScreen() {
                         </View>
                      </View>
 
-                     <Text style={{ fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 8 }}>CATEGORÍA DE GUARDADO:</Text>
-                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                       {['strength', 'plyometrics', 'max_force', 'custom'].map(cat => {
-                          const labels: Record<string,string> = { strength: 'Fuerza', plyometrics: 'Pliometría', max_force: 'F. Máxima', custom: 'Personalizado' };
-                          const isSelected = testCategories[ex.test_key] === cat;
-                          return (
-                            <TouchableOpacity 
-                              key={cat}
-                              style={[styles.categoryChip, { borderColor: colors.border }, isSelected && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' }]}
-                              onPress={() => setTestCategories(prev => ({ ...prev, [ex.test_key]: cat }))}
-                            >
-                               <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#FFF' : colors.textSecondary }}>{labels[cat]}</Text>
-                            </TouchableOpacity>
-                          );
-                       })}
-                     </View>
+                     {/* Solo mostramos los selectores de categoría si NO está completado */}
+                     {!workout?.completed && (
+                       <>
+                         <Text style={{ fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 8 }}>CATEGORÍA DE GUARDADO:</Text>
+                         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                           {['strength', 'plyometrics', 'max_force', 'custom'].map(cat => {
+                              const labels: Record<string,string> = { strength: 'Fuerza', plyometrics: 'Pliometría', max_force: 'F. Máxima', custom: 'Personalizado' };
+                              const isSelected = testCategories[ex.test_key] === cat;
+                              return (
+                                <TouchableOpacity 
+                                  key={cat}
+                                  style={[styles.categoryChip, { borderColor: colors.border }, isSelected && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' }]}
+                                  onPress={() => setTestCategories(prev => ({ ...prev, [ex.test_key]: cat }))}
+                                >
+                                   <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#FFF' : colors.textSecondary }}>{labels[cat]}</Text>
+                                </TouchableOpacity>
+                              );
+                           })}
+                         </View>
+                       </>
+                     )}
                   </View>
                 );
              })}
            </ScrollView>
 
            <View style={[styles.footer, { backgroundColor: colors.background, position: 'absolute', bottom: 0, width: '100%' }]}>
-              <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#10B981' }]} onPress={executeSave} disabled={saving}>
-                {saving ? <ActivityIndicator color="#FFF" /> : (
-                  <>
-                    <Ionicons name="save" size={22} color="#FFF" />
-                    <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16, marginLeft: 8 }}>CONFIRMAR Y GUARDAR</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              {workout?.completed ? (
+                 <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#3B82F6' }]} onPress={() => router.back()}>
+                   <Ionicons name="arrow-back" size={22} color="#FFF" />
+                   <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16, marginLeft: 8 }}>VOLVER</Text>
+                 </TouchableOpacity>
+              ) : (
+                 <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#10B981' }]} onPress={executeSave} disabled={saving}>
+                   {saving ? <ActivityIndicator color="#FFF" /> : (
+                     <>
+                       <Ionicons name="save" size={22} color="#FFF" />
+                       <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16, marginLeft: 8 }}>CONFIRMAR Y GUARDAR</Text>
+                     </>
+                   )}
+                 </TouchableOpacity>
+              )}
            </View>
         </View>
       ) : (
