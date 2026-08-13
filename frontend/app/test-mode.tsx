@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, 
   ActivityIndicator, ScrollView, TextInput, Alert, Platform,
-  KeyboardAvoidingView, Modal
+  KeyboardAvoidingView, Modal, useWindowDimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,9 +10,6 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useTheme } from '../src/hooks/useTheme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api';
-
-// IMPORTAMOS EL COMPONENTE DE SUBIDA DE VÍDEOS
-// Ajusta la ruta si es necesario (ej: '../components/VideoUploader')
 import VideoUploader from '../src/components/VideoUploader';
 
 export default function TestModeScreen() {
@@ -21,6 +18,9 @@ export default function TestModeScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
   
+  // Utilidad para chequear el ancho de la pantalla y ajustar flexibilidades si se requiere
+  const { width: screenWidth } = useWindowDimensions();
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -138,7 +138,7 @@ export default function TestModeScreen() {
        text = `${past.value || 0} ${past.unit}`;
     }
     return (
-       <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8, textAlign: 'center', fontWeight: '600' }}>
+       <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8, textAlign: 'center', fontWeight: '600' }} numberOfLines={1} adjustsFontSizeToFit>
           <Ionicons name="time" size={12} color={colors.textSecondary} /> Última vez: {text}
        </Text>
     );
@@ -169,7 +169,6 @@ export default function TestModeScreen() {
         const res = results[ex.test_key] || {};
         let finalVal = 0;
         
-        // Parseo seguro (cambiar comas por puntos)
         const vLStr = res.valL ? String(res.valL).replace(',', '.') : '';
         const vRStr = res.valR ? String(res.valR).replace(',', '.') : '';
         
@@ -238,13 +237,12 @@ export default function TestModeScreen() {
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         
-        {/* HEADER */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} style={{ padding: 8 }}>
             <Ionicons name="close" size={28} color={colors.textPrimary} />
           </TouchableOpacity>
           <View style={{ flex: 1, alignItems: 'center' }}>
-            <Text style={[styles.title, { color: colors.textPrimary }]}>Tests: {athleteName}</Text>
+            <Text style={[styles.title, { color: colors.textPrimary }]} numberOfLines={1} adjustsFontSizeToFit>Tests: {athleteName}</Text>
             <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>
                {(workout?.date || '').split('-').reverse().join('/')}
             </Text>
@@ -252,8 +250,7 @@ export default function TestModeScreen() {
           <View style={{ width: 44 }} />
         </View>
 
-        {/* LISTA DE INPUTS */}
-        <ScrollView contentContainerStyle={{ padding: 20 }}>
+        <ScrollView contentContainerStyle={{ padding: 16 }}>
           {workout?.exercises?.map((ex: any, idx: number) => {
             const res = results[ex.test_key];
             if (!res) return null;
@@ -266,10 +263,9 @@ export default function TestModeScreen() {
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 10 }}>
                       <Ionicons name={ex.unit === 'rsi' ? "flash" : (hasTimer ? "timer" : "trophy")} size={20} color="#F59E0B" />
-                      <Text style={[styles.testName, { color: colors.textPrimary }]} numberOfLines={1}>{ex.name}</Text>
+                      <Text style={[styles.testName, { color: colors.textPrimary }]} numberOfLines={2} adjustsFontSizeToFit>{ex.name}</Text>
                    </View>
                    
-                   {/* NUEVO COMPONENTE VIDEOUPLOADER CONECTADO */}
                    <VideoUploader 
                      currentVideo={res.videoUri} 
                      onUploadSuccess={(url) => updateResult(ex.test_key, 'videoUri', url)} 
@@ -277,81 +273,82 @@ export default function TestModeScreen() {
                    />
                 </View>
 
-                {/* CASO 1: RSI */}
                 {ex.unit === 'rsi' || ex.test_key === 'dj' ? (
-                  <View style={{ backgroundColor: colors.surfaceHighlight, padding: 15, borderRadius: 12 }}>
-                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE RSI (VUELO / CONTACTO)</Text>
-                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 15 }}>
+                  <View style={{ backgroundColor: colors.surfaceHighlight, padding: 12, borderRadius: 12 }}>
+                    <Text style={{ fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 10, textAlign: 'center' }}>CÁLCULO DE RSI (VUELO / CONTACTO)</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Vuelo (ms)</Text>
+                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }} numberOfLines={1} adjustsFontSizeToFit>Vuelo (ms)</Text>
                           <TextInput 
                             style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
                             keyboardType="numeric" placeholder="450" placeholderTextColor={colors.border}
                             value={res.flightTime} onChangeText={(val) => updateResult(ex.test_key, 'flightTime', val)} 
+                            adjustsFontSizeToFit
                           />
                        </View>
                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Contacto (ms)</Text>
+                          <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }} numberOfLines={1} adjustsFontSizeToFit>Contacto (ms)</Text>
                           <TextInput 
                             style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
                             keyboardType="numeric" placeholder="200" placeholderTextColor={colors.border}
                             value={res.contactTime} onChangeText={(val) => updateResult(ex.test_key, 'contactTime', val)} 
+                            adjustsFontSizeToFit
                           />
                        </View>
                     </View>
-                    <View style={{ alignItems: 'center', backgroundColor: '#F59E0B20', padding: 10, borderRadius: 8 }}>
-                       <Text style={{ fontSize: 10, fontWeight: '800', color: '#F59E0B' }}>RSI RESULTANTE</Text>
-                       <Text style={{ fontSize: 24, fontWeight: '900', color: colors.textPrimary }}>
+                    <View style={{ alignItems: 'center', backgroundColor: '#F59E0B20', padding: 8, borderRadius: 8 }}>
+                       <Text style={{ fontSize: 9, fontWeight: '800', color: '#F59E0B' }}>RSI RESULTANTE</Text>
+                       <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>
                          {calculateRSI(res.flightTime, res.contactTime)}
                        </Text>
                     </View>
                     {renderGhostMode(ex)}
                   </View>
-                
-                /* CASO 2: BILATERAL */
                 ) : ex.is_bilateral ? (
                   <View>
-                    <View style={{ flexDirection: 'row', gap: 15 }}>
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#3B82F6', marginBottom: 6, textAlign: 'center' }}>PIERNA IZQ.</Text>
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#3B82F6', marginBottom: 6, textAlign: 'center' }} numberOfLines={1} adjustsFontSizeToFit>PIERNA IZQ.</Text>
                           <View style={styles.inputWithUnitContainer}>
                             <TextInput 
                               style={[styles.inputLarge, { borderColor: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.border, color: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
                               keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
                               value={runningTimers[`${ex.test_key}_valL`] ? activeTimers[`${ex.test_key}_valL`]?.toFixed(1) : res.valL} 
                               onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
+                              adjustsFontSizeToFit
                             />
                             <View style={[styles.unitBadge, { borderColor: colors.border, borderTopRightRadius: hasTimer ? 0 : 12, borderBottomRightRadius: hasTimer ? 0 : 12 }]}>
-                              <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>{ex.unit}</Text>
+                              <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 11 }} numberOfLines={1} adjustsFontSizeToFit>{ex.unit}</Text>
                             </View>
                             {hasTimer && (
                               <TouchableOpacity 
                                 style={[styles.timerBtn, { backgroundColor: runningTimers[`${ex.test_key}_valL`] ? '#EF4444' : colors.primary }]}
                                 onPress={() => toggleTimer(ex.test_key, 'valL')}
                               >
-                                <Ionicons name={runningTimers[`${ex.test_key}_valL`] ? "stop" : "play"} size={20} color="#FFF" />
+                                <Ionicons name={runningTimers[`${ex.test_key}_valL`] ? "stop" : "play"} size={16} color="#FFF" />
                               </TouchableOpacity>
                             )}
                           </View>
                        </View>
                        <View style={{ flex: 1 }}>
-                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444', marginBottom: 6, textAlign: 'center' }}>PIERNA DER.</Text>
+                          <Text style={{ fontSize: 11, fontWeight: '800', color: '#EF4444', marginBottom: 6, textAlign: 'center' }} numberOfLines={1} adjustsFontSizeToFit>PIERNA DER.</Text>
                           <View style={styles.inputWithUnitContainer}>
                             <TextInput 
                               style={[styles.inputLarge, { borderColor: runningTimers[`${ex.test_key}_valR`] ? colors.primary : colors.border, color: runningTimers[`${ex.test_key}_valR`] ? colors.primary : colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
                               keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
                               value={runningTimers[`${ex.test_key}_valR`] ? activeTimers[`${ex.test_key}_valR`]?.toFixed(1) : res.valR} 
                               onChangeText={(val) => updateResult(ex.test_key, 'valR', val)} 
+                              adjustsFontSizeToFit
                             />
                             <View style={[styles.unitBadge, { borderColor: colors.border, borderTopRightRadius: hasTimer ? 0 : 12, borderBottomRightRadius: hasTimer ? 0 : 12 }]}>
-                              <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }}>{ex.unit}</Text>
+                              <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 11 }} numberOfLines={1} adjustsFontSizeToFit>{ex.unit}</Text>
                             </View>
                             {hasTimer && (
                               <TouchableOpacity 
                                 style={[styles.timerBtn, { backgroundColor: runningTimers[`${ex.test_key}_valR`] ? '#EF4444' : colors.primary }]}
                                 onPress={() => toggleTimer(ex.test_key, 'valR')}
                               >
-                                <Ionicons name={runningTimers[`${ex.test_key}_valR`] ? "stop" : "play"} size={20} color="#FFF" />
+                                <Ionicons name={runningTimers[`${ex.test_key}_valR`] ? "stop" : "play"} size={16} color="#FFF" />
                               </TouchableOpacity>
                             )}
                           </View>
@@ -359,26 +356,25 @@ export default function TestModeScreen() {
                     </View>
                     {renderGhostMode(ex)}
                   </View>
-                
-                /* CASO 3: UNILATERAL / GENERAL */
                 ) : (
                   <View style={{ alignItems: 'center' }}>
-                    <View style={[styles.inputWithUnitContainer, { width: hasTimer ? '85%' : '70%' }]}>
+                    <View style={[styles.inputWithUnitContainer, { width: hasTimer ? '100%' : '80%' }]}>
                       <TextInput 
                         style={[styles.inputLarge, { borderColor: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.border, color: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
                         keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
                         value={runningTimers[`${ex.test_key}_valL`] ? activeTimers[`${ex.test_key}_valL`]?.toFixed(1) : res.valL} 
                         onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
+                        adjustsFontSizeToFit
                       />
                       <View style={[styles.unitBadge, { borderColor: colors.border, borderTopRightRadius: hasTimer ? 0 : 12, borderBottomRightRadius: hasTimer ? 0 : 12 }]}>
-                        <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 14 }}>{ex.unit}</Text>
+                        <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }} numberOfLines={1} adjustsFontSizeToFit>{ex.unit}</Text>
                       </View>
                       {hasTimer && (
                         <TouchableOpacity 
                           style={[styles.timerBtn, { backgroundColor: runningTimers[`${ex.test_key}_valL`] ? '#EF4444' : colors.primary }]}
                           onPress={() => toggleTimer(ex.test_key, 'valL')}
                         >
-                          <Ionicons name={runningTimers[`${ex.test_key}_valL`] ? "stop" : "play"} size={24} color="#FFF" />
+                          <Ionicons name={runningTimers[`${ex.test_key}_valL`] ? "stop" : "play"} size={22} color="#FFF" />
                         </TouchableOpacity>
                       )}
                     </View>
@@ -398,7 +394,6 @@ export default function TestModeScreen() {
         </View>
       </KeyboardAvoidingView>
 
-      {/* MODAL: RESUMEN Y GUARDADO DE CATEGORÍAS */}
       <Modal visible={showSummary} animationType="slide" transparent={false}>
         <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
            <View style={styles.header}>
@@ -412,7 +407,7 @@ export default function TestModeScreen() {
               <View style={{ width: 44 }} />
            </View>
 
-           <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+           <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
              {workout?.exercises?.map((ex: any, idx: number) => {
                 const res = results[ex.test_key];
                 if (!res) return null;
@@ -424,29 +419,39 @@ export default function TestModeScreen() {
                   <View key={idx} style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }}>
                         <View style={{ flex: 1, paddingRight: 10 }}>
-                          <Text style={[styles.testName, { color: colors.textPrimary, marginLeft: 0, fontSize: 15 }]} numberOfLines={2}>{ex.name}</Text>
-                          <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
+                          <Text style={[styles.testName, { color: colors.textPrimary, marginLeft: 0, fontSize: 14 }]} numberOfLines={2}>{ex.name}</Text>
+                          <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
                             <View style={[styles.pill, { backgroundColor: ex.is_bilateral ? '#3B82F615' : '#10B98115' }]}>
                                <Text style={{ fontSize: 10, fontWeight: '800', color: ex.is_bilateral ? '#3B82F6' : '#10B981' }}>
                                  {ex.is_bilateral ? 'BILATERAL' : 'UNILATERAL'}
                                </Text>
                             </View>
+
+                            {res.videoUri && (
+                               <VideoUploader 
+                                 currentVideo={res.videoUri} 
+                                 onUploadSuccess={() => {}} 
+                                 colors={colors} 
+                                 readOnly={true} 
+                               />
+                            )}
+
                           </View>
                         </View>
                         
-                        <View style={{ alignItems: 'flex-end' }}>
+                        <View style={{ alignItems: 'flex-end', minWidth: 60 }}>
                           {ex.is_bilateral ? (
                             <View style={{ alignItems: 'flex-end' }}>
                               <Text style={{ fontSize: 12, fontWeight: '800', color: '#3B82F6' }}>Izq: {res.valL || 0} {ex.unit}</Text>
                               <Text style={{ fontSize: 12, fontWeight: '800', color: '#EF4444' }}>Der: {res.valR || 0} {ex.unit}</Text>
                             </View>
                           ) : (
-                            <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary }}>{displayVal} <Text style={{fontSize: 12, fontWeight: '700', color: colors.textSecondary}}>{ex.unit}</Text></Text>
+                            <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary }}>{displayVal} <Text style={{fontSize: 11, fontWeight: '700', color: colors.textSecondary}}>{ex.unit}</Text></Text>
                           )}
                         </View>
                      </View>
 
-                     <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 8 }}>CATEGORÍA DE GUARDADO:</Text>
+                     <Text style={{ fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 8 }}>CATEGORÍA DE GUARDADO:</Text>
                      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
                        {['strength', 'plyometrics', 'max_force', 'custom'].map(cat => {
                           const labels: Record<string,string> = { strength: 'Fuerza', plyometrics: 'Pliometría', max_force: 'F. Máxima', custom: 'Personalizado' };
@@ -483,19 +488,20 @@ export default function TestModeScreen() {
   );
 }
 
+// ESTILOS AJUSTADOS PARA MEJOR PROPORCIÓN EN PANTALLAS COMPACTAS
 const styles = StyleSheet.create({
-  header: { flexDirection: 'row', alignItems: 'center', padding: 15, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
-  title: { fontSize: 20, fontWeight: '900' },
-  testCard: { padding: 20, borderRadius: 20, borderWidth: 1, marginBottom: 20 },
-  summaryCard: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 15 },
-  testName: { fontSize: 16, fontWeight: '800', marginLeft: 10 },
-  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 16, textAlign: 'center' },
-  inputLarge: { borderWidth: 1, borderRadius: 12, padding: 16, fontSize: 22, fontWeight: '900', textAlign: 'center' },
+  header: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
+  title: { fontSize: 18, fontWeight: '900' },
+  testCard: { padding: 16, borderRadius: 16, borderWidth: 1, marginBottom: 16 },
+  summaryCard: { padding: 14, borderRadius: 16, borderWidth: 1, marginBottom: 12 },
+  testName: { fontSize: 15, fontWeight: '800', marginLeft: 8 },
+  input: { borderWidth: 1, borderRadius: 10, padding: 10, fontSize: 14, textAlign: 'center' },
+  inputLarge: { borderWidth: 1, borderRadius: 10, paddingVertical: 12, paddingHorizontal: 8, fontSize: 18, fontWeight: '900', textAlign: 'center' },
   inputWithUnitContainer: { flexDirection: 'row', alignItems: 'stretch' },
-  unitBadge: { borderWidth: 1, borderLeftWidth: 0, borderTopRightRadius: 12, borderBottomRightRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)', paddingHorizontal: 12, justifyContent: 'center', alignItems: 'center' },
-  timerBtn: { paddingHorizontal: 14, justifyContent: 'center', alignItems: 'center', borderTopRightRadius: 12, borderBottomRightRadius: 12 },
+  unitBadge: { borderWidth: 1, borderLeftWidth: 0, borderTopRightRadius: 10, borderBottomRightRadius: 10, backgroundColor: 'rgba(0,0,0,0.02)', paddingHorizontal: 8, justifyContent: 'center', alignItems: 'center' },
+  timerBtn: { paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center', borderTopRightRadius: 10, borderBottomRightRadius: 10 },
   pill: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
-  categoryChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1 },
-  footer: { padding: 20, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
-  finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 16 }
+  categoryChip: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10, borderWidth: 1 },
+  footer: { padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
+  finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 14 }
 });
