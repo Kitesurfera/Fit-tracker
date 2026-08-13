@@ -70,9 +70,6 @@ export default function TestModeScreen() {
           
           const initialResults: Record<string, any> = {};
           
-          // =========================================================================
-          // CORRECCIÓN: Si el test está completado, cargar los datos guardados
-          // =========================================================================
           if (currentWorkout.completed && currentWorkout.completion_data?.exercise_results) {
              currentWorkout.completion_data.exercise_results.forEach((ex: any) => {
                 initialResults[ex.test_key] = { 
@@ -84,9 +81,8 @@ export default function TestModeScreen() {
                 };
              });
              setResults(initialResults);
-             setShowSummary(true); // Saltar directamente a la vista de resumen
+             setShowSummary(true);
           } else {
-             // Si no está completado, se inicializa en blanco
              currentWorkout.exercises?.forEach((ex: any) => {
                 initialResults[ex.test_key] = { valL: '', valR: '', flightTime: '', contactTime: '', videoUri: null };
              });
@@ -246,7 +242,6 @@ export default function TestModeScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       
-      {/* RENDERIZADO CONDICIONAL: O ves el Resumen, O ves la toma de datos */}
       {showSummary ? (
         <View style={{ flex: 1 }}>
            <View style={styles.header}>
@@ -284,7 +279,6 @@ export default function TestModeScreen() {
                                </Text>
                             </View>
 
-                            {/* Aquí aparecerá solo el botón VER VÍDEO si se grabó algo */}
                             {res.videoUri && (
                                <VideoUploader 
                                  currentVideo={res.videoUri} 
@@ -310,7 +304,6 @@ export default function TestModeScreen() {
                         </View>
                      </View>
 
-                     {/* Solo mostramos los selectores de categoría si NO está completado */}
                      {!workout?.completed && (
                        <>
                          <Text style={{ fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 8 }}>CATEGORÍA DE GUARDADO:</Text>
@@ -399,7 +392,7 @@ export default function TestModeScreen() {
                             <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }} numberOfLines={1} adjustsFontSizeToFit>Vuelo (ms)</Text>
                             <TextInput 
                               style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
-                              keyboardType="numeric" placeholder="450" placeholderTextColor={colors.border}
+                              keyboardType="decimal-pad" placeholder="450" placeholderTextColor={colors.border}
                               value={res.flightTime} onChangeText={(val) => updateResult(ex.test_key, 'flightTime', val)} 
                               adjustsFontSizeToFit
                             />
@@ -408,7 +401,7 @@ export default function TestModeScreen() {
                             <Text style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }} numberOfLines={1} adjustsFontSizeToFit>Contacto (ms)</Text>
                             <TextInput 
                               style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
-                              keyboardType="numeric" placeholder="200" placeholderTextColor={colors.border}
+                              keyboardType="decimal-pad" placeholder="200" placeholderTextColor={colors.border}
                               value={res.contactTime} onChangeText={(val) => updateResult(ex.test_key, 'contactTime', val)} 
                               adjustsFontSizeToFit
                             />
@@ -430,7 +423,7 @@ export default function TestModeScreen() {
                             <View style={styles.inputWithUnitContainer}>
                               <TextInput 
                                 style={[styles.inputLarge, { borderColor: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.border, color: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
-                                keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
+                                keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.border}
                                 value={runningTimers[`${ex.test_key}_valL`] ? activeTimers[`${ex.test_key}_valL`]?.toFixed(1) : res.valL} 
                                 onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
                                 adjustsFontSizeToFit
@@ -453,7 +446,7 @@ export default function TestModeScreen() {
                             <View style={styles.inputWithUnitContainer}>
                               <TextInput 
                                 style={[styles.inputLarge, { borderColor: runningTimers[`${ex.test_key}_valR`] ? colors.primary : colors.border, color: runningTimers[`${ex.test_key}_valR`] ? colors.primary : colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
-                                keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
+                                keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.border}
                                 value={runningTimers[`${ex.test_key}_valR`] ? activeTimers[`${ex.test_key}_valR`]?.toFixed(1) : res.valR} 
                                 onChangeText={(val) => updateResult(ex.test_key, 'valR', val)} 
                                 adjustsFontSizeToFit
@@ -479,7 +472,7 @@ export default function TestModeScreen() {
                       <View style={[styles.inputWithUnitContainer, { width: hasTimer ? '100%' : '80%' }]}>
                         <TextInput 
                           style={[styles.inputLarge, { borderColor: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.border, color: runningTimers[`${ex.test_key}_valL`] ? colors.primary : colors.textPrimary, flex: 1, borderRightWidth: 0, borderTopRightRadius: 0, borderBottomRightRadius: 0 }]} 
-                          keyboardType="numeric" placeholder="0" placeholderTextColor={colors.border}
+                          keyboardType="decimal-pad" placeholder="0" placeholderTextColor={colors.border}
                           value={runningTimers[`${ex.test_key}_valL`] ? activeTimers[`${ex.test_key}_valL`]?.toFixed(1) : res.valL} 
                           onChangeText={(val) => updateResult(ex.test_key, 'valL', val)} 
                           adjustsFontSizeToFit
@@ -513,7 +506,6 @@ export default function TestModeScreen() {
         </KeyboardAvoidingView>
       )}
 
-      {/* CAPA DE VIDEO FLOTANTE A PANTALLA COMPLETA (Sin Modal de React Native) */}
       {fullScreenVideo && (
         <View style={[StyleSheet.absoluteFill, styles.fullscreenOverlay]}>
           <TouchableOpacity onPress={() => setFullScreenVideo(null)} style={styles.closeBtn}>
@@ -549,7 +541,6 @@ const styles = StyleSheet.create({
   footer: { padding: 16, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' },
   finishBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 14 },
   
-  // Estilos del nuevo reproductor absoluto
   fullscreenOverlay: { backgroundColor: '#000', justifyContent: 'center', zIndex: 9999, elevation: 9999 },
   closeBtn: { position: 'absolute', top: 30, right: 20, zIndex: 10000, padding: 10 },
   fullVideo: { width: '100%', height: '80%' }
