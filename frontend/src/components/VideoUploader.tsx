@@ -10,7 +10,7 @@ interface VideoUploaderProps {
   currentVideo: string | null;
   onUploadSuccess: (url: string) => void;
   colors: any;
-  readOnly?: boolean; // NUEVA PROPIEDAD PARA EL RESUMEN
+  readOnly?: boolean;
 }
 
 export default function VideoUploader({ currentVideo, onUploadSuccess, colors, readOnly = false }: VideoUploaderProps) {
@@ -71,25 +71,6 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors, r
     }
   };
 
-  const pickFromGallery = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert("Permiso Denegado", "Se requiere acceso a la galería para subir vídeos.");
-        return;
-      }
-      const result = await ImagePicker.launchMediaLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
-        allowsEditing: false, // IMPORTANTE: En false evita bloqueos al seleccionar vídeos
-        quality: 0.8,
-      });
-      handleMediaUpload(result);
-    } catch (error) {
-      console.error("Error al abrir galería:", error);
-      Alert.alert("Error", "No se pudo acceder a los archivos.");
-    }
-  };
-
   const recordVideo = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
@@ -111,7 +92,6 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors, r
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       {readOnly ? (
-        /* MODO LECTURA: Solo muestra el botón de reproducir si hay video */
         currentVideo ? (
           <TouchableOpacity onPress={() => setShowVideo(true)} style={{ paddingVertical: 4, paddingHorizontal: 10, backgroundColor: '#10B98120', borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
             <Ionicons name="play" size={14} color="#10B981" />
@@ -119,12 +99,10 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors, r
           </TouchableOpacity>
         ) : null
       ) : uploading ? (
-        /* MODO EDICIÓN: Subiendo */
         <View style={{ padding: 8, backgroundColor: colors?.surfaceHighlight || '#EEE', borderRadius: 8 }}>
           <ActivityIndicator size="small" color={colors?.primary || '#F59E0B'} />
         </View>
       ) : currentVideo ? (
-        /* MODO EDICIÓN: Video Subido */
         <>
           <TouchableOpacity onPress={() => setShowVideo(true)} style={{ padding: 8, backgroundColor: '#10B98120', borderRadius: 8 }}>
             <Ionicons name="play" size={20} color="#10B981" />
@@ -134,18 +112,11 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors, r
           </TouchableOpacity>
         </>
       ) : (
-        /* MODO EDICIÓN: Botones de subida */
-        <>
-          <TouchableOpacity onPress={recordVideo} style={{ padding: 8, backgroundColor: colors?.surfaceHighlight || '#EEE', borderRadius: 8 }}>
-            <Ionicons name="camera" size={20} color={colors?.textSecondary || '#888'} />
-          </TouchableOpacity>
-          <TouchableOpacity onPress={pickFromGallery} style={{ padding: 8, backgroundColor: colors?.surfaceHighlight || '#EEE', borderRadius: 8 }}>
-            <Ionicons name="folder" size={20} color={colors?.textSecondary || '#888'} />
-          </TouchableOpacity>
-        </>
+        <TouchableOpacity onPress={recordVideo} style={{ padding: 8, backgroundColor: colors?.surfaceHighlight || '#EEE', borderRadius: 8 }}>
+          <Ionicons name="camera" size={20} color={colors?.textSecondary || '#888'} />
+        </TouchableOpacity>
       )}
 
-      {/* MODAL PARA REPRODUCIR EL VIDEO (Se usa en ambos modos) */}
       <Modal visible={showVideo} transparent animationType="fade">
         <View style={styles.fullscreenOverlay}>
           <TouchableOpacity onPress={() => setShowVideo(false)} style={styles.closeBtn}>
