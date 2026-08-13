@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, 
   ActivityIndicator, ScrollView, TextInput, Alert, Platform,
-  KeyboardAvoidingView, Modal, useWindowDimensions
+  KeyboardAvoidingView
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,9 +18,6 @@ export default function TestModeScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
   
-  // Utilidad para chequear el ancho de la pantalla y ajustar flexibilidades si se requiere
-  const { width: screenWidth } = useWindowDimensions();
-
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   
@@ -233,6 +230,105 @@ export default function TestModeScreen() {
     );
   }
 
+  // =========================================================================
+  // PANTALLA DE RESUMEN (Renderizado Condicional, evita el bug de los Modales)
+  // =========================================================================
+  if (showSummary) {
+    return (
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+         <View style={styles.header}>
+            <TouchableOpacity onPress={() => setShowSummary(false)} style={{ padding: 8 }}>
+              <Ionicons name="arrow-back" size={28} color={colors.textPrimary} />
+            </TouchableOpacity>
+            <View style={{ flex: 1, alignItems: 'center' }}>
+              <Text style={[styles.title, { color: colors.textPrimary }]}>Guardar en Historial</Text>
+              <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Clasifica las métricas</Text>
+            </View>
+            <View style={{ width: 44 }} />
+         </View>
+
+         <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
+           {workout?.exercises?.map((ex: any, idx: number) => {
+              const res = results[ex.test_key];
+              if (!res) return null;
+
+              let displayVal = res.valL || '0';
+              if (ex.unit === 'rsi' || ex.test_key === 'dj') displayVal = calculateRSI(res.flightTime, res.contactTime);
+              
+              return (
+                <View key={idx} style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }}>
+                      <View style={{ flex: 1, paddingRight: 10 }}>
+                        <Text style={[styles.testName, { color: colors.textPrimary, marginLeft: 0, fontSize: 14 }]} numberOfLines={2}>{ex.name}</Text>
+                        <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                          <View style={[styles.pill, { backgroundColor: ex.is_bilateral ? '#3B82F615' : '#10B98115' }]}>
+                             <Text style={{ fontSize: 10, fontWeight: '800', color: ex.is_bilateral ? '#3B82F6' : '#10B981' }}>
+                               {ex.is_bilateral ? 'BILATERAL' : 'UNILATERAL'}
+                             </Text>
+                          </View>
+
+                          {res.videoUri && (
+                             <VideoUploader 
+                               currentVideo={res.videoUri} 
+                               onUploadSuccess={() => {}} 
+                               colors={colors} 
+                               readOnly={true} 
+                             />
+                          )}
+
+                        </View>
+                      </View>
+                      
+                      <View style={{ alignItems: 'flex-end', minWidth: 60 }}>
+                        {ex.is_bilateral ? (
+                          <View style={{ alignItems: 'flex-end' }}>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: '#3B82F6' }}>Izq: {res.valL || 0} {ex.unit}</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '800', color: '#EF4444' }}>Der: {res.valR || 0} {ex.unit}</Text>
+                          </View>
+                        ) : (
+                          <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary }}>{displayVal} <Text style={{fontSize: 11, fontWeight: '700', color: colors.textSecondary}}>{ex.unit}</Text></Text>
+                        )}
+                      </View>
+                   </View>
+
+                   <Text style={{ fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 8 }}>CATEGORÍA DE GUARDADO:</Text>
+                   <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                     {['strength', 'plyometrics', 'max_force', 'custom'].map(cat => {
+                        const labels: Record<string,string> = { strength: 'Fuerza', plyometrics: 'Pliometría', max_force: 'F. Máxima', custom: 'Personalizado' };
+                        const isSelected = testCategories[ex.test_key] === cat;
+                        return (
+                          <TouchableOpacity 
+                            key={cat}
+                            style={[styles.categoryChip, { borderColor: colors.border }, isSelected && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' }]}
+                            onPress={() => setTestCategories(prev => ({ ...prev, [ex.test_key]: cat }))}
+                          >
+                             <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#FFF' : colors.textSecondary }}>{labels[cat]}</Text>
+                          </TouchableOpacity>
+                        );
+                     })}
+                   </View>
+                </View>
+              );
+           })}
+         </ScrollView>
+
+         <View style={[styles.footer, { backgroundColor: colors.background, position: 'absolute', bottom: 0, width: '100%' }]}>
+            <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#10B981' }]} onPress={executeSave} disabled={saving}>
+              {saving ? <ActivityIndicator color="#FFF" /> : (
+                <>
+                  <Ionicons name="save" size={22} color="#FFF" />
+                  <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16, marginLeft: 8 }}>CONFIRMAR Y GUARDAR</Text>
+                </>
+              )}
+            </TouchableOpacity>
+         </View>
+      </SafeAreaView>
+    );
+  }
+
+  // =========================================================================
+  // PANTALLA PRINCIPAL (Tests)
+  // =========================================================================
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -393,102 +489,10 @@ export default function TestModeScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
-
-      <Modal visible={showSummary} animationType="slide" transparent={false}>
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
-           <View style={styles.header}>
-              <TouchableOpacity onPress={() => setShowSummary(false)} style={{ padding: 8 }}>
-                <Ionicons name="arrow-back" size={28} color={colors.textPrimary} />
-              </TouchableOpacity>
-              <View style={{ flex: 1, alignItems: 'center' }}>
-                <Text style={[styles.title, { color: colors.textPrimary }]}>Guardar en Historial</Text>
-                <Text style={{ fontSize: 12, color: colors.textSecondary, fontWeight: '700' }}>Clasifica las métricas</Text>
-              </View>
-              <View style={{ width: 44 }} />
-           </View>
-
-           <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 100 }}>
-             {workout?.exercises?.map((ex: any, idx: number) => {
-                const res = results[ex.test_key];
-                if (!res) return null;
-
-                let displayVal = res.valL || '0';
-                if (ex.unit === 'rsi' || ex.test_key === 'dj') displayVal = calculateRSI(res.flightTime, res.contactTime);
-                
-                return (
-                  <View key={idx} style={[styles.summaryCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }}>
-                        <View style={{ flex: 1, paddingRight: 10 }}>
-                          <Text style={[styles.testName, { color: colors.textPrimary, marginLeft: 0, fontSize: 14 }]} numberOfLines={2}>{ex.name}</Text>
-                          <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                            <View style={[styles.pill, { backgroundColor: ex.is_bilateral ? '#3B82F615' : '#10B98115' }]}>
-                               <Text style={{ fontSize: 10, fontWeight: '800', color: ex.is_bilateral ? '#3B82F6' : '#10B981' }}>
-                                 {ex.is_bilateral ? 'BILATERAL' : 'UNILATERAL'}
-                               </Text>
-                            </View>
-
-                            {res.videoUri && (
-                               <VideoUploader 
-                                 currentVideo={res.videoUri} 
-                                 onUploadSuccess={() => {}} 
-                                 colors={colors} 
-                                 readOnly={true} 
-                               />
-                            )}
-
-                          </View>
-                        </View>
-                        
-                        <View style={{ alignItems: 'flex-end', minWidth: 60 }}>
-                          {ex.is_bilateral ? (
-                            <View style={{ alignItems: 'flex-end' }}>
-                              <Text style={{ fontSize: 12, fontWeight: '800', color: '#3B82F6' }}>Izq: {res.valL || 0} {ex.unit}</Text>
-                              <Text style={{ fontSize: 12, fontWeight: '800', color: '#EF4444' }}>Der: {res.valR || 0} {ex.unit}</Text>
-                            </View>
-                          ) : (
-                            <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary }}>{displayVal} <Text style={{fontSize: 11, fontWeight: '700', color: colors.textSecondary}}>{ex.unit}</Text></Text>
-                          )}
-                        </View>
-                     </View>
-
-                     <Text style={{ fontSize: 10, fontWeight: '800', color: colors.textSecondary, marginBottom: 8 }}>CATEGORÍA DE GUARDADO:</Text>
-                     <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-                       {['strength', 'plyometrics', 'max_force', 'custom'].map(cat => {
-                          const labels: Record<string,string> = { strength: 'Fuerza', plyometrics: 'Pliometría', max_force: 'F. Máxima', custom: 'Personalizado' };
-                          const isSelected = testCategories[ex.test_key] === cat;
-                          return (
-                            <TouchableOpacity 
-                              key={cat}
-                              style={[styles.categoryChip, { borderColor: colors.border }, isSelected && { backgroundColor: '#F59E0B', borderColor: '#F59E0B' }]}
-                              onPress={() => setTestCategories(prev => ({ ...prev, [ex.test_key]: cat }))}
-                            >
-                               <Text style={{ fontSize: 11, fontWeight: '700', color: isSelected ? '#FFF' : colors.textSecondary }}>{labels[cat]}</Text>
-                            </TouchableOpacity>
-                          );
-                       })}
-                     </View>
-                  </View>
-                );
-             })}
-           </ScrollView>
-
-           <View style={[styles.footer, { backgroundColor: colors.background, position: 'absolute', bottom: 0, width: '100%' }]}>
-              <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#10B981' }]} onPress={executeSave} disabled={saving}>
-                {saving ? <ActivityIndicator color="#FFF" /> : (
-                  <>
-                    <Ionicons name="save" size={22} color="#FFF" />
-                    <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16, marginLeft: 8 }}>CONFIRMAR Y GUARDAR</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-           </View>
-        </SafeAreaView>
-      </Modal>
     </SafeAreaView>
   );
 }
 
-// ESTILOS AJUSTADOS PARA MEJOR PROPORCIÓN EN PANTALLAS COMPACTAS
 const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', padding: 12, borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' },
   title: { fontSize: 18, fontWeight: '900' },
