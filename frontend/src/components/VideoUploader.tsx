@@ -1,21 +1,18 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, Alert, Platform, Modal, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, Alert, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import { Video, ResizeMode } from 'expo-av';
-
-import { api } from '../api'; 
 
 interface VideoUploaderProps {
   currentVideo: string | null;
   onUploadSuccess: (url: string) => void;
   colors: any;
   readOnly?: boolean;
+  onPlay?: () => void;
 }
 
-export default function VideoUploader({ currentVideo, onUploadSuccess, colors, readOnly = false }: VideoUploaderProps) {
+export default function VideoUploader({ currentVideo, onUploadSuccess, colors, readOnly = false, onPlay }: VideoUploaderProps) {
   const [uploading, setUploading] = useState(false);
-  const [showVideo, setShowVideo] = useState(false);
 
   const handleMediaUpload = async (pickerResult: ImagePicker.ImagePickerResult) => {
     if (pickerResult.canceled || !pickerResult.assets || pickerResult.assets.length === 0) return;
@@ -93,7 +90,7 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors, r
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
       {readOnly ? (
         currentVideo ? (
-          <TouchableOpacity onPress={() => setShowVideo(true)} style={{ paddingVertical: 4, paddingHorizontal: 10, backgroundColor: '#10B98120', borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
+          <TouchableOpacity onPress={onPlay} style={{ paddingVertical: 4, paddingHorizontal: 10, backgroundColor: '#10B98120', borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
             <Ionicons name="play" size={14} color="#10B981" />
             <Text style={{ color: '#10B981', fontWeight: '800', fontSize: 10, marginLeft: 4 }}>VER VÍDEO</Text>
           </TouchableOpacity>
@@ -104,7 +101,7 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors, r
         </View>
       ) : currentVideo ? (
         <>
-          <TouchableOpacity onPress={() => setShowVideo(true)} style={{ padding: 8, backgroundColor: '#10B98120', borderRadius: 8 }}>
+          <TouchableOpacity onPress={onPlay} style={{ padding: 8, backgroundColor: '#10B98120', borderRadius: 8 }}>
             <Ionicons name="play" size={20} color="#10B981" />
           </TouchableOpacity>
           <TouchableOpacity onPress={() => onUploadSuccess('')} style={{ padding: 8, backgroundColor: '#EF444420', borderRadius: 8 }}>
@@ -116,29 +113,6 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors, r
           <Ionicons name="camera" size={20} color={colors?.textSecondary || '#888'} />
         </TouchableOpacity>
       )}
-
-      <Modal visible={showVideo} transparent animationType="fade">
-        <View style={styles.fullscreenOverlay}>
-          <TouchableOpacity onPress={() => setShowVideo(false)} style={styles.closeBtn}>
-            <Ionicons name="close-circle" size={40} color="#FFF" />
-          </TouchableOpacity>
-          {currentVideo ? (
-            <Video 
-              source={{ uri: currentVideo }} 
-              style={styles.fullVideo} 
-              resizeMode={ResizeMode.CONTAIN} 
-              useNativeControls 
-              shouldPlay 
-            />
-          ) : null}
-        </View>
-      </Modal>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  fullscreenOverlay: { flex: 1, backgroundColor: '#000', justifyContent: 'center' },
-  closeBtn: { position: 'absolute', top: 50, right: 20, zIndex: 10 },
-  fullVideo: { width: '100%', height: '80%' }
-});
