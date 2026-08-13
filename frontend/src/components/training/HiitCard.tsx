@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, StyleSheet, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import VideoUploader from './VideoUploader';
+import VideoUploader from '../VideoUploader';
 
 interface HiitCardProps {
   currentBlock: any;
