@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, TextInput, ActivityIndicator, StyleSheet, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import VideoUploader from './VideoUploader';
 
 interface HiitCardProps {
   currentBlock: any;
@@ -14,7 +15,7 @@ interface HiitCardProps {
   hiitLogs: Record<string, any>;
   setHiitLogs: React.Dispatch<React.SetStateAction<Record<string, any>>>;
   recordedVideos: Record<string, string>;
-  handleRecordVideoOptions: (key: string) => void;
+  onVideoUpload: (key: string, url: string) => void;
   videoUploading: string | null;
   renderVideoPlayer: (url: string) => React.ReactNode;
   onAdvanceHiit: () => void;
@@ -23,7 +24,7 @@ interface HiitCardProps {
 
 export default function HiitCard({
   currentBlock, hiitRound, hiitPhase, hiitExIdx, hiitExSet, hiitBlockIdx, hiitSide = 1, colors,
-  hiitLogs, setHiitLogs, recordedVideos, handleRecordVideoOptions, videoUploading, renderVideoPlayer,
+  hiitLogs, setHiitLogs, recordedVideos, onVideoUpload, videoUploading, renderVideoPlayer,
   onAdvanceHiit, onSkipHiitEx
 }: HiitCardProps) {
   
@@ -101,21 +102,11 @@ export default function HiitCard({
                       onChangeText={(t) => setHiitLogs(prev => ({...prev, [videoKey]: {...(prev[videoKey]||{}), note: t}}))}
                     />
 
-                    {recordedVideos[videoKey] ? (
-                      <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: (colors.success || '#10B981') + '15', padding: 10, borderRadius: 8 }}>
-                        {renderVideoPlayer(recordedVideos[videoKey])}
-                        <View style={{ marginLeft: 12, flex: 1 }}>
-                          <Text style={{ color: colors.success || '#10B981', fontWeight: '700', fontSize: 12, marginBottom: 4 }}>Vídeo subido</Text>
-                          <TouchableOpacity onPress={() => handleRecordVideoOptions(videoKey)}>
-                            <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 12, textDecorationLine: 'underline' }}>Cambiar vídeo</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-                    ) : (
-                      <TouchableOpacity style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: colors.primary, borderStyle: 'dashed' }} onPress={() => handleRecordVideoOptions(videoKey)} disabled={videoUploading === videoKey}>
-                        {videoUploading === videoKey ? <ActivityIndicator color={colors.primary} size="small" /> : <><Ionicons name="videocam" size={18} color={colors.primary} /><Text style={{ color: colors.primary, marginLeft: 6, fontWeight: '700', fontSize: 13 }}>Grabar técnica de {ex.name}</Text></>}
-                      </TouchableOpacity>
-                    )}
+                    <VideoUploader 
+                      currentVideo={recordedVideos[videoKey]} 
+                      onUploadSuccess={(url) => onVideoUpload(videoKey, url)} 
+                      colors={colors} 
+                    />
                   </View>
                 </View>
               )}
