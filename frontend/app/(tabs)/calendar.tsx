@@ -1307,6 +1307,101 @@ export default function CalendarScreen() {
         </View>
       </Modal>
 
+      {/* MODAL: REGISTRO DE DEPORTE / TÉCNICA */}
+      <Modal visible={showSportModal} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                {sportConfig.lib === 'Ionicons' ? (
+                  <Ionicons name={sportConfig.icon as any} size={22} color={colors.primary} />
+                ) : (
+                  <MaterialCommunityIcons name={sportConfig.icon as any} size={22} color={colors.primary} />
+                )}
+                <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary }}>Registro de Sesión</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowSportModal(false)}>
+                <Ionicons name="close" size={24} color={colors.textSecondary} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Pestañas: Día Único / Rango */}
+            <View style={{ flexDirection: 'row', backgroundColor: colors.surfaceHighlight, borderRadius: 10, padding: 4, marginBottom: 20 }}>
+              <TouchableOpacity 
+                style={[{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 }, sportModalTab === 'single' && { backgroundColor: colors.primary }]}
+                onPress={() => setSportModalTab('single')}
+              >
+                <Text style={{ fontWeight: '800', fontSize: 12, color: sportModalTab === 'single' ? '#FFF' : colors.textSecondary }}>Día Único</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[{ flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 8 }, sportModalTab === 'range' && { backgroundColor: colors.primary }]}
+                onPress={() => setSportModalTab('range')}
+              >
+                <Text style={{ fontWeight: '800', fontSize: 12, color: sportModalTab === 'range' ? '#FFF' : colors.textSecondary }}>Rango de Fechas</Text>
+              </TouchableOpacity>
+            </View>
+
+            {sportModalTab === 'single' ? (
+              <View style={{ marginBottom: 20 }}>
+                <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 10 }]}>FECHA SELECCIONADA: {selectedDate}</Text>
+                <TouchableOpacity 
+                  style={{ 
+                    backgroundColor: sportSessions.includes(selectedDate) ? (colors.error || '#EF4444') + '20' : colors.primary + '20', 
+                    padding: 16, 
+                    borderRadius: 12, 
+                    alignItems: 'center', 
+                    borderWidth: 1, 
+                    borderColor: sportSessions.includes(selectedDate) ? (colors.error || '#EF4444') : colors.primary 
+                  }}
+                  onPress={() => {
+                    const newDates = new Set(sportSessions);
+                    if (newDates.has(selectedDate)) {
+                      newDates.delete(selectedDate);
+                    } else {
+                      newDates.add(selectedDate);
+                    }
+                    handleSaveTechnicalSession(Array.from(newDates));
+                  }}
+                >
+                  <Text style={{ color: sportSessions.includes(selectedDate) ? (colors.error || '#EF4444') : colors.primary, fontWeight: '800', fontSize: 15 }}>
+                    {sportSessions.includes(selectedDate) ? 'Quitar Registro de este Día' : 'Registrar Sesión en este Día'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={{ marginBottom: 20, gap: 12 }}>
+                <View>
+                  <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 6 }]}>FECHA INICIO (AAAA-MM-DD)</Text>
+                  <TextInput 
+                    style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
+                    value={rangeStart} 
+                    onChangeText={setRangeStart} 
+                    placeholder="2026-03-01" 
+                    placeholderTextColor={colors.textSecondary} 
+                  />
+                </View>
+                <View>
+                  <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 6 }]}>FECHA FIN (AAAA-MM-DD)</Text>
+                  <TextInput 
+                    style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
+                    value={rangeEnd} 
+                    onChangeText={setRangeEnd} 
+                    placeholder="2026-03-07" 
+                    placeholderTextColor={colors.textSecondary} 
+                  />
+                </View>
+                <TouchableOpacity 
+                  style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 5 }}
+                  onPress={handleSaveDateRange}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>Guardar Rango</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
+
       {/* MODAL: SALTAR SESIÓN */}
       <Modal visible={showSkipModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
