@@ -93,7 +93,6 @@ export default function AthleteDetailScreen() {
   const [isChatVisible, setChatVisible] = useState(false);
   const [showWellnessModal, setShowWellnessModal] = useState(false);
   
-  // Lista de píldoras para recuperar la asignada
   const [allPills, setAllPills] = useState<any[]>([]);
 
   const todayStr = useMemo(() => getLocalDateStr(new Date()), []);
@@ -174,7 +173,7 @@ export default function AthleteDetailScreen() {
           }));
       }
 
-      const payload = { title: workoutToDuplicate.title, date: duplicateDate, notes: workoutToDuplicate.notes || '', athlete_id: params.id!, microciclo_id: workoutToDuplicate.microciclo_id || null, exercises: cleanExercises };
+      const payload = { title: workoutToDuplicate.title, date: duplicateDate, notes: workoutToDuplicate.notes || '', athlete_id: params.id!, microciclo_id: workoutToDuplicate.microciclo_id || null, exercises: cleanExercises, is_test_battery: workoutToDuplicate.is_test_battery || false };
       await api.createWorkout(payload);
       if (Platform.OS !== 'web') Alert.alert("Éxito", `Sesión duplicada para el ${duplicateDate.split('-').reverse().join('/')}`);
       loadData();
@@ -403,7 +402,6 @@ export default function AthleteDetailScreen() {
     const discomfortsEntries = Object.entries(discomfortsObj);
     const needsRecovery = (summary?.latest_wellness?.fatigue >= 4 || summary?.latest_wellness?.soreness >= 4);
 
-    // Buscar si existe una píldora asignada a este deportista desde Ajustes
     const assignedPill = allPills.find(p => p.assigned_athletes && p.assigned_athletes.includes(params.id));
 
     return (
@@ -419,7 +417,6 @@ export default function AthleteDetailScreen() {
           </View>
         )}
 
-        {/* ALERTA DE FATIGA Y CONEXIÓN CON PÍLDORA */}
         {needsRecovery && (
           <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '15', borderColor: colors.error || '#EF4444', marginTop: 0 }]}>
             <Ionicons name="medical" size={22} color={colors.error || '#EF4444'} />
@@ -458,7 +455,6 @@ export default function AthleteDetailScreen() {
           </View>
         )}
 
-        {/* BOTONES DE ACCESO RÁPIDO */}
         <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25, marginTop: 5 }}>
           <TouchableOpacity 
             style={[styles.actionBtn, { backgroundColor: colors.surfaceHighlight, flex: 1, padding: 15, marginBottom: 0 }]} 
@@ -485,21 +481,20 @@ export default function AthleteDetailScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* PRÓXIMO ENTRENAMIENTO */}
         <Text style={[styles.sectionTitle, isDesktop && { fontSize: 13 }]}>PRÓXIMO ENTRENAMIENTO</Text>
         {nextWorkout ? (
           <TouchableOpacity 
-            style={[styles.nextWorkoutCard, { backgroundColor: colors.surface, flexDirection: 'column', alignItems: 'stretch' }]}
+            style={[styles.nextWorkoutCard, { backgroundColor: colors.surface, flexDirection: 'column', alignItems: 'stretch' }, nextWorkout.is_test_battery && { borderLeftWidth: 4, borderLeftColor: '#F59E0B' }]}
             onPress={() => setIsNextWorkoutExpanded(!isNextWorkoutExpanded)}
             activeOpacity={0.8}
           >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={[styles.nextWorkoutIcon, { backgroundColor: colors.primary + '20' }]}>
-                <Ionicons name="calendar-outline" size={24} color={colors.primary} />
+              <View style={[styles.nextWorkoutIcon, { backgroundColor: nextWorkout.is_test_battery ? '#F59E0B20' : colors.primary + '20' }]}>
+                <Ionicons name={nextWorkout.is_test_battery ? "trophy" : "calendar-outline"} size={24} color={nextWorkout.is_test_battery ? '#F59E0B' : colors.primary} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: colors.primary, fontSize: isDesktop ? 14 : 12, fontWeight: '800', marginBottom: 2 }}>
-                  {nextWorkout.date === todayStr ? 'HOY' : nextWorkout.date.split('-').reverse().join('/')}
+                <Text style={{ color: nextWorkout.is_test_battery ? '#F59E0B' : colors.primary, fontSize: isDesktop ? 14 : 12, fontWeight: '800', marginBottom: 2 }}>
+                  {nextWorkout.date === todayStr ? 'HOY' : nextWorkout.date.split('-').reverse().join('/')} {nextWorkout.is_test_battery ? '• BATERÍA DE TESTS' : ''}
                 </Text>
                 <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 20 : 16, fontWeight: '800' }}>
                   {nextWorkout.title}
@@ -510,46 +505,64 @@ export default function AthleteDetailScreen() {
 
             {isNextWorkoutExpanded && (
               <View style={{ marginTop: 15, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
-                {nextWorkout.exercises?.map((ex: any, idx: number) => {
-                  const isHiitBlock = ex.is_hiit_block || ex.hiit_exercises !== undefined;
+                {nextWorkout.is_test_battery ? (
+                  <View style={{ gap: 8 }}>
+                    <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 5, fontWeight: '700' }}>Mediciones programadas:</Text>
+                    {nextWorkout.exercises?.map((ex: any, idx: number) => (
+                      <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 4 }}>
+                        <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600' }}>• {ex.name}</Text>
+                        <Text style={{ color: '#F59E0B', fontSize: 12, fontWeight: '800' }}>Unid: {ex.unit || 'kg'}</Text>
+                      </View>
+                    ))}
+                  </View>
+                ) : (
+                  nextWorkout.exercises?.map((ex: any, idx: number) => {
+                    const isHiitBlock = ex.is_hiit_block || ex.hiit_exercises !== undefined;
 
-                  if (isHiitBlock) {
-                    return (
-                      <View key={idx} style={{ marginBottom: 12 }}>
-                        <Text style={{ color: colors.error || '#EF4444', fontSize: isDesktop ? 15 : 13, fontWeight: '800', marginBottom: 6 }}>
-                          <Ionicons name="flame" size={12} /> {ex.name} ({ex.sets} Vueltas)
-                        </Text>
-                        {ex.hiit_exercises?.map((hEx: any, hIdx: number) => (
-                          <View key={hIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 10, marginBottom: 4 }}>
-                            <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 14 : 12, flex: 1, fontWeight: '500' }}>• {hEx.name}</Text>
-                            <Text style={{ color: colors.primary, fontSize: isDesktop ? 14 : 12, fontWeight: '800' }}>{hEx.duration_reps || hEx.duration}</Text>
-                          </View>
-                        ))}
-                      </View>
-                    );
-                  } else {
-                    return (
-                      <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-                        <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontWeight: '700', flex: 1 }}>
-                          <Ionicons name="barbell-outline" size={14} color={colors.textSecondary} /> {ex.name}
-                        </Text>
-                        <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
-                          {(ex.sets && ex.reps) && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>{ex.sets}x{ex.reps}</Text>}
-                          {ex.duration && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>{ex.duration}</Text>}
-                          {ex.weight ? <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 11, fontWeight: '600' }}>{ex.weight} kg</Text> : null}
+                    if (isHiitBlock) {
+                      return (
+                        <View key={idx} style={{ marginBottom: 12 }}>
+                          <Text style={{ color: colors.error || '#EF4444', fontSize: isDesktop ? 15 : 13, fontWeight: '800', marginBottom: 6 }}>
+                            <Ionicons name="flame" size={12} /> {ex.name} ({ex.sets} Vueltas)
+                          </Text>
+                          {ex.hiit_exercises?.map((hEx: any, hIdx: number) => (
+                            <View key={hIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 10, marginBottom: 4 }}>
+                              <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 14 : 12, flex: 1, fontWeight: '500' }}>• {hEx.name}</Text>
+                              <Text style={{ color: colors.primary, fontSize: isDesktop ? 14 : 12, fontWeight: '800' }}>{hEx.duration_reps || hEx.duration}</Text>
+                            </View>
+                          ))}
                         </View>
-                      </View>
-                    );
-                  }
-                })}
+                      );
+                    } else {
+                      return (
+                        <View key={idx} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                          <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontWeight: '700', flex: 1 }}>
+                            <Ionicons name="barbell-outline" size={14} color={colors.textSecondary} /> {ex.name}
+                          </Text>
+                          <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
+                            {(ex.sets && ex.reps) && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>{ex.sets}x{ex.reps}</Text>}
+                            {ex.duration && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>{ex.duration}</Text>}
+                            {ex.weight ? <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 11, fontWeight: '600' }}>{ex.weight} kg</Text> : null}
+                          </View>
+                        </View>
+                      );
+                    }
+                  })
+                )}
 
                 <TouchableOpacity 
                   style={{ backgroundColor: colors.surfaceHighlight, paddingVertical: 12, borderRadius: 10, marginTop: 10, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 }}
-                  onPress={() => router.push(isTrainer ? `/edit-workout?workoutId=${nextWorkout.id}` : `/training-mode?workoutId=${nextWorkout.id}`)}
+                  onPress={() => {
+                    if (nextWorkout.is_test_battery) {
+                      router.push(`/test-mode?workoutId=${nextWorkout.id || nextWorkout._id}`);
+                    } else {
+                      router.push(isTrainer ? `/edit-workout?workoutId=${nextWorkout.id}` : `/training-mode?workoutId=${nextWorkout.id}`);
+                    }
+                  }}
                 >
-                  <Ionicons name={isTrainer ? "pencil" : "play"} size={16} color={colors.textPrimary} />
-                  <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 15 : 13 }}>
-                    {isTrainer ? 'Editar Sesión Completa' : 'Ir a Entrenar'}
+                  <Ionicons name={isTrainer && !nextWorkout.is_test_battery ? "pencil" : "play"} size={16} color={nextWorkout.is_test_battery ? '#F59E0B' : colors.textPrimary} />
+                  <Text style={{ color: nextWorkout.is_test_battery ? '#F59E0B' : colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 15 : 13 }}>
+                    {nextWorkout.is_test_battery ? 'Ver / Realizar Tests' : (isTrainer ? 'Editar Sesión Completa' : 'Ir a Entrenar')}
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -665,16 +678,19 @@ export default function AthleteDetailScreen() {
 
   const renderWorkoutItem = (wk: any) => {
     const isExpanded = !!expandedWorkouts[wk.id];
+    const isTest = wk.is_test_battery;
     
     let isWorkoutHiit = false;
     let itemsToRender = [];
     let hasVideos = false; 
 
-    if (wk.exercises && wk.exercises.length > 0 && wk.exercises[0].is_hiit_block) {
-        isWorkoutHiit = true;
-        itemsToRender = (wk.completed && wk.completion_data?.hiit_results) ? wk.completion_data.hiit_results : wk.exercises;
+    if (isTest) {
+      itemsToRender = wk.exercises || [];
+    } else if (wk.exercises && wk.exercises.length > 0 && wk.exercises[0].is_hiit_block) {
+      isWorkoutHiit = true;
+      itemsToRender = (wk.completed && wk.completion_data?.hiit_results) ? wk.completion_data.hiit_results : wk.exercises;
     } else {
-        itemsToRender = (wk.completed && wk.completion_data?.exercise_results) ? wk.completion_data.exercise_results : (wk.exercises || []);
+      itemsToRender = (wk.completed && wk.completion_data?.exercise_results) ? wk.completion_data.exercise_results : (wk.exercises || []);
     }
 
     if (wk.completed && wk.completion_data) {
@@ -689,18 +705,21 @@ export default function AthleteDetailScreen() {
     }
 
     return (
-      <View key={wk.id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface, opacity: wk.completed ? 0.85 : 1 }]}>
+      <View key={wk.id || wk._id} style={[styles.sessionCardExpanded, { backgroundColor: colors.surface, opacity: wk.completed ? 0.85 : 1 }, isTest && { borderLeftWidth: 4, borderLeftColor: '#F59E0B' }]}>
         <TouchableOpacity 
           style={{ flexDirection: 'row', alignItems: 'center' }} 
-          onPress={() => toggleWorkout(wk.id)}
+          onPress={() => toggleWorkout(wk.id || wk._id)}
           activeOpacity={0.7}
         >
-          <View style={[styles.avatarCircle, { backgroundColor: wk.completed ? (colors.success || '#10B981') + '20' : colors.primary + '20' }]}>
-            <Ionicons name={wk.completed ? "checkmark-done" : "calendar-outline"} size={22} color={wk.completed ? (colors.success || '#10B981') : colors.primary} />
+          <View style={[styles.avatarCircle, { backgroundColor: isTest ? '#F59E0B20' : (wk.completed ? (colors.success || '#10B981') + '20' : colors.primary + '20') }]}>
+            <Ionicons name={isTest ? "trophy" : (wk.completed ? "checkmark-done" : "calendar-outline")} size={22} color={isTest ? '#F59E0B' : (wk.completed ? (colors.success || '#10B981') : colors.primary)} />
           </View>
           
           <View style={{ flex: 1 }}>
-            <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed ? 'line-through' : 'none' }, isDesktop && { fontSize: 18 }]}>{wk.title}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              {isTest && <View style={{ backgroundColor: '#F59E0B20', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}><Text style={{ color: '#F59E0B', fontSize: 10, fontWeight: '900' }}>TEST</Text></View>}
+              <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: wk.completed && !isTest ? 'line-through' : 'none' }, isDesktop && { fontSize: 18 }]}>{wk.title}</Text>
+            </View>
             <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 14 : 12 }}>{wk.date.split('-').reverse().join('/')}</Text>
           </View>
 
@@ -710,13 +729,19 @@ export default function AthleteDetailScreen() {
                 <TouchableOpacity onPress={() => { setWorkoutToDuplicate(wk); setShowDuplicateModal(true); }} style={styles.iconHitbox}>
                   <Ionicons name="copy-outline" size={20} color={colors.primary} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDeleteWorkout(wk.id, wk.title)} style={styles.iconHitbox}>
+                <TouchableOpacity onPress={() => handleDeleteWorkout(wk.id || wk._id, wk.title)} style={styles.iconHitbox}>
                   <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
                 </TouchableOpacity>
               </>
             )}
-            <TouchableOpacity onPress={() => router.push(isTrainer && !wk.completed ? `/edit-workout?workoutId=${wk.id}` : `/training-mode?workoutId=${wk.id}`)} style={styles.iconHitbox}>
-              <Ionicons name={isTrainer ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} />
+            <TouchableOpacity onPress={() => {
+              if (isTest) {
+                router.push(`/test-mode?workoutId=${wk.id || wk._id}`);
+              } else {
+                router.push(isTrainer && !wk.completed ? `/edit-workout?workoutId=${wk.id || wk._id}` : `/training-mode?workoutId=${wk.id || wk._id}`);
+              }
+            }} style={styles.iconHitbox}>
+              <Ionicons name={isTrainer && !isTest ? (wk.completed ? "eye" : "pencil") : "chevron-forward"} size={20} color={colors.border} />
             </TouchableOpacity>
           </View>
 
@@ -737,12 +762,12 @@ export default function AthleteDetailScreen() {
 
             {wk.observations?.includes('[NO COMPLETADA]') && (
               <View style={{ backgroundColor: '#EF444420', padding: 12, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#EF4444' }}>
-                 <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: isDesktop ? 13 : 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
-                 <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontStyle: 'italic' }}>"{wk.observations.replace('[NO COMPLETADA] Motivo: ', '')}"</Text>
+                   <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: isDesktop ? 13 : 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
+                   <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontStyle: 'italic' }}>"{wk.observations.replace('[NO COMPLETADA] Motivo: ', '')}"</Text>
               </View>
             )}
 
-            {(wk.completed && !!wk.completion_data) && (
+            {(wk.completed && !!wk.completion_data && !isTest) && (
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 }}>
                 <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 14 : 12, letterSpacing: 0.5 }}>
                   ESFUERZO (RPE): <Text style={{ color: colors.success || '#10B981', fontSize: isDesktop ? 16 : 14 }}>{wk.completion_data.rpe || '-'}/10</Text>
@@ -750,90 +775,125 @@ export default function AthleteDetailScreen() {
               </View>
             )}
 
-            {itemsToRender?.map((blockOrEx: any, idx: number) => {
-              const isHiitBlock = blockOrEx.is_hiit_block || blockOrEx.hiit_exercises !== undefined;
-              
-              if (isHiitBlock) {
-                const blockKey = `${wk.id}-block-${idx}`;
-                const isBlockExpanded = !!expandedBlocks[blockKey];
-
-                return (
-                  <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
-                    <TouchableOpacity 
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: isBlockExpanded ? 10 : 0, borderBottomWidth: isBlockExpanded ? 1 : 0, borderBottomColor: colors.border }}
-                      onPress={() => toggleBlock(blockKey)}
-                      activeOpacity={0.7}
-                    >
-                      <Ionicons name="flame" size={18} color={colors.error || '#EF4444'} />
-                      <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 18 : 15, fontWeight: '800', flex: 1 }}>{blockOrEx.name}</Text>
-                      <Ionicons name={isBlockExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                    
-                    {isBlockExpanded && (
-                      <View style={{ marginTop: 12 }}>
-                        {blockOrEx.hiit_exercises?.map((ex: any, eIdx: number) => {
-                          return (
-                            <View key={eIdx} style={{ marginBottom: 15, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.primary + '50' }}>
-                                <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontWeight: '700' }}>{ex.name} <Text style={{ color: colors.primary, fontWeight: '800' }}>({ex.duration_reps})</Text></Text>
-                                
-                                {(wk.completed && !!ex.recorded_video_url) && <View style={{ marginTop: 8 }}><MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} /></View>}
-                                
-                                {(!wk.completed && !!ex.video_url) && (
-                                    <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
-                                        <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
-                                        <Text style={{color: colors.error || '#EF4444', fontSize: isDesktop ? 14 : 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica</Text>
-                                    </TouchableOpacity>
-                                )}
-
-                                {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
-                                    <FeedbackInputRow 
-                                      initialNote={ex.coach_note} 
-                                      onSave={(note: string) => saveHiitCoachNote(wk, idx, eIdx, note)} 
-                                      colors={colors} 
-                                      isDesktop={isDesktop}
-                                    />
-                                )}
-                            </View>
-                          );
-                        })}
+            {isTest ? (
+              <View style={{ gap: 10 }}>
+                <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary, marginBottom: 5 }}>RESULTADOS DE LOS TESTS:</Text>
+                {itemsToRender.map((testItem: any, tIdx: number) => {
+                  const resultData = wk.completion_data?.results?.[testItem.test_key] || wk.completion_data?.results?.[tIdx] || {};
+                  return (
+                    <View key={tIdx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+                      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={{ fontSize: 15, fontWeight: '800', color: colors.textPrimary }}>🏆 {testItem.name}</Text>
+                        <View style={{ backgroundColor: '#F59E0B20', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                          <Text style={{ color: '#F59E0B', fontWeight: '900', fontSize: 12 }}>Unid: {testItem.unit || 'kg'}</Text>
+                        </View>
                       </View>
-                    )}
-                  </View>
-                );
-              } else {
-                return (
-                  <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
-                    <View style={styles.exerciseHeader}>
-                      <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }, isDesktop && { fontSize: 16 }]}><Ionicons name="barbell-outline" size={14} color={colors.textSecondary} /> {blockOrEx.name}</Text>
-                      {!wk.completed && (
-                        <View style={{alignItems: 'flex-end'}}>
-                          {(blockOrEx.sets && blockOrEx.reps) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: isDesktop ? 14 : 12}}>{blockOrEx.sets}x{blockOrEx.reps}</Text> : null}
-                          {blockOrEx.weight ? <Text style={{color: colors.textSecondary, fontSize: isDesktop ? 13 : 11}}>{blockOrEx.weight} kg</Text> : null}
+                      {testItem.is_bilateral ? (
+                        <View style={{ flexDirection: 'row', gap: 15, marginTop: 4 }}>
+                          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '600' }}>Izquierdo: <Text style={{ fontWeight: '800', color: colors.primary }}>{resultData.left ?? '-'}</Text></Text>
+                          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '600' }}>Derecho: <Text style={{ fontWeight: '800', color: colors.primary }}>{resultData.right ?? '-'}</Text></Text>
+                        </View>
+                      ) : (
+                        <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600', marginTop: 4 }}>
+                          Resultado: <Text style={{ fontWeight: '900', color: colors.primary }}>{resultData.value ?? resultData.score ?? '-'}</Text>
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+                <TouchableOpacity 
+                  style={{ backgroundColor: '#F59E0B', padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 10 }}
+                  onPress={() => router.push(`/test-mode?workoutId=${wk.id || wk._id}`)}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 13 }}>VER O MODIFICAR TESTS</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              itemsToRender?.map((blockOrEx: any, idx: number) => {
+                const isHiitBlock = blockOrEx.is_hiit_block || blockOrEx.hiit_exercises !== undefined;
+                
+                if (isHiitBlock) {
+                  const blockKey = `${wk.id || wk._id}-block-${idx}`;
+                  const isBlockExpanded = !!expandedBlocks[blockKey];
+
+                  return (
+                    <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+                      <TouchableOpacity 
+                        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingBottom: isBlockExpanded ? 10 : 0, borderBottomWidth: isBlockExpanded ? 1 : 0, borderBottomColor: colors.border }}
+                        onPress={() => toggleBlock(blockKey)}
+                        activeOpacity={0.7}
+                      >
+                        <Ionicons name="flame" size={18} color={colors.error || '#EF4444'} />
+                        <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 18 : 15, fontWeight: '800', flex: 1 }}>{blockOrEx.name}</Text>
+                        <Ionicons name={isBlockExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
+                      </TouchableOpacity>
+                      
+                      {isBlockExpanded && (
+                        <View style={{ marginTop: 12 }}>
+                          {blockOrEx.hiit_exercises?.map((ex: any, eIdx: number) => {
+                            return (
+                              <View key={eIdx} style={{ marginBottom: 15, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.primary + '50' }}>
+                                  <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontWeight: '700' }}>{ex.name} <Text style={{ color: colors.primary, fontWeight: '800' }}>({ex.duration_reps})</Text></Text>
+                                  
+                                  {(wk.completed && !!ex.recorded_video_url) && <View style={{ marginTop: 8 }}><MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} /></View>}
+                                  
+                                  {(!wk.completed && !!ex.video_url) && (
+                                      <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
+                                          <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
+                                          <Text style={{color: colors.error || '#EF4444', fontSize: isDesktop ? 14 : 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica</Text>
+                                      </TouchableOpacity>
+                                  )}
+
+                                  {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
+                                      <FeedbackInputRow 
+                                        initialNote={ex.coach_note} 
+                                        onSave={(note: string) => saveHiitCoachNote(wk, idx, eIdx, note)} 
+                                        colors={colors} 
+                                        isDesktop={isDesktop}
+                                      />
+                                  )}
+                              </View>
+                            );
+                          })}
                         </View>
                       )}
                     </View>
-                    
-                    {(wk.completed && !!blockOrEx.recorded_video_url) && <MiniVideoPlayer url={blockOrEx.recorded_video_url} onExpand={setExpandedVideo} />}
-                    
-                    {(!wk.completed && !!blockOrEx.video_url) && (
-                      <TouchableOpacity onPress={() => Linking.openURL(blockOrEx.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
-                        <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
-                        <Text style={{color: colors.error || '#EF4444', fontSize: isDesktop ? 14 : 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
-                      </TouchableOpacity>
-                    )}
-                    
-                    {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
-                      <FeedbackInputRow 
-                        initialNote={blockOrEx.coach_note} 
-                        onSave={(note: string) => saveCoachNote(wk, idx, note)} 
-                        colors={colors} 
-                        isDesktop={isDesktop}
-                      />
-                    )}
-                  </View>
-                );
-              }
-            })}
+                  );
+                } else {
+                  return (
+                    <View key={idx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
+                      <View style={styles.exerciseHeader}>
+                        <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }, isDesktop && { fontSize: 16 }]}><Ionicons name="barbell-outline" size={14} color={colors.textSecondary} /> {blockOrEx.name}</Text>
+                        {!wk.completed && (
+                          <View style={{alignItems: 'flex-end'}}>
+                            {(blockOrEx.sets && blockOrEx.reps) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: isDesktop ? 14 : 12}}>{blockOrEx.sets}x{blockOrEx.reps}</Text> : null}
+                            {blockOrEx.weight ? <Text style={{color: colors.textSecondary, fontSize: isDesktop ? 13 : 11}}>{blockOrEx.weight} kg</Text> : null}
+                          </View>
+                        )}
+                      </View>
+                      
+                      {(wk.completed && !!blockOrEx.recorded_video_url) && <MiniVideoPlayer url={blockOrEx.recorded_video_url} onExpand={setExpandedVideo} />}
+                      
+                      {(!wk.completed && !!blockOrEx.video_url) && (
+                        <TouchableOpacity onPress={() => Linking.openURL(blockOrEx.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
+                          <Ionicons name="logo-youtube" size={16} color={colors.error || '#EF4444'} />
+                          <Text style={{color: colors.error || '#EF4444', fontSize: isDesktop ? 14 : 12, marginLeft: 5, fontWeight: '700'}}>Ver técnica en vídeo</Text>
+                        </TouchableOpacity>
+                      )}
+                      
+                      {(isTrainer && wk.completed && !wk.observations?.includes('[NO COMPLETADA]')) && (
+                        <FeedbackInputRow 
+                          initialNote={blockOrEx.coach_note} 
+                          onSave={(note: string) => saveCoachNote(wk, idx, note)} 
+                          colors={colors} 
+                          isDesktop={isDesktop}
+                        />
+                      )}
+                    </View>
+                  );
+                }
+              })
+            )}
           </View>
         )}
       </View>
@@ -906,17 +966,14 @@ export default function AthleteDetailScreen() {
         </TouchableOpacity>
       </View>
       
-      {/* RENDERIZADO CONDICIONAL: ESCRITORIO VS MÓVIL */}
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
-          {/* Columna Izquierda: Dashboard/Resumen */}
           <View style={{ flex: 10, borderRightWidth: 1, borderRightColor: colors.border }}>
             <ScrollView showsVerticalScrollIndicator={false}>
               {renderDashboard()}
             </ScrollView>
           </View>
           
-          {/* Columna Derecha: Sesiones */}
           <View style={{ flex: 13 }}>
             <ScrollView showsVerticalScrollIndicator={false}>
               {renderWorkouts()}
@@ -945,7 +1002,6 @@ export default function AthleteDetailScreen() {
         </TouchableOpacity>
       )}
 
-      {/* BOTÓN FLOTANTE GEMINI */}
       {isTrainer && (
         <TouchableOpacity 
           style={[styles.geminiFab, { backgroundColor: colors.primary }]} 
@@ -955,7 +1011,6 @@ export default function AthleteDetailScreen() {
         </TouchableOpacity>
       )}
 
-      {/* MODAL DUPLICAR */}
       <Modal visible={showDuplicateModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -969,7 +1024,6 @@ export default function AthleteDetailScreen() {
         </View>
       </Modal>
 
-      {/* MODAL VÍDEO COMPLETO */}
       <Modal visible={!!expandedVideo} transparent animationType="fade">
         <View style={styles.fullscreenVideoOverlay}>
           <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
@@ -977,14 +1031,12 @@ export default function AthleteDetailScreen() {
         </View>
       </Modal>
 
-      {/* MODAL GEMINI */}
       <GeminiChatModal 
         isVisible={isChatVisible} 
         onClose={() => setChatVisible(false)} 
         athleteContext={summary?.latest_wellness} 
       />
 
-      {/* MODAL WELLNESS */}
       <WellnessModal
         isVisible={showWellnessModal}
         onClose={() => {
