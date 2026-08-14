@@ -767,11 +767,9 @@ export default function HomeScreen() {
                    router.push(`/athlete-detail?id=${item.id}&name=${encodeURIComponent(item.name)}`);
                 }}
                 >
-                {item.avatar_url ? (
-                  <>
-                    {/* AÑADIDO resizeMode */}
-                    <Image source={{ uri: item.avatar_url }} style={styles.avatar} resizeMode="cover" />
-                  </>
+
+                {item.avatar_url && item.avatar_url !== '' ? (
+                  <Image source={{ uri: item.avatar_url }} style={styles.avatar} resizeMode="cover" />
                 ) : (
                   <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
                     <Text style={{color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 18 : 16}}>
