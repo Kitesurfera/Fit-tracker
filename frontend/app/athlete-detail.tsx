@@ -10,6 +10,8 @@ import { Video, ResizeMode } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
+// AÑADIDO: Importamos el TrainerContext para coger la foto al vuelo
+import { useTrainer } from '../src/context/TrainerContext'; 
 import GeminiChatModal from '../src/components/GeminiChatModal'; 
 import WellnessModal from '../src/components/WellnessModal'; 
 
@@ -65,6 +67,11 @@ const MiniVideoPlayer = React.memo(({ url, onExpand }: { url: string, onExpand: 
 export default function AthleteDetailScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
+  
+  // AÑADIDO: Sacamos al atleta seleccionado del contexto
+  const trainerContext = useTrainer();
+  const selectedAthlete = trainerContext?.selectedAthlete;
+  
   const router = useRouter();
   const params = useLocalSearchParams<{ id: string; name: string }>();
   
@@ -939,17 +946,20 @@ export default function AthleteDetailScreen() {
 
   if (loading) return <SafeAreaView style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}><ActivityIndicator size="large" color={colors.primary}/></SafeAreaView>;
 
+  // AÑADIDO: Determinamos qué avatar mostrar en la cabecera
+  const displayAvatar = athlete?.avatar_url || selectedAthlete?.avatar_url;
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        {/* Modificado para redirigir directamente al Home del entrenador */}
         <TouchableOpacity onPress={() => router.replace('/(tabs)/home')}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         
         <View style={styles.headerCenter}>
-          {athlete?.avatar_url ? (
-            <Image source={{ uri: athlete.avatar_url }} style={styles.headerAvatar} />
+          {displayAvatar ? (
+            {/* AÑADIDO resizeMode */}
+            <Image source={{ uri: displayAvatar }} style={styles.headerAvatar} resizeMode="cover" />
           ) : (
             <View style={[styles.headerAvatar, { backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }]}>
               <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 14 }}>
@@ -1055,7 +1065,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 }, 
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, 
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center' },
-  headerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EEE' },
+  headerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EEE', overflow: 'hidden' },
   headerTitle: { fontSize: 22, fontWeight: '900' }, 
   tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, 
   tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, 
