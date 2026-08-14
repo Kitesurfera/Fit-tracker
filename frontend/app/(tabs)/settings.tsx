@@ -8,6 +8,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
@@ -34,6 +35,11 @@ export default function SettingsScreen() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
+
+  // Estados para el modal de recorte / zoom de avatar
+  const [showAvatarModal, setShowAvatarModal] = useState(false);
+  const [pendingAvatarUri, setPendingAvatarUri] = useState<string | null>(null);
+  const [avatarZoom, setAvatarZoom] = useState(1);
   
   // Estado para la elección visual del tema
   const [selectedTheme, setSelectedTheme] = useState<string>(themeMode || 'system');
@@ -92,41 +98,64 @@ export default function SettingsScreen() {
     try {
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.5, // Le bajamos un pelín la calidad para que el texto Base64 no sea tan pesado
-        base64: true, // ¡ESTA ES LA CLAVE PARA WEB!
+        allowsEditing: false, // Manejamos nuestro propio modal de recorte/zoom circular consistente
+        quality: 0.9,
       });
 
-      if (!result.canceled && result.assets) {
-        setUploadingAvatar(true);
-        const asset = result.assets[0];
-        
-        // Creamos la imagen en formato texto
-        const base64Image = `data:image/jpeg;base64,${asset.base64}`;
-        
-        // Intentamos subirla por tu API
-        const uploaded = await api.uploadFile(asset);
-        
-        // Si la API falla o devuelve un blob temporal, forzamos el uso del Base64
-        const finalUrl = typeof uploaded === 'string' && !uploaded.startsWith('blob:') 
-          ? uploaded 
-          : (uploaded?.url || base64Image);
-        
-        setAvatarUrl(finalUrl);
-        
-        // Actualizamos base de datos y contexto
-        if (api.updateProfile) await api.updateProfile({ avatar_url: finalUrl });
-        if (updateUser) updateUser({ ...user, avatar_url: finalUrl });
-        
-        // Extra de seguridad: forzamos que se guarde en el almacenamiento local
-        await AsyncStorage.setItem('cached_avatar', finalUrl);
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        setPendingAvatarUri(result.assets[0].uri);
+        setAvatarZoom(1);
+        setShowAvatarModal(true);
       }
     } catch (error) {
-      if (Platform.OS === 'web') window.alert("Error al subir la imagen.");
-      else Alert.alert("Error", "No se pudo actualizar la foto de perfil.");
+      if (Platform.OS === 'web') window.alert("Error al seleccionar la imagen.");
+      else Alert.alert("Error", "No se pudo seleccionar la imagen.");
+    }
+  };
+
+  const handleConfirmAvatar = async () => {
+    if (!pendingAvatarUri) return;
+    setShowAvatarModal(false);
+    setUploadingAvatar(true);
+
+    try {
+      // Redimensionamos y comprimimos para aligerar la imagen (300x300, JPEG 0.7)
+      const manipulated = await ImageManipulator.manipulateAsync(
+        pendingAvatarUri,
+        [
+          { resize: { width: 300, height: 300 } }
+        ],
+        { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
+      );
+
+      const base64Image = `data:image/jpeg;base64,${manipulated.base64}`;
+      let finalUrl = base64Image;
+
+      try {
+        const uploaded = await api.uploadFile({ uri: manipulated.uri, name: 'avatar.jpg', type: 'image/jpeg' });
+        if (typeof uploaded === 'string' && !uploaded.startsWith('blob:')) {
+          finalUrl = uploaded;
+        } else if (uploaded?.url) {
+          finalUrl = uploaded.url;
+        }
+      } catch (uploadErr) {
+        console.log("Usando base64 directamente debido a respaldo:", uploadErr);
+      }
+
+      setAvatarUrl(finalUrl);
+
+      if (api.updateProfile) await api.updateProfile({ avatar_url: finalUrl });
+      if (updateUser) updateUser({ ...user, avatar_url: finalUrl });
+      await AsyncStorage.setItem('cached_avatar', finalUrl);
+
+      if (Platform.OS === 'web') window.alert("Foto de perfil actualizada.");
+      else Alert.alert("¡Éxito!", "Foto de perfil actualizada correctamente.");
+    } catch (error) {
+      if (Platform.OS === 'web') window.alert("Error al procesar la imagen.");
+      else Alert.alert("Error", "No se pudo procesar la foto de perfil.");
     } finally {
       setUploadingAvatar(false);
+      setPendingAvatarUri(null);
     }
   };
 
@@ -567,6 +596,61 @@ export default function SettingsScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
+      {/* --- MODAL DE AJUSTE Y ZOOM DE AVATAR CIRCULAR --- */}
+      <Modal visible={showAvatarModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={[styles.modalContent, { backgroundColor: colors.surface, alignItems: 'center' }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 8 }]}>Ajustar Foto de Perfil</Text>
+            <Text style={{ color: colors.textSecondary, fontSize: 13, textAlign: 'center', marginBottom: 20 }}>
+              Usa el zoom para encajar tu rostro en el círculo de previsualización.
+            </Text>
+
+            <View style={styles.avatarPreviewCircle}>
+              {pendingAvatarUri && (
+                <Image 
+                  source={{ uri: pendingAvatarUri }} 
+                  style={[styles.avatarPreviewImage, { transform: [{ scale: avatarZoom }] }]} 
+                  resizeMode="cover"
+                />
+              )}
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 25 }}>
+              <TouchableOpacity 
+                style={[styles.zoomBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={() => setAvatarZoom(prev => Math.max(1, prev - 0.2))}
+              >
+                <Ionicons name="remove" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+              <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14, minWidth: 50, textAlign: 'center' }}>
+                {Math.round(avatarZoom * 100)}%
+              </Text>
+              <TouchableOpacity 
+                style={[styles.zoomBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
+                onPress={() => setAvatarZoom(prev => Math.min(3, prev + 0.2))}
+              >
+                <Ionicons name="add" size={20} color={colors.textPrimary} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
+              <TouchableOpacity 
+                style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight, borderWidth: 1, borderColor: colors.border }]} 
+                onPress={() => { setShowAvatarModal(false); setPendingAvatarUri(null); }}
+              >
+                <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.modalBtn, { backgroundColor: colors.primary }]} 
+                onPress={handleConfirmAvatar}
+              >
+                <Text style={{ color: '#FFF', fontWeight: '800' }}>Confirmar y Guardar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       {/* --- MODAL CREADOR / EDITOR DE PÍLDORAS CON ASIGNACIÓN DE DEPORTISTAS --- */}
       <Modal visible={showPillBuilder} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -731,6 +815,10 @@ const styles = StyleSheet.create({
   themeBtnText: { fontSize: 11, fontWeight: '800', marginTop: 6, textTransform: 'uppercase' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
+  avatarPreviewCircle: { width: 220, height: 220, borderRadius: 110, overflow: 'hidden', borderWidth: 4, borderColor: '#3B82F6', backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  avatarPreviewImage: { width: 220, height: 220 },
+  zoomBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
+  modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' },
   pillInput: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16, marginBottom: 15 },
   typeSelector: { flexDirection: 'row', borderRadius: 12, padding: 4, borderWidth: 1 }, 
   typeBtn: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 }, 
