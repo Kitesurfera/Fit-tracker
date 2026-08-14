@@ -10,7 +10,6 @@ import { Video, ResizeMode } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
-// AÑADIDO: Importamos el TrainerContext para coger la foto al vuelo
 import { useTrainer } from '../src/context/TrainerContext'; 
 import GeminiChatModal from '../src/components/GeminiChatModal'; 
 import WellnessModal from '../src/components/WellnessModal'; 
@@ -68,7 +67,6 @@ export default function AthleteDetailScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
   
-  // AÑADIDO: Sacamos al atleta seleccionado del contexto
   const trainerContext = useTrainer();
   const selectedAthlete = trainerContext?.selectedAthlete;
   
@@ -404,6 +402,9 @@ export default function AthleteDetailScreen() {
     Linking.openURL(`https://wa.me/${athlete?.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`);
   };
 
+  // AQUÍ RECUPERAMOS LA FOTO QUE EL ATLETA CONFIGURÓ EN SU SETTINGS
+  const displayAvatar = athlete?.avatar_url || selectedAthlete?.avatar_url || null;
+
   const renderDashboard = () => {
     const discomfortsObj = summary?.latest_wellness?.discomforts || {};
     const discomfortsEntries = Object.entries(discomfortsObj);
@@ -414,6 +415,23 @@ export default function AthleteDetailScreen() {
     return (
       <View style={[styles.tabContainer, isDesktop && { paddingBottom: 40 }]}>
         
+        {/* CABECERA VISUAL DEL PERFIL CON LA FOTO DEL ATLETA */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 25, marginTop: 10 }}>
+          {displayAvatar ? (
+            <Image source={{ uri: displayAvatar }} style={{ width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: colors.primary }} resizeMode="cover" />
+          ) : (
+            <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: colors.primary + '20', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: colors.primary }}>
+              <Text style={{ color: colors.primary, fontSize: 32, fontWeight: '900' }}>{params.name?.charAt(0).toUpperCase()}</Text>
+            </View>
+          )}
+          <View style={{ marginLeft: 20, flex: 1 }}>
+            <Text style={{ fontSize: 28, fontWeight: '900', color: colors.textPrimary }}>{params.name}</Text>
+            <Text style={{ fontSize: 13, color: colors.textSecondary, fontWeight: '800', marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 }}>
+              {athlete?.sport || 'Deportista General'}
+            </Text>
+          </View>
+        </View>
+
         {!!summary?.is_injured && (
           <View style={[styles.alert, { backgroundColor: (colors.error || '#EF4444') + '10', borderColor: colors.error || '#EF4444' }]}>
             <Ionicons name="warning" size={22} color={colors.error || '#EF4444'} />
@@ -946,8 +964,6 @@ export default function AthleteDetailScreen() {
 
   if (loading) return <SafeAreaView style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}><ActivityIndicator size="large" color={colors.primary}/></SafeAreaView>;
 
-  // AÑADIDO: Determinamos qué avatar mostrar en la cabecera
-  const displayAvatar = athlete?.avatar_url || selectedAthlete?.avatar_url;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
@@ -958,10 +974,7 @@ export default function AthleteDetailScreen() {
         
         <View style={styles.headerCenter}>
           {displayAvatar ? (
-            <>
-              {/* AÑADIDO resizeMode */}
-              <Image source={{ uri: displayAvatar }} style={styles.headerAvatar} resizeMode="cover" />
-            </>
+            <Image source={{ uri: displayAvatar }} style={styles.headerAvatar} resizeMode="cover" />
           ) : (
             <View style={[styles.headerAvatar, { backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }]}>
               <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 14 }}>
