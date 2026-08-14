@@ -94,18 +94,33 @@ export default function SettingsScreen() {
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [1, 1],
-        quality: 0.6,
+        quality: 0.5, // Le bajamos un pelín la calidad para que el texto Base64 no sea tan pesado
+        base64: true, // ¡ESTA ES LA CLAVE PARA WEB!
       });
 
       if (!result.canceled && result.assets) {
         setUploadingAvatar(true);
         const asset = result.assets[0];
+        
+        // Creamos la imagen en formato texto
+        const base64Image = `data:image/jpeg;base64,${asset.base64}`;
+        
+        // Intentamos subirla por tu API
         const uploaded = await api.uploadFile(asset);
-        const finalUrl = typeof uploaded === 'string' ? uploaded : (uploaded?.url || asset.uri);
+        
+        // Si la API falla o devuelve un blob temporal, forzamos el uso del Base64
+        const finalUrl = typeof uploaded === 'string' && !uploaded.startsWith('blob:') 
+          ? uploaded 
+          : (uploaded?.url || base64Image);
         
         setAvatarUrl(finalUrl);
+        
+        // Actualizamos base de datos y contexto
         if (api.updateProfile) await api.updateProfile({ avatar_url: finalUrl });
         if (updateUser) updateUser({ ...user, avatar_url: finalUrl });
+        
+        // Extra de seguridad: forzamos que se guarde en el almacenamiento local
+        await AsyncStorage.setItem('cached_avatar', finalUrl);
       }
     } catch (error) {
       if (Platform.OS === 'web') window.alert("Error al subir la imagen.");
