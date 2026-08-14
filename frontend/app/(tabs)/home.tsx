@@ -576,6 +576,7 @@ export default function HomeScreen() {
       <View style={styles.headerRow}>
         <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
           {user?.avatar_url ? (
+            {/* AÑADIDO resizeMode */}
             <Image source={{ uri: user.avatar_url }} style={styles.dashboardAvatar} resizeMode="cover" />
           ) : (
             <View style={[styles.dashboardAvatar, { backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center' }]}>
@@ -765,6 +766,7 @@ export default function HomeScreen() {
                 }}
                 >
                 {item.avatar_url ? (
+                  {/* AÑADIDO resizeMode */}
                   <Image source={{ uri: item.avatar_url }} style={styles.avatar} resizeMode="cover" />
                 ) : (
                   <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
