@@ -769,8 +769,8 @@ export default function AthleteDetailScreen() {
 
             {wk.observations?.includes('[NO COMPLETADA]') && (
               <View style={{ backgroundColor: '#EF444420', padding: 12, borderRadius: 10, marginBottom: 15, borderWidth: 1, borderColor: '#EF4444' }}>
-                   <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: isDesktop ? 13 : 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
-                   <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontStyle: 'italic' }}>"{wk.observations.replace('[NO COMPLETADA] Motivo: ', '')}"</Text>
+                  <Text style={{ color: '#EF4444', fontWeight: '800', fontSize: isDesktop ? 13 : 11, marginBottom: 4 }}>MOTIVO DE CANCELACIÓN:</Text>
+                  <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontStyle: 'italic' }}>"{wk.observations.replace('[NO COMPLETADA] Motivo: ', '')}"</Text>
               </View>
             )}
 
@@ -958,8 +958,10 @@ export default function AthleteDetailScreen() {
         
         <View style={styles.headerCenter}>
           {displayAvatar ? (
-            {/* AÑADIDO resizeMode */}
-            <Image source={{ uri: displayAvatar }} style={styles.headerAvatar} resizeMode="cover" />
+            <>
+              {/* AÑADIDO resizeMode */}
+              <Image source={{ uri: displayAvatar }} style={styles.headerAvatar} resizeMode="cover" />
+            </>
           ) : (
             <View style={[styles.headerAvatar, { backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }]}>
               <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 14 }}>
