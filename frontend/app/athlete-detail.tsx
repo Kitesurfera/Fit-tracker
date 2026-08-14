@@ -10,6 +10,7 @@ import { Video, ResizeMode } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
+// AÑADIDO: Importamos el TrainerContext para coger la foto al vuelo
 import { useTrainer } from '../src/context/TrainerContext'; 
 import GeminiChatModal from '../src/components/GeminiChatModal'; 
 import WellnessModal from '../src/components/WellnessModal'; 
@@ -43,7 +44,6 @@ const FeedbackInputRow = React.memo(({ initialNote, onSave, colors, isDesktop }:
       />
       <TouchableOpacity 
         style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} 
-        onSave={(note: string) => saveHiitCoachNote(wk, idx, eIdx, note)}
         onPress={() => onSave(note)}
       >
         <Ionicons name={isSaved ? "checkmark-done" : "send"} size={16} color="#FFF" />
@@ -68,6 +68,7 @@ export default function AthleteDetailScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
   
+  // AÑADIDO: Sacamos al atleta seleccionado del contexto
   const trainerContext = useTrainer();
   const selectedAthlete = trainerContext?.selectedAthlete;
   
@@ -945,6 +946,7 @@ export default function AthleteDetailScreen() {
 
   if (loading) return <SafeAreaView style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}><ActivityIndicator size="large" color={colors.primary}/></SafeAreaView>;
 
+  // AÑADIDO: Determinamos qué avatar mostrar en la cabecera
   const displayAvatar = athlete?.avatar_url || selectedAthlete?.avatar_url;
 
   return (
@@ -956,6 +958,7 @@ export default function AthleteDetailScreen() {
         
         <View style={styles.headerCenter}>
           {displayAvatar ? (
+            {/* AÑADIDO resizeMode */}
             <Image source={{ uri: displayAvatar }} style={styles.headerAvatar} resizeMode="cover" />
           ) : (
             <View style={[styles.headerAvatar, { backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }]}>
