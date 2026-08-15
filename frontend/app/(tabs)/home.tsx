@@ -781,7 +781,12 @@ export default function HomeScreen() {
                 >
 
                 {avatarUrl ? (
-                  <Image source={{ uri: avatarUrl }} style={styles.avatar} resizeMode="cover" />
+                  <Image 
+                    key={avatarUrl} 
+                    source={{ uri: avatarUrl }} 
+                    style={styles.avatar} 
+                    resizeMode="cover" 
+                  />
                 ) : (
                   <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
                     <Text style={{color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 18 : 16}}>
