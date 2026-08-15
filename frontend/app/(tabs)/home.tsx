@@ -49,6 +49,14 @@ const extractDateString = (dateVal: any) => {
   return null;
 };
 
+// Utilidad para limpiar URLs de avatar
+const getValidAvatarUrl = (url: any) => {
+  if (url && typeof url === 'string' && url.trim() !== '' && url !== 'null') {
+    return url;
+  }
+  return null;
+};
+
 type ReadinessStatus = 'RED' | 'YELLOW' | 'GREEN' | 'GRAY';
 
 export default function HomeScreen() {
@@ -571,100 +579,103 @@ export default function HomeScreen() {
     );
   };
 
-  const renderAthleteDashboard = () => (
-    <View style={isDesktop ? { padding: 20, paddingRight: 30 } : styles.container}>
-      <View style={styles.headerRow}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-          {user?.avatar_url ? (
-            <>
-              {/* AÑADIDO resizeMode */}
-              <Image source={{ uri: user.avatar_url }} style={styles.dashboardAvatar} resizeMode="cover" />
-            </>
-          ) : (
-            <View style={[styles.dashboardAvatar, { backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center' }]}>
-              <Text style={{color: colors.primary, fontWeight: '900', fontSize: 20}}>{firstName.charAt(0).toUpperCase()}</Text>
-            </View>
-          )}
-          <View style={{ marginLeft: 15 }}>
-            <Text style={[styles.dateLabel, { color: colors.textSecondary }, isDesktop && { fontSize: 13 }]}>{todayLabel}</Text>
-            <Text style={[styles.welcomeText, { color: colors.textPrimary }, isDesktop && { fontSize: 32 }]}>Hola, {firstName} 💪</Text>
-          </View>
-        </View>
-        <TouchableOpacity onPress={handleManualUpdate} disabled={updating} style={styles.refreshBtn}>
-          {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={24} color={colors.primary} />}
-        </TouchableOpacity>
-      </View>
-      
-      <View style={[styles.tipCard, { backgroundColor: colors.surfaceHighlight }]}>
-        <Ionicons name="bulb-outline" size={16} color={colors.primary} />
-        <Text style={[styles.tipText, { color: colors.textPrimary }, isDesktop && { fontSize: 15 }]}>{tip}</Text>
-      </View>
-      
-      {isFemale && phaseInfo && (
-        <View style={{ marginBottom: 25 }}>
-          <Text style={[styles.sectionTitle, isDesktop && { fontSize: 13 }]}>BIOLOGÍA Y RENDIMIENTO (DÍA {phaseInfo.day})</Text>
-          <View style={[styles.insightCard, { borderColor: phaseInfo.color, backgroundColor: colors.surface }]}>
-            <View style={[styles.insightHeader, { backgroundColor: phaseInfo.color + '15' }]}>
-              <Ionicons name={phaseInfo.icon as any} size={20} color={phaseInfo.color} />
-              <Text style={[styles.insightTitle, { color: phaseInfo.color }]}>{phaseInfo.name}</Text>
-            </View>
-            <View style={styles.insightContent}>
-              <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Entrenamiento:</Text> {phaseInfo.training}</Text>
-              <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Prevención:</Text> {phaseInfo.risk}</Text>
-              <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Nutrición:</Text> {phaseInfo.nutrition}</Text>
-            </View>
-          </View>
-        </View>
-      )}
+  const renderAthleteDashboard = () => {
+    const userAvatar = getValidAvatarUrl(user?.avatar_url);
 
-      <TouchableOpacity disabled={!activeMicro} onPress={() => setViewMicroInfo(activeMicro)} style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
-        <View style={styles.phaseInfo}>
-          <Text style={[styles.phaseLabel, isDesktop && { fontSize: 12 }]}>PLANIFICACIÓN ACTUAL</Text>
-          <Text style={[styles.phaseName, isDesktop && { fontSize: 24 }]}>{activeMicro ? activeMicro.nombre : 'Periodización libre'}</Text>
-          <Text style={[styles.macroRef, isDesktop && { fontSize: 14 }]}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Entrena con cabeza'}</Text>
-        </View>
-        <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'BASE'}</Text></View>
-        {!!activeMicro && <Ionicons name="chevron-forward" size={20} color="#FFF" style={{ marginLeft: 10, opacity: 0.8 }} />}
-      </TouchableOpacity>
-      
-      <View style={styles.metricsGrid}>
-        <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-          <Ionicons name="flash-outline" size={isDesktop ? 26 : 22} color={colors.success || '#10B981'} />
-          <Text style={[styles.metricValue, { color: colors.textPrimary }, isDesktop && { fontSize: 26 }]}>{summary?.latest_wellness?.fatigue || '-'}</Text>
-          <Text style={[styles.metricLabel, { color: colors.textSecondary }, isDesktop && { fontSize: 11 }]}>NIVEL FATIGA</Text>
-        </View>
-        <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
-          <Ionicons name="ribbon-outline" size={isDesktop ? 26 : 22} color={colors.primary} />
-          <Text style={[styles.metricValue, { color: colors.textPrimary }, isDesktop && { fontSize: 26 }]}>{summary?.completion_rate || '0'}%</Text>
-          <Text style={[styles.metricLabel, { color: colors.textSecondary }, isDesktop && { fontSize: 11 }]}>ADHERENCIA</Text>
-        </View>
-      </View>
-      
-      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25 }}>
-        <TouchableOpacity style={[styles.fullBtn, { backgroundColor: colors.surface, flex: 1, marginBottom: 0 }]} onPress={() => setShowWellness(true)}>
-          <Ionicons name="fitness-outline" size={20} color={colors.success || '#10B981'} />
-          <Text style={[styles.actionText, { color: colors.textPrimary, fontSize: isDesktop ? 15 : 13 }]}>Anotar Fatiga</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.fullBtn, { backgroundColor: '#25D366', flex: 1, marginBottom: 0 }]} onPress={handleShareStatus}>
-          <Ionicons name="logo-whatsapp" size={20} color="#FFF" />
-          <Text style={[styles.actionText, { color: '#FFF', fontSize: isDesktop ? 15 : 13 }]}>Enviar Status</Text>
-        </TouchableOpacity>
-      </View>
-      
-      {hasUnreadFeedback && (
-        <TouchableOpacity style={[styles.feedbackAlertCard, { backgroundColor: colors.warning || '#F59E0B' }]} onPress={handleFeedbackClick}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-            <Ionicons name="chatbubbles" size={28} color="#FFF" />
-            <View style={{ flex: 1 }}>
-              <Text style={{ color: '#FFF', fontWeight: '900', fontSize: isDesktop ? 18 : 16 }}>¡TIENES FEEDBACK NUEVO!</Text>
-              <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: isDesktop ? 15 : 13, marginTop: 2 }}>El coach ha comentado tu técnica.</Text>
+    return (
+      <View style={isDesktop ? { padding: 20, paddingRight: 30 } : styles.container}>
+        <View style={styles.headerRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            {userAvatar ? (
+              <>
+                <Image source={{ uri: userAvatar }} style={styles.dashboardAvatar} resizeMode="cover" />
+              </>
+            ) : (
+              <View style={[styles.dashboardAvatar, { backgroundColor: colors.primary + '15', justifyContent: 'center', alignItems: 'center' }]}>
+                <Text style={{color: colors.primary, fontWeight: '900', fontSize: 20}}>{firstName.charAt(0).toUpperCase()}</Text>
+              </View>
+            )}
+            <View style={{ marginLeft: 15 }}>
+              <Text style={[styles.dateLabel, { color: colors.textSecondary }, isDesktop && { fontSize: 13 }]}>{todayLabel}</Text>
+              <Text style={[styles.welcomeText, { color: colors.textPrimary }, isDesktop && { fontSize: 32 }]}>Hola, {firstName} 💪</Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color="#FFF" />
           </View>
+          <TouchableOpacity onPress={handleManualUpdate} disabled={updating} style={styles.refreshBtn}>
+            {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={24} color={colors.primary} />}
+          </TouchableOpacity>
+        </View>
+        
+        <View style={[styles.tipCard, { backgroundColor: colors.surfaceHighlight }]}>
+          <Ionicons name="bulb-outline" size={16} color={colors.primary} />
+          <Text style={[styles.tipText, { color: colors.textPrimary }, isDesktop && { fontSize: 15 }]}>{tip}</Text>
+        </View>
+        
+        {isFemale && phaseInfo && (
+          <View style={{ marginBottom: 25 }}>
+            <Text style={[styles.sectionTitle, isDesktop && { fontSize: 13 }]}>BIOLOGÍA Y RENDIMIENTO (DÍA {phaseInfo.day})</Text>
+            <View style={[styles.insightCard, { borderColor: phaseInfo.color, backgroundColor: colors.surface }]}>
+              <View style={[styles.insightHeader, { backgroundColor: phaseInfo.color + '15' }]}>
+                <Ionicons name={phaseInfo.icon as any} size={20} color={phaseInfo.color} />
+                <Text style={[styles.insightTitle, { color: phaseInfo.color }]}>{phaseInfo.name}</Text>
+              </View>
+              <View style={styles.insightContent}>
+                <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Entrenamiento:</Text> {phaseInfo.training}</Text>
+                <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Prevención:</Text> {phaseInfo.risk}</Text>
+                <Text style={[styles.insightText, { color: colors.textSecondary }]}><Text style={{fontWeight: '800', color: colors.textPrimary}}>Nutrición:</Text> {phaseInfo.nutrition}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+
+        <TouchableOpacity disabled={!activeMicro} onPress={() => setViewMicroInfo(activeMicro)} style={[styles.phaseCard, { backgroundColor: activeMicro?.color || colors.primary }]}>
+          <View style={styles.phaseInfo}>
+            <Text style={[styles.phaseLabel, isDesktop && { fontSize: 12 }]}>PLANIFICACIÓN ACTUAL</Text>
+            <Text style={[styles.phaseName, isDesktop && { fontSize: 24 }]}>{activeMicro ? activeMicro.nombre : 'Periodización libre'}</Text>
+            <Text style={[styles.macroRef, isDesktop && { fontSize: 14 }]}>{activeMicro ? `Macro: ${activeMicro.macroNombre}` : 'Entrena con cabeza'}</Text>
+          </View>
+          <View style={styles.phaseBadge}><Text style={styles.phaseBadgeText}>{activeMicro?.tipo || 'BASE'}</Text></View>
+          {!!activeMicro && <Ionicons name="chevron-forward" size={20} color="#FFF" style={{ marginLeft: 10, opacity: 0.8 }} />}
         </TouchableOpacity>
-      )}
-    </View>
-  );
+        
+        <View style={styles.metricsGrid}>
+          <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
+            <Ionicons name="flash-outline" size={isDesktop ? 26 : 22} color={colors.success || '#10B981'} />
+            <Text style={[styles.metricValue, { color: colors.textPrimary }, isDesktop && { fontSize: 26 }]}>{summary?.latest_wellness?.fatigue || '-'}</Text>
+            <Text style={[styles.metricLabel, { color: colors.textSecondary }, isDesktop && { fontSize: 11 }]}>NIVEL FATIGA</Text>
+          </View>
+          <View style={[styles.metricCard, { backgroundColor: colors.surface }]}>
+            <Ionicons name="ribbon-outline" size={isDesktop ? 26 : 22} color={colors.primary} />
+            <Text style={[styles.metricValue, { color: colors.textPrimary }, isDesktop && { fontSize: 26 }]}>{summary?.completion_rate || '0'}%</Text>
+            <Text style={[styles.metricLabel, { color: colors.textSecondary }, isDesktop && { fontSize: 11 }]}>ADHERENCIA</Text>
+          </View>
+        </View>
+        
+        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 25 }}>
+          <TouchableOpacity style={[styles.fullBtn, { backgroundColor: colors.surface, flex: 1, marginBottom: 0 }]} onPress={() => setShowWellness(true)}>
+            <Ionicons name="fitness-outline" size={20} color={colors.success || '#10B981'} />
+            <Text style={[styles.actionText, { color: colors.textPrimary, fontSize: isDesktop ? 15 : 13 }]}>Anotar Fatiga</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.fullBtn, { backgroundColor: '#25D366', flex: 1, marginBottom: 0 }]} onPress={handleShareStatus}>
+            <Ionicons name="logo-whatsapp" size={20} color="#FFF" />
+            <Text style={[styles.actionText, { color: '#FFF', fontSize: isDesktop ? 15 : 13 }]}>Enviar Status</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {hasUnreadFeedback && (
+          <TouchableOpacity style={[styles.feedbackAlertCard, { backgroundColor: colors.warning || '#F59E0B' }]} onPress={handleFeedbackClick}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Ionicons name="chatbubbles" size={28} color="#FFF" />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: '#FFF', fontWeight: '900', fontSize: isDesktop ? 18 : 16 }}>¡TIENES FEEDBACK NUEVO!</Text>
+                <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: isDesktop ? 15 : 13, marginTop: 2 }}>El coach ha comentado tu técnica.</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={24} color="#FFF" />
+            </View>
+          </TouchableOpacity>
+        )}
+      </View>
+    );
+  };
 
   const renderAthleteWorkouts = (pendingWorkouts: any[], completedWorkouts: any[]) => (
     <View style={isDesktop ? { padding: 20, paddingLeft: 30 } : {}}>
@@ -752,6 +763,7 @@ export default function HomeScreen() {
         }
         renderItem={({ item }) => {
           const colorHex = getReadinessColorHex(item.readinessColor);
+          const avatarUrl = getValidAvatarUrl(item.avatar_url);
 
           return (
             <View style={[
@@ -768,8 +780,8 @@ export default function HomeScreen() {
                 }}
                 >
 
-                {item.avatar_url && item.avatar_url !== '' ? (
-                  <Image source={{ uri: item.avatar_url }} style={styles.avatar} resizeMode="cover" />
+                {avatarUrl ? (
+                  <Image source={{ uri: avatarUrl }} style={styles.avatar} resizeMode="cover" />
                 ) : (
                   <View style={[styles.avatar, { backgroundColor: colors.primary + '15' }]}>
                     <Text style={{color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 18 : 16}}>
@@ -777,6 +789,7 @@ export default function HomeScreen() {
                     </Text>
                   </View>
                 )}
+                
                 <View style={{flex: 1}}>
                   <Text style={[styles.cardTitle, { color: colors.textPrimary }, isDesktop && { fontSize: 18 }]}>
                     {item.name}
