@@ -28,9 +28,9 @@ const extractDateString = (dateVal: any) => {
   return null;
 };
 
-// Utilidad para limpiar URLs de avatar
+// Utilidad robusta para limpiar URLs de avatar (Soporta Cloudinary y URLs web)
 const getValidAvatarUrl = (url: any) => {
-  if (url && typeof url === 'string' && url.trim() !== '' && url !== 'null') {
+  if (url && typeof url === 'string' && url.trim() !== '' && url !== 'null' && url !== 'undefined') {
     return url;
   }
   return null;
@@ -410,7 +410,7 @@ export default function AthleteDetailScreen() {
     Linking.openURL(`https://wa.me/${athlete?.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`);
   };
 
-  // URL validada del avatar
+  // URL validada del avatar compatible con Cloudinary
   const displayAvatar = getValidAvatarUrl(athlete?.avatar_url) || getValidAvatarUrl(selectedAthlete?.avatar_url);
 
   const renderDashboard = () => {
@@ -1087,7 +1087,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 }, 
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, 
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center' },
-  headerAvatar: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden' }, // Removido bg por defecto para dejar que Image lo pinte o el placeholder
+  headerAvatar: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden' }, 
   headerTitle: { fontSize: 22, fontWeight: '900' }, 
   tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, 
   tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, 
