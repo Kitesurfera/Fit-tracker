@@ -123,9 +123,6 @@ export default function AthleteDetailScreen() {
         api.getSummary(params.id!),
         api.getWellnessHistory(params.id!)
       ]);
-      
-      console.log("DATOS DEL ATLETA RECIBIDOS EN DETALLE:", ath);
-      
       setAthlete(ath);
       setWorkouts(Array.isArray(wk) ? wk : []);
       setSummary(sum);
@@ -136,8 +133,6 @@ export default function AthleteDetailScreen() {
       setLoading(false); 
     }
   };
-
-
 
   const toggleWorkout = useCallback((id: string) => {
     setExpandedWorkouts(prev => ({ ...prev, [id]: !prev[id] }));
