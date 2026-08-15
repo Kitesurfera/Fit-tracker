@@ -28,6 +28,14 @@ const extractDateString = (dateVal: any) => {
   return null;
 };
 
+// Utilidad para limpiar URLs de avatar
+const getValidAvatarUrl = (url: any) => {
+  if (url && typeof url === 'string' && url.trim() !== '' && url !== 'null') {
+    return url;
+  }
+  return null;
+};
+
 const FeedbackInputRow = React.memo(({ initialNote, onSave, colors, isDesktop }: any) => {
   const [note, setNote] = useState(initialNote || '');
   const isSaved = note === initialNote && !!initialNote;
@@ -402,8 +410,8 @@ export default function AthleteDetailScreen() {
     Linking.openURL(`https://wa.me/${athlete?.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`);
   };
 
-  // AQUÍ RECUPERAMOS LA FOTO QUE EL ATLETA CONFIGURÓ EN SU SETTINGS
-  const displayAvatar = athlete?.avatar_url || selectedAthlete?.avatar_url || null;
+  // URL validada del avatar
+  const displayAvatar = getValidAvatarUrl(athlete?.avatar_url) || getValidAvatarUrl(selectedAthlete?.avatar_url);
 
   const renderDashboard = () => {
     const discomfortsObj = summary?.latest_wellness?.discomforts || {};
@@ -964,7 +972,6 @@ export default function AthleteDetailScreen() {
 
   if (loading) return <SafeAreaView style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}><ActivityIndicator size="large" color={colors.primary}/></SafeAreaView>;
 
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
@@ -1080,7 +1087,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 }, 
   header: { flexDirection: 'row', justifyContent: 'space-between', padding: 20, alignItems: 'center' }, 
   headerCenter: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center' },
-  headerAvatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EEE', overflow: 'hidden' },
+  headerAvatar: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden' }, // Removido bg por defecto para dejar que Image lo pinte o el placeholder
   headerTitle: { fontSize: 22, fontWeight: '900' }, 
   tabsRow: { flexDirection: 'row', justifyContent: 'space-around', borderBottomWidth: 1, borderBottomColor: 'rgba(0,0,0,0.05)' }, 
   tab: { paddingVertical: 15, flex: 1, alignItems: 'center' }, 
