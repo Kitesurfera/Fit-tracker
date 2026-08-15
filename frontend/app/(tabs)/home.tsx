@@ -765,6 +765,12 @@ export default function HomeScreen() {
           const colorHex = getReadinessColorHex(item.readinessColor);
           const avatarUrl = getValidAvatarUrl(item.avatar_url);
 
+          useEffect(() => {
+          if (athletes.length > 0) {
+            console.log("Datos del primer atleta en Home:", athletes[0]);
+          }
+        }, [athletes]);
+
           return (
             <View style={[
               styles.athleteCard, 
