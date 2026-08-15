@@ -38,7 +38,7 @@ export default function SettingsScreen() {
 
   // Estados para el modal de recorte / zoom de avatar
   const [showAvatarModal, setShowAvatarModal] = useState(false);
-  const [pendingAvatarUri, setPendingAvatarUri] = useState<string | null>(null);
+  const [pendingAvatarData, setPendingAvatarData] = useState<{uri: string, width: number, height: number} | null>(null);
   const [avatarZoom, setAvatarZoom] = useState(1);
   
   // Estado para la elección visual del tema
@@ -98,12 +98,13 @@ export default function SettingsScreen() {
     try {
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false, // Manejamos nuestro propio modal de recorte/zoom circular consistente
-        quality: 0.9,
+        allowsEditing: false, 
+        quality: 1, // Cargamos la máxima calidad inicialmente
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
-        setPendingAvatarUri(result.assets[0].uri);
+        const asset = result.assets[0];
+        setPendingAvatarData({ uri: asset.uri, width: asset.width, height: asset.height });
         setAvatarZoom(1);
         setShowAvatarModal(true);
       }
@@ -114,15 +115,27 @@ export default function SettingsScreen() {
   };
 
   const handleConfirmAvatar = async () => {
-    if (!pendingAvatarUri) return;
+    if (!pendingAvatarData) return;
     setShowAvatarModal(false);
     setUploadingAvatar(true);
 
     try {
-      // Redimensionamos y comprimimos para aligerar la imagen (300x300, JPEG 0.7)
+      // 1. Calculamos el recorte cuadrado central perfecto basado en las dimensiones originales
+      const { width, height, uri } = pendingAvatarData;
+      const minDimension = Math.min(width, height);
+      
+      // Aplicamos el factor de zoom (inverso, porque al hacer zoom queremos un área más pequeña de la imagen original)
+      const cropSize = minDimension / avatarZoom; 
+      
+      // Calculamos el origen (X, Y) para centrar el recorte
+      const originX = (width - cropSize) / 2;
+      const originY = (height - cropSize) / 2;
+
+      // 2. Manipulamos: Recortamos cuadrado central, redimensionamos a 300x300 y comprimimos
       const manipulated = await ImageManipulator.manipulateAsync(
-        pendingAvatarUri,
+        uri,
         [
+          { crop: { originX, originY, width: cropSize, height: cropSize } },
           { resize: { width: 300, height: 300 } }
         ],
         { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
@@ -155,7 +168,7 @@ export default function SettingsScreen() {
       else Alert.alert("Error", "No se pudo procesar la foto de perfil.");
     } finally {
       setUploadingAvatar(false);
-      setPendingAvatarUri(null);
+      setPendingAvatarData(null);
     }
   };
 
@@ -605,10 +618,10 @@ export default function SettingsScreen() {
               Usa el zoom para encajar tu rostro en el círculo de previsualización.
             </Text>
 
-            <View style={styles.avatarPreviewCircle}>
-              {pendingAvatarUri && (
+            <View style={[styles.avatarPreviewCircle, { borderColor: colors.primary }]}>
+              {pendingAvatarData && (
                 <Image 
-                  source={{ uri: pendingAvatarUri }} 
+                  source={{ uri: pendingAvatarData.uri }} 
                   style={[styles.avatarPreviewImage, { transform: [{ scale: avatarZoom }] }]} 
                   resizeMode="cover"
                 />
@@ -636,7 +649,7 @@ export default function SettingsScreen() {
             <View style={{ flexDirection: 'row', gap: 12, width: '100%' }}>
               <TouchableOpacity 
                 style={[styles.modalBtn, { backgroundColor: colors.surfaceHighlight, borderWidth: 1, borderColor: colors.border }]} 
-                onPress={() => { setShowAvatarModal(false); setPendingAvatarUri(null); }}
+                onPress={() => { setShowAvatarModal(false); setPendingAvatarData(null); }}
               >
                 <Text style={{ color: colors.textPrimary, fontWeight: '700' }}>Cancelar</Text>
               </TouchableOpacity>
@@ -815,8 +828,9 @@ const styles = StyleSheet.create({
   themeBtnText: { fontSize: 11, fontWeight: '800', marginTop: 6, textTransform: 'uppercase' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
-  avatarPreviewCircle: { width: 220, height: 220, borderRadius: 110, overflow: 'hidden', borderWidth: 4, borderColor: '#3B82F6', backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  avatarPreviewImage: { width: 220, height: 220 },
+  avatarPreviewCircle: { width: 220, height: 220, borderRadius: 110, overflow: 'hidden', borderWidth: 4, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  // Se ha cambiado a dimensiones de la imagen ajustada a la capa contenedora 100% respetando el cover
+  avatarPreviewImage: { width: '100%', height: '100%' }, 
   zoomBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' },
   pillInput: { borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16, marginBottom: 15 },
