@@ -99,7 +99,7 @@ export default function SettingsScreen() {
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: false, 
-        quality: 1, // Cargamos la máxima calidad inicialmente
+        quality: 1, 
       });
 
       if (!result.canceled && result.assets && result.assets.length > 0) {
@@ -120,18 +120,13 @@ export default function SettingsScreen() {
     setUploadingAvatar(true);
 
     try {
-      // 1. Calculamos el recorte cuadrado central perfecto basado en las dimensiones originales
       const { width, height, uri } = pendingAvatarData;
       const minDimension = Math.min(width, height);
-      
-      // Aplicamos el factor de zoom (inverso, porque al hacer zoom queremos un área más pequeña de la imagen original)
       const cropSize = minDimension / avatarZoom; 
       
-      // Calculamos el origen (X, Y) para centrar el recorte
       const originX = (width - cropSize) / 2;
       const originY = (height - cropSize) / 2;
 
-      // 2. Manipulamos: Recortamos cuadrado central, redimensionamos a 300x300 y comprimimos
       const manipulated = await ImageManipulator.manipulateAsync(
         uri,
         [
@@ -142,18 +137,42 @@ export default function SettingsScreen() {
       );
 
       const base64Image = `data:image/jpeg;base64,${manipulated.base64}`;
-      let finalUrl = base64Image;
+      let finalUrl = '';
+
+      // -------------------------------------------------------------
+      // SOLUCIÓN CLOUDINARY DIRECTA DESDE EL FRONTEND
+      // -------------------------------------------------------------
+      // TODO: Rellena estas dos variables con tus datos de Cloudinary
+      const CLOUD_NAME = 'slsdfq8t'; 
+      const UPLOAD_PRESET = 'fittracker_preset'; // IMPORTANTE: El preset debe estar en modo "unsigned"
+
+      const data = new FormData();
+      data.append('file', base64Image);
+      data.append('upload_preset', UPLOAD_PRESET);
+      data.append('cloud_name', CLOUD_NAME);
 
       try {
-        const uploaded = await api.uploadFile({ uri: manipulated.uri, name: 'avatar.jpg', type: 'image/jpeg' });
-        if (typeof uploaded === 'string' && !uploaded.startsWith('blob:')) {
-          finalUrl = uploaded;
-        } else if (uploaded?.url) {
-          finalUrl = uploaded.url;
+        const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`, {
+          method: 'POST',
+          body: data,
+        });
+
+        const cloudRes = await res.json();
+        
+        if (cloudRes.secure_url) {
+          finalUrl = cloudRes.secure_url;
+        } else {
+          throw new Error(cloudRes.error?.message || "No se pudo subir a Cloudinary");
         }
       } catch (uploadErr) {
-        console.log("Usando base64 directamente debido a respaldo:", uploadErr);
+        console.log("Error Cloudinary:", uploadErr);
+        if (Platform.OS === 'web') window.alert("Error al subir imagen a la nube.");
+        else Alert.alert("Error", "No se pudo subir la imagen a la nube.");
+        setUploadingAvatar(false);
+        setPendingAvatarData(null);
+        return; // Detenemos la función para no guardar datos rotos
       }
+      // -------------------------------------------------------------
 
       setAvatarUrl(finalUrl);
 
@@ -829,7 +848,6 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
   avatarPreviewCircle: { width: 220, height: 220, borderRadius: 110, overflow: 'hidden', borderWidth: 4, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  // Se ha cambiado a dimensiones de la imagen ajustada a la capa contenedora 100% respetando el cover
   avatarPreviewImage: { width: '100%', height: '100%' }, 
   zoomBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
   modalBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center' },
