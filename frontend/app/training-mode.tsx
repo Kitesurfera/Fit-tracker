@@ -119,6 +119,12 @@ export default function TrainingModeScreen() {
   const [tradSide, setTradSide] = useState<1 | 2>(1); 
   
   const [logs, setLogs] = useState<Record<number, {weight: string, reps: string, note?: string, coach_note?: string}>>({});
+  
+  // Estados temporales para los inputs de registro
+  const [tempWeight, setTempWeight] = useState('');
+  const [tempReps, setTempReps] = useState('');
+  const [tempNote, setTempNote] = useState('');
+
   const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string, coach_note?: string}>>({});
   
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
@@ -197,6 +203,40 @@ export default function TrainingModeScreen() {
     if (secs === 0) return String(durStr);
     const reduced = Math.max(1, Math.floor(secs * 0.8));
     return `${reduced}s`;
+  };
+
+  // Limpiar inputs temporales al cambiar de ejercicio
+  useEffect(() => {
+    setTempWeight('');
+    setTempReps('');
+    setTempNote('');
+  }, [currentExIndex]);
+
+  // Función para guardar los datos de los text inputs al presionar el botón
+  const handleSaveActiveLogs = () => {
+    if (!tempWeight && !tempReps && !tempNote) return;
+    
+    setLogs(p => {
+      const current = p[currentExIndex] || {};
+      return {
+        ...p,
+        [currentExIndex]: {
+          ...current,
+          weight: tempWeight !== '' ? tempWeight : current.weight || '',
+          reps: tempReps !== '' ? tempReps : current.reps || '',
+          note: tempNote !== '' ? tempNote : current.note || '',
+        }
+      };
+    });
+    
+    // Limpiamos la escritura para que no se salga de la pantalla vertical y la caja quede vacía
+    setTempWeight('');
+    setTempReps('');
+    setTempNote('');
+    
+    if (Platform.OS !== 'web') {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
+    }
   };
 
   useFocusEffect(
@@ -1648,6 +1688,26 @@ export default function TrainingModeScreen() {
 
          </View>
             <View style={[styles.activeLogContainer, { backgroundColor: colors.surface, padding: 20, borderRadius: 16 }]}>
+               
+               {/* INDICADOR VISUAL DEL REGISTRO YA GUARDADO */}
+               {(logs[currentExIndex]?.weight || logs[currentExIndex]?.reps || logs[currentExIndex]?.note) ? (
+                 <View style={{ marginBottom: 15, padding: 12, backgroundColor: colors.success + '15', borderRadius: 10, borderWidth: 1, borderColor: colors.success + '30' }}>
+                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                     <Ionicons name="checkmark-circle" size={16} color={colors.success} />
+                     <Text style={{ color: colors.success, fontWeight: '800', fontSize: 13 }}>REGISTRO GUARDADO</Text>
+                   </View>
+                   <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 15 }}>
+                     {logs[currentExIndex].weight ? `${logs[currentExIndex].weight} kg ` : ''}
+                     {logs[currentExIndex].reps ? `x ${logs[currentExIndex].reps} reps` : ''}
+                   </Text>
+                   {logs[currentExIndex].note ? (
+                     <Text style={{ color: colors.textSecondary, fontSize: 13, fontStyle: 'italic', marginTop: 4 }}>
+                       "{logs[currentExIndex].note}"
+                     </Text>
+                   ) : null}
+                 </View>
+               ) : null}
+
                <View style={{ flexDirection: 'row', gap: 12 }}>
                   <TextInput 
                     key={`weight-${currentExIndex}`}
@@ -1655,8 +1715,8 @@ export default function TrainingModeScreen() {
                     placeholder="Kilos" 
                     placeholderTextColor={colors.textSecondary} 
                     keyboardType="decimal-pad" 
-                    value={logs[currentExIndex]?.weight || ''} 
-                    onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], weight: t}}))} 
+                    value={tempWeight} 
+                    onChangeText={setTempWeight} 
                   />
                   <TextInput 
                     key={`reps-${currentExIndex}`}
@@ -1664,8 +1724,8 @@ export default function TrainingModeScreen() {
                     placeholder="Reps" 
                     placeholderTextColor={colors.textSecondary} 
                     keyboardType="decimal-pad" 
-                    value={logs[currentExIndex]?.reps || ''} 
-                    onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], reps: t}}))} 
+                    value={tempReps} 
+                    onChangeText={setTempReps} 
                   />
                </View>
                <TextInput 
@@ -1674,9 +1734,18 @@ export default function TrainingModeScreen() {
                   multiline 
                   placeholder="Anotaciones de la serie..." 
                   placeholderTextColor={colors.textSecondary} 
-                  value={logs[currentExIndex]?.note || ''} 
-                  onChangeText={t => setLogs(p => ({...p, [currentExIndex]: {...p[currentExIndex], note: t}}))} 
+                  value={tempNote} 
+                  onChangeText={setTempNote} 
                />
+               
+               <TouchableOpacity
+                 style={{ backgroundColor: colors.primary, padding: 14, borderRadius: 12, marginTop: 15, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 }}
+                 onPress={handleSaveActiveLogs}
+               >
+                 <Ionicons name="save-outline" size={20} color="#FFF" />
+                 <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 15 }}>Guardar Registro</Text>
+               </TouchableOpacity>
+
             </View>
           </ScrollView>
           
