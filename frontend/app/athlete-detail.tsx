@@ -425,8 +425,13 @@ export default function AthleteDetailScreen() {
         
         {/* CABECERA VISUAL DEL PERFIL CON LA FOTO DEL ATLETA */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 25, marginTop: 10 }}>
-          {displayAvatar ? (
-            <Image source={{ uri: displayAvatar }} style={{ width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: colors.primary }} resizeMode="cover" />
+        {displayAvatar ? (
+            <Image 
+              key={displayAvatar}
+              source={{ uri: displayAvatar }} 
+              style={{ width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: colors.primary }} 
+              resizeMode="cover" 
+            />
           ) : (
             <View style={{ width: 80, height: 80, borderRadius: 40, backgroundColor: colors.primary + '20', justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: colors.primary }}>
               <Text style={{ color: colors.primary, fontSize: 32, fontWeight: '900' }}>{params.name?.charAt(0).toUpperCase()}</Text>
@@ -980,8 +985,12 @@ export default function AthleteDetailScreen() {
         </TouchableOpacity>
         
         <View style={styles.headerCenter}>
-          {displayAvatar ? (
-            <Image source={{ uri: displayAvatar }} style={styles.headerAvatar} resizeMode="cover" />
+            <Image 
+              key={displayAvatar} /* <--- AÑADIR ESTA LÍNEA */
+              source={{ uri: displayAvatar }} 
+              style={styles.headerAvatar} 
+              resizeMode="cover" 
+            />
           ) : (
             <View style={[styles.headerAvatar, { backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' }]}>
               <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 14 }}>
