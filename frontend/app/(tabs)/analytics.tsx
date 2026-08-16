@@ -29,12 +29,6 @@ const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'bike': { icon: 'bicycle', lib: 'Ionicons' },
 };
 
-const TEST_TRANSLATIONS: Record<string, string> = {
-  squat_rm: 'Sentadilla RM', bench_rm: 'Press Banca RM', deadlift_rm: 'Peso Muerto RM',
-  cmj: 'Salto CMJ', sj: 'Salto SJ', dj: 'Drop Jump (DJ)', hamstring: 'Isquiotibiales',
-  calf: 'Gemelos', quadriceps: 'Cuádriceps', tibialis: 'Tibial'
-};
-
 const DEFAULT_MUSCLE_MAP: Record<string, string[]> = {
   'Pecho': ['press banca', 'flexiones', 'pecho', 'aperturas', 'push up'],
   'Espalda': ['dominadas', 'remo', 'pull up', 'espalda', 'lat pulldown'],
@@ -60,6 +54,29 @@ const normalizeName = (name: string) => {
   if (n.endsWith('es')) n = n.slice(0, -2);
   else if (n.endsWith('s')) n = n.slice(0, -1);
   return n;
+};
+
+// NORMALIZADOR ROBUSTO COMPARTIDO
+const getStandardizedTestName = (rawName: string) => {
+  if (!rawName) return "Test";
+  let n = rawName.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  n = n.replace(/\b(rm|1rm|max|maximo)\b/g, "").trim();
+
+  if (n === 'sentadilla' || n === 'squat' || n === 'back squat') return 'Sentadilla RM';
+  if (n === 'peso muerto' || n === 'deadlift') return 'Peso Muerto RM';
+  if (n === 'press banca' || n === 'bench press' || n === 'pecho') return 'Press Banca RM';
+  if (n === 'dominadas' || n === 'dominada' || n === 'pull up' || n === 'pull ups') return 'Dominadas RM';
+  if (n === 'hip thrust' || n === 'puente gluteo') return 'Hip Thrust RM';
+  if (n === 'press militar' || n === 'military press' || n === 'press hombro') return 'Press Militar RM';
+  if (n === 'cmj' || n === 'salto cmj' || n === 'contra movimiento') return 'Salto CMJ';
+  if (n === 'dj' || n === 'drop jump' || n === 'salto dj' || n === 'rsi') return 'Drop Jump (RSI)';
+  if (n === 'sj' || n === 'salto sj' || n === 'squat jump') return 'Salto SJ';
+  if (n === 'isquio' || n === 'isquios' || n === 'isquiotibiales' || n === 'hamstring') return 'Isquiotibiales';
+  if (n === 'cuadriceps' || n === 'quads' || n === 'quad') return 'Cuádriceps';
+  if (n === 'gemelo' || n === 'gemelos' || n === 'calf' || n === 'calves') return 'Gemelos';
+  if (n === 'tibial' || n === 'tibiales') return 'Tibial';
+
+  return rawName.trim().replace(/\b\w/g, l => l.toUpperCase());
 };
 
 const getLocalDateStr = (date: Date) => {
@@ -96,6 +113,7 @@ export default function AnalyticsScreen() {
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [wellnessHistory, setWellnessHistory] = useState<any[]>([]);
   const [macros, setMacros] = useState<any[]>([]); 
+  const [archivedFeedbacks, setArchivedFeedbacks] = useState<string[]>([]);
   
   const [athletes, setAthletes] = useState<any[]>([]);
   const { selectedAthlete, setSelectedAthlete } = useTrainer();
@@ -120,7 +138,14 @@ export default function AnalyticsScreen() {
     useCallback(() => {
       AsyncStorage.getItem('custom_exercise_muscles').then(res => { if (res) setCustomExerciseMuscles(JSON.parse(res)); });
       AsyncStorage.getItem('custom_merge_map').then(res => { if (res) setMergeMap(JSON.parse(res)); });
-    }, [])
+      
+      const targetId = isTrainer ? selectedAthlete?.id : user?.id;
+      if (targetId) {
+        AsyncStorage.getItem(`archived_feedbacks_${targetId}`).then(res => {
+          if (res) setArchivedFeedbacks(JSON.parse(res));
+        });
+      }
+    }, [user, selectedAthlete])
   );
 
   useEffect(() => {
@@ -238,7 +263,8 @@ export default function AnalyticsScreen() {
           const isTestItem = isBattery || r.type === 'test_item';
           const typeLabel = isTestItem ? 'test' : 'ejercicio';
           const prefix = isTestItem ? 'test' : 'ex';
-          const normKey = `${prefix}_${normalizeName(r.name)}`;
+          const stdName = getStandardizedTestName(r.name);
+          const normKey = `${prefix}_${stdName.toLowerCase().replace(/\s+/g, '_')}`;
           
           let val = parseFloat(String(r.logged_weight || r.value || '0').replace(',', '.')) || 0;
           let valL = parseFloat(String(r.logged_weight_left || r.value_left || r.left_val || '0').replace(',', '.'));
@@ -253,7 +279,7 @@ export default function AnalyticsScreen() {
           if (!items[normKey]) { 
             items[normKey] = { 
               id: normKey, 
-              name: r.name, 
+              name: stdName, 
               history: [], 
               maxW: 0, 
               type: typeLabel, 
@@ -275,9 +301,11 @@ export default function AnalyticsScreen() {
 
     testHistory.forEach(t => {
       if (t.test_type === 'medicion') return;
-      const rawName = t.custom_name || TEST_TRANSLATIONS[t.test_name] || t.test_name;
+      const rawName = t.custom_name || t.test_name;
       if (!rawName) return;
-      const normKey = `test_${normalizeName(rawName)}`;
+      
+      const stdName = getStandardizedTestName(rawName);
+      const normKey = `test_${stdName.toLowerCase().replace(/\s+/g, '_')}`;
       
       const valL = parseSafe(t.value_left);
       const valR = parseSafe(t.value_right);
@@ -287,7 +315,7 @@ export default function AnalyticsScreen() {
       const maxVal = hasSides ? Math.max(!isNaN(valL) ? valL : 0, !isNaN(valR) ? valR : 0) : (!isNaN(val) ? val : 0);
       
       if (!items[normKey]) { 
-        items[normKey] = { id: normKey, name: rawName, history: [], maxW: 0, type: 'test', unit: t.unit || 'kg', testDoc: t }; 
+        items[normKey] = { id: normKey, name: stdName, history: [], maxW: 0, type: 'test', unit: t.unit || 'kg', testDoc: t }; 
       }
       if (maxVal > items[normKey].maxW) items[normKey].maxW = maxVal;
       
@@ -367,13 +395,13 @@ export default function AnalyticsScreen() {
       if (w.completed && w.completion_data) {
         w.completion_data.exercise_results?.forEach((ex: any) => {
           if (ex.coach_note) {
-            list.push({ date: w.date, name: ex.name, note: ex.coach_note, video: ex.recorded_video_url });
+            list.push({ id: `${w.id}-${ex.name}`, date: w.date, name: ex.name, note: ex.coach_note, video: ex.recorded_video_url });
           }
         });
         w.completion_data.hiit_results?.forEach((b: any) => {
           b.hiit_exercises?.forEach((ex: any) => {
             if (ex.coach_note) {
-              list.push({ date: w.date, name: ex.name, note: ex.coach_note, video: ex.recorded_video_url });
+              list.push({ id: `${w.id}-${ex.name}`, date: w.date, name: ex.name, note: ex.coach_note, video: ex.recorded_video_url });
             }
           });
         });
@@ -381,6 +409,16 @@ export default function AnalyticsScreen() {
     });
     return list.sort((a, b) => b.date.localeCompare(a.date));
   }, [workoutHistory]);
+
+  const handleArchiveFeedback = async (fbId: string) => {
+    const targetId = isTrainer ? selectedAthlete?.id : user?.id;
+    if (!targetId) return;
+    const updated = [...archivedFeedbacks, fbId];
+    setArchivedFeedbacks(updated);
+    await AsyncStorage.setItem(`archived_feedbacks_${targetId}`, JSON.stringify(updated));
+  };
+
+  const visibleFeedbacks = allFeedbacks.filter(fb => !archivedFeedbacks.includes(fb.id));
 
   const exportToPDF = async () => {
     setIsGeneratingPDF(true);
@@ -672,7 +710,6 @@ export default function AnalyticsScreen() {
         <Text style={[styles.cardTitle, { color: colors.textPrimary, marginBottom: 5 }]}>Carga vs Recuperación</Text>
         <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 20 }}>Analiza el impacto del entrenamiento (RPE) y tu estado de recuperación (SNC) en los últimos 14 días.</Text>
 
-        {/* GRÁFICA DE BARRAS: CARGA (RPE) */}
         <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 20, marginBottom: 15 }]}>
           <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textPrimary, marginBottom: 15, textAlign: 'center' }}>Carga Interna de Entrenamientos (RPE)</Text>
           <BarChart
@@ -687,7 +724,6 @@ export default function AnalyticsScreen() {
           />
         </View>
 
-        {/* GRÁFICA DE LÍNEAS: FATIGA Y AGUJETAS */}
         <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, padding: 20 }]}>
           <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textPrimary, marginBottom: 15, textAlign: 'center' }}>Estado del SNC y Muscular</Text>
           <View style={{ flexDirection: 'row', gap: 15, marginBottom: 15, justifyContent: 'center' }}>
@@ -900,16 +936,24 @@ export default function AnalyticsScreen() {
                 renderWorkloadDashboard()
              ) : (
                 <View>
-                  {allFeedbacks.length === 0 ? (
-                    <Text style={{color: colors.textSecondary, textAlign: 'center', marginTop: 20}}>No hay feedback técnico guardado todavía.</Text>
+                  {visibleFeedbacks.length === 0 ? (
+                    <Text style={{color: colors.textSecondary, textAlign: 'center', marginTop: 20}}>No tienes feedback pendiente.</Text>
                   ) : (
-                    allFeedbacks.map((fb, i) => (
-                      <View key={i} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}>
+                    visibleFeedbacks.map((fb, i) => (
+                      <View key={fb.id} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}>
                         <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start'}}>
                            <View style={{flex: 1}}>
                               <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{fb.date}</Text>
                               <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 8 }}>{fb.name}</Text>
                               <Text style={{ color: colors.textPrimary, fontStyle: 'italic', lineHeight: 22 }}>"{fb.note}"</Text>
+                              
+                              <TouchableOpacity 
+                                style={{flexDirection: 'row', alignItems: 'center', marginTop: 15}}
+                                onPress={() => handleArchiveFeedback(fb.id)}
+                              >
+                                <Ionicons name="archive-outline" size={16} color={colors.textSecondary} />
+                                <Text style={{color: colors.textSecondary, marginLeft: 5, fontSize: 12, fontWeight: '700'}}>Marcar como leído / Archivar</Text>
+                              </TouchableOpacity>
                            </View>
                            {fb.video ? (
                              <TouchableOpacity onPress={() => setExpandedVideo(fb.video)} style={{backgroundColor: colors.primary + '20', padding: 12, borderRadius: 12, marginLeft: 15}}>
