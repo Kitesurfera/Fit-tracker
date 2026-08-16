@@ -36,7 +36,6 @@ export default function AddTestScreen() {
   const { colors } = useTheme();
   const router = useRouter();
   
-  // Magia: Recibimos el ID del atleta si venimos con él pre-seleccionado
   const { preselected_athlete } = useLocalSearchParams();
   
   const [athletes, setAthletes] = useState<any[]>([]);
@@ -53,15 +52,16 @@ export default function AddTestScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Estado para alternar entre Bilateral (Dato único) y Unilateral (Izq + Der)
+  const [isUnilateral, setIsUnilateral] = useState(false);
+
   useEffect(() => {
     if (user?.role === 'trainer') {
       api.getAthletes().then(data => {
         setAthletes(data || []);
-        // Si hay un atleta preseleccionado en la ruta, lo marcamos
         if (preselected_athlete && typeof preselected_athlete === 'string') {
           setSelectedAthlete(preselected_athlete);
         } else if (data && data.length > 0) {
-          // Si no, seleccionamos al primero por defecto para evitar errores
           setSelectedAthlete(data[0].id);
         }
       }).catch(console.log);
@@ -70,7 +70,6 @@ export default function AddTestScreen() {
     }
   }, [preselected_athlete]);
 
-  const isBilateral = testType === 'max_force';
   const currentTests = testType === 'strength' ? STRENGTH_TESTS : testType === 'plyometrics' ? PLYO_TESTS : MAX_FORCE_TESTS;
 
   const handleSelectType = (type: TestType) => {
@@ -96,7 +95,7 @@ export default function AddTestScreen() {
       setError('Introduce el nombre del test personalizado');
       return;
     }
-    if (isBilateral) {
+    if (isUnilateral) {
       if (!valueLeft && !valueRight) {
         setError('Introduce al menos un valor (izquierda o derecha)');
         return;
@@ -108,7 +107,7 @@ export default function AddTestScreen() {
 
     const left = valueLeft ? parseFloat(valueLeft) : null;
     const right = valueRight ? parseFloat(valueRight) : null;
-    const mainValue = isBilateral
+    const mainValue = isUnilateral
       ? Math.max(left || 0, right || 0)
       : parseFloat(value);
 
@@ -123,8 +122,8 @@ export default function AddTestScreen() {
         unit,
         date,
         notes,
-        value_left: left,
-        value_right: right,
+        value_left: isUnilateral ? left : null,
+        value_right: isUnilateral ? right : null,
       });
       router.back();
     } catch (e: any) {
@@ -204,6 +203,29 @@ export default function AddTestScreen() {
             </View>
           </View>
 
+          {/* NUEVO SELECTOR: Bilateral (Dato Único) vs Unilateral (Izq + Der) */}
+          <View style={styles.inputGroup}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>TIPO DE MEDICIÓN *</Text>
+            <View style={styles.typeRow}>
+              <TouchableOpacity
+                style={[styles.typeChip, { borderColor: colors.border }, !isUnilateral && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                onPress={() => setIsUnilateral(false)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="barbell-outline" size={16} color={!isUnilateral ? '#FFF' : colors.textPrimary} />
+                <Text style={[styles.typeText, { color: !isUnilateral ? '#FFF' : colors.textPrimary }]}>Bilateral (Dato Único)</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.typeChip, { borderColor: colors.border }, isUnilateral && { backgroundColor: '#E65100', borderColor: '#E65100' }]}
+                onPress={() => setIsUnilateral(true)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="fitness-outline" size={16} color={isUnilateral ? '#FFF' : colors.textPrimary} />
+                <Text style={[styles.typeText, { color: isUnilateral ? '#FFF' : colors.textPrimary }]}>Unilateral (Izq + Der)</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
           <View style={styles.inputGroup}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>TEST *</Text>
             <View style={styles.testGrid}>
@@ -251,15 +273,14 @@ export default function AddTestScreen() {
                 testID="custom-test-name-input"
                 style={[styles.input, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
                 value={customName} onChangeText={setCustomName}
-                placeholder={isBilateral ? "Ej: Aductor" : "Ej: Salto horizontal"}
+                placeholder={isUnilateral ? "Ej: Aductor" : "Ej: Salto horizontal"}
                 placeholderTextColor={colors.textSecondary}
               />
             </View>
           )}
 
-          {isBilateral ? (
+          {isUnilateral ? (
             <View style={styles.inputGroup}>
-              {/* Nueva cabecera con el campo de unidad editable */}
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <Text style={[styles.label, { color: colors.textSecondary }]}>VALORES *</Text>
                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
@@ -365,7 +386,7 @@ export default function AddTestScreen() {
 
           <TouchableOpacity
             testID="create-test-submit"
-            style={[styles.submitBtn, { backgroundColor: testType === 'max_force' ? '#E65100' : colors.primary }]}
+            style={[styles.submitBtn, { backgroundColor: isUnilateral ? '#E65100' : colors.primary }]}
             onPress={handleSubmit} disabled={submitting} activeOpacity={0.7}
           >
             {submitting ? <ActivityIndicator color="#FFF" /> : (
