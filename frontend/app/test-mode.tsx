@@ -172,6 +172,10 @@ export default function TestModeScreen() {
   const executeSave = async () => {
       setSaving(true);
       try {
+        if (!workout || !workout.exercises) {
+          throw new Error("No se encontraron los ejercicios de la batería.");
+        }
+  
         const exercisesToSave = workout.exercises.map((ex: any) => {
           const res = results[ex.test_key] || {};
           let finalVal = 0;
@@ -198,33 +202,39 @@ export default function TestModeScreen() {
           };
         });
   
-        // 1. Limpiamos basura de base de datos antes de enviar para evitar Error 422 de FastAPI
-        const cleanWorkout = { ...workout };
-        delete cleanWorkout._id; 
-        
-        await api.updateWorkout(workout.id || workout._id, {
-          ...cleanWorkout,
+        // 1. PAYLOAD LIMPIO: Solo enviamos lo que Pydantic espera. Evita errores 422 silenciosos.
+        const updatePayload = {
           completed: true,
           completion_data: { exercise_results: exercisesToSave }
-        });
+        };
+        
+        await api.updateWorkout(workout.id || workout._id, updatePayload);
   
-        // 2. Guardado en el historial de tests
+        // 2. GUARDADO DE HISTORIAL: Validación estricta anti-NaN
         if (api.createTest) {
+          const targetAthleteId = workout.athlete_id || user?.id;
+          const targetDate = workout.date || new Date().toISOString().split('T')[0];
+  
           for (const ex of exercisesToSave) {
              const valL = parseFloat(ex.result_left);
              const valR = parseFloat(ex.result_right);
-             const loggedVal = ex.logged_weight;
+             const loggedVal = parseFloat(ex.logged_weight);
   
-             if (loggedVal > 0 || valL > 0 || valR > 0) {
+             const hasL = !isNaN(valL) && valL > 0;
+             const hasR = !isNaN(valR) && valR > 0;
+             const hasLogged = !isNaN(loggedVal) && loggedVal > 0;
+  
+             // Solo guardamos el test si hay datos numéricos reales
+             if (hasLogged || hasL || hasR) {
                 await api.createTest({
-                  athlete_id: workout.athlete_id,
+                  athlete_id: targetAthleteId,
                   test_name: 'custom',
-                  custom_name: ex.name,
+                  custom_name: ex.name || 'Test manual',
                   test_type: testCategories[ex.test_key] || 'custom',
-                  value: loggedVal || 0,
-                  value_left: ex.is_bilateral && valL > 0 ? valL : null,
-                  value_right: ex.is_bilateral && valR > 0 ? valR : null,
-                  date: workout.date,
+                  value: hasLogged ? loggedVal : 0,
+                  value_left: ex.is_bilateral && hasL ? valL : null,
+                  value_right: ex.is_bilateral && hasR ? valR : null,
+                  date: targetDate,
                   unit: ex.unit || 'kg',
                   notes: `Test desde Batería: ${ex.is_bilateral ? 'Bilateral' : 'Unilateral'}`
                 });
@@ -235,14 +245,18 @@ export default function TestModeScreen() {
         setShowSummary(false);
         setSaving(false);
         
-        // 3. Navegación en formato String (infalible en Web y Móvil)
-        router.replace(`/tests?athlete_id=${workout.athlete_id}`);
+        // 3. NAVEGACIÓN SEGURA: Retrasamos 150ms la navegación para que React Web no se congele al cambiar pantallas
+        setTimeout(() => {
+          router.push({
+            pathname: '/tests',
+            params: { athlete_id: workout.athlete_id || user?.id }
+          });
+        }, 150);
   
       } catch (e: any) {
-        console.error("Error al guardar la batería:", e);
-        setSaving(false); // Detenemos el spinner de carga antes de la alerta
+        console.error("Error crítico al guardar la batería:", e);
+        setSaving(false);
         
-        // 4. Fallback robusto para mostrar errores en Web
         const errorMsg = e?.message || "No se pudo comunicar con el servidor.";
         if (Platform.OS === 'web') {
           window.alert(`Error al guardar: ${errorMsg}`);
