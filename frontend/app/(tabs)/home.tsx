@@ -361,18 +361,35 @@ export default function HomeScreen() {
   useEffect(() => {
     const checkFeedbackStatus = async () => {
       if (!user || isTrainer) return;
+      const archivedStr = await AsyncStorage.getItem(`archived_feedbacks_${user.id}`);
+      const archived = archivedStr ? JSON.parse(archivedStr) : [];
       let sig = '';
+      
       workouts.forEach(w => {
         if (w.completed && w.completion_data) {
-          w.completion_data.exercise_results?.forEach((ex: any) => { if (ex.coach_note) sig += `${w.id}-${ex.coach_note}|`; });
-          w.completion_data.hiit_results?.forEach((block: any) => { block.hiit_exercises?.forEach((ex: any) => { if (ex.coach_note) sig += `${w.id}-${ex.coach_note}|`; }); });
+          w.completion_data.exercise_results?.forEach((ex: any) => { 
+             const fbId = `${w.id}-${ex.name}`;
+             if (ex.coach_note && !archived.includes(fbId)) sig += `${fbId}-${ex.coach_note}|`; 
+          });
+          w.completion_data.hiit_results?.forEach((block: any) => { 
+             block.hiit_exercises?.forEach((ex: any) => { 
+                const fbId = `${w.id}-${ex.name}`;
+                if (ex.coach_note && !archived.includes(fbId)) sig += `${fbId}-${ex.coach_note}|`; 
+             }); 
+          });
         }
       });
       setFeedbackSignature(sig);
+      
       if (sig) {
         const savedSig = await AsyncStorage.getItem(`feedback_read_${user.id}`);
-        setHasUnreadFeedback(savedSig !== sig);
-      } else { setHasUnreadFeedback(false); }
+        const sigParts = sig.split('|').filter(Boolean);
+        const savedParts = savedSig ? savedSig.split('|').filter(Boolean) : [];
+        const hasNew = sigParts.some(p => !savedParts.includes(p));
+        setHasUnreadFeedback(hasNew);
+      } else { 
+        setHasUnreadFeedback(false); 
+      }
     };
     checkFeedbackStatus();
   }, [workouts, isTrainer, user]);
@@ -412,7 +429,13 @@ export default function HomeScreen() {
 
   const executeDelete = async (id: string) => { try { if (api.deleteAthlete) { await api.deleteAthlete(id); loadData(); } } catch (e) { if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar."); } };
   const handleDeleteAthlete = (id: string, name: string) => { if (Platform.OS === 'web') { if (window.confirm(`¿Eliminar a ${name}?`)) executeDelete(id); } else { Alert.alert("Eliminar", `¿Seguro que quieres borrar a ${name}?`, [ { text: "Cancelar", style: "cancel" }, { text: "ELIMINAR", style: "destructive", onPress: () => executeDelete(id) } ]); } };
-  const handleFeedbackClick = async () => { if (user) await AsyncStorage.setItem(`feedback_read_${user.id}`, feedbackSignature); setHasUnreadFeedback(false); router.push(`/analytics?tab=feedback`); };
+  
+  const handleFeedbackClick = async () => { 
+    if (user) await AsyncStorage.setItem(`feedback_read_${user.id}`, feedbackSignature); 
+    setHasUnreadFeedback(false); 
+    router.push(`/analytics?tab=feedback`); 
+  };
+  
   const handleSkipSubmit = async () => { if (!skipReason.trim()) return Alert.alert("Aviso", "Indica un motivo."); setUpdating(true); try { const workout = workouts.find(w => w.id === skipWorkoutId); if(workout) { await api.updateWorkout(skipWorkoutId!, { ...workout, completed: true, observations: `[NO COMPLETADA] Motivo: ${skipReason}` }); } setShowSkipModal(false); setSkipReason(''); loadData(); } catch(e) {} finally { setUpdating(false); } };
 
   const handleShareStatus = () => {
