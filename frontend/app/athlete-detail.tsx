@@ -103,6 +103,9 @@ export default function AthleteDetailScreen() {
   const [duplicateDate, setDuplicateDate] = useState(getLocalDateStr(new Date()));
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
 
+  // Estado para forzar recarga de imágenes (Cache Buster)
+  const [refreshStamp, setRefreshStamp] = useState(Date.now());
+
   const [isChatVisible, setChatVisible] = useState(false);
   const [showWellnessModal, setShowWellnessModal] = useState(false);
   
@@ -127,6 +130,9 @@ export default function AthleteDetailScreen() {
       setWorkouts(Array.isArray(wk) ? wk : []);
       setSummary(sum);
       setHistory(Array.isArray(hist) ? hist : []);
+      
+      // Actualizar marca de tiempo para forzar renderizado de la imagen
+      setRefreshStamp(Date.now());
     } catch (e) { 
       console.log("Error cargando detalle:", e); 
     } finally { 
@@ -410,8 +416,9 @@ export default function AthleteDetailScreen() {
     Linking.openURL(`https://wa.me/${athlete?.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`);
   };
 
-  // URL validada del avatar compatible con Cloudinary
-  const displayAvatar = getValidAvatarUrl(athlete?.avatar_url) || getValidAvatarUrl(selectedAthlete?.avatar_url);
+  // URL validada del avatar y truco definitivo para romper la caché de React Native
+  const baseAvatar = getValidAvatarUrl(athlete?.avatar_url) || getValidAvatarUrl(selectedAthlete?.avatar_url);
+  const displayAvatar = baseAvatar ? `${baseAvatar}${baseAvatar.includes('?') ? '&' : '?'}cb=${refreshStamp}` : null;
 
   const renderDashboard = () => {
     const discomfortsObj = summary?.latest_wellness?.discomforts || {};
@@ -425,9 +432,8 @@ export default function AthleteDetailScreen() {
         
         {/* CABECERA VISUAL DEL PERFIL CON LA FOTO DEL ATLETA */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 25, marginTop: 10 }}>
-        {displayAvatar ? (
+          {displayAvatar ? (
             <Image 
-              key={displayAvatar}
               source={{ uri: displayAvatar }} 
               style={{ width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: colors.primary }} 
               resizeMode="cover" 
@@ -985,8 +991,8 @@ export default function AthleteDetailScreen() {
         </TouchableOpacity>
         
         <View style={styles.headerCenter}>
+          {displayAvatar ? (
             <Image 
-              key={displayAvatar} /* <--- AÑADIR ESTA LÍNEA */
               source={{ uri: displayAvatar }} 
               style={styles.headerAvatar} 
               resizeMode="cover" 
