@@ -170,74 +170,87 @@ export default function TestModeScreen() {
   };
 
   const executeSave = async () => {
-    setSaving(true);
-    try {
-      const exercisesToSave = workout.exercises.map((ex: any) => {
-        const res = results[ex.test_key] || {};
-        let finalVal = 0;
+      setSaving(true);
+      try {
+        const exercisesToSave = workout.exercises.map((ex: any) => {
+          const res = results[ex.test_key] || {};
+          let finalVal = 0;
+          
+          const vLStr = res.valL ? String(res.valL).replace(',', '.') : '';
+          const vRStr = res.valR ? String(res.valR).replace(',', '.') : '';
+          
+          if (ex.unit === 'rsi' || ex.test_key === 'dj') {
+            finalVal = parseFloat(calculateRSI(res.flightTime, res.contactTime)) || 0;
+          } else if (ex.is_bilateral) {
+            finalVal = Math.max(parseFloat(vLStr) || 0, parseFloat(vRStr) || 0);
+          } else {
+            finalVal = parseFloat(vLStr) || 0;
+          }
+  
+          return {
+            ...ex,
+            logged_weight: finalVal,
+            result_left: vLStr,
+            result_right: vRStr,
+            flight_time: res.flightTime,
+            contact_time: res.contactTime,
+            video_uri: res.videoUri
+          };
+        });
+  
+        // 1. Limpiamos basura de base de datos antes de enviar para evitar Error 422 de FastAPI
+        const cleanWorkout = { ...workout };
+        delete cleanWorkout._id; 
         
-        const vLStr = res.valL ? String(res.valL).replace(',', '.') : '';
-        const vRStr = res.valR ? String(res.valR).replace(',', '.') : '';
-        
-        if (ex.unit === 'rsi' || ex.test_key === 'dj') {
-          finalVal = parseFloat(calculateRSI(res.flightTime, res.contactTime)) || 0;
-        } else if (ex.is_bilateral) {
-          finalVal = Math.max(parseFloat(vLStr) || 0, parseFloat(vRStr) || 0);
-        } else {
-          finalVal = parseFloat(vLStr) || 0;
+        await api.updateWorkout(workout.id || workout._id, {
+          ...cleanWorkout,
+          completed: true,
+          completion_data: { exercise_results: exercisesToSave }
+        });
+  
+        // 2. Guardado en el historial de tests
+        if (api.createTest) {
+          for (const ex of exercisesToSave) {
+             const valL = parseFloat(ex.result_left);
+             const valR = parseFloat(ex.result_right);
+             const loggedVal = ex.logged_weight;
+  
+             if (loggedVal > 0 || valL > 0 || valR > 0) {
+                await api.createTest({
+                  athlete_id: workout.athlete_id,
+                  test_name: 'custom',
+                  custom_name: ex.name,
+                  test_type: testCategories[ex.test_key] || 'custom',
+                  value: loggedVal || 0,
+                  value_left: ex.is_bilateral && valL > 0 ? valL : null,
+                  value_right: ex.is_bilateral && valR > 0 ? valR : null,
+                  date: workout.date,
+                  unit: ex.unit || 'kg',
+                  notes: `Test desde Batería: ${ex.is_bilateral ? 'Bilateral' : 'Unilateral'}`
+                });
+             }
+          }
         }
-
-        return {
-          ...ex,
-          logged_weight: finalVal,
-          result_left: vLStr,
-          result_right: vRStr,
-          flight_time: res.flightTime,
-          contact_time: res.contactTime,
-          video_uri: res.videoUri
-        };
-      });
-
-      await api.updateWorkout(workout.id || workout._id, {
-        ...workout,
-        completed: true,
-        completion_data: { exercise_results: exercisesToSave }
-      });
-
-      if (api.createTest) {
-        for (const ex of exercisesToSave) {
-           if (ex.logged_weight > 0 || parseFloat(ex.result_left) > 0 || parseFloat(ex.result_right) > 0) {
-              await api.postTest({
-                athlete_id: workout.athlete_id,
-                test_name: 'custom',
-                custom_name: ex.name,
-                test_type: testCategories[ex.test_key] || 'custom',
-                value: ex.logged_weight,
-                value_left: ex.is_bilateral && ex.result_left ? parseFloat(ex.result_left) : null,
-                value_right: ex.is_bilateral && ex.result_right ? parseFloat(ex.result_right) : null,
-                date: workout.date,
-                unit: ex.unit || 'kg',
-                notes: `Test desde Batería: ${ex.is_bilateral ? 'Bilateral' : 'Unilateral'}`
-              });
-           }
+  
+        setShowSummary(false);
+        setSaving(false);
+        
+        // 3. Navegación en formato String (infalible en Web y Móvil)
+        router.replace(`/tests?athlete_id=${workout.athlete_id}`);
+  
+      } catch (e: any) {
+        console.error("Error al guardar la batería:", e);
+        setSaving(false); // Detenemos el spinner de carga antes de la alerta
+        
+        // 4. Fallback robusto para mostrar errores en Web
+        const errorMsg = e?.message || "No se pudo comunicar con el servidor.";
+        if (Platform.OS === 'web') {
+          window.alert(`Error al guardar: ${errorMsg}`);
+        } else {
+          Alert.alert("Error", `No se pudieron guardar los resultados.\n${errorMsg}`);
         }
       }
-
-      setShowSummary(false);
-      router.replace({ pathname: '/tests', params: { athlete_id: workout.athlete_id } });
-    } catch (e) {
-      Alert.alert("Error", "No se pudieron guardar los resultados.");
-      setSaving(false);
-    }
-  };
-
-  if (loading) {
-    return (
-      <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background}}>
-        <ActivityIndicator size="large" color="#F59E0B"/>
-      </View>
-    );
-  }
+    };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
