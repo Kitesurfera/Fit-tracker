@@ -990,7 +990,7 @@ export default function AthleteDetailScreen() {
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         
-        <View style={styles.headerCenter}>
+      <View style={styles.headerCenter}>
           {displayAvatar ? (
             <Image 
               source={{ uri: displayAvatar }} 
