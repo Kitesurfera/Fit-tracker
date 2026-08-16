@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator, 
   Alert, Modal, TextInput, Platform, ScrollView, KeyboardAvoidingView, Dimensions 
@@ -14,26 +14,34 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isDesktop = SCREEN_WIDTH > 768;
 const MAX_WIDTH = 1000;
 
-const TEST_TRANSLATIONS: Record<string, string> = {
-  squat_rm: 'Sentadilla RM',
-  bench_rm: 'Press Banca RM',
-  deadlift_rm: 'Peso Muerto RM',
-  cmj: 'CMJ',
-  sj: 'SJ',
-  dj: 'Drop Jump (RSI)',
-  hamstring: 'Isquiotibiales',
-  calf: 'Gemelo',
-  quadriceps: 'Cuadriceps',
-  tibialis: 'Tibial',
-  custom: 'Personalizado',
-};
-
 const INITIAL_CATEGORIES = [
   { key: 'all', label: 'Todos' },
   { key: 'strength', label: 'Fuerza' },
   { key: 'plyometrics', label: 'Pliometría' },
   { key: 'max_force', label: 'F. Máxima' },
 ];
+
+export const getStandardizedTestName = (rawName: string) => {
+  if (!rawName) return "Test";
+  let n = rawName.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  n = n.replace(/\b(rm|1rm|max|maximo)\b/g, "").trim();
+
+  if (n === 'sentadilla' || n === 'squat' || n === 'back squat') return 'Sentadilla RM';
+  if (n === 'peso muerto' || n === 'deadlift') return 'Peso Muerto RM';
+  if (n === 'press banca' || n === 'bench press' || n === 'pecho') return 'Press Banca RM';
+  if (n === 'dominadas' || n === 'dominada' || n === 'pull up' || n === 'pull ups') return 'Dominadas RM';
+  if (n === 'hip thrust' || n === 'puente gluteo') return 'Hip Thrust RM';
+  if (n === 'press militar' || n === 'military press' || n === 'press hombro') return 'Press Militar RM';
+  if (n === 'cmj' || n === 'salto cmj' || n === 'contra movimiento') return 'Salto CMJ';
+  if (n === 'dj' || n === 'drop jump' || n === 'salto dj' || n === 'rsi') return 'Drop Jump (RSI)';
+  if (n === 'sj' || n === 'salto sj' || n === 'squat jump') return 'Salto SJ';
+  if (n === 'isquio' || n === 'isquios' || n === 'isquiotibiales' || n === 'hamstring') return 'Isquiotibiales';
+  if (n === 'cuadriceps' || n === 'quads' || n === 'quad') return 'Cuádriceps';
+  if (n === 'gemelo' || n === 'gemelos' || n === 'calf' || n === 'calves') return 'Gemelos';
+  if (n === 'tibial' || n === 'tibiales') return 'Tibial';
+
+  return rawName.trim().replace(/\b\w/g, l => l.toUpperCase());
+};
 
 export default function TestsScreen() {
   const { user } = useAuth();
@@ -46,6 +54,7 @@ export default function TestsScreen() {
   const [tests, setTests] = useState<any[]>([]);
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [expandedTest, setExpandedTest] = useState<string | null>(null);
   
   const [selectedAthlete, setSelectedAthlete] = useState<string | null>(params.athlete_id || null);
   
@@ -63,7 +72,7 @@ export default function TestsScreen() {
   const [formData, setFormData] = useState({
     name: '',
     category: 'strength',
-    isUnilateral: false, // true = Unilateral (Izq + Der), false = Bilateral (Dato único)
+    isUnilateral: false,
     unit: 'kg',
     value: '',
     valueLeft: '',
@@ -119,7 +128,6 @@ export default function TestsScreen() {
             loadData(selectedAthlete);
           }
         } catch (e) {
-          console.log("Error cargando lista de atletas:", e);
           loadData(selectedAthlete);
         }
       } else {
@@ -128,6 +136,45 @@ export default function TestsScreen() {
     };
     initTrainer();
   }, [selectedCategory, params.athlete_id]);
+
+  const groupedTests = useMemo(() => {
+    const groups: Record<string, any> = {};
+    tests.forEach(t => {
+      const rawName = t.custom_name || t.test_name || 'Test';
+      const stdName = getStandardizedTestName(rawName);
+
+      const valL = parseFloat(String(t.value_left || '0').replace(',', '.')) || 0;
+      const valR = parseFloat(String(t.value_right || '0').replace(',', '.')) || 0;
+      const val = parseFloat(String(t.value || '0').replace(',', '.')) || 0;
+      const isUnilateral = (t.value_left != null && t.value_left !== '') || (t.value_right != null && t.value_right !== '');
+      const maxVal = isUnilateral ? Math.max(valL, valR) : val;
+
+      if (!groups[stdName]) {
+        groups[stdName] = {
+           stdName,
+           test_type: t.test_type,
+           unit: t.unit,
+           isUnilateral,
+           bestValue: maxVal,
+           bestLeft: valL,
+           bestRight: valR,
+           date: t.date,
+           history: []
+        };
+      }
+
+      groups[stdName].history.push({...t, maxVal, valL, valR, isUnilateral});
+
+      if (maxVal > groups[stdName].bestValue) {
+        groups[stdName].bestValue = maxVal;
+        groups[stdName].bestLeft = valL;
+        groups[stdName].bestRight = valR;
+        groups[stdName].date = t.date;
+      }
+    });
+
+    return Object.values(groups).sort((a, b) => a.stdName.localeCompare(b.stdName));
+  }, [tests]);
 
   const handleSelectAthlete = (athleteId: string) => {
     setSelectedAthlete(athleteId);
@@ -146,9 +193,9 @@ export default function TestsScreen() {
       } catch (e) { console.log(e); }
     };
     if (Platform.OS === 'web') {
-      if (window.confirm(`¿Seguro que quieres eliminar "${testName}"?`)) performDelete();
+      if (window.confirm(`¿Seguro que quieres eliminar el registro de "${testName}"?`)) performDelete();
     } else {
-      Alert.alert('Eliminar', `¿Seguro que quieres eliminar "${testName}"?`, [
+      Alert.alert('Eliminar', `¿Seguro que quieres eliminar el registro de "${testName}"?`, [
         { text: 'Cancelar', style: 'cancel' },
         { text: 'Eliminar', style: 'destructive', onPress: performDelete },
       ]);
@@ -159,7 +206,7 @@ export default function TestsScreen() {
     setEditTest(test);
     const isUnilateral = (test.value_left != null && test.value_left !== '') || (test.value_right != null && test.value_right !== '');
     setFormData({
-      name: test.custom_name || TEST_TRANSLATIONS[test.test_name] || test.test_name,
+      name: test.custom_name || test.test_name,
       category: test.test_type || 'strength',
       isUnilateral: isUnilateral,
       unit: test.unit || 'kg',
@@ -204,11 +251,8 @@ export default function TestsScreen() {
         athlete_id: isTrainer ? selectedAthlete : user?.id
       };
 
-      if (editTest && editTest.id) {
-        await api.updateTest(editTest.id, payload);
-      } else {
-        await api.createTest(payload);
-      }
+      if (editTest && editTest.id) await api.updateTest(editTest.id, payload);
+      else await api.createTest(payload);
 
       await loadData(selectedAthlete);
       setShowCustomModal(false);
@@ -223,8 +267,8 @@ export default function TestsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.contentWrapper}>
         <FlatList
-          data={tests}
-          keyExtractor={(item) => item.id}
+          data={groupedTests}
+          keyExtractor={(item) => item.stdName}
           key={isDesktop ? 'desktop-grid' : 'mobile-list'}
           numColumns={isDesktop ? 2 : 1}
           columnWrapperStyle={isDesktop ? { gap: 20 } : null}
@@ -292,45 +336,65 @@ export default function TestsScreen() {
             </View>
           }
           renderItem={({ item }) => {
-            const isUnilateral = (item.value_left != null && item.value_left !== '') || (item.value_right != null && item.value_right !== '');
+            const isUnilateral = item.isUnilateral;
             const categoryLabel = dynamicCategories.find(c => c.key === item.test_type)?.label || item.test_type || 'General';
+            const isExpanded = expandedTest === item.stdName;
 
             return (
-              <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: colors.border, flex: isDesktop ? 0.5 : 1 }]}>
-                <View style={styles.testHeader}>
-                  <View style={{ flexDirection: 'row', gap: 6 }}>
-                    <View style={[styles.typeBadge, { backgroundColor: colors.primary + '15' }]}>
-                      <Text style={[styles.typeBadgeText, { color: colors.primary }]}>{categoryLabel.toUpperCase()}</Text>
+              <View style={[styles.testCard, { backgroundColor: colors.surface, borderColor: isExpanded ? colors.primary : colors.border, flex: isDesktop ? 0.5 : 1 }]}>
+                <TouchableOpacity onPress={() => setExpandedTest(isExpanded ? null : item.stdName)} activeOpacity={0.8}>
+                  <View style={styles.testHeader}>
+                    <View style={{ flexDirection: 'row', gap: 6 }}>
+                      <View style={[styles.typeBadge, { backgroundColor: colors.primary + '15' }]}>
+                        <Text style={[styles.typeBadgeText, { color: colors.primary }]}>{categoryLabel.toUpperCase()}</Text>
+                      </View>
+                      <View style={[styles.typeBadge, { backgroundColor: isUnilateral ? '#10B98115' : '#3B82F615' }]}>
+                        <Text style={[styles.typeBadgeText, { color: isUnilateral ? '#10B981' : '#3B82F6' }]}>
+                          {isUnilateral ? 'UNILATERAL' : 'BILATERAL'}
+                        </Text>
+                      </View>
                     </View>
-                    {/* ETIQUETA: Verde para Unilateral, Azul para Bilateral */}
-                    <View style={[styles.typeBadge, { backgroundColor: isUnilateral ? '#10B98115' : '#3B82F615' }]}>
-                      <Text style={[styles.typeBadgeText, { color: isUnilateral ? '#10B981' : '#3B82F6' }]}>
-                        {isUnilateral ? 'UNILATERAL' : 'BILATERAL'}
-                      </Text>
+                    <Ionicons name={isExpanded ? "chevron-up" : "chevron-down"} size={22} color={colors.textSecondary} />
+                  </View>
+                  
+                  <Text style={[styles.testName, { color: colors.textPrimary }]}>{item.stdName}</Text>
+                  
+                  {isUnilateral ? (
+                    <View style={styles.bilateralRow}>
+                      <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.bestLeft}</Text><Text style={styles.sideLabel}>IZQ ({item.unit})</Text></View>
+                      <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                      <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.bestRight}</Text><Text style={styles.sideLabel}>DER ({item.unit})</Text></View>
                     </View>
-                  </View>
-                  <View style={styles.cardActions}>
-                    <TouchableOpacity onPress={() => openEditModal(item)}><Ionicons name="create-outline" size={20} color={colors.primary} /></TouchableOpacity>
-                    <TouchableOpacity onPress={() => deleteTest(item.id, item.custom_name || item.test_name)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
-                  </View>
-                </View>
-                
-                <Text style={[styles.testName, { color: colors.textPrimary }]}>{item.custom_name || TEST_TRANSLATIONS[item.test_name] || item.test_name}</Text>
-                
-                {isUnilateral ? (
-                  <View style={styles.bilateralRow}>
-                    <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value_left}</Text><Text style={styles.sideLabel}>IZQ ({item.unit})</Text></View>
-                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
-                    <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value_right}</Text><Text style={styles.sideLabel}>DER ({item.unit})</Text></View>
-                  </View>
-                ) : (
-                  <View style={styles.valueRow}>
-                    <Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value}</Text>
-                    <Text style={[styles.unitText, { color: colors.textSecondary }]}>{item.unit}</Text>
+                  ) : (
+                    <View style={styles.valueRow}>
+                      <Ionicons name="trophy" size={20} color="#F59E0B" />
+                      <Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.bestValue}</Text>
+                      <Text style={[styles.unitText, { color: colors.textSecondary }]}>{item.unit}</Text>
+                    </View>
+                  )}
+                  
+                  <Text style={[styles.dateText, { color: colors.textSecondary }]}>Récord actual: {item.date.split('-').reverse().join('/')}</Text>
+                </TouchableOpacity>
+
+                {isExpanded && (
+                  <View style={{ marginTop: 20, paddingTop: 15, borderTopWidth: 1, borderTopColor: colors.border }}>
+                    <Text style={{ fontSize: 11, fontWeight: '800', color: colors.textSecondary, marginBottom: 10 }}>HISTORIAL DE REGISTROS</Text>
+                    {item.history.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()).map((histItem: any, idx: number) => (
+                      <View key={histItem.id || idx} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: idx === item.history.length - 1 ? 0 : 1, borderBottomColor: colors.border }}>
+                        <View>
+                          <Text style={{ fontSize: 14, fontWeight: '800', color: colors.textPrimary }}>
+                            {histItem.isUnilateral ? `${histItem.valL} Izq / ${histItem.valR} Der` : `${histItem.maxVal} ${item.unit}`}
+                          </Text>
+                          <Text style={{ fontSize: 12, color: colors.textSecondary }}>{histItem.date.split('-').reverse().join('/')}</Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 15 }}>
+                          <TouchableOpacity onPress={() => openEditModal(histItem)}><Ionicons name="create-outline" size={20} color={colors.primary} /></TouchableOpacity>
+                          <TouchableOpacity onPress={() => deleteTest(histItem.id, item.stdName)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
+                        </View>
+                      </View>
+                    ))}
                   </View>
                 )}
-                
-                <Text style={[styles.dateText, { color: colors.textSecondary }]}>{item.date.split('-').reverse().join('/')}</Text>
               </View>
             );
           }}
@@ -387,12 +451,12 @@ export default function TestsScreen() {
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboard}>
             <ScrollView contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
               <View style={[styles.modalCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editTest ? 'Editar Test' : 'Nuevo Test'}</Text>
+                <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{editTest ? 'Editar Registro' : 'Nuevo Registro'}</Text>
                 
                 <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>NOMBRE DEL TEST</Text>
                 <TextInput 
                   style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
-                  placeholder="Ej. Salto Vertical" 
+                  placeholder="Ej. Sentadilla RM" 
                   placeholderTextColor={colors.textSecondary}
                   value={formData.name} 
                   onChangeText={(t) => setFormData({...formData, name: t})} 
@@ -404,13 +468,13 @@ export default function TestsScreen() {
                     style={[styles.toggleBtn, !formData.isUnilateral && { backgroundColor: colors.primary, borderColor: colors.primary }]}
                     onPress={() => setFormData({...formData, isUnilateral: false})}
                   >
-                    <Text style={{ color: !formData.isUnilateral ? '#FFF' : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Bilateral (Dato Único)</Text>
+                    <Text style={{ color: !formData.isUnilateral ? '#FFF' : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Bilateral</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
                     style={[styles.toggleBtn, formData.isUnilateral && { backgroundColor: '#E65100', borderColor: '#E65100' }]}
                     onPress={() => setFormData({...formData, isUnilateral: true})}
                   >
-                    <Text style={{ color: formData.isUnilateral ? '#FFF' : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Unilateral (Izq + Der)</Text>
+                    <Text style={{ color: formData.isUnilateral ? '#FFF' : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Unilateral (Izq/Der)</Text>
                   </TouchableOpacity>
                 </View>
 
@@ -435,7 +499,7 @@ export default function TestsScreen() {
                   </View>
                 ) : (
                   <View>
-                    <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR DEL TEST</Text>
+                    <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR LOGRADO</Text>
                     <TextInput 
                       style={[styles.modalInput, { backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} 
                       keyboardType="decimal-pad" placeholder="Ej. 120" placeholderTextColor={colors.textSecondary}
@@ -507,10 +571,9 @@ const styles = StyleSheet.create({
   filterText: { fontSize: 13, fontWeight: '700' },
   listContent: { paddingBottom: 40, paddingHorizontal: 20 },
   testCard: { borderRadius: 24, padding: 20, marginBottom: 20, borderWidth: 1 },
-  testHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  testHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15, alignItems: 'center' },
   typeBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
   typeBadgeText: { fontSize: 10, fontWeight: '800' },
-  cardActions: { flexDirection: 'row', gap: 15 },
   testName: { fontSize: 18, fontWeight: '800', marginBottom: 15 },
   valueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6 },
   bilateralRow: { flexDirection: 'row', alignItems: 'center' },
