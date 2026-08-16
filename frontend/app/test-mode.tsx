@@ -204,7 +204,7 @@ export default function TestModeScreen() {
         completion_data: { exercise_results: exercisesToSave }
       });
 
-      if (api.postTest) {
+      if (api.createTest) {
         for (const ex of exercisesToSave) {
            if (ex.logged_weight > 0 || parseFloat(ex.result_left) > 0 || parseFloat(ex.result_right) > 0) {
               await api.postTest({
