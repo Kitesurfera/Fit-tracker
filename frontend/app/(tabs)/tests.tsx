@@ -47,7 +47,6 @@ export default function TestsScreen() {
   const [athletes, setAthletes] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('all');
   
-  // Inicializamos con el parámetro de la ruta si existe (Ej: tras guardar la batería)
   const [selectedAthlete, setSelectedAthlete] = useState<string | null>(params.athlete_id || null);
   
   const [loading, setLoading] = useState(true);
@@ -64,7 +63,7 @@ export default function TestsScreen() {
   const [formData, setFormData] = useState({
     name: '',
     category: 'strength',
-    isBilateral: false,
+    isUnilateral: false, // true = Unilateral (Izq + Der), false = Bilateral (Dato único)
     unit: 'kg',
     value: '',
     valueLeft: '',
@@ -84,7 +83,6 @@ export default function TestsScreen() {
       const rawTests = Array.isArray(ts) ? ts : (ts?.data || []);
       const filteredTests = rawTests.filter(t => t.test_type !== 'medicion');
 
-      // Extraer categorías dinámicas si las hay
       const fetchedCats = new Set(filteredTests.map(t => t.test_type).filter(c => c && c !== 'medicion'));
       const newCats = [...INITIAL_CATEGORIES];
       fetchedCats.forEach(c => {
@@ -159,10 +157,11 @@ export default function TestsScreen() {
 
   const openEditModal = (test: any) => {
     setEditTest(test);
+    const isUnilateral = (test.value_left != null && test.value_left !== '') || (test.value_right != null && test.value_right !== '');
     setFormData({
       name: test.custom_name || TEST_TRANSLATIONS[test.test_name] || test.test_name,
       category: test.test_type || 'strength',
-      isBilateral: test.value_left != null || test.value_right != null,
+      isUnilateral: isUnilateral,
       unit: test.unit || 'kg',
       value: String(test.value ?? ''),
       valueLeft: String(test.value_left ?? ''),
@@ -185,8 +184,8 @@ export default function TestsScreen() {
 
   const handleSave = async () => {
     if (!formData.name.trim()) return Alert.alert("Error", "El nombre es obligatorio.");
-    if (!formData.isBilateral && !formData.value) return Alert.alert("Error", "Añade un valor al test.");
-    if (formData.isBilateral && (!formData.valueLeft || !formData.valueRight)) return Alert.alert("Error", "Añade valores para ambos lados.");
+    if (!formData.isUnilateral && !formData.value) return Alert.alert("Error", "Añade un valor al test.");
+    if (formData.isUnilateral && (!formData.valueLeft || !formData.valueRight)) return Alert.alert("Error", "Añade valores para ambos lados.");
     if (isTrainer && !selectedAthlete) return Alert.alert("Atención", "Selecciona primero un deportista.");
 
     setSaving(true);
@@ -196,9 +195,9 @@ export default function TestsScreen() {
         unit: formData.unit.trim(),
         notes: formData.notes.trim(),
         test_type: formData.category,
-        value: formData.isBilateral ? null : parseFloat(String(formData.value).replace(',', '.') || '0'),
-        value_left: formData.isBilateral ? parseFloat(String(formData.valueLeft).replace(',', '.') || '0') : null,
-        value_right: formData.isBilateral ? parseFloat(String(formData.valueRight).replace(',', '.') || '0') : null,
+        value: formData.isUnilateral ? Math.max(parseFloat(formData.valueLeft) || 0, parseFloat(formData.valueRight) || 0) : parseFloat(String(formData.value).replace(',', '.') || '0'),
+        value_left: formData.isUnilateral ? parseFloat(String(formData.valueLeft).replace(',', '.') || '0') : null,
+        value_right: formData.isUnilateral ? parseFloat(String(formData.valueRight).replace(',', '.') || '0') : null,
         date: todayStr,
         test_name: 'custom', 
         custom_name: formData.name.trim(),
@@ -264,7 +263,7 @@ export default function TestsScreen() {
                     style={[styles.actionBtn, { backgroundColor: colors.primary }]} 
                     onPress={() => {
                       setEditTest(null);
-                      setFormData({ name: '', category: selectedCategory !== 'all' ? selectedCategory : 'strength', isBilateral: false, unit: 'kg', value: '', valueLeft: '', valueRight: '', notes: '' });
+                      setFormData({ name: '', category: selectedCategory !== 'all' ? selectedCategory : 'strength', isUnilateral: false, unit: 'kg', value: '', valueLeft: '', valueRight: '', notes: '' });
                       setShowCustomModal(true);
                     }}
                   >
@@ -293,7 +292,7 @@ export default function TestsScreen() {
             </View>
           }
           renderItem={({ item }) => {
-            const isBilateral = item.value_left != null || item.value_right != null;
+            const isUnilateral = (item.value_left != null && item.value_left !== '') || (item.value_right != null && item.value_right !== '');
             const categoryLabel = dynamicCategories.find(c => c.key === item.test_type)?.label || item.test_type || 'General';
 
             return (
@@ -303,10 +302,10 @@ export default function TestsScreen() {
                     <View style={[styles.typeBadge, { backgroundColor: colors.primary + '15' }]}>
                       <Text style={[styles.typeBadgeText, { color: colors.primary }]}>{categoryLabel.toUpperCase()}</Text>
                     </View>
-                    {/* ETIQUETA BILATERAL/UNILATERAL */}
-                    <View style={[styles.typeBadge, { backgroundColor: isBilateral ? '#3B82F615' : '#10B98115' }]}>
-                      <Text style={[styles.typeBadgeText, { color: isBilateral ? '#3B82F6' : '#10B981' }]}>
-                        {isBilateral ? 'BILATERAL' : 'UNILATERAL'}
+                    {/* ETIQUETA: Verde para Unilateral, Azul para Bilateral */}
+                    <View style={[styles.typeBadge, { backgroundColor: isUnilateral ? '#10B98115' : '#3B82F615' }]}>
+                      <Text style={[styles.typeBadgeText, { color: isUnilateral ? '#10B981' : '#3B82F6' }]}>
+                        {isUnilateral ? 'UNILATERAL' : 'BILATERAL'}
                       </Text>
                     </View>
                   </View>
@@ -318,7 +317,7 @@ export default function TestsScreen() {
                 
                 <Text style={[styles.testName, { color: colors.textPrimary }]}>{item.custom_name || TEST_TRANSLATIONS[item.test_name] || item.test_name}</Text>
                 
-                {isBilateral ? (
+                {isUnilateral ? (
                   <View style={styles.bilateralRow}>
                     <View style={styles.sideValue}><Text style={[styles.valNum, { color: colors.textPrimary }]}>{item.value_left}</Text><Text style={styles.sideLabel}>IZQ ({item.unit})</Text></View>
                     <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -338,7 +337,6 @@ export default function TestsScreen() {
         />
       </View>
 
-      {/* RESTO DE MODALES (Picker de atleta, Nueva Categoría y Crear Test Manual) SE MANTIENEN IGUAL... */}
       <Modal visible={showPicker} transparent animationType="slide">
         <TouchableOpacity style={styles.modalOverlayPicker} onPress={() => setShowPicker(false)}>
           <View style={[styles.modalContentPicker, { backgroundColor: colors.surface }]}>
@@ -358,7 +356,6 @@ export default function TestsScreen() {
         </TouchableOpacity>
       </Modal>
 
-      {/* Modal Nueva Categoría */}
       <Modal visible={showCategoryModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.modalKeyboard}>
@@ -385,7 +382,6 @@ export default function TestsScreen() {
         </View>
       </Modal>
 
-      {/* Modal Nuevo/Editar Test Manual */}
       <Modal visible={showCustomModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.modalKeyboard}>
@@ -405,20 +401,20 @@ export default function TestsScreen() {
                 <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>TIPO DE MEDICIÓN</Text>
                 <View style={styles.toggleRow}>
                   <TouchableOpacity 
-                    style={[styles.toggleBtn, !formData.isBilateral && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                    onPress={() => setFormData({...formData, isBilateral: false})}
+                    style={[styles.toggleBtn, !formData.isUnilateral && { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                    onPress={() => setFormData({...formData, isUnilateral: false})}
                   >
-                    <Text style={{ color: !formData.isBilateral ? '#FFF' : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Dato Único</Text>
+                    <Text style={{ color: !formData.isUnilateral ? '#FFF' : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Bilateral (Dato Único)</Text>
                   </TouchableOpacity>
                   <TouchableOpacity 
-                    style={[styles.toggleBtn, formData.isBilateral && { backgroundColor: colors.primary, borderColor: colors.primary }]}
-                    onPress={() => setFormData({...formData, isBilateral: true})}
+                    style={[styles.toggleBtn, formData.isUnilateral && { backgroundColor: '#E65100', borderColor: '#E65100' }]}
+                    onPress={() => setFormData({...formData, isUnilateral: true})}
                   >
-                    <Text style={{ color: formData.isBilateral ? '#FFF' : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Izq + Der</Text>
+                    <Text style={{ color: formData.isUnilateral ? '#FFF' : colors.textPrimary, fontWeight: '700', fontSize: 13 }}>Unilateral (Izq + Der)</Text>
                   </TouchableOpacity>
                 </View>
 
-                {formData.isBilateral ? (
+                {formData.isUnilateral ? (
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.fieldLabel, { color: colors.textSecondary }]}>VALOR IZQUIERDA</Text>
@@ -535,7 +531,6 @@ const styles = StyleSheet.create({
   chipSelect: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, marginRight: 8, alignSelf: 'center' },
   modalActions: { flexDirection: 'row', gap: 12, marginTop: 10 },
   modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' },
-  
   modalOverlayPicker: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
   modalContentPicker: { padding: 30, borderTopLeftRadius: 30, borderTopRightRadius: 30, maxHeight: '80%' },
   athleteItem: { paddingVertical: 18, borderBottomWidth: 1 }
