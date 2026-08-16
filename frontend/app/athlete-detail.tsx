@@ -131,7 +131,6 @@ export default function AthleteDetailScreen() {
       setSummary(sum);
       setHistory(Array.isArray(hist) ? hist : []);
       
-      // Actualizar marca de tiempo para forzar renderizado de la imagen
       setRefreshStamp(Date.now());
     } catch (e) { 
       console.log("Error cargando detalle:", e); 
@@ -416,7 +415,6 @@ export default function AthleteDetailScreen() {
     Linking.openURL(`https://wa.me/${athlete?.phone?.replace(/\D/g, '')}?text=${encodeURIComponent(msg)}`);
   };
 
-  // URL validada del avatar y truco definitivo para romper la caché de React Native
   const baseAvatar = getValidAvatarUrl(athlete?.avatar_url) || getValidAvatarUrl(selectedAthlete?.avatar_url);
   const displayAvatar = baseAvatar ? `${baseAvatar}${baseAvatar.includes('?') ? '&' : '?'}cb=${refreshStamp}` : null;
 
@@ -430,7 +428,6 @@ export default function AthleteDetailScreen() {
     return (
       <View style={[styles.tabContainer, isDesktop && { paddingBottom: 40 }]}>
         
-        {/* CABECERA VISUAL DEL PERFIL CON LA FOTO DEL ATLETA */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 25, marginTop: 10 }}>
           {displayAvatar ? (
             <Image 
@@ -729,7 +726,8 @@ export default function AthleteDetailScreen() {
     let hasVideos = false; 
 
     if (isTest) {
-      itemsToRender = wk.exercises || [];
+      // ✅ CORRECCIÓN CLAVE: Si la batería está completada, lee de completion_data.exercise_results
+      itemsToRender = (wk.completed && wk.completion_data?.exercise_results) ? wk.completion_data.exercise_results : (wk.exercises || []);
     } else if (wk.exercises && wk.exercises.length > 0 && wk.exercises[0].is_hiit_block) {
       isWorkoutHiit = true;
       itemsToRender = (wk.completed && wk.completion_data?.hiit_results) ? wk.completion_data.hiit_results : wk.exercises;
@@ -823,7 +821,15 @@ export default function AthleteDetailScreen() {
               <View style={{ gap: 10 }}>
                 <Text style={{ fontSize: 12, fontWeight: '800', color: colors.textSecondary, marginBottom: 5 }}>RESULTADOS DE LOS TESTS:</Text>
                 {itemsToRender.map((testItem: any, tIdx: number) => {
-                  const resultData = wk.completion_data?.results?.[testItem.test_key] || wk.completion_data?.results?.[tIdx] || {};
+                  
+                  // ✅ CORRECCIÓN CLAVE: Leemos los datos directamente de la estructura moderna que guarda TestModeScreen
+                  // Mantenemos fallback al mapa antiguo por si hay datos viejos
+                  const legacyResultData = wk.completion_data?.results?.[testItem.test_key] || wk.completion_data?.results?.[tIdx] || {};
+                  
+                  const leftVal = testItem.result_left ?? legacyResultData.left ?? '';
+                  const rightVal = testItem.result_right ?? legacyResultData.right ?? '';
+                  const mainVal = testItem.logged_weight ?? legacyResultData.value ?? legacyResultData.score ?? '';
+
                   return (
                     <View key={tIdx} style={[styles.exerciseCard, { borderColor: colors.border, backgroundColor: colors.surfaceHighlight }]}>
                       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
@@ -834,12 +840,12 @@ export default function AthleteDetailScreen() {
                       </View>
                       {testItem.is_bilateral ? (
                         <View style={{ flexDirection: 'row', gap: 15, marginTop: 4 }}>
-                          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '600' }}>Izquierdo: <Text style={{ fontWeight: '800', color: colors.primary }}>{resultData.left ?? '-'}</Text></Text>
-                          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '600' }}>Derecho: <Text style={{ fontWeight: '800', color: colors.primary }}>{resultData.right ?? '-'}</Text></Text>
+                          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '600' }}>Izquierdo: <Text style={{ fontWeight: '800', color: colors.primary }}>{leftVal !== '' ? leftVal : '-'}</Text></Text>
+                          <Text style={{ color: colors.textPrimary, fontSize: 13, fontWeight: '600' }}>Derecho: <Text style={{ fontWeight: '800', color: colors.primary }}>{rightVal !== '' ? rightVal : '-'}</Text></Text>
                         </View>
                       ) : (
                         <Text style={{ color: colors.textPrimary, fontSize: 14, fontWeight: '600', marginTop: 4 }}>
-                          Resultado: <Text style={{ fontWeight: '900', color: colors.primary }}>{resultData.value ?? resultData.score ?? '-'}</Text>
+                          Resultado: <Text style={{ fontWeight: '900', color: colors.primary }}>{mainVal !== '' ? mainVal : '-'}</Text>
                         </Text>
                       )}
                     </View>
