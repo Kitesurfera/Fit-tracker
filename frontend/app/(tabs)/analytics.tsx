@@ -114,6 +114,7 @@ export default function AnalyticsScreen() {
   const [wellnessHistory, setWellnessHistory] = useState<any[]>([]);
   const [macros, setMacros] = useState<any[]>([]); 
   const [archivedFeedbacks, setArchivedFeedbacks] = useState<string[]>([]);
+  const [showArchivedModal, setShowArchivedModal] = useState(false);
   
   const [athletes, setAthletes] = useState<any[]>([]);
   const { selectedAthlete, setSelectedAthlete } = useTrainer();
@@ -418,7 +419,37 @@ export default function AnalyticsScreen() {
     await AsyncStorage.setItem(`archived_feedbacks_${targetId}`, JSON.stringify(updated));
   };
 
+  const handleRestoreFeedback = async (fbId: string) => {
+    const targetId = isTrainer ? selectedAthlete?.id : user?.id;
+    if (!targetId) return;
+    const updated = archivedFeedbacks.filter(id => id !== fbId);
+    setArchivedFeedbacks(updated);
+    await AsyncStorage.setItem(`archived_feedbacks_${targetId}`, JSON.stringify(updated));
+  };
+
+  const handleDeleteArchivedFeedback = async (fbId: string) => {
+    const targetId = isTrainer ? selectedAthlete?.id : user?.id;
+    if (!targetId) return;
+    Alert.alert(
+      "Eliminar Feedback",
+      "¿Estás seguro de que quieres eliminar este feedback permanentemente?",
+      [
+        { text: "Cancelar", style: "cancel" },
+        { 
+          text: "Eliminar", 
+          style: "destructive", 
+          onPress: async () => {
+            const updated = archivedFeedbacks.filter(id => id !== fbId);
+            setArchivedFeedbacks(updated);
+            await AsyncStorage.setItem(`archived_feedbacks_${targetId}`, JSON.stringify(updated));
+          }
+        }
+      ]
+    );
+  };
+
   const visibleFeedbacks = allFeedbacks.filter(fb => !archivedFeedbacks.includes(fb.id));
+  const archivedFeedbacksList = allFeedbacks.filter(fb => archivedFeedbacks.includes(fb.id));
 
   const exportToPDF = async () => {
     setIsGeneratingPDF(true);
@@ -936,6 +967,18 @@ export default function AnalyticsScreen() {
                 renderWorkloadDashboard()
              ) : (
                 <View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 15 }}>
+                    <TouchableOpacity 
+                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surfaceHighlight, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}
+                      onPress={() => setShowArchivedModal(true)}
+                    >
+                      <Ionicons name="archive" size={16} color={colors.primary} />
+                      <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 13 }}>
+                        Ver Archivados ({archivedFeedbacksList.length})
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+
                   {visibleFeedbacks.length === 0 ? (
                     <Text style={{color: colors.textSecondary, textAlign: 'center', marginTop: 20}}>No tienes feedback pendiente.</Text>
                   ) : (
@@ -1074,6 +1117,54 @@ export default function AnalyticsScreen() {
               >
                 <Text style={{ color: '#FFF', fontWeight: '800' }}>GUARDAR</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* MODAL: FEEDBACK ARCHIVADOS */}
+        <Modal visible={showArchivedModal} transparent animationType="slide">
+          <View style={styles.modalOverlay}>
+            <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+                <Text style={[styles.modalTitle, { margin: 0 }]}>Feedback Archivados</Text>
+                <TouchableOpacity onPress={() => setShowArchivedModal(false)}>
+                  <Ionicons name="close" size={24} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </View>
+
+              <ScrollView showsVerticalScrollIndicator={false}>
+                {archivedFeedbacksList.length === 0 ? (
+                  <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 30, marginBottom: 30 }}>
+                    No hay feedback archivados.
+                  </Text>
+                ) : (
+                  archivedFeedbacksList.map((fb) => (
+                    <View key={fb.id} style={[styles.feedbackCard, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{fb.date}</Text>
+                      <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 8 }}>{fb.name}</Text>
+                      <Text style={{ color: colors.textPrimary, fontStyle: 'italic', lineHeight: 22, marginBottom: 15 }}>"{fb.note}"</Text>
+                      
+                      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 15, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
+                        <TouchableOpacity 
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                          onPress={() => handleRestoreFeedback(fb.id)}
+                        >
+                          <Ionicons name="arrow-undo" size={16} color={colors.primary} />
+                          <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>Restaurar</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity 
+                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                          onPress={() => handleDeleteArchivedFeedback(fb.id)}
+                        >
+                          <Ionicons name="trash-outline" size={16} color={colors.error || '#EF4444'} />
+                          <Text style={{ color: colors.error || '#EF4444', fontWeight: '700', fontSize: 13 }}>Eliminar</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  ))
+                )}
+              </ScrollView>
             </View>
           </View>
         </Modal>
