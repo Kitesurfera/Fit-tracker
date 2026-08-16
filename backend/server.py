@@ -153,6 +153,7 @@ class AthleteUpdate(BaseModel):
     sport_icon: Optional[str] = None
     technical_sessions: Optional[List[str]] = None
     email_notifications: Optional[bool] = None
+    avatar_url: Optional[str] = None
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
@@ -170,6 +171,7 @@ class ProfileUpdate(BaseModel):
     sport_icon: Optional[str] = None
     technical_sessions: Optional[List[str]] = None
     email_notifications: Optional[bool] = None
+    avatar_url: Optional[str] = None
 
 class CycleUpdate(BaseModel):
     macro_ciclo: str
