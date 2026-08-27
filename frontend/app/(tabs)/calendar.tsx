@@ -125,7 +125,13 @@ export default function CalendarScreen() {
 
   const isTrainer = user?.role === 'trainer';
   const isFemale = ['female', 'mujer', 'femenino'].includes(selectedAthlete?.gender?.toLowerCase() || '');
-  const isExtraSportEnabled = selectedAthlete?.has_extra_sport === true || selectedAthlete?.has_extra_sport === 1 || selectedAthlete?.has_extra_sport === 'true';
+  
+  // Garantizamos que el deportista siempre tenga visible la opción de registrar su deporte
+  const isExtraSportEnabled = selectedAthlete?.has_extra_sport === true || 
+                              selectedAthlete?.has_extra_sport === 1 || 
+                              String(selectedAthlete?.has_extra_sport) === 'true' || 
+                              !isTrainer;
+
   const sportConfig = getSportConfig(selectedAthlete?.sport_icon);
 
   // 1. CARGA DE PLANTILLAS Y CATÁLOGOS
@@ -284,16 +290,35 @@ export default function CalendarScreen() {
   const handleSaveTechnicalSession = async (dates: string[]) => {
     setUpdating(true);
     try {
-      if (isTrainer && api.updateAthlete) {
-        await api.updateAthlete(selectedAthlete.id, { technical_sessions: dates });
-      } else if (api.updateProfile) {
-        await api.updateProfile({ technical_sessions: dates });
-        if (updateUser) updateUser({ technical_sessions: dates });
+      if (isTrainer) {
+        if (api.updateAthlete) {
+          await api.updateAthlete(selectedAthlete.id, { technical_sessions: dates });
+        }
+      } else {
+        // Lógica robusta para el deportista
+        let saved = false;
+        if (api.updateProfile) {
+          try {
+            await api.updateProfile({ technical_sessions: dates });
+            saved = true;
+          } catch(e) {
+            console.log("api.updateProfile falló, intentando updateAthlete fallback...");
+          }
+        }
+        // Fallback por si la API usa updateAthlete también para el propio usuario
+        if (!saved && api.updateAthlete && selectedAthlete?.id) {
+          await api.updateAthlete(selectedAthlete.id, { technical_sessions: dates });
+        }
+        if (updateUser) {
+          updateUser({ technical_sessions: dates });
+        }
       }
+      
       setSportSessions(dates);
       setSelectedAthlete((prev: any) => ({ ...prev, technical_sessions: dates }));
       setShowSportModal(false);
     } catch (e) {
+      console.error("Error al guardar la sesión técnica:", e);
       if (Platform.OS === 'web') window.alert("No se pudo guardar el registro técnico.");
       else Alert.alert("Error", "No se pudo guardar el registro técnico.");
     } finally {
@@ -667,30 +692,6 @@ export default function CalendarScreen() {
     } catch (e) { return null; }
   };
 
-  const microciclosDelMes = useMemo(() => {
-    try {
-      if (!Array.isArray(macros)) return [];
-      const microsResult: any[] = [];
-      const firstDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-01`;
-      const lastDayNum = new Date(currentYear, currentMonth + 1, 0).getDate();
-      const lastDayStr = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(lastDayNum).padStart(2, '0')}`;
-
-      macros.forEach(macro => {
-        const listaMicros = macro.microciclos || macro.microcycles || [];
-        if (Array.isArray(listaMicros)) {
-          listaMicros.forEach((m: any) => {
-            const start = extractDateString(m.fecha_inicio || m.start_date);
-            const end = extractDateString(m.fecha_fin || m.end_date);
-            if (start && end && start <= lastDayStr && end >= firstDayStr) {
-              microsResult.push({ ...m, macroNombre: macro.nombre || macro.name || 'Macro', nombre: m.nombre || m.name || 'Micro', fecha_inicio: start, fecha_fin: end, tipo: m.tipo || m.type || 'BASE', color: m.color || macro.color || colors.primary });
-            }
-          });
-        }
-      });
-      return microsResult.sort((a, b) => a.fecha_inicio.localeCompare(b.fecha_inicio));
-    } catch (e) { return []; }
-  }, [macros, currentMonth, currentYear, colors.primary]);
-
   const monthStatusMap = useMemo(() => {
     const map: Record<string, any> = {};
     Object.keys(periodDays).forEach(dateStr => {
@@ -746,8 +747,6 @@ export default function CalendarScreen() {
       router.push(isTrainer && !workout.completed ? `/edit-workout?workoutId=${workout.id || workout._id}` : `/training-mode?workoutId=${workout.id || workout._id}`); 
     }
   };
-  
-  const handleCloseMicroInfo = () => { setViewMicroInfo(null); setExpandedWorkoutId(null); };
 
   const handleSaveWorkoutFromAI = async (workoutData: any, targetDate: string) => {
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -799,11 +798,6 @@ export default function CalendarScreen() {
       setUpdating(false);
     }
   };
-
-  const microWorkouts = useMemo(() => {
-    if (!viewMicroInfo) return [];
-    return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  }, [workouts, viewMicroInfo]);
 
   if (authLoading || loading) {
     return (
