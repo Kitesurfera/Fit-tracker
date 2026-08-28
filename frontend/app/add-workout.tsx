@@ -34,7 +34,6 @@ const parseCSV = (str: string) => {
 export default function AddWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  // Añadimos pill_data a los parámetros esperados
   const params = useLocalSearchParams<{ athlete_id: string; name: string; microciclo_id?: string; pill_data?: string }>();
 
   const [saving, setSaving] = useState(false);
@@ -63,11 +62,9 @@ export default function AddWorkoutScreen() {
     }
   ]);
 
-  // Estados Píldoras
   const [pills, setPills] = useState<any[]>([]);
   const [showPillModal, setShowPillModal] = useState(false);
 
-  // EFECTO DE AUTO-INYECCIÓN DE PÍLDORA SOS (NUEVO)
   useEffect(() => {
     if (params.pill_data) {
       try {
@@ -80,6 +77,7 @@ export default function AddWorkoutScreen() {
           const newBlocks = pill.exercises.map((b: any) => ({
               ...b, _key: Math.random().toString(),
               name: `[${pill.name}] ${b.name || 'Bloque'}`,
+              sets: String(b.sets || '1'), // <-- Aseguramos leer las vueltas configuradas del bloque de circuito
               exercises: (b.hiit_exercises || b.exercises || []).map((e: any) => ({...e, _key: Math.random().toString()}))
           }));
           if (newBlocks.length > 0) setHiitBlocks(newBlocks);
@@ -111,7 +109,6 @@ export default function AddWorkoutScreen() {
     api.getPills().then(setPills).catch(console.log);
   }, [params.athlete_id]);
 
-  // Lógica de agrupar ejercicios por píldora
   const exerciseBlocks = React.useMemo(() => {
     const blocks: any[] = [];
     let currentGroupId = null;
@@ -136,6 +133,11 @@ export default function AddWorkoutScreen() {
 
   const updateExercise = (index: number, field: string, value: any) => {
     const updated = [...exercises]; updated[index] = { ...updated[index], [field]: value }; setExercises(updated);
+  };
+  
+  // Novedad: Modifica las vueltas de todo un bloque en modo tradicional
+  const updateGroupSets = (groupId: string, newSets: string) => {
+    setExercises(exercises.map(e => e.group_id === groupId ? { ...e, sets: newSets } : e));
   };
   
   const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '', is_unilateral: false }]);
@@ -252,7 +254,9 @@ export default function AddWorkoutScreen() {
             Alert.alert("Aviso", "Esta píldora es de formato circuito. Se ha insertado como ejercicios sueltos de fuerza.");
             const flatExercises = pill.exercises.flatMap((b: any) =>
                 (b.hiit_exercises || b.exercises || []).map((e: any) => ({
-                    _key: Math.random().toString(), name: e.name, sets: e.sets || '1', reps: e.duration_reps || '', duration: e.duration || '', weight: '', rest: '', rest_exercise: '', video_url: e.video_url || '', exercise_notes: e.exercise_notes || '', is_unilateral: !!e.is_unilateral,
+                    _key: Math.random().toString(), name: e.name, 
+                    sets: String(b.sets || e.sets || '1'), // <-- Leemos el "sets" configurado a nivel de bloque en la píldora original
+                    reps: e.duration_reps || '', duration: e.duration || '', weight: '', rest: '', rest_exercise: '', video_url: e.video_url || '', exercise_notes: e.exercise_notes || '', is_unilateral: !!e.is_unilateral,
                     group_id: groupId, group_name: groupName
                 }))
             );
@@ -266,6 +270,7 @@ export default function AddWorkoutScreen() {
             const newBlocks = pill.exercises.map((b: any) => ({
                 ...b, _key: Math.random().toString(),
                 name: `[${pill.name}] ${b.name || 'Bloque'}`,
+                sets: String(b.sets || '1'), // <-- Asegurar extraer y parsear como string el valor de las vueltas
                 exercises: (b.hiit_exercises || b.exercises || []).map((e: any) => ({...e, _key: Math.random().toString()}))
             }));
             setHiitBlocks([...hiitBlocks.filter(b => (b.exercises || []).some((e:any) => e.name)), ...newBlocks]);
@@ -619,10 +624,23 @@ export default function AddWorkoutScreen() {
                 if (block.type === 'group') {
                   return (
                     <View key={`group-${block.group_id}-${bIndex}`} style={{ marginBottom: 10, borderRadius: 12, borderWidth: 2, borderColor: colors.primary, overflow: 'hidden' }}>
-                      <View style={{ backgroundColor: colors.primary + '20', padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={{ fontWeight: '800', color: colors.primary, fontSize: 14 }}>💊 {block.group_name}</Text>
+                      <View style={{ backgroundColor: colors.primary + '20', padding: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}>
+                          <Text style={{ fontWeight: '800', color: colors.primary, fontSize: 14, flexShrink: 1 }} numberOfLines={1}>💊 {block.group_name}</Text>
+                          {/* Modificador de Vueltas del Grupo */}
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: colors.background, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, borderWidth: 1, borderColor: colors.primary + '40' }}>
+                            <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '800' }}>Vueltas:</Text>
+                            <TextInput
+                              style={{ color: colors.primary, fontWeight: '900', fontSize: 13, minWidth: 24, textAlign: 'center', padding: 0 }}
+                              value={block.exercises[0]?.sets || ''}
+                              onChangeText={(v) => updateGroupSets(block.group_id, v)}
+                              keyboardType="numeric"
+                              placeholder="1"
+                              placeholderTextColor={colors.textSecondary}
+                            />
+                          </View>
+                        </View>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                          {/* Botón dinámico extremo */}
                           {bIndex === 0 ? (
                             <TouchableOpacity onPress={() => moveToBottom(bIndex)} style={[styles.dynamicJumpBtn, { backgroundColor: colors.primary }]}>
                               <Text style={styles.dynamicJumpText}>Bajar al final ⬇️</Text>
