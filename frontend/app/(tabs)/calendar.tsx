@@ -1017,7 +1017,15 @@ export default function CalendarScreen() {
                       <View style={{ marginTop: 8, gap: 8 }}>
                         {dayWorkouts.length > 0 ? (
                           dayWorkouts.map((wk: any, wIdx: number) => (
-                            <View key={wIdx} style={[styles.weekWorkoutSnippet, { backgroundColor: colors.surface, borderColor: wk.completed ? colors.success + '40' : colors.border }, wk.is_test_battery && { borderLeftWidth: 4, borderLeftColor: '#F59E0B' }]}>
+                            <TouchableOpacity 
+                              key={wIdx} 
+                              onPress={(e) => { e.stopPropagation(); handleWorkoutPress(wk); }}
+                              style={[
+                                styles.weekWorkoutSnippet, 
+                                { backgroundColor: colors.surface, borderColor: wk.completed ? colors.success + '40' : colors.border }, 
+                                wk.is_test_battery && { borderLeftWidth: 4, borderLeftColor: '#F59E0B' }
+                              ]}
+                            >
                               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
                                 {wk.is_test_battery && <Ionicons name="trophy" size={12} color="#F59E0B" style={{marginRight: 4}}/>}
                                 <Text style={[styles.weekWorkoutTitle, { color: colors.textPrimary }]} numberOfLines={1}>{wk.title}</Text>
@@ -1026,7 +1034,36 @@ export default function CalendarScreen() {
                                   <Text style={{ fontSize: 10, fontWeight: '700', color: wk.completed ? colors.success : colors.warning }}>{wk.completed ? 'Hecho' : 'Pendiente'}</Text>
                                 </View>
                               </View>
-                            </View>
+
+                              {/* LISTA DE EJERCICIOS (Vista Rápida) */}
+                              {wk.exercises && wk.exercises.length > 0 && (
+                                <View style={{ marginTop: 6, gap: 4, paddingLeft: 2 }}>
+                                  {wk.exercises.map((ex: any, exIdx: number) => (
+                                    <Text key={exIdx} style={{ fontSize: 11, color: colors.textSecondary }} numberOfLines={1}>
+                                      • {ex.name || 'Ejercicio'} {ex.sets && ex.sets.length > 0 ? `(${ex.sets.length} series)` : ''}
+                                    </Text>
+                                  ))}
+                                </View>
+                              )}
+
+                              {/* BOTONES DE ACCIÓN (Sólo si es entrenador) */}
+                              {isTrainer && (
+                                <View style={[styles.trainerActionsRow, { marginTop: 10, paddingTop: 10, gap: 6 }]}>
+                                  <TouchableOpacity onPress={(e) => { e.stopPropagation(); startCopyWorkout(wk); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight }]}>
+                                    <Ionicons name="copy" size={14} color={colors.primary} />
+                                    <Text style={[styles.actionBtnTrainerText, { color: colors.primary }]}>Duplicar</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={(e) => { e.stopPropagation(); router.push({ pathname: '/edit-workout', params: { workoutId: wk.id || wk._id } }); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.surfaceHighlight }]}>
+                                    <Ionicons name="pencil" size={14} color={colors.textSecondary} />
+                                    <Text style={[styles.actionBtnTrainerText, { color: colors.textSecondary }]}>Editar</Text>
+                                  </TouchableOpacity>
+                                  <TouchableOpacity onPress={(e) => { e.stopPropagation(); handleDeleteWorkout(wk); }} style={[styles.actionBtnTrainer, { backgroundColor: colors.error + '15' }]}>
+                                    <Ionicons name="trash" size={14} color={colors.error || '#EF4444'} />
+                                    <Text style={[styles.actionBtnTrainerText, { color: colors.error || '#EF4444' }]}>Borrar</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              )}
+                            </TouchableOpacity>
                           ))
                         ) : (
                           <Text style={{ fontSize: 11, color: colors.textSecondary, fontStyle: 'italic', paddingVertical: 4 }}>Libre de entrenamientos</Text>
@@ -1282,7 +1319,7 @@ export default function CalendarScreen() {
         </View>
       </Modal>
 
-{/* MODAL: CICLO MENSTRUAL */}
+      {/* MODAL: CICLO MENSTRUAL */}
       <Modal visible={showCycleSettings} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
