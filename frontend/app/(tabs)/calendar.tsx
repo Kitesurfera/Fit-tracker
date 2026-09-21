@@ -1282,7 +1282,7 @@ export default function CalendarScreen() {
         </View>
       </Modal>
 
-      {/* MODAL: CICLO MENSTRUAL */}
+{/* MODAL: CICLO MENSTRUAL */}
       <Modal visible={showCycleSettings} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
@@ -1290,12 +1290,51 @@ export default function CalendarScreen() {
               <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Ajustes del Ciclo</Text>
               <TouchableOpacity onPress={() => setShowCycleSettings(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
             </View>
+
             <View style={{ marginBottom: 15 }}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>DURACIÓN DEL CICLO (DÍAS)</Text>
-              <TextInput style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} keyboardType="numeric" value={cycleLengthInput} onChangeText={setCycleLengthInput} />
+              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 6 }]}>DURACIÓN DEL CICLO (DÍAS)</Text>
+              <TextInput 
+                style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
+                keyboardType="numeric" 
+                value={cycleLengthInput} 
+                onChangeText={setCycleLengthInput} 
+              />
             </View>
-            <TouchableOpacity style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} onPress={handleSaveCycleSettings} disabled={updating}>
-              <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Guardar Ajustes</Text>
+
+            <View style={{ marginBottom: 15 }}>
+              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 6 }]}>DÍAS DE SANGRADO</Text>
+              <TextInput 
+                style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
+                keyboardType="numeric" 
+                value={periodLengthInput} 
+                onChangeText={setPeriodLengthInput} 
+              />
+            </View>
+
+            <View style={{ marginBottom: 20 }}>
+              <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 6 }]}>INICIO ÚLTIMO PERIODO</Text>
+              <TextInput 
+                style={[styles.input, { borderColor: colors.border, color: colors.textPrimary }]} 
+                value={lastPeriodDateInput} 
+                onChangeText={setLastPeriodDateInput} 
+                placeholder="AAAA-MM-DD"
+                placeholderTextColor={colors.textSecondary}
+              />
+              <Text style={{ fontSize: 11, color: colors.textSecondary, marginTop: 4 }}>
+                Formato: AAAA-MM-DD (Ej: {localTodayStr})
+              </Text>
+            </View>
+
+            <TouchableOpacity 
+              style={{ backgroundColor: colors.primary, padding: 16, borderRadius: 12, alignItems: 'center' }} 
+              onPress={handleSaveCycleSettings} 
+              disabled={updating}
+            >
+              {updating ? (
+                <ActivityIndicator color="#FFF" />
+              ) : (
+                <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Guardar Ajustes</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>
