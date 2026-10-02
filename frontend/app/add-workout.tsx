@@ -52,7 +52,7 @@ export default function AddWorkoutScreen() {
   });
 
   const [exercises, setExercises] = useState<any[]>([
-    { _key: '1', name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '', is_unilateral: false }
+    { _key: '1', name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '', is_unilateral: false, group_rounds: '1' }
   ]);
 
   const [hiitBlocks, setHiitBlocks] = useState<any[]>([
@@ -77,7 +77,7 @@ export default function AddWorkoutScreen() {
           const newBlocks = pill.exercises.map((b: any) => ({
               ...b, _key: Math.random().toString(),
               name: `[${pill.name}] ${b.name || 'Bloque'}`,
-              sets: String(b.sets || '1'), // <-- Aseguramos leer las vueltas configuradas del bloque de circuito
+              sets: String(b.sets || '1'),
               exercises: (b.hiit_exercises || b.exercises || []).map((e: any) => ({...e, _key: Math.random().toString()}))
           }));
           if (newBlocks.length > 0) setHiitBlocks(newBlocks);
@@ -85,7 +85,7 @@ export default function AddWorkoutScreen() {
           setWorkoutType('traditional');
           const groupId = Math.random().toString();
           const groupName = pill.name || "Píldora";
-          const newExs = pill.exercises.map((e: any) => ({...e, _key: Math.random().toString(), group_id: groupId, group_name: groupName}));
+          const newExs = pill.exercises.map((e: any) => ({...e, _key: Math.random().toString(), group_id: groupId, group_name: groupName, group_rounds: '1'}));
           if (newExs.length > 0) setExercises(newExs);
         }
       } catch (error) {
@@ -135,12 +135,11 @@ export default function AddWorkoutScreen() {
     const updated = [...exercises]; updated[index] = { ...updated[index], [field]: value }; setExercises(updated);
   };
   
-  // Novedad: Modifica las vueltas de todo un bloque en modo tradicional
   const updateGroupSets = (groupId: string, newSets: string) => {
-    setExercises(exercises.map(e => e.group_id === groupId ? { ...e, sets: newSets } : e));
+    setExercises(exercises.map(e => e.group_id === groupId ? { ...e, group_rounds: newSets } : e));
   };
   
-  const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '', is_unilateral: false }]);
+  const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '', is_unilateral: false, group_rounds: '1' }]);
   
   const removeExercise = (index: number) => setExercises(exercises.filter((_, i) => i !== index));
 
@@ -251,18 +250,32 @@ export default function AddWorkoutScreen() {
 
     if (workoutType === 'traditional') {
         if (pill.is_hiit) {
-            Alert.alert("Aviso", "Esta píldora es de formato circuito. Se ha insertado como ejercicios sueltos de fuerza.");
-            const flatExercises = pill.exercises.flatMap((b: any) =>
-                (b.hiit_exercises || b.exercises || []).map((e: any) => ({
-                    _key: Math.random().toString(), name: e.name, 
-                    sets: String(b.sets || e.sets || '1'), // <-- Leemos el "sets" configurado a nivel de bloque en la píldora original
-                    reps: e.duration_reps || '', duration: e.duration || '', weight: '', rest: '', rest_exercise: '', video_url: e.video_url || '', exercise_notes: e.exercise_notes || '', is_unilateral: !!e.is_unilateral,
-                    group_id: groupId, group_name: groupName
-                }))
-            );
-            setExercises([...exercises.filter(e => e.name), ...flatExercises]);
+            Alert.alert("Aviso", "Esta píldora es de formato circuito. Se ha insertado como bloques de fuerza.");
+            const newExercises: any[] = [];
+            pill.exercises.forEach((b: any) => {
+                const bGroupId = Math.random().toString();
+                const bGroupName = `[${pill.name}] ${b.name || 'Bloque'}`;
+                const bRounds = String(b.sets || '1');
+                
+                const exs = (b.hiit_exercises || b.exercises || []).map((e: any) => ({
+                    _key: Math.random().toString(), 
+                    name: e.name, 
+                    sets: String(e.sets || '1'), 
+                    reps: e.duration_reps || '', 
+                    duration: e.duration || '', 
+                    weight: '', rest: '', rest_exercise: '', 
+                    video_url: e.video_url || '', 
+                    exercise_notes: e.exercise_notes || '', 
+                    is_unilateral: !!e.is_unilateral,
+                    group_id: bGroupId, 
+                    group_name: bGroupName,
+                    group_rounds: bRounds
+                }));
+                newExercises.push(...exs);
+            });
+            setExercises([...exercises.filter(e => e.name), ...newExercises]);
         } else {
-            const newExs = pill.exercises.map((e: any) => ({...e, _key: Math.random().toString(), group_id: groupId, group_name: groupName}));
+            const newExs = pill.exercises.map((e: any) => ({...e, _key: Math.random().toString(), group_id: groupId, group_name: groupName, group_rounds: '1'}));
             setExercises([...exercises.filter(e => e.name), ...newExs]);
         }
     } else {
@@ -270,7 +283,7 @@ export default function AddWorkoutScreen() {
             const newBlocks = pill.exercises.map((b: any) => ({
                 ...b, _key: Math.random().toString(),
                 name: `[${pill.name}] ${b.name || 'Bloque'}`,
-                sets: String(b.sets || '1'), // <-- Asegurar extraer y parsear como string el valor de las vueltas
+                sets: String(b.sets || '1'),
                 exercises: (b.hiit_exercises || b.exercises || []).map((e: any) => ({...e, _key: Math.random().toString()}))
             }));
             setHiitBlocks([...hiitBlocks.filter(b => (b.exercises || []).some((e:any) => e.name)), ...newBlocks]);
@@ -278,7 +291,7 @@ export default function AddWorkoutScreen() {
             const newBlock = {
                 _key: Math.random().toString(), name: `💊 ${pill.name}`, sets: '1', rest_exercise: '0', rest_block: '0', rest_between_blocks: '60',
                 exercises: pill.exercises.map((e: any) => ({
-                    _key: Math.random().toString(), name: e.name, sets: e.sets, duration_reps: e.reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url, is_unilateral: !!e.is_unilateral
+                    _key: Math.random().toString(), name: e.name, sets: e.sets || '1', duration_reps: e.reps, duration: e.duration, exercise_notes: e.exercise_notes, video_url: e.video_url, is_unilateral: !!e.is_unilateral
                 }))
             };
             setHiitBlocks([...hiitBlocks.filter(b => (b.exercises || []).some((e:any) => e.name)), newBlock]);
@@ -357,7 +370,8 @@ export default function AddWorkoutScreen() {
             rest_exercise: row[5]?.trim() || '', 
             video_url: row[6]?.trim() || '', 
             exercise_notes: row[7]?.trim() || '',
-            is_unilateral: ['si', 'sí', 'true', '1'].includes((row[8] || '').trim().toLowerCase())
+            is_unilateral: ['si', 'sí', 'true', '1'].includes((row[8] || '').trim().toLowerCase()),
+            group_rounds: '1'
           };
         }).filter(e => e.name);
         
@@ -445,7 +459,7 @@ export default function AddWorkoutScreen() {
         name: ex.name, sets: ex.sets, reps: ex.reps, duration: ex.duration, weight: ex.weight,
         rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes,
         is_unilateral: !!ex.is_unilateral,
-        group_id: ex.group_id || null, group_name: ex.group_name || null
+        group_id: ex.group_id || null, group_name: ex.group_name || null, group_rounds: ex.group_rounds || '1'
       }));
     } else {
       payloadData.exercises = hiitBlocks.map(block => ({
@@ -632,7 +646,7 @@ export default function AddWorkoutScreen() {
                             <Text style={{ fontSize: 11, color: colors.primary, fontWeight: '800' }}>Vueltas:</Text>
                             <TextInput
                               style={{ color: colors.primary, fontWeight: '900', fontSize: 13, minWidth: 24, textAlign: 'center', padding: 0 }}
-                              value={block.exercises[0]?.sets || ''}
+                              value={block.exercises[0]?.group_rounds || '1'}
                               onChangeText={(v) => updateGroupSets(block.group_id, v)}
                               keyboardType="numeric"
                               placeholder="1"
