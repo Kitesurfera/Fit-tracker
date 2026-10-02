@@ -30,18 +30,15 @@ export default function SettingsScreen() {
 
   const isAthlete = user?.role === 'athlete';
 
-  // --- ESTADOS DE PERFIL Y CONFIGURACIÓN ---
   const [name, setName] = useState(user?.name || '');
   const [savingProfile, setSavingProfile] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || null);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
-  // Estados para el modal de recorte / zoom de avatar
   const [showAvatarModal, setShowAvatarModal] = useState(false);
   const [pendingAvatarData, setPendingAvatarData] = useState<{uri: string, width: number, height: number} | null>(null);
   const [avatarZoom, setAvatarZoom] = useState(1);
   
-  // Estado para la elección visual del tema
   const [selectedTheme, setSelectedTheme] = useState<string>(themeMode || 'system');
   
   const [emailEnabled, setEmailEnabled] = useState(user?.email_notifications !== false);
@@ -53,7 +50,6 @@ export default function SettingsScreen() {
   const [savingMeasures, setSavingMeasures] = useState(false);
   const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
 
-  // --- GESTOR DE PÍLDORAS Y ATLETAS ---
   const [pills, setPills] = useState<any[]>([]);
   const [athletes, setAthletes] = useState<any[]>([]);
   const [showPillBuilder, setShowPillBuilder] = useState(false);
@@ -61,7 +57,7 @@ export default function SettingsScreen() {
   const [pillName, setPillName] = useState('');
   const [pillType, setPillType] = useState<'traditional' | 'hiit'>('traditional');
   const [pillExs, setPillExs] = useState<any[]>([{ _key: '1', name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
-  const [pillBlocks, setPillBlocks] = useState<any[]>([{ _key: 'b1', name: 'Bloque 1', sets: '1', exercises: [{ _key: 'e1', name: '', sets: '1', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
+  const [pillBlocks, setPillBlocks] = useState<any[]>([{ _key: 'b1', name: 'Bloque 1', sets: '1', exercises: [{ _key: 'e1', name: '', sets: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
   const [pillAssignedAthletes, setPillAssignedAthletes] = useState<string[]>([]);
   const [savingPill, setSavingPill] = useState(false);
 
@@ -85,7 +81,6 @@ export default function SettingsScreen() {
     api.getPills().then(res => setPills(Array.isArray(res) ? res : [])).catch(console.log);
   };
 
-  // --- MANEJADORES DE MODO OSCURO / APARIENCIA ---
   const handleThemeChange = async (mode: string) => {
     setSelectedTheme(mode);
     await AsyncStorage.setItem('theme_preference', mode);
@@ -139,11 +134,8 @@ export default function SettingsScreen() {
       const base64Image = `data:image/jpeg;base64,${manipulated.base64}`;
       let finalUrl = '';
 
-      // -------------------------------------------------------------
-      // SOLUCIÓN CLOUDINARY DIRECTA DESDE EL FRONTEND
-      // -------------------------------------------------------------
       const CLOUD_NAME = 'slsdfq8t'; 
-      const UPLOAD_PRESET = 'fittracker_preset';
+      const UPLOAD_PRESET = 'fittracker_preset'; 
 
       const data = new FormData();
       data.append('file', base64Image);
@@ -169,9 +161,8 @@ export default function SettingsScreen() {
         else Alert.alert("Error", "No se pudo subir la imagen a la nube.");
         setUploadingAvatar(false);
         setPendingAvatarData(null);
-        return;
+        return; 
       }
-      // -------------------------------------------------------------
 
       setAvatarUrl(finalUrl);
 
@@ -271,13 +262,12 @@ export default function SettingsScreen() {
     }
   };
 
-  // --- LÓGICA CONSTRUCTOR DE PÍLDORAS ---
   const openNewPillBuilder = () => {
     setEditingPillId(null);
     setPillName('');
     setPillType('traditional');
     setPillExs([{ _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', video_url: '', is_unilateral: false }]);
-    setPillBlocks([{ _key: Math.random().toString(), name: 'Bloque 1', sets: '1', exercises: [{ _key: Math.random().toString(), name: '', sets: '1', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
+    setPillBlocks([{ _key: Math.random().toString(), name: 'Bloque 1', sets: '1', exercises: [{ _key: Math.random().toString(), name: '', sets: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
     setPillAssignedAthletes([]);
     setShowPillBuilder(true);
   };
@@ -296,14 +286,14 @@ export default function SettingsScreen() {
         exercises: (b.hiit_exercises || b.exercises || []).map((e: any) => ({
           _key: Math.random().toString(),
           name: e.name || '',
-          sets: e.sets || '1',
+          sets: String(e.sets || '1'),
           duration_reps: e.duration_reps || '',
           duration: e.duration || '',
           video_url: e.video_url || '',
           is_unilateral: !!e.is_unilateral
         }))
       }));
-      setPillBlocks(blocks.length > 0 ? blocks : [{ _key: Math.random().toString(), name: 'Bloque 1', sets: '1', exercises: [{ _key: Math.random().toString(), name: '', sets: '1', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
+      setPillBlocks(blocks.length > 0 ? blocks : [{ _key: Math.random().toString(), name: 'Bloque 1', sets: '1', exercises: [{ _key: Math.random().toString(), name: '', sets: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }]);
     } else {
       const exs = (pill.exercises || []).map((e: any) => ({
         _key: Math.random().toString(),
@@ -352,7 +342,7 @@ export default function SettingsScreen() {
         rest_between_blocks: '60',
         hiit_exercises: block.exercises.filter((e:any) => e.name.trim()).map((e:any) => ({
           name: e.name, 
-          sets: e.sets || '1',
+          sets: String(e.sets || '1'),
           duration_reps: e.duration_reps, 
           duration: e.duration, 
           exercise_notes: '', 
@@ -460,7 +450,6 @@ export default function SettingsScreen() {
             )}
           </View>
 
-          {/* SECCIÓN APARIENCIA CORREGIDA */}
           <Text style={[styles.sectionTitle, { marginTop: 25 }]}>APARIENCIA</Text>
           <View style={[styles.card, { backgroundColor: colors.surface, paddingVertical: 12 }]}>
             <View style={{ flexDirection: 'row', gap: 10, justifyContent: 'space-between' }}>
@@ -702,7 +691,6 @@ export default function SettingsScreen() {
                 <TouchableOpacity style={[styles.typeBtn, pillType === 'hiit' && { backgroundColor: colors.error || '#EF4444' }]} onPress={() => setPillType('hiit')}><Text style={{ color: pillType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito</Text></TouchableOpacity>
               </View>
 
-              {/* CHIPS DE VINCULACIÓN A DEPORTISTAS PARA ALERTA SOS */}
               {athletes.length > 0 && (
                 <View style={{ marginBottom: 20 }}>
                   <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '800', marginBottom: 8, letterSpacing: 0.5 }}>
@@ -751,7 +739,7 @@ export default function SettingsScreen() {
                         <TouchableOpacity onPress={() => setPillExs(pillExs.filter((_, idx) => idx !== i))}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
                       </View>
                       <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
-                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.sets} onChangeText={v => { const n = [...pillExs]; n[i].sets = v; setPillExs(n); }} placeholder="Series" placeholderTextColor={colors.textSecondary} keyboardType="numeric" />
+                        <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.sets} onChangeText={v => { const n = [...pillExs]; n[i].sets = v; setPillExs(n); }} placeholder="Series" placeholderTextColor={colors.textSecondary} />
                         <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.reps} onChangeText={v => { const n = [...pillExs]; n[i].reps = v; setPillExs(n); }} placeholder="Reps" placeholderTextColor={colors.textSecondary} />
                         <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration} onChangeText={v => { const n = [...pillExs]; n[i].duration = v; setPillExs(n); }} placeholder="Tiempo" placeholderTextColor={colors.textSecondary} />
                       </View>
@@ -781,9 +769,9 @@ export default function SettingsScreen() {
                             <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises.splice(eIdx, 1); setPillBlocks(n); }}><Ionicons name="close-circle" size={18} color={colors.textSecondary} /></TouchableOpacity>
                           </View>
                           <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
-                            <TextInput style={[styles.pillExInput, { flex: 0.8, color: colors.textPrimary, borderColor: colors.border }]} value={ex.sets} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].sets = v; setPillBlocks(n); }} placeholder="Series" keyboardType="numeric" placeholderTextColor={colors.textSecondary} />
-                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration_reps} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration_reps = v; setPillBlocks(n); }} placeholder="Reps" placeholderTextColor={colors.textSecondary} />
-                            <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration = v; setPillBlocks(n); }} placeholder="Tiempo" placeholderTextColor={colors.textSecondary} />
+                            <TextInput style={[styles.pillExInput, { flex: 0.8, color: colors.textPrimary, borderColor: colors.border }]} value={ex.sets} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].sets = v; setPillBlocks(n); }} placeholder="Series" placeholderTextColor={colors.textSecondary} keyboardType="numeric" />
+                            <TextInput style={[styles.pillExInput, { flex: 1.1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration_reps} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration_reps = v; setPillBlocks(n); }} placeholder="Reps" placeholderTextColor={colors.textSecondary} />
+                            <TextInput style={[styles.pillExInput, { flex: 1.1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.duration} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].duration = v; setPillBlocks(n); }} placeholder="Tiempo" placeholderTextColor={colors.textSecondary} />
                           </View>
                           <TextInput style={[styles.pillExInput, { color: colors.textPrimary, borderColor: colors.border, marginTop: 6 }]} value={ex.video_url} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].video_url = v; setPillBlocks(n); }} placeholder="URL YouTube (opcional)" placeholderTextColor={colors.textSecondary} />
                           <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].is_unilateral = !n[bIdx].exercises[eIdx].is_unilateral; setPillBlocks(n); }} style={{flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 6}}>
@@ -792,10 +780,10 @@ export default function SettingsScreen() {
                           </TouchableOpacity>
                         </View>
                       ))}
-                      <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises.push({ _key: Math.random().toString(), name: '', sets: '1', duration_reps: '', duration: '', video_url: '', is_unilateral: false }); setPillBlocks(n); }} style={{ paddingVertical: 8 }}><Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>+ Añadir ejercicio al bloque</Text></TouchableOpacity>
+                      <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises.push({ _key: Math.random().toString(), name: '', sets: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }); setPillBlocks(n); }} style={{ paddingVertical: 8 }}><Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>+ Añadir ejercicio al bloque</Text></TouchableOpacity>
                     </View>
                   ))}
-                  <TouchableOpacity onPress={() => setPillBlocks([...pillBlocks, { _key: Math.random().toString(), name: `Bloque ${pillBlocks.length + 1}`, sets: '1', exercises: [{ _key: Math.random().toString(), name: '', sets: '1', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }])} style={[styles.addExBtnBig, { borderColor: colors.error || '#EF4444', borderStyle: 'dashed' }]}><Text style={{ color: colors.error || '#EF4444', fontWeight: '700' }}>+ Añadir Bloque</Text></TouchableOpacity>
+                  <TouchableOpacity onPress={() => setPillBlocks([...pillBlocks, { _key: Math.random().toString(), name: `Bloque ${pillBlocks.length + 1}`, sets: '1', exercises: [{ _key: Math.random().toString(), name: '', sets: '', duration_reps: '', duration: '', video_url: '', is_unilateral: false }] }])} style={[styles.addExBtnBig, { borderColor: colors.error || '#EF4444', borderStyle: 'dashed' }]}><Text style={{ color: colors.error || '#EF4444', fontWeight: '700' }}>+ Añadir Bloque</Text></TouchableOpacity>
                 </View>
               )}
 
@@ -848,7 +836,6 @@ const styles = StyleSheet.create({
   themeBtnText: { fontSize: 11, fontWeight: '800', marginTop: 6, textTransform: 'uppercase' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
-  modalTitle: { fontSize: 18, fontWeight: '800' },
   avatarPreviewCircle: { width: 220, height: 220, borderRadius: 110, overflow: 'hidden', borderWidth: 4, backgroundColor: '#000', justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
   avatarPreviewImage: { width: '100%', height: '100%' }, 
   zoomBtn: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, justifyContent: 'center', alignItems: 'center' },
@@ -860,4 +847,5 @@ const styles = StyleSheet.create({
   pillExInput: { borderWidth: 1, borderRadius: 8, padding: 10, fontSize: 13 },
   addExBtnBig: { padding: 14, borderRadius: 12, borderWidth: 1, alignItems: 'center', marginTop: 5 },
   saveBtnBig: { paddingVertical: 16, borderRadius: 15, alignItems: 'center' },
+  modalTitle: { fontSize: 18, fontWeight: '800' }
 });
