@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { LineChart } from 'react-native-chart-kit';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
+import { goBack } from '../src/utils/navigation';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -47,7 +48,7 @@ export default function ProgressScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* HEADER */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
+        <TouchableOpacity onPress={() => goBack(router)} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>

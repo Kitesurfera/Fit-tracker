@@ -12,6 +12,7 @@ import * as Sharing from 'expo-sharing';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { localDateStr } from '../src/utils/dates';
+import { goBack } from '../src/utils/navigation';
 
 const parseCSV = (str: string) => {
   const arr: string[][] = [];
@@ -475,11 +476,7 @@ export default function AddWorkoutScreen() {
   };
 
   const handleClose = () => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace('/'); 
-    }
+    goBack(router);
   };
 
   const toggleConfig = (key: keyof typeof hiitConfig) => {

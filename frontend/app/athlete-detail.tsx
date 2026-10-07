@@ -13,6 +13,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { useTrainer } from '../src/context/TrainerContext'; 
 import GeminiChatModal from '../src/components/GeminiChatModal'; 
 import WellnessModal from '../src/components/WellnessModal'; 
+import { saveAiWorkout } from '../src/utils/aiWorkout';
 
 const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
@@ -127,6 +128,8 @@ export default function AthleteDetailScreen() {
         api.getWellnessHistory(params.id!)
       ]);
       setAthlete(ath);
+      // La atleta abierta pasa a ser la seleccionada (calendario, tests y rendimiento mostrarán la misma)
+      if (ath?.id) trainerContext?.setSelectedAthlete?.(ath);
       setWorkouts(Array.isArray(wk) ? wk : []);
       setSummary(sum);
       setHistory(Array.isArray(hist) ? hist : []);
@@ -149,7 +152,7 @@ export default function AthleteDetailScreen() {
 
   const executeDeleteWorkout = async (id: string) => {
     try { await api.deleteWorkout(id); loadData(); } 
-    catch (e) { if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar la sesión."); }
+    catch (e) { Alert.alert("Error", "No se pudo eliminar la sesión."); }
   };
 
   const handleDeleteWorkout = (id: string, title: string) => {
@@ -193,10 +196,10 @@ export default function AthleteDetailScreen() {
 
       const payload = { title: workoutToDuplicate.title, date: duplicateDate, notes: workoutToDuplicate.notes || '', athlete_id: params.id!, microciclo_id: workoutToDuplicate.microciclo_id || null, exercises: cleanExercises, is_test_battery: workoutToDuplicate.is_test_battery || false };
       await api.createWorkout(payload);
-      if (Platform.OS !== 'web') Alert.alert("Éxito", `Sesión duplicada para el ${duplicateDate.split('-').reverse().join('/')}`);
+      Alert.alert("Éxito", `Sesión duplicada para el ${duplicateDate.split('-').reverse().join('/')}`);
       loadData();
     } catch (e) {
-      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo duplicar la sesión.");
+      Alert.alert("Error", "No se pudo duplicar la sesión.");
       setLoading(false);
     }
   };
@@ -1023,13 +1026,13 @@ export default function AthleteDetailScreen() {
       {isDesktop ? (
         <View style={{ flex: 1, flexDirection: 'row' }}>
           <View style={{ flex: 10, borderRightWidth: 1, borderRightColor: colors.border }}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 180 }}>
               {renderDashboard()}
             </ScrollView>
           </View>
           
           <View style={{ flex: 13 }}>
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 180 }}>
               {renderWorkouts()}
             </ScrollView>
           </View>
@@ -1043,7 +1046,7 @@ export default function AthleteDetailScreen() {
               </TouchableOpacity>
             ))}
           </View>
-          <ScrollView showsVerticalScrollIndicator={false}>{activeContent()}</ScrollView>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 180 }}>{activeContent()}</ScrollView>
         </>
       )}
 
@@ -1089,6 +1092,18 @@ export default function AthleteDetailScreen() {
         isVisible={isChatVisible} 
         onClose={() => setChatVisible(false)} 
         athleteContext={summary?.latest_wellness} 
+        athleteId={params.id}
+        athleteName={athlete?.name || params.name}
+        onSaveWorkout={async (workoutData: any, targetDate: string) => {
+          try {
+            await saveAiWorkout(params.id!, workoutData, targetDate);
+            setChatVisible(false);
+            loadData();
+            Alert.alert('¡Hecho!', `Sesión guardada en la agenda para el ${targetDate}.`);
+          } catch (e: any) {
+            Alert.alert('Error', e?.message || 'No se pudo guardar la sesión.');
+          }
+        }}
       />
 
       <WellnessModal

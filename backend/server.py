@@ -236,6 +236,10 @@ class TestUpdate(BaseModel):
     value_right: Optional[float] = None
     unit: Optional[str] = None
     notes: Optional[str] = None
+    test_type: Optional[str] = None
+    test_name: Optional[str] = None
+    custom_name: Optional[str] = None
+    date: Optional[str] = None
 
 class GeminiChatRequest(BaseModel):
     userMessage: str
@@ -1127,6 +1131,15 @@ async def get_tests(athlete_id: Optional[str] = None, test_type: Optional[str] =
         query = {'athlete_id': {'$in': await accessible_athlete_ids(user)}}
     if test_type and test_type != 'all': query['test_type'] = test_type
     return await db.tests.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
+
+@api_router.put("/tests/{test_id}")
+async def update_test(test_id: str, data: TestUpdate, user=Depends(get_current_user)):
+    test = await db.tests.find_one({"id": test_id}, {"_id": 0})
+    if not test: raise HTTPException(status_code=404, detail="Test no encontrado")
+    await ensure_athlete_access(user, test.get('athlete_id'))
+    update_data = data.dict(exclude_unset=True)
+    await db.tests.update_one({"id": test_id}, {"$set": update_data})
+    return {"status": "success", "test": {**test, **update_data}}
 
 @api_router.delete("/tests/{test_id}")
 async def delete_test(test_id: str, user=Depends(get_current_user)):

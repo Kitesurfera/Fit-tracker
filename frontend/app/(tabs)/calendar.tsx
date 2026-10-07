@@ -5,7 +5,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
@@ -77,6 +77,7 @@ export default function CalendarScreen() {
   
   const [athletes, setAthletes] = useState<any[]>([]);
   const { selectedAthlete, setSelectedAthlete } = useTrainer();
+  const params = useLocalSearchParams<{ athlete_id?: string }>();
   const [macros, setMacros] = useState<any[]>([]);
   const [workouts, setWorkouts] = useState<any[]>([]);
   const [wellnessHistory, setWellnessHistory] = useState<any[]>([]); 
@@ -229,13 +230,18 @@ export default function CalendarScreen() {
             const freshAthletes = Array.isArray(data) ? data : [];
             if (isActive) setAthletes(freshAthletes);
             
-            if (!currentAthlete && freshAthletes.length > 0) {
-              currentAthlete = freshAthletes[0];
-            } else if (currentAthlete) {
+            // Atleta a mostrar: la elegida en la app; si no hay (página recargada o enlace), la de la dirección;
+            // y si tampoco, la primera
+            const fromParam = params.athlete_id ? freshAthletes.find((a: any) => a.id === params.athlete_id) : null;
+            if (currentAthlete) {
               const updated = freshAthletes.find((a: any) => a.id === currentAthlete.id);
-              if (updated) currentAthlete = updated;
+              currentAthlete = updated || fromParam || freshAthletes[0] || null;
+            } else {
+              currentAthlete = fromParam || freshAthletes[0] || null;
             }
             if (isActive) setSelectedAthlete(currentAthlete);
+            // La dirección refleja la atleta mostrada, para que al recargar se vea la misma
+            if (isActive && currentAthlete && params.athlete_id !== currentAthlete.id) router.setParams({ athlete_id: currentAthlete.id });
           } else {
             let freshUser = user;
             if ((api as any).getMe) {
@@ -282,6 +288,7 @@ export default function CalendarScreen() {
   const handleSelectAthlete = (athlete: any) => {
     if (!athlete) return;
     setSelectedAthlete(athlete);
+    router.setParams({ athlete_id: athlete.id });
     setShowPicker(false);
     setLoading(true);
     refreshAthleteData(athlete);
@@ -473,7 +480,7 @@ export default function CalendarScreen() {
       refreshAthleteData(selectedAthlete);
     } catch (error) {
       console.error("Error al eliminar:", error);
-      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar la sesión.");
+      Alert.alert("Error", "No se pudo eliminar la sesión.");
       setUpdating(false);
     }
   };
@@ -509,7 +516,7 @@ export default function CalendarScreen() {
       setSkipReason('');
       refreshAthleteData(selectedAthlete);
     } catch(e) {
-      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo actualizar.");
+      Alert.alert("Error", "No se pudo actualizar.");
       setUpdating(false);
     }
   };

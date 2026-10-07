@@ -11,6 +11,8 @@ import GeminiChatModal from '../src/components/GeminiChatModal';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { goBack } from '../src/utils/navigation';
+import { saveAiWorkout } from '../src/utils/aiWorkout';
 
 const MACRO_COLORS = ['#4A90E2', '#FF3B30', '#34C759', '#FF9500', '#AF52DE'];
 const MICRO_COLORS = ['#34C759', '#5856D6', '#FF9500', '#FF2D55', '#32ADE6', '#8B5CF6'];
@@ -320,7 +322,7 @@ export default function PeriodizationScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()}><Ionicons name="arrow-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
+        <TouchableOpacity onPress={() => goBack(router)}><Ionicons name="arrow-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Planificación - {params.name}</Text>
         <TouchableOpacity onPress={loadTree}><Ionicons name="sync" size={24} color={colors.primary} /></TouchableOpacity>
       </View>
@@ -658,6 +660,16 @@ export default function PeriodizationScreen() {
         onClose={() => setChatVisible(false)} 
         athleteId={params.athlete_id as string}
         athleteName={params.name as string}
+        onSaveWorkout={async (workoutData: any, targetDate: string) => {
+          try {
+            await saveAiWorkout(params.athlete_id as string, workoutData, targetDate);
+            setChatVisible(false);
+            loadTree();
+            Alert.alert('¡Hecho!', `Sesión guardada en la agenda para el ${targetDate}.`);
+          } catch (e: any) {
+            Alert.alert('Error', e?.message || 'No se pudo guardar la sesión.');
+          }
+        }}
       />
 
     </SafeAreaView>

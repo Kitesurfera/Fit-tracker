@@ -90,32 +90,6 @@ export const api = {
     });
     return res.json();
   },
-  // --- NOTIFICACIONES PUSH Y RECORDATORIOS ---
-  scheduleDailyWellnessReminder: async () => {
-    try {
-        console.log("Wellness reminder check OK.");
-        return true;
-    } catch (e) {
-        console.log("Error en reminder:", e);
-    }
-  },
-
-  subscribeWebPush: async (subscriptionData: any) => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/notifications/subscribe`, {
-      method: 'POST', headers, body: JSON.stringify(subscriptionData),
-    });
-    return res.json();
-  },
-
-  testWebPush: async () => {
-    const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/notifications/test`, {
-      method: 'POST', headers, body: JSON.stringify({ title: "¡Prueba!", message: "El sistema Web Push funciona." }),
-    });
-    return res.json();
-  },
-
   // --- WELLNESS Y ANALÍTICAS ---
   postWellness: async (data: any) => {
     const headers = await getAuthHeaders();
@@ -399,6 +373,24 @@ export const api = {
   },
 
   // --- TESTS FÍSICOS ---
+  // Evolución por test (pantalla /progress): agrupa los registros por nombre, del más antiguo al más reciente
+  getProgress: async (athleteId: string) => {
+    const tests = await api.getTests({ athlete_id: athleteId });
+    const grouped: Record<string, { history: any[]; change_percent: number }> = {};
+    for (const t of Array.isArray(tests) ? tests : []) {
+      const value = t.value ?? (t.value_left != null && t.value_right != null ? (t.value_left + t.value_right) / 2 : t.value_left ?? t.value_right);
+      if (value == null) continue;
+      const name = t.custom_name || t.test_name;
+      (grouped[name] ||= { history: [], change_percent: 0 }).history.push({ date: t.date, value, unit: t.unit });
+    }
+    for (const entry of Object.values(grouped)) {
+      entry.history.sort((a, b) => String(a.date).localeCompare(String(b.date)));
+      const first = entry.history[0].value, last = entry.history[entry.history.length - 1].value;
+      entry.change_percent = first ? Math.round(((last - first) / first) * 1000) / 10 : 0;
+    }
+    return grouped;
+  },
+
   getTests: async (params?: { athlete_id?: string; test_type?: string }) => {
     const headers = await getAuthHeaders();
     let url = `${BACKEND_URL}/api/tests`;

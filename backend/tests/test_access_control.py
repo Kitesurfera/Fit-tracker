@@ -256,3 +256,12 @@ def test_ai_requests_are_rate_limited(client, world, monkeypatch):
 def test_server_upload_endpoint_is_removed(client, world):
     res = client.post("/api/upload", headers=auth(world["token_a"]), files={"file": ("x.m3u8", b"#EXTM3U")})
     assert res.status_code in (404, 405)
+
+
+def test_tests_can_be_edited_only_by_owner(client, world):
+    res = client.put(f"/api/tests/{world['test_b']}", headers=auth(world["token_b"]), json={"value": 120, "notes": "Nueva marca"})
+    assert res.status_code == 200
+    assert res.json()["test"]["value"] == 120
+    stored = [t for t in client.get("/api/tests", headers=auth(world["token_b"])).json() if t["id"] == world["test_b"]][0]
+    assert stored["value"] == 120 and stored["date"] == "2026-10-01"
+    assert client.put(f"/api/tests/{world['test_b']}", headers=auth(world["token_a"]), json={"value": 1}).status_code == 403

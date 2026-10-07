@@ -154,11 +154,10 @@ export default function AnalyticsScreen() {
       if (isTrainer) {
         const aths = await api.getAthletes().catch(() => []);
         setAthletes(aths);
-        if (aths.length > 0 && !selectedAthlete) {
-          handleSelectAthlete(aths[0]);
-        } else if (selectedAthlete) {
-          loadAthleteData(selectedAthlete.id);
-        }
+        // La elegida en la app; si no hay (página recargada o enlace), la de la dirección; si tampoco, la primera
+        const fromParam = params.athlete_id ? aths.find((a: any) => a.id === params.athlete_id) : null;
+        const current = (selectedAthlete && aths.find((a: any) => a.id === selectedAthlete.id)) || fromParam || aths[0];
+        if (current) handleSelectAthlete(current);
       } else {
         loadAthleteData(user?.id);
       }
@@ -188,6 +187,7 @@ export default function AnalyticsScreen() {
 
   const handleSelectAthlete = (athlete: any) => {
     setSelectedAthlete(athlete);
+    if (params.athlete_id !== athlete.id) router.setParams({ athlete_id: athlete.id });
     loadAthleteData(athlete.id);
   };
 
@@ -452,6 +452,10 @@ export default function AnalyticsScreen() {
   const archivedFeedbacksList = allFeedbacks.filter(fb => archivedFeedbacks.includes(fb.id));
 
   const exportToPDF = async () => {
+    // En el navegador abrimos la pestaña del informe en el mismo clic (si se abre después de esperar a la IA,
+    // el navegador la bloquea) y la rellenamos cuando el informe esté listo
+    const reportWindow = Platform.OS === 'web' ? window.open('', '_blank') : null;
+    reportWindow?.document.write('<p style="font-family:sans-serif;padding:24px">Generando informe…</p>');
     setIsGeneratingPDF(true);
     try {
       const athleteName = selectedAthlete?.name || user?.name || 'Deportista';
@@ -646,18 +650,30 @@ export default function AnalyticsScreen() {
       </html>
       `;
 
-      const { uri } = await Print.printToFileAsync({ html: htmlContent });
-      
       if (Platform.OS === 'web') {
-         const link = document.createElement('a');
-         link.href = uri;
-         link.download = `Reporte_${athleteName.replace(/\s+/g, '_')}.pdf`;
-         link.click();
-      } else {
-         await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+        // En el navegador no existe printToFileAsync: abrimos el informe en otra pestaña y lanzamos "Imprimir",
+        // desde donde se puede guardar como PDF (en iPhone: Compartir > Imprimir > Guardar en Archivos)
+        if (!reportWindow) {
+          Alert.alert('Aviso', 'El navegador ha bloqueado la ventana del informe. Permite las ventanas emergentes para esta web e inténtalo de nuevo.');
+          return;
+        }
+        reportWindow.document.open();
+        reportWindow.document.write(htmlContent);
+        reportWindow.document.close();
+        reportWindow.document.title = `Reporte_${athleteName.replace(/\s+/g, '_')}`;
+        // Imprimir cuando carguen las gráficas; si el navegador no avisa de la carga, a los 3 segundos
+        let printed = false;
+        const printOnce = () => { if (!printed) { printed = true; reportWindow.print(); } };
+        reportWindow.onload = () => setTimeout(printOnce, 600);
+        setTimeout(printOnce, 3000);
+        return;
       }
 
+      const { uri } = await Print.printToFileAsync({ html: htmlContent });
+      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
+
     } catch (e: any) {
+      reportWindow?.close();
       Alert.alert("Error", "No se pudo generar el documento PDF: " + e.message);
     } finally {
       setIsGeneratingPDF(false);

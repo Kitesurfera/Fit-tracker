@@ -1,8 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-// Añadimos la importación del ThemeProvider junto a tu hook
-import { ThemeProvider, useTheme } from '../../src/hooks/useTheme'; 
+import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -82,8 +81,8 @@ function TabNavigation() {
 // 2. Exportamos el componente principal que envuelve todo en el "cerebro central"
 export default function TabLayout() {
   return (
-    <ThemeProvider>
-      <TabNavigation />
-    </ThemeProvider>
+    // El tema lo da el ThemeProvider de app/_layout.tsx: uno solo para toda la app, así un cambio en Ajustes
+    // se aplica también a las pantallas fuera de las pestañas
+    <TabNavigation />
   );
 }
