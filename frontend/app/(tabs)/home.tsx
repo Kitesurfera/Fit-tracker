@@ -13,6 +13,7 @@ import { api } from '../../src/api';
 import WellnessModal from '../../src/components/WellnessModal';
 import { syncManager } from '../../src/offline';
 import { useTrainer } from '../../src/context/TrainerContext';
+import { localDateStr, friendlyDate } from '../../src/utils/dates';
 
 const DAILY_TIPS = [
   "El descanso es tan importante como tu serie más pesada.",
@@ -97,38 +98,9 @@ export default function HomeScreen() {
   const [skipWorkoutId, setSkipWorkoutId] = useState<string | null>(null);
   const [skipReason, setSkipReason] = useState('');
 
-  const [offlineWorkouts, setOfflineWorkouts] = useState<string[]>([]);
-
-  useFocusEffect(
-    useCallback(() => {
-      const loadOfflineFlags = async () => {
-        try {
-          const stored = await AsyncStorage.getItem('OFFLINE_WORKOUTS_FLAGS');
-          if (stored) setOfflineWorkouts(JSON.parse(stored));
-        } catch (e) {}
-      };
-      loadOfflineFlags();
-    }, [])
-  );
-
-  const toggleOfflineStatus = async (id: string) => {
-    let updated = [...offlineWorkouts];
-    const isNowOffline = !updated.includes(id);
-
-    if (isNowOffline) {
-      updated.push(id);
-      Alert.alert("Disponible Offline ☁️", "Los datos de esta sesión están guardados localmente. Puedes entrenar sin cobertura.");
-    } else {
-      updated = updated.filter(wId => wId !== id);
-    }
-    
-    setOfflineWorkouts(updated);
-    await AsyncStorage.setItem('OFFLINE_WORKOUTS_FLAGS', JSON.stringify(updated));
-  };
-
   const isTrainer = user?.role === 'trainer';
   const firstName = user?.name?.split(' ')[0] || 'Atleta';
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = localDateStr();
   const todayLabel = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
 
   const isFemale = ['female', 'mujer', 'femenino'].includes(user?.gender?.toLowerCase() || '');
@@ -260,19 +232,28 @@ export default function HomeScreen() {
     if (!isSilent) setRefreshing(true);
     try {
       if (isTrainer) {
-        const data = await api.getAthletes();
+        const [data, todayData] = await Promise.all([api.getAthletes(), api.getWorkouts({ date: todayStr }).catch(() => [])]);
+        const todayWorkouts = Array.isArray(todayData) ? todayData : [];
         const athletesWithReadiness = await Promise.all(
           data.map(async (athlete: any) => {
+            const todays = todayWorkouts.filter((w: any) => w.athlete_id === athlete.id);
             try {
               const summ = await api.getSummary(athlete.id);
               const readiness = calculateReadiness(summ.latest_wellness);
-              return { ...athlete, ...readiness };
+              return { ...athlete, ...readiness, todayWorkouts: todays };
             } catch (e) {
-              return { ...athlete, readinessColor: 'GRAY', readinessLabel: 'Sin datos', fatigue: 0, soreness: 0, sleep: 0 };
+              return { ...athlete, readinessColor: 'GRAY', readinessLabel: 'Sin datos', fatigue: 0, soreness: 0, sleep: 0, todayWorkouts: todays };
             }
           })
         );
-        setAthletes(athletesWithReadiness);
+        // Primero quien necesita atención (fatiga alta o precaución); el resto mantiene su orden
+        const priority: Record<string, number> = { RED: 0, YELLOW: 1 };
+        const sorted = athletesWithReadiness
+          .map((a: any, i: number) => ({ a, i }))
+          .sort((x: any, y: any) => ((priority[x.a.readinessColor] ?? 2) - (priority[y.a.readinessColor] ?? 2)) || (x.i - y.i))
+          .map((x: any) => x.a);
+        setAthletes(sorted);
+        syncManager.cacheData(`home_trainer_${user.id}`, sorted);
       } else {
         const [wData, sData, treeData, wellnessData] = await Promise.all([
           api.getWorkouts(),
@@ -332,11 +313,26 @@ export default function HomeScreen() {
     }
   };
 
+  // Pinta al instante lo último guardado en el dispositivo mientras llegan los datos del servidor
+  const showCachedData = async () => {
+    try {
+      if (isTrainer) {
+        const cached = await syncManager.getCachedData(`home_trainer_${user.id}`);
+        if (Array.isArray(cached) && cached.length > 0) { setAthletes(prev => prev.length ? prev : cached); setLoading(false); }
+      } else {
+        const [cachedWorkouts, cachedSummary] = await Promise.all([syncManager.getCachedData('workouts_all'), syncManager.getCachedData('summary_all')]);
+        if (Array.isArray(cachedWorkouts)) { setWorkouts(prev => prev.length ? prev : cachedWorkouts); setLoading(false); }
+        if (cachedSummary) setSummary((prev: any) => prev || cachedSummary);
+      }
+    } catch (e) {}
+  };
+
   useFocusEffect(
     useCallback(() => { 
       if (authLoading || (!user && !isTrainer)) return; 
       const init = async () => { 
-        try { await syncManager.syncPendingWorkouts(); } catch (e) {} 
+        await showCachedData();
+        try { await syncManager.syncPendingActions(); } catch (e) {} 
         
         if (isTrainer) { 
           await loadData(true); 
@@ -412,8 +408,11 @@ export default function HomeScreen() {
     setShowAthleteModal(true); 
   };
 
+  const showMessage = (title: string, message: string) => { if (Platform.OS === 'web') window.alert(`${title}\n\n${message}`); else Alert.alert(title, message); };
+
   const handleSaveAthlete = async () => {
-    if (!athleteForm.name || !athleteForm.email || (!editingAthleteId && !athleteForm.password)) { Alert.alert("Campos incompletos", "Rellena todos los datos obligatorios."); return; }
+    if (!athleteForm.name || !athleteForm.email || (!editingAthleteId && !athleteForm.password)) { showMessage("Campos incompletos", "Rellena todos los datos obligatorios."); return; }
+    if (athleteForm.password && athleteForm.password.length < 8) { showMessage("Contraseña demasiado corta", "La contraseña debe tener al menos 8 caracteres."); return; }
     try { 
       if (editingAthleteId) { 
         if (api.updateAthlete) await api.updateAthlete(editingAthleteId, athleteForm); 
@@ -422,8 +421,8 @@ export default function HomeScreen() {
       } 
       setShowAthleteModal(false); 
       loadData(); 
-    } catch (e) { 
-      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo guardar la información."); 
+    } catch (e: any) { 
+      showMessage("Error", e?.message && !['NETWORK_ERROR', 'SERVER_ERROR'].includes(e.message) ? e.message : "No se pudo guardar la información.");
     }
   };
 
@@ -491,6 +490,15 @@ export default function HomeScreen() {
     Linking.openURL(`whatsapp://send?text=${encodeURIComponent(message)}`);
   };
 
+  const todayOverview = useMemo(() => {
+    const todays = athletes.flatMap((a: any) => a.todayWorkouts || []);
+    return {
+      sessions: todays.length,
+      done: todays.filter((w: any) => w.completed).length,
+      alerts: athletes.filter((a: any) => a.readinessColor === 'RED').length,
+    };
+  }, [athletes]);
+
   const handleCloseMicroInfo = () => { setViewMicroInfo(null); setExpandedWorkoutId(null); };
   const microWorkouts = useMemo(() => { if (!viewMicroInfo) return []; return workouts.filter(w => String(w.microciclo_id || w.microcycle_id) === String(viewMicroInfo.id || viewMicroInfo._id)).sort((a, b) => String(a.date || '').localeCompare(String(b.date || ''))); }, [workouts, viewMicroInfo]);
 
@@ -502,10 +510,13 @@ export default function HomeScreen() {
     }
     const isSkipped = item.observations?.includes('[NO COMPLETADA]');
     const isExpanded = expandedPreviewId === item.id;
+    const isToday = item.date === todayStr;
+    const isOverdue = !item.completed && !!item.date && item.date < todayStr;
+    const openSession = () => router.push(item.is_test_battery ? `/test-mode?workoutId=${item.id}` : `/training-mode?workoutId=${item.id}`);
     const toggleExpand = () => { setExpandedPreviewId(isExpanded ? null : item.id); setExpandedExerciseId(null); };
 
     return (
-      <View key={item.id} style={[styles.sessionCardWrapper, { backgroundColor: colors.surface, opacity: item.completed && !isExpanded ? 0.7 : 1, borderColor: isExpanded ? colors.primary : 'transparent', borderWidth: isExpanded ? 1 : 0 }, isDesktop && { marginHorizontal: 0, marginBottom: 15 }]}>
+      <View key={item.id} style={[styles.sessionCardWrapper, { backgroundColor: colors.surface, opacity: item.completed && !isExpanded ? 0.7 : 1, borderColor: isExpanded || (isToday && !item.completed) ? colors.primary : 'transparent', borderWidth: isExpanded || (isToday && !item.completed) ? 1 : 0 }, isDesktop && { marginHorizontal: 0, marginBottom: 15 }]}>
         <View style={styles.sessionCardRow}>
           <TouchableOpacity style={{flexDirection: 'row', alignItems: 'center', flex: 1}} onPress={toggleExpand} activeOpacity={0.7}>
             <View style={[styles.avatarCircle, { backgroundColor: item.completed ? (colors.success || '#10B981') + '15' : (item.is_test_battery ? '#F59E0B15' : colors.primary + '15') }]}>
@@ -513,7 +524,9 @@ export default function HomeScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={[styles.cardTitle, { color: colors.textPrimary, textDecorationLine: item.completed ? 'line-through' : 'none' }, isDesktop && { fontSize: 18 }]}>{String(item.title || 'Sesión')}</Text>
-              <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>{item.date || 'Sin fecha'}</Text>
+              <Text style={{ color: isToday && !item.completed ? colors.primary : (isOverdue ? (colors.warning || '#F59E0B') : colors.textSecondary), fontSize: isDesktop ? 13 : 12, fontWeight: isToday || isOverdue ? '700' : '400', marginTop: 2 }}>
+                {friendlyDate(item.date)}{isOverdue ? ' · atrasada' : ''}
+              </Text>
               {hasSessionFeedback && <View style={{ backgroundColor: colors.warning || '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginTop: 4, alignSelf: 'flex-start' }}><Text style={{ color: '#FFF', fontSize: 9, fontWeight: '900' }}>FEEDBACK COACH</Text></View>}
               {isSkipped && <Text style={{color: colors.error || '#EF4444', fontSize: 10, fontWeight: '800', marginTop: 4}}>SESIÓN SALTADA</Text>}
             </View>
@@ -521,14 +534,18 @@ export default function HomeScreen() {
 
           {!item.completed && !isTrainer && (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity style={{ padding: 10 }} onPress={() => toggleOfflineStatus(item.id)}>
-                <Ionicons 
-                  name={offlineWorkouts.includes(item.id) ? "cloud-done" : "cloud-download-outline"} 
-                  size={26} 
-                  color={offlineWorkouts.includes(item.id) ? (colors.success || '#10B981') : colors.textSecondary} 
-                />
-              </TouchableOpacity>
-              <TouchableOpacity style={{ padding: 10, marginRight: 5 }} onPress={() => { setSkipWorkoutId(item.id); setShowSkipModal(true); }}>
+              {isToday && (
+                <TouchableOpacity
+                  style={[styles.startBtn, { backgroundColor: item.is_test_battery ? '#F59E0B' : colors.primary }]}
+                  onPress={openSession}
+                  accessibilityRole="button"
+                  accessibilityLabel={`Empezar ${item.title || 'sesión'}`}
+                >
+                  <Ionicons name={item.is_test_battery ? 'trophy' : 'play'} size={16} color="#FFF" />
+                  <Text style={styles.startBtnText}>Empezar</Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={{ padding: 10, marginRight: 5 }} onPress={() => { setSkipWorkoutId(item.id); setShowSkipModal(true); }} accessibilityRole="button" accessibilityLabel="Saltar sesión">
                 <Ionicons name="close-circle-outline" size={26} color={colors.error || '#EF4444'} />
               </TouchableOpacity>
             </View>
@@ -576,13 +593,7 @@ export default function HomeScreen() {
                 marginTop: 10, 
                 gap: 8
               }} 
-              onPress={() => {
-                if (item.is_test_battery) {
-                  router.push(`/test-mode?workoutId=${item.id}`);
-                } else {
-                  router.push(`/training-mode?workoutId=${item.id}`);
-                }
-              }} 
+              onPress={openSession} 
               activeOpacity={0.8}
             >
               <Ionicons 
@@ -730,7 +741,13 @@ export default function HomeScreen() {
   );
 
   const renderAthleteView = () => {
-    const pendingWorkouts = workouts.filter(w => !w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
+    // Hoy y próximas primero (la más cercana arriba); después las atrasadas (la más reciente arriba)
+    const pendingWorkouts = workouts.filter(w => !w.completed).sort((a, b) => {
+      const da = String(a.date || ''), db = String(b.date || '');
+      const aPast = da < todayStr, bPast = db < todayStr;
+      if (aPast !== bPast) return aPast ? 1 : -1;
+      return aPast ? db.localeCompare(da) : da.localeCompare(db);
+    });
     const completedWorkouts = workouts.filter(w => w.completed).sort((a,b) => String(b.date || '').localeCompare(String(a.date || '')));
     
     if (loading && workouts.length === 0) return (<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}><ActivityIndicator size="large" color={colors.primary} /></View>);
@@ -758,6 +775,28 @@ export default function HomeScreen() {
     );
   };
 
+  const renderTodayStatus = (todays?: any[]) => {
+    if (!todays) return null;
+    if (todays.length === 0) {
+      return <Text style={{ color: colors.textSecondary, fontSize: 12 }}>Sin sesión hoy</Text>;
+    }
+    const first = todays[0];
+    const skipped = first.observations?.includes('[NO COMPLETADA]');
+    const status = skipped
+      ? { label: 'Saltada', color: colors.error || '#EF4444', icon: 'close-circle' as const }
+      : first.completed
+        ? { label: 'Hecha', color: colors.success || '#10B981', icon: 'checkmark-circle' as const }
+        : { label: 'Pendiente', color: colors.warning || '#F59E0B', icon: 'time' as const };
+    return (
+      <>
+        <Ionicons name={status.icon} size={16} color={status.color} />
+        <Text style={{ color: colors.textPrimary, fontSize: 12, flexShrink: 1 }} numberOfLines={1}>
+          <Text style={{ color: status.color, fontWeight: '700' }}>{status.label} hoy</Text> · {first.title || 'Sesión'}{todays.length > 1 ? ` (+${todays.length - 1})` : ''}
+        </Text>
+      </>
+    );
+  };
+
   const renderTrainerView = () => {
     const numColumns = isDesktop ? 2 : 1;
 
@@ -777,6 +816,12 @@ export default function HomeScreen() {
               <View>
                 <Text style={[styles.welcomeText, { color: colors.textPrimary }, isDesktop && { fontSize: 32 }]}>Panel Coach</Text>
                 <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 15 : 13 }}>Gestionando a {athletes.length} atletas</Text>
+                {todayOverview.sessions + todayOverview.alerts > 0 && (
+                  <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 14 : 13, fontWeight: '700', marginTop: 6 }}>
+                    Hoy: {todayOverview.done}/{todayOverview.sessions} sesiones hechas
+                    {todayOverview.alerts > 0 ? <Text style={{ color: colors.error || '#EF4444' }}>{` · ${todayOverview.alerts} ${todayOverview.alerts === 1 ? 'alerta' : 'alertas'} de fatiga`}</Text> : null}
+                  </Text>
+                )}
               </View>
               <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary }]} onPress={openNewAthlete}>
                 <Ionicons name="person-add" size={20} color="#FFF" />
@@ -850,15 +895,18 @@ export default function HomeScreen() {
               )}
 
               <View style={styles.athleteActionsArea}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 8 }}>
+                  {renderTodayStatus(item.todayWorkouts)}
+                </View>
                 {!!item.phone && (
-                  <TouchableOpacity onPress={() => Linking.openURL(`https://wa.me/${item.phone.replace(/\D/g, '')}`)} style={styles.iconHitbox}>
+                  <TouchableOpacity onPress={() => Linking.openURL(`https://wa.me/${item.phone.replace(/\D/g, '')}`)} style={styles.iconHitbox} accessibilityLabel={`WhatsApp a ${item.name}`}>
                     <Ionicons name="logo-whatsapp" size={20} color="#25D366" />
                   </TouchableOpacity>
                 )}
-                <TouchableOpacity onPress={() => openEditAthlete(item)} style={styles.iconHitbox}>
+                <TouchableOpacity onPress={() => openEditAthlete(item)} style={styles.iconHitbox} accessibilityLabel={`Editar a ${item.name}`}>
                   <Ionicons name="pencil-outline" size={20} color={colors.textSecondary} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDeleteAthlete(item.id, item.name)} style={styles.iconHitbox}>
+                <TouchableOpacity onPress={() => handleDeleteAthlete(item.id, item.name)} style={styles.iconHitbox} accessibilityLabel={`Eliminar a ${item.name}`}>
                   <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
                 </TouchableOpacity>
               </View>
@@ -1018,6 +1066,8 @@ const styles = StyleSheet.create({
   container: { padding: 20 }, headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 15 }, dateLabel: { fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }, welcomeText: { fontSize: 26, fontWeight: '900', marginTop: 2 }, dashboardAvatar: { width: 54, height: 54, borderRadius: 27, overflow: 'hidden' }, refreshBtn: { padding: 8, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.02)' }, actionBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' }, athleteCard: { flexDirection: 'column', borderRadius: 20, marginHorizontal: 20, marginBottom: 12, overflow: 'hidden' }, athleteInfoArea: { flexDirection: 'row', alignItems: 'center', padding: 18 }, athleteActionsArea: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', padding: 10, borderTopWidth: 1, borderTopColor: 'rgba(0,0,0,0.05)' }, iconHitbox: { padding: 8 }, avatar: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginRight: 15, overflow: 'hidden' }, cardTitle: { fontSize: 16, fontWeight: '700' }, tipCard: { flexDirection: 'row', padding: 14, borderRadius: 16, marginBottom: 20, alignItems: 'center', gap: 10 }, tipText: { fontSize: 13, fontWeight: '600', flex: 1, fontStyle: 'italic' }, phaseCard: { flexDirection: 'row', padding: 20, borderRadius: 24, marginBottom: 25, alignItems: 'center' }, phaseInfo: { flex: 1 }, phaseLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, fontWeight: '800', letterSpacing: 1 }, phaseName: { color: '#FFF', fontSize: 20, fontWeight: '900', marginTop: 2 }, macroRef: { color: 'rgba(255,255,255,0.8)', fontSize: 12, marginTop: 4 }, phaseBadge: { backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 }, phaseBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '800' }, metricsGrid: { flexDirection: 'row', gap: 15, marginBottom: 20 }, metricCard: { flex: 1, padding: 18, borderRadius: 22, alignItems: 'center' }, metricValue: { fontSize: 22, fontWeight: '900', marginTop: 5 }, metricLabel: { fontSize: 9, fontWeight: '700', marginTop: 2 }, fullBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 18, borderRadius: 20, marginBottom: 30, gap: 10 }, actionText: { fontWeight: '800', fontSize: 15 }, sectionTitle: { fontSize: 11, fontWeight: '800', color: '#888', marginBottom: 15, letterSpacing: 1.5, textTransform: 'uppercase' }, 
   sessionCardWrapper: { padding: 12, paddingLeft: 18, borderRadius: 22, marginHorizontal: 20, marginBottom: 12 },
   sessionCardRow: { flexDirection: 'row', alignItems: 'center' },
+  startBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12, marginRight: 4 },
+  startBtnText: { color: '#FFF', fontWeight: '800', fontSize: 14 },
   avatarCircle: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center', marginRight: 15 }, modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' }, modalContent: { borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 25, paddingBottom: 40, maxHeight: '90%' }, modalTitle: { fontSize: 22, fontWeight: '900', textAlign: 'center', marginBottom: 20 }, input: { borderWidth: 1, padding: 16, borderRadius: 15, fontSize: 16 }, genderRow: { flexDirection: 'row', gap: 10, marginBottom: 15 }, genderBtn: { flex: 1, padding: 14, borderRadius: 12, alignItems: 'center', borderWidth: 1 }, submitBtn: { padding: 18, borderRadius: 18, alignItems: 'center', elevation: 2, marginTop: 10 }, feedbackAlertCard: { padding: 18, borderRadius: 20, marginBottom: 25, elevation: 3 }, modalOverlayCenter: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }, modalContentInfo: { width: '90%', maxHeight: '85%', margin: 20, padding: 25, borderRadius: 30, alignItems: 'center', elevation: 5 }, phaseIconBadge: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center' }, infoLabel: { fontSize: 10, fontWeight: '800', letterSpacing: 1, marginTop: 10, textAlign: 'center' }, infoTitleMacro: { fontSize: 18, fontWeight: '900', marginTop: 4, textAlign: 'center' }, divider: { height: 1, width: '80%', marginVertical: 15, opacity: 0.5 }, infoTitleMicro: { fontSize: 20, fontWeight: '900', marginTop: 4, textAlign: 'center' }, microTypeBadgeBig: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10 }, microWorkoutCard: { borderWidth: 1, borderRadius: 14, marginBottom: 10, overflow: 'hidden' }, microWorkoutHeader: { flexDirection: 'row', alignItems: 'center', padding: 14 }, microWorkoutExercises: { padding: 14, borderTopWidth: 1 }, historyToggleBtn: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 16, marginBottom: 5 }, historyToggleText: { flex: 1, fontSize: 12, fontWeight: '800', marginLeft: 10, letterSpacing: 1 },
   modalBtn: { flex: 1, padding: 16, borderRadius: 12, alignItems: 'center' },
   insightCard: { borderWidth: 1, borderRadius: 16, overflow: 'hidden' },

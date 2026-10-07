@@ -16,13 +16,17 @@ export default function Root({ children }: PropsWithChildren) {
         />
 
         {/* --- CONFIGURACIÓN PARA SAFARI (iOS) --- */}
-        <title>Elite Training</title>
-        <meta name="apple-mobile-web-app-title" content="EliteApp" />
+        <title>AM Coaching</title>
+        <meta name="apple-mobile-web-app-title" content="AM Coaching" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
         
         {/* Ruta al icono para la pantalla de inicio */}
-        <link rel="apple-touch-icon" href="/assets/images/icon.png" />
+        <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+
+        {/* --- PWA: ficha de la app (icono, nombre, colores) --- */}
+        <link rel="manifest" href="/manifest.json" />
+        <meta name="theme-color" content="#4A90E2" />
 
         <ScrollViewStyleReset />
         <style

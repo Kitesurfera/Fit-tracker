@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
+import { localDateStr } from '../../src/utils/dates';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isDesktop = SCREEN_WIDTH > 768;
@@ -237,7 +238,7 @@ export default function TestsScreen() {
 
     setSaving(true);
     try {
-      const todayStr = new Date().toISOString().split('T')[0];
+      const todayStr = localDateStr();
       const payload: any = {
         unit: formData.unit.trim(),
         notes: formData.notes.trim(),

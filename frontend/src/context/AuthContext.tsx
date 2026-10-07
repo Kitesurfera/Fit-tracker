@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { syncManager } from '../offline';
 
 const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL;
 
@@ -42,7 +43,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setToken(savedToken);
         setUser(JSON.parse(savedUser));
       } else {
-        await AsyncStorage.clear(); // Limpiamos todo rastro si hay fallo
+        // Sesión incompleta: quitamos solo los datos de sesión (no los cambios pendientes ni las plantillas)
+        await AsyncStorage.multiRemove(['auth_token', 'user_data']);
       }
     } catch (e) {
       console.error("Error inicializando auth:", e);
@@ -103,8 +105,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     try {
-      // Limpieza brutal: lo borra TODO del dispositivo
-      await AsyncStorage.clear();
+      // Borramos la sesión y los datos de esta cuenta, pero no las preferencias ni las plantillas guardadas en el dispositivo
+      await AsyncStorage.multiRemove(['auth_token', 'user_data', 'cached_avatar']);
+      await syncManager.clearUserData();
     } catch (e) {
       console.log("Error menor limpiando storage", e);
     }

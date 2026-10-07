@@ -9,6 +9,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
+import { localDateStr } from '../src/utils/dates';
 
 const STRENGTH_TESTS = [
   { key: 'squat_rm', label: 'Sentadilla RM', unit: 'kg' },
@@ -47,7 +48,7 @@ export default function AddTestScreen() {
   const [valueLeft, setValueLeft] = useState('');
   const [valueRight, setValueRight] = useState('');
   const [unit, setUnit] = useState('kg');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(localDateStr());
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
