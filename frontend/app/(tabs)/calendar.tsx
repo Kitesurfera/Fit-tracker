@@ -830,7 +830,7 @@ export default function CalendarScreen() {
   }
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={styles.topHeader}>
         {isTrainer && selectedAthlete && (
           <TouchableOpacity

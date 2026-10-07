@@ -19,43 +19,18 @@ export default function Root({ children }: PropsWithChildren) {
         <title>AM Coaching</title>
         <meta name="apple-mobile-web-app-title" content="AM Coaching" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        {/* "default": la app empieza justo debajo de la hora y la batería. Con "black-translucent" iOS dibujaba
+            la app por debajo de la barra de estado y calculaba mal su altura (quedaba un hueco abajo). */}
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         
         {/* Ruta al icono para la pantalla de inicio */}
         <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
 
         {/* --- PWA: ficha de la app (icono, nombre, colores) --- */}
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#4A90E2" />
-
-        {/* iPhone con la app en la pantalla de inicio: con la barra de estado transparente, iOS calcula la
-            altura como si la barra ocupara sitio y deja un hueco abajo. Ajustamos la app al alto real de la
-            pantalla. Si iOS no tiene el fallo, las dos alturas coinciden y no se cambia nada. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function () {
-                if (window.navigator.standalone !== true) return;
-                function fit() {
-                  var root = document.getElementById('root');
-                  if (!root) return;
-                  var portrait = window.innerHeight > window.innerWidth;
-                  var full = portrait ? Math.max(window.innerHeight, window.screen.height) : window.innerHeight;
-                  if (full > window.innerHeight) {
-                    root.style.setProperty('bottom', 'auto', 'important');
-                    root.style.setProperty('height', full + 'px', 'important');
-                  } else {
-                    root.style.removeProperty('bottom');
-                    root.style.removeProperty('height');
-                  }
-                }
-                document.addEventListener('DOMContentLoaded', fit);
-                window.addEventListener('resize', fit);
-                window.addEventListener('orientationchange', function () { setTimeout(fit, 300); });
-              })();
-            `,
-          }}
-        />
+        {/* Color de la barra de estado: el mismo fondo que la app, en modo claro y oscuro */}
+        <meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)" />
 
         <ScrollViewStyleReset />
         <style

@@ -265,7 +265,7 @@ export default function TestsScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.contentWrapper}>
         <FlatList
           data={groupedTests}
