@@ -426,7 +426,7 @@ export default function HomeScreen() {
     }
   };
 
-  const executeDelete = async (id: string) => { try { if (api.deleteAthlete) { await api.deleteAthlete(id); loadData(); } } catch (e) { if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo eliminar."); } };
+  const executeDelete = async (id: string) => { try { if (api.deleteAthlete) { await api.deleteAthlete(id); loadData(); } } catch (e) { Alert.alert("Error", "No se pudo eliminar."); } };
   const handleDeleteAthlete = (id: string, name: string) => { if (Platform.OS === 'web') { if (window.confirm(`¿Eliminar a ${name}?`)) executeDelete(id); } else { Alert.alert("Eliminar", `¿Seguro que quieres borrar a ${name}?`, [ { text: "Cancelar", style: "cancel" }, { text: "ELIMINAR", style: "destructive", onPress: () => executeDelete(id) } ]); } };
   
   const handleFeedbackClick = async () => { 

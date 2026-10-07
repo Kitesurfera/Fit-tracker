@@ -14,6 +14,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api';
 import VideoUploader from '../src/components/VideoUploader';
 import { localDateStr } from '../src/utils/dates';
+import { goBack } from '../src/utils/navigation';
 
 export default function TestModeScreen() {
   const { workoutId } = useLocalSearchParams();
@@ -104,7 +105,7 @@ export default function TestModeScreen() {
           }
         } else {
           Alert.alert("Error", "No se encontró la batería de tests.");
-          router.back();
+          goBack(router);
         }
       } catch (e) {
         console.error("Error cargando batería:", e);
@@ -273,7 +274,7 @@ export default function TestModeScreen() {
       {showSummary ? (
         <View style={{ flex: 1 }}>
            <View style={styles.header}>
-              <TouchableOpacity onPress={() => workout?.completed ? router.back() : setShowSummary(false)} style={{ padding: 8 }}>
+              <TouchableOpacity onPress={() => workout?.completed ? goBack(router) : setShowSummary(false)} style={{ padding: 8 }}>
                 <Ionicons name="arrow-back" size={28} color={colors.textPrimary} />
               </TouchableOpacity>
               <View style={{ flex: 1, alignItems: 'center' }}>
@@ -359,7 +360,7 @@ export default function TestModeScreen() {
 
            <View style={[styles.footer, { backgroundColor: colors.background, position: 'absolute', bottom: 0, width: '100%' }]}>
               {workout?.completed ? (
-                 <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#3B82F6' }]} onPress={() => router.back()}>
+                 <TouchableOpacity style={[styles.finishBtn, { backgroundColor: '#3B82F6' }]} onPress={() => goBack(router)}>
                    <Ionicons name="arrow-back" size={22} color="#FFF" />
                    <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16, marginLeft: 8 }}>VOLVER</Text>
                  </TouchableOpacity>
@@ -378,7 +379,7 @@ export default function TestModeScreen() {
       ) : (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => router.back()} style={{ padding: 8 }}>
+            <TouchableOpacity onPress={() => goBack(router)} style={{ padding: 8 }}>
               <Ionicons name="close" size={28} color={colors.textPrimary} />
             </TouchableOpacity>
             <View style={{ flex: 1, alignItems: 'center' }}>

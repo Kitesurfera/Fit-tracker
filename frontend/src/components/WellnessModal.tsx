@@ -99,8 +99,8 @@ const handleSave = async () => {
 
       onClose();
     } catch (e: any) {
-      if (Platform.OS !== 'web') Alert.alert("Error de envío", e.message || "No se pudo conectar con el servidor.");
-      else console.error("Error guardando wellness:", e);
+      console.error("Error guardando wellness:", e);
+      Alert.alert("Error de envío", e.message || "No se pudo conectar con el servidor.");
     } finally {
       setLoading(false);
     }

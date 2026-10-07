@@ -246,7 +246,7 @@ export default function TestsScreen() {
         value: formData.isUnilateral ? Math.max(parseFloat(formData.valueLeft) || 0, parseFloat(formData.valueRight) || 0) : parseFloat(String(formData.value).replace(',', '.') || '0'),
         value_left: formData.isUnilateral ? parseFloat(String(formData.valueLeft).replace(',', '.') || '0') : null,
         value_right: formData.isUnilateral ? parseFloat(String(formData.valueRight).replace(',', '.') || '0') : null,
-        date: todayStr,
+        date: editTest?.date || todayStr,
         test_name: 'custom', 
         custom_name: formData.name.trim(),
         athlete_id: isTrainer ? selectedAthlete : user?.id

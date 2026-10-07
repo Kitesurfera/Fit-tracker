@@ -19,6 +19,7 @@ import UnifiedTimer from '../src/components/training/UnifiedTimer';
 import HiitCard from '../src/components/training/HiitCard';
 import VideoUploader from '../src/components/VideoUploader';
 import { localDateStr } from '../src/utils/dates';
+import { goBack } from '../src/utils/navigation';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -454,7 +455,7 @@ export default function TrainingModeScreen() {
     const fetchWorkoutDetail = async () => {
       if (!stableWorkoutId) { if (isMounted) setLoading(false); return; }
       try {
-        const [allWorkouts, wellnessData] = await Promise.all([api.getWorkouts(), api.getWellnessHistory(user?.id).catch(() => [])]);
+        const [allWorkouts, wellnessData] = await Promise.all([api.getWorkouts(), user?.id ? api.getWellnessHistory(user.id).catch(() => []) : Promise.resolve([])]);
         const currentWorkout = allWorkouts.find((w: any) => w.id === stableWorkoutId);
         if (currentWorkout && isMounted) {
           setWorkout(currentWorkout);
@@ -517,7 +518,7 @@ export default function TrainingModeScreen() {
     };
     fetchWorkoutDetail();
     return () => { isMounted = false; };
-  }, [stableWorkoutId]);
+  }, [stableWorkoutId, user?.id]);
 
   useEffect(() => {
     if (workout && !workout.completed && !finished && !isPaused) {
@@ -841,7 +842,7 @@ export default function TrainingModeScreen() {
   };
 
     const handleFinish = async () => {
-      if (workout.completed) { router.back(); return; }
+      if (workout.completed) { goBack(router); return; }
       if (!stableWorkoutId) return;
       
       stopAllTimers();
@@ -857,12 +858,12 @@ export default function TrainingModeScreen() {
         if (res?.offline) {
           if (Platform.OS === 'web') {
              window.alert("Guardado Offline 📶. Tu sesión se ha guardado en el dispositivo y se sincronizará cuando recuperes la conexión.");
-             router.back();
+             goBack(router);
           } else {
              Alert.alert(
                "Guardado Offline 📶",
                "No hay conexión. Tu sesión se ha guardado localmente y se sincronizará automáticamente cuando recuperes la cobertura.",
-               [{ text: "Entendido", onPress: () => router.back() }]
+               [{ text: "Entendido", onPress: () => goBack(router) }]
              );
           }
           return; 
@@ -874,16 +875,16 @@ export default function TrainingModeScreen() {
           if (send) {
             await sendWhatsAppMessage(data);
           }
-          router.back();
+          goBack(router);
         } else {
           Alert.alert(
             "¡Buen trabajo!",
             "¿Quieres enviar el resumen de la sesión por WhatsApp a tu entrenador?",
             [
-              { text: "No", style: "cancel", onPress: () => router.back() },
+              { text: "No", style: "cancel", onPress: () => goBack(router) },
               { text: "Sí", onPress: async () => {
                   await sendWhatsAppMessage(data);
-                  router.back();
+                  goBack(router);
               }}
             ]
           );
@@ -1360,7 +1361,16 @@ export default function TrainingModeScreen() {
   };
 
   if (loading) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><ActivityIndicator size="large" color={colors.primary} /></SafeAreaView>;
-  if (!workout) return <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center' }]}><Text style={{ color: colors.textPrimary }}>No encontrado.</Text></SafeAreaView>;
+  if (!workout) return (
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.background, justifyContent: 'center', alignItems: 'center', padding: 30, gap: 16 }]}>
+      <Ionicons name="calendar-clear-outline" size={48} color={colors.textSecondary} />
+      <Text style={{ color: colors.textPrimary, fontSize: 17, fontWeight: '800', textAlign: 'center' }}>No encontramos esta sesión</Text>
+      <Text style={{ color: colors.textSecondary, textAlign: 'center' }}>Puede que tu entrenador la haya cambiado o eliminado.</Text>
+      <TouchableOpacity onPress={() => router.replace('/home')} style={{ backgroundColor: colors.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14 }} accessibilityRole="button">
+        <Text style={{ color: '#FFF', fontWeight: '800' }}>Volver al inicio</Text>
+      </TouchableOpacity>
+    </SafeAreaView>
+  );
 
   let main;
   if (finished || workout.completed) {
@@ -1368,7 +1378,7 @@ export default function TrainingModeScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.topBar}>
-            <TouchableOpacity onPress={() => router.back()}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
+            <TouchableOpacity onPress={() => goBack(router)}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
             <Text style={[styles.topTitle, { color: colors.textPrimary }]}>Resumen de Sesión</Text>
             <View style={{ width: 26 }} />
           </View>
@@ -1505,7 +1515,7 @@ export default function TrainingModeScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.topBar}>
-            <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}>
+            <TouchableOpacity onPress={() => { stopAllTimers(); goBack(router); }}>
               <Ionicons name="close" size={26} color={colors.textPrimary} />
             </TouchableOpacity>
             <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 10 }}>
@@ -1598,7 +1608,7 @@ export default function TrainingModeScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.topBar}>
-            <TouchableOpacity onPress={() => { stopAllTimers(); router.back(); }}>
+            <TouchableOpacity onPress={() => { stopAllTimers(); goBack(router); }}>
               <Ionicons name="close" size={26} color={colors.textPrimary} />
             </TouchableOpacity>
             <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 10 }}>

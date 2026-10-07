@@ -10,6 +10,7 @@ import { useAuth } from '../src/context/AuthContext';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { localDateStr } from '../src/utils/dates';
+import { goBack } from '../src/utils/navigation';
 
 const STRENGTH_TESTS = [
   { key: 'squat_rm', label: 'Sentadilla RM', unit: 'kg' },
@@ -57,7 +58,9 @@ export default function AddTestScreen() {
   const [isUnilateral, setIsUnilateral] = useState(false);
 
   useEffect(() => {
-    if (user?.role === 'trainer') {
+    // Esperamos a tener la sesión (al recargar la página tarda un instante en leerse del dispositivo)
+    if (!user) return;
+    if (user.role === 'trainer') {
       api.getAthletes().then(data => {
         setAthletes(data || []);
         if (preselected_athlete && typeof preselected_athlete === 'string') {
@@ -67,9 +70,9 @@ export default function AddTestScreen() {
         }
       }).catch(console.log);
     } else {
-      setSelectedAthlete(user?.id || '');
+      setSelectedAthlete(user.id || '');
     }
-  }, [preselected_athlete]);
+  }, [user?.id, user?.role, preselected_athlete]);
 
   const currentTests = testType === 'strength' ? STRENGTH_TESTS : testType === 'plyometrics' ? PLYO_TESTS : MAX_FORCE_TESTS;
 
@@ -126,7 +129,7 @@ export default function AddTestScreen() {
         value_left: isUnilateral ? left : null,
         value_right: isUnilateral ? right : null,
       });
-      router.back();
+      goBack(router);
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -138,7 +141,7 @@ export default function AddTestScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} testID="close-add-test" activeOpacity={0.7}>
+          <TouchableOpacity onPress={() => goBack(router)} testID="close-add-test" activeOpacity={0.7}>
             <Ionicons name="close" size={28} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nuevo Test</Text>

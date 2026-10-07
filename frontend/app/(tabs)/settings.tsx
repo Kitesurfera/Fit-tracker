@@ -14,6 +14,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
 import { syncManager } from '../../src/offline';
 import { localDateStr } from '../../src/utils/dates';
+import { goBack } from '../../src/utils/navigation';
 
 const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'kite': { icon: 'kitesurfing', lib: 'MaterialCommunity' },
@@ -26,7 +27,7 @@ const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
 };
 
 export default function SettingsScreen() {
-  const { colors, themeMode, changeTheme } = useTheme();
+  const { colors, themeMode, updateTheme } = useTheme();
   const { user, logout, updateUser } = useAuth();
   const router = useRouter();
 
@@ -85,10 +86,8 @@ export default function SettingsScreen() {
 
   const handleThemeChange = async (mode: string) => {
     setSelectedTheme(mode);
-    await AsyncStorage.setItem('theme_preference', mode);
-    if (changeTheme) {
-      changeTheme(mode);
-    }
+    // Aplica el tema al momento en toda la app (y lo guarda para la próxima vez)
+    await updateTheme(mode);
   };
 
   const handlePickAvatar = async () => {
@@ -409,7 +408,7 @@ export default function SettingsScreen() {
         
         {/* HEADER */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}><Ionicons name="arrow-back" size={26} color={colors.textPrimary} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => goBack(router)} style={styles.backBtn}><Ionicons name="arrow-back" size={26} color={colors.textPrimary} /></TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Ajustes</Text>
           <View style={{ width: 40 }} />
         </View>

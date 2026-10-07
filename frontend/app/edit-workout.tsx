@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
+import { goBack } from '../src/utils/navigation';
 
 const normalizeName = (name: string) => {
   if (!name) return "";
@@ -363,7 +364,7 @@ export default function EditWorkoutScreen() {
     }
 
     setSaving(true);
-    try { await api.updateWorkout(params.workoutId, payloadData); router.back(); } 
+    try { await api.updateWorkout(params.workoutId, payloadData); goBack(router); } 
     catch (e: any) { setError(e.message || 'Error al actualizar'); } 
     finally { setSaving(false); }
   };
@@ -421,7 +422,7 @@ export default function EditWorkoutScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, width: '100%' }}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
+          <TouchableOpacity onPress={() => goBack(router)} style={styles.headerBtn}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Editar Sesión</Text>
           <TouchableOpacity onPress={handleSave} style={styles.headerBtn} disabled={saving}>{saving ? <ActivityIndicator color={colors.primary} size="small" /> : <Text style={[styles.saveText, { color: colors.primary }]}>Actualizar</Text>}</TouchableOpacity>
         </View>
@@ -469,9 +470,9 @@ export default function EditWorkoutScreen() {
 
           {/* SECCIÓN PÍLDORAS */}
           <View style={[styles.csvSection, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>PÍLDORAS (ACTIVACIÓN/PREHAB)</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+              <Text style={[styles.label, { color: colors.textSecondary, flexShrink: 1 }]}>PÍLDORAS (ACTIVACIÓN/PREHAB)</Text>
+              <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
                 <TouchableOpacity style={[styles.csvBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]} onPress={() => setShowSavePillModal(true)}>
                   <Ionicons name="save-outline" size={16} color={colors.primary} />
                   <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Guardar Base</Text>
