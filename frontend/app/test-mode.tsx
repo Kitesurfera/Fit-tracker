@@ -15,6 +15,7 @@ import { api } from '../src/api';
 import VideoUploader from '../src/components/VideoUploader';
 import { localDateStr } from '../src/utils/dates';
 import { goBack } from '../src/utils/navigation';
+import { bestOfSides, isLowerBetter } from '../src/utils/tests';
 
 export default function TestModeScreen() {
   const { workoutId } = useLocalSearchParams();
@@ -188,7 +189,7 @@ export default function TestModeScreen() {
           if (ex.unit === 'rsi' || ex.test_key === 'dj') {
             finalVal = parseFloat(calculateRSI(res.flightTime, res.contactTime)) || 0;
           } else if (ex.is_bilateral) {
-            finalVal = Math.max(parseFloat(vLStr) || 0, parseFloat(vRStr) || 0);
+            finalVal = bestOfSides(parseFloat(vLStr) || 0, parseFloat(vRStr) || 0, isLowerBetter(ex.name || ex.test_key, ex.unit));
           } else {
             finalVal = parseFloat(vLStr) || 0;
           }
@@ -274,7 +275,7 @@ export default function TestModeScreen() {
       {showSummary ? (
         <View style={{ flex: 1 }}>
            <View style={styles.header}>
-              <TouchableOpacity onPress={() => workout?.completed ? goBack(router) : setShowSummary(false)} style={{ padding: 8 }}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Volver" onPress={() => workout?.completed ? goBack(router) : setShowSummary(false)} style={{ padding: 8 }}>
                 <Ionicons name="arrow-back" size={28} color={colors.textPrimary} />
               </TouchableOpacity>
               <View style={{ flex: 1, alignItems: 'center' }}>
@@ -379,7 +380,7 @@ export default function TestModeScreen() {
       ) : (
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.header}>
-            <TouchableOpacity onPress={() => goBack(router)} style={{ padding: 8 }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => goBack(router)} style={{ padding: 8 }}>
               <Ionicons name="close" size={28} color={colors.textPrimary} />
             </TouchableOpacity>
             <View style={{ flex: 1, alignItems: 'center' }}>
@@ -461,7 +462,7 @@ export default function TestModeScreen() {
                                 <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 11 }} numberOfLines={1} adjustsFontSizeToFit>{ex.unit}</Text>
                               </View>
                               {hasTimer && (
-                                <TouchableOpacity 
+                                <TouchableOpacity accessibilityRole="button" accessibilityLabel={runningTimers[`${ex.test_key}_valL`] ? "Parar cronómetro" : "Iniciar cronómetro"} 
                                   style={[styles.timerBtn, { backgroundColor: runningTimers[`${ex.test_key}_valL`] ? '#EF4444' : colors.primary }]}
                                   onPress={() => toggleTimer(ex.test_key, 'valL')}
                                 >
@@ -484,7 +485,7 @@ export default function TestModeScreen() {
                                 <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 11 }} numberOfLines={1} adjustsFontSizeToFit>{ex.unit}</Text>
                               </View>
                               {hasTimer && (
-                                <TouchableOpacity 
+                                <TouchableOpacity accessibilityRole="button" accessibilityLabel={runningTimers[`${ex.test_key}_valR`] ? "Parar cronómetro" : "Iniciar cronómetro"} 
                                   style={[styles.timerBtn, { backgroundColor: runningTimers[`${ex.test_key}_valR`] ? '#EF4444' : colors.primary }]}
                                   onPress={() => toggleTimer(ex.test_key, 'valR')}
                                 >
@@ -510,7 +511,7 @@ export default function TestModeScreen() {
                           <Text style={{ color: colors.textSecondary, fontWeight: '700', fontSize: 12 }} numberOfLines={1} adjustsFontSizeToFit>{ex.unit}</Text>
                         </View>
                         {hasTimer && (
-                          <TouchableOpacity 
+                          <TouchableOpacity accessibilityRole="button" accessibilityLabel={runningTimers[`${ex.test_key}_valL`] ? "Parar cronómetro" : "Iniciar cronómetro"} 
                             style={[styles.timerBtn, { backgroundColor: runningTimers[`${ex.test_key}_valL`] ? '#EF4444' : colors.primary }]}
                             onPress={() => toggleTimer(ex.test_key, 'valL')}
                           >
@@ -537,7 +538,7 @@ export default function TestModeScreen() {
 
       {fullScreenVideo && (
         <View style={[StyleSheet.absoluteFill, styles.fullscreenOverlay]}>
-          <TouchableOpacity onPress={() => setFullScreenVideo(null)} style={styles.closeBtn}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setFullScreenVideo(null)} style={styles.closeBtn}>
             <Ionicons name="close-circle" size={40} color="#FFF" />
           </TouchableOpacity>
           <Video 

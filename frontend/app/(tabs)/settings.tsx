@@ -408,7 +408,7 @@ export default function SettingsScreen() {
         
         {/* HEADER */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => goBack(router)} style={styles.backBtn}><Ionicons name="arrow-back" size={26} color={colors.textPrimary} /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Volver" onPress={() => goBack(router)} style={styles.backBtn}><Ionicons name="arrow-back" size={26} color={colors.textPrimary} /></TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Ajustes</Text>
           <View style={{ width: 40 }} />
         </View>
@@ -489,6 +489,7 @@ export default function SettingsScreen() {
                 </View>
               </View>
               <Switch 
+                accessibilityLabel="Avisos por correo"
                 value={emailEnabled} 
                 onValueChange={toggleEmail} 
                 trackColor={{ false: colors.border, true: colors.primary }} 
@@ -507,7 +508,7 @@ export default function SettingsScreen() {
                       <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Avisos de 3, 2, 1, Trabajo y Descanso</Text>
                     </View>
                   </View>
-                  <Switch value={timerSoundsEnabled} onValueChange={toggleTimerSounds} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
+                  <Switch accessibilityLabel="Pitidos de entreno" value={timerSoundsEnabled} onValueChange={toggleTimerSounds} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
                 </View>
               </>
             )}
@@ -534,10 +535,10 @@ export default function SettingsScreen() {
                             </Text>
                           </View>
                           <View style={{ flexDirection: 'row', gap: 8 }}>
-                            <TouchableOpacity onPress={() => openEditPillBuilder(p)} style={{ padding: 6, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 6 }}>
+                            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Editar" onPress={() => openEditPillBuilder(p)} style={{ padding: 6, backgroundColor: 'rgba(59, 130, 246, 0.1)', borderRadius: 6 }}>
                               <Ionicons name="pencil" size={16} color="#3B82F6" />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => handleDeletePill(p.id)} style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}>
+                            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => handleDeletePill(p.id)} style={{ padding: 6, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 6 }}>
                               <Ionicons name="trash" size={16} color="#EF4444" />
                             </TouchableOpacity>
                           </View>
@@ -638,7 +639,7 @@ export default function SettingsScreen() {
             </View>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 25 }}>
-              <TouchableOpacity 
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Quitar" 
                 style={[styles.zoomBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
                 onPress={() => setAvatarZoom(prev => Math.max(1, prev - 0.2))}
               >
@@ -647,7 +648,7 @@ export default function SettingsScreen() {
               <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 14, minWidth: 50, textAlign: 'center' }}>
                 {Math.round(avatarZoom * 100)}%
               </Text>
-              <TouchableOpacity 
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Añadir" 
                 style={[styles.zoomBtn, { backgroundColor: colors.background, borderColor: colors.border }]}
                 onPress={() => setAvatarZoom(prev => Math.min(3, prev + 0.2))}
               >
@@ -681,7 +682,7 @@ export default function SettingsScreen() {
               <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>
                 {editingPillId ? 'Editar Píldora' : 'Constructor de Píldoras'}
               </Text>
-              <TouchableOpacity onPress={() => setShowPillBuilder(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowPillBuilder(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
             </View>
 
             <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
@@ -737,7 +738,7 @@ export default function SettingsScreen() {
                     <View key={ex._key} style={[styles.pillExCard, { borderColor: colors.border }]}>
                       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
                         <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => { const n = [...pillExs]; n[i].name = v; setPillExs(n); }} placeholder="Nombre del ejercicio" placeholderTextColor={colors.textSecondary} />
-                        <TouchableOpacity onPress={() => setPillExs(pillExs.filter((_, idx) => idx !== i))}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => setPillExs(pillExs.filter((_, idx) => idx !== i))}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
                       </View>
                       <View style={{ flexDirection: 'row', gap: 6, marginTop: 8 }}>
                         <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.sets} onChangeText={v => { const n = [...pillExs]; n[i].sets = v; setPillExs(n); }} placeholder="Series" placeholderTextColor={colors.textSecondary} />
@@ -760,14 +761,14 @@ export default function SettingsScreen() {
                       <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center', marginBottom: 10 }}>
                         <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border, fontWeight: '700' }]} value={block.name} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].name = v; setPillBlocks(n); }} placeholder="Nombre del bloque" placeholderTextColor={colors.textSecondary} />
                         <TextInput style={[styles.pillExInput, { width: 70, color: colors.textPrimary, borderColor: colors.border }]} value={block.sets} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].sets = v; setPillBlocks(n); }} placeholder="Vueltas" placeholderTextColor={colors.textSecondary} keyboardType="numeric" />
-                        <TouchableOpacity onPress={() => setPillBlocks(pillBlocks.filter((_, idx) => idx !== bIdx))}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
+                        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => setPillBlocks(pillBlocks.filter((_, idx) => idx !== bIdx))}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
                       </View>
                       
                       {block.exercises.map((ex: any, eIdx: number) => (
                         <View key={ex._key} style={{ paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.primary, marginBottom: 10 }}>
                           <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center' }}>
                             <TextInput style={[styles.pillExInput, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].name = v; setPillBlocks(n); }} placeholder="Ejercicio" placeholderTextColor={colors.textSecondary} />
-                            <TouchableOpacity onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises.splice(eIdx, 1); setPillBlocks(n); }}><Ionicons name="close-circle" size={18} color={colors.textSecondary} /></TouchableOpacity>
+                            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Quitar" onPress={() => { const n = [...pillBlocks]; n[bIdx].exercises.splice(eIdx, 1); setPillBlocks(n); }}><Ionicons name="close-circle" size={18} color={colors.textSecondary} /></TouchableOpacity>
                           </View>
                           <View style={{ flexDirection: 'row', gap: 6, marginTop: 6 }}>
                             <TextInput style={[styles.pillExInput, { flex: 0.8, color: colors.textPrimary, borderColor: colors.border }]} value={ex.sets} onChangeText={v => { const n = [...pillBlocks]; n[bIdx].exercises[eIdx].sets = v; setPillBlocks(n); }} placeholder="Series" placeholderTextColor={colors.textSecondary} keyboardType="numeric" />

@@ -280,7 +280,7 @@ export default function GeminiChatModal({
               <Ionicons name="sparkles" size={20} color={colors.primary} />
               <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>AI Coach Pro</Text>
             </View>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close" size={24} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
@@ -312,7 +312,7 @@ export default function GeminiChatModal({
               onChangeText={setInputText}
               multiline
             />
-            <TouchableOpacity 
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover arriba" 
               style={[styles.sendBtn, { backgroundColor: inputText.trim() ? colors.primary : colors.surfaceHighlight }]} 
               onPress={handleSend}
               disabled={!inputText.trim()}

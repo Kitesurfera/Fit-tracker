@@ -322,9 +322,9 @@ export default function PeriodizationScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => goBack(router)}><Ionicons name="arrow-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Volver" onPress={() => goBack(router)}><Ionicons name="arrow-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Planificación - {params.name}</Text>
-        <TouchableOpacity onPress={loadTree}><Ionicons name="sync" size={24} color={colors.primary} /></TouchableOpacity>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualizar" onPress={loadTree}><Ionicons name="sync" size={24} color={colors.primary} /></TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16 }}>
@@ -365,7 +365,7 @@ export default function PeriodizationScreen() {
                 </View>
                 <View style={styles.actionsRow}>
                   {/* EDITAR MACRO */}
-                  <TouchableOpacity style={styles.iconHitbox} onPress={(e) => { 
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Editar" style={styles.iconHitbox} onPress={(e) => { 
                     if (e?.stopPropagation) e.stopPropagation(); 
                     setEditingId(macroId); 
                     setMacroForm({ 
@@ -380,7 +380,7 @@ export default function PeriodizationScreen() {
                   </TouchableOpacity>
                   
                   {/* ELIMINAR MACRO */}
-                  <TouchableOpacity style={styles.iconHitbox} onPress={(e) => { 
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" style={styles.iconHitbox} onPress={(e) => { 
                     if (e?.stopPropagation) e.stopPropagation(); 
                     deleteMacro(macroId); 
                   }}>
@@ -426,7 +426,7 @@ export default function PeriodizationScreen() {
                             
                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                               {/* EDITAR MICRO */}
-                              <TouchableOpacity style={styles.iconHitboxSmall} onPress={(e) => { 
+                              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Editar" style={styles.iconHitboxSmall} onPress={(e) => { 
                                 if (e?.stopPropagation) e.stopPropagation(); 
                                 setEditingId(microId); 
                                 setMicroForm({ 
@@ -443,7 +443,7 @@ export default function PeriodizationScreen() {
                               </TouchableOpacity>
                               
                               {/* ELIMINAR MICRO */}
-                              <TouchableOpacity style={styles.iconHitboxSmall} onPress={(e) => { 
+                              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" style={styles.iconHitboxSmall} onPress={(e) => { 
                                 if (e?.stopPropagation) e.stopPropagation(); 
                                 deleteMicro(microId); 
                               }}>
@@ -493,7 +493,7 @@ export default function PeriodizationScreen() {
       </ScrollView>
 
       {/* --- BOTÓN FLOTANTE GEMINI --- */}
-      <TouchableOpacity
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Asistente IA"
         style={[styles.fab, { backgroundColor: colors.primary }]}
         onPress={() => setChatVisible(true)}
       >
@@ -506,7 +506,7 @@ export default function PeriodizationScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Opciones de Importación</Text>
-              <TouchableOpacity onPress={() => setImportModal(false)}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setImportModal(false)}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
             </View>
 
             <Text style={[styles.label, { marginBottom: 10 }]}>MÚLTIPLES DÍAS</Text>
@@ -542,7 +542,7 @@ export default function PeriodizationScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 0 }]}>Añadir al microciclo</Text>
-              <TouchableOpacity onPress={() => setAssignModal(false)}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setAssignModal(false)}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
             </View>
 
             <TouchableOpacity 

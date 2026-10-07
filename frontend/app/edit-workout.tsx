@@ -378,9 +378,9 @@ export default function EditWorkoutScreen() {
       <View style={styles.exerciseHeader}>
         <TextInput style={[styles.exNameInput, { color: colors.textPrimary }]} value={ex.name} onChangeText={v => updateExercise(absoluteIndex, 'name', v)} placeholder="Nombre del ejercicio" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
         <View style={styles.exActions}>
-          {!isGrouped && bIndex > 0 && <TouchableOpacity onPress={() => moveBlockUp(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-up" size={18} color={colors.textSecondary} /></TouchableOpacity>}
-          {!isGrouped && bIndex < exerciseBlocks.length - 1 && <TouchableOpacity onPress={() => moveBlockDown(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-down" size={18} color={colors.textSecondary} /></TouchableOpacity>}
-          {(!isGrouped ? exerciseBlocks.length > 1 : true) && <TouchableOpacity onPress={() => removeExercise(absoluteIndex)} style={styles.iconBtn}><Ionicons name="trash-outline" size={18} color={colors.error || '#EF4444'} /></TouchableOpacity>}
+          {!isGrouped && bIndex > 0 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover arriba" onPress={() => moveBlockUp(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-up" size={18} color={colors.textSecondary} /></TouchableOpacity>}
+          {!isGrouped && bIndex < exerciseBlocks.length - 1 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover abajo" onPress={() => moveBlockDown(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-down" size={18} color={colors.textSecondary} /></TouchableOpacity>}
+          {(!isGrouped ? exerciseBlocks.length > 1 : true) && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => removeExercise(absoluteIndex)} style={styles.iconBtn}><Ionicons name="trash-outline" size={18} color={colors.error || '#EF4444'} /></TouchableOpacity>}
         </View>
       </View>
       <View style={[styles.exDetailsContainer, { borderTopColor: colors.border }]}>
@@ -422,7 +422,7 @@ export default function EditWorkoutScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1, width: '100%' }}>
         <View style={[styles.header, { borderBottomColor: colors.border }]}>
-          <TouchableOpacity onPress={() => goBack(router)} style={styles.headerBtn}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => goBack(router)} style={styles.headerBtn}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Editar Sesión</Text>
           <TouchableOpacity onPress={handleSave} style={styles.headerBtn} disabled={saving}>{saving ? <ActivityIndicator color={colors.primary} size="small" /> : <Text style={[styles.saveText, { color: colors.primary }]}>Actualizar</Text>}</TouchableOpacity>
         </View>
@@ -539,9 +539,9 @@ export default function EditWorkoutScreen() {
                             </TouchableOpacity>
                           )}
 
-                          {bIndex > 0 && <TouchableOpacity onPress={() => moveBlockUp(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-up" size={20} color={colors.primary} /></TouchableOpacity>}
-                          {bIndex < exerciseBlocks.length - 1 && <TouchableOpacity onPress={() => moveBlockDown(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-down" size={20} color={colors.primary} /></TouchableOpacity>}
-                          <TouchableOpacity onPress={() => removeBlock(bIndex)} style={styles.iconBtn}><Ionicons name="trash" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
+                          {bIndex > 0 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover arriba" onPress={() => moveBlockUp(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-up" size={20} color={colors.primary} /></TouchableOpacity>}
+                          {bIndex < exerciseBlocks.length - 1 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover abajo" onPress={() => moveBlockDown(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-down" size={20} color={colors.primary} /></TouchableOpacity>}
+                          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => removeBlock(bIndex)} style={styles.iconBtn}><Ionicons name="trash" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
                         </View>
                       </View>
                       <View style={{ padding: 10, gap: 10 }}>
@@ -564,9 +564,9 @@ export default function EditWorkoutScreen() {
                   <View style={[styles.hiitHeader, { borderBottomColor: colors.border }]}>
                     <TextInput style={[styles.hiitNameInput, { color: colors.textPrimary }]} value={block.name} onChangeText={v => updateHiitBlock(bIndex, 'name', v)} placeholder="Nombre del Bloque" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
                     <View style={{flexDirection: 'row', gap: 6}}>
-                       {bIndex > 0 && <TouchableOpacity onPress={() => moveHiitBlockUp(bIndex)}><Ionicons name="arrow-up" size={20} color={colors.textSecondary} /></TouchableOpacity>}
-                       {bIndex < hiitBlocks.length - 1 && <TouchableOpacity onPress={() => moveHiitBlockDown(bIndex)}><Ionicons name="arrow-down" size={20} color={colors.textSecondary} /></TouchableOpacity>}
-                       {hiitBlocks.length > 1 && <TouchableOpacity onPress={() => removeHiitBlock(bIndex)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>}
+                       {bIndex > 0 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover arriba" onPress={() => moveHiitBlockUp(bIndex)}><Ionicons name="arrow-up" size={20} color={colors.textSecondary} /></TouchableOpacity>}
+                       {bIndex < hiitBlocks.length - 1 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover abajo" onPress={() => moveHiitBlockDown(bIndex)}><Ionicons name="arrow-down" size={20} color={colors.textSecondary} /></TouchableOpacity>}
+                       {hiitBlocks.length > 1 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => removeHiitBlock(bIndex)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>}
                     </View>
                   </View>
                   <View style={[styles.presetsRow, { backgroundColor: 'rgba(0,0,0,0.01)' }]}>
@@ -611,10 +611,10 @@ export default function EditWorkoutScreen() {
                           <View style={styles.hiitExNum}><Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>{eIndex + 1}</Text></View>
                           <TextInput style={[styles.hiitExInput, { flex: 2, color: colors.textPrimary, borderColor: colors.border }]} value={ex.name} onChangeText={v => updateHiitExercise(bIndex, eIndex, 'name', v)} placeholder="Ej: Burpees" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
                           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', minWidth: 60 }}>
-                             <TouchableOpacity onPress={() => duplicateHiitExercise(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="copy-outline" size={16} color={colors.textSecondary} /></TouchableOpacity>
-                             {eIndex > 0 && <TouchableOpacity onPress={() => moveHiitExerciseUp(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="arrow-up" size={16} color={colors.textSecondary} /></TouchableOpacity>}
-                             {eIndex < block.exercises.length - 1 && <TouchableOpacity onPress={() => moveHiitExerciseDown(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="arrow-down" size={16} color={colors.textSecondary} /></TouchableOpacity>}
-                             <TouchableOpacity onPress={() => removeHiitExercise(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="close-circle" size={20} color={colors.textSecondary} /></TouchableOpacity>
+                             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Duplicar" onPress={() => duplicateHiitExercise(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="copy-outline" size={16} color={colors.textSecondary} /></TouchableOpacity>
+                             {eIndex > 0 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover arriba" onPress={() => moveHiitExerciseUp(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="arrow-up" size={16} color={colors.textSecondary} /></TouchableOpacity>}
+                             {eIndex < block.exercises.length - 1 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover abajo" onPress={() => moveHiitExerciseDown(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="arrow-down" size={16} color={colors.textSecondary} /></TouchableOpacity>}
+                             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Quitar" onPress={() => removeHiitExercise(bIndex, eIndex)} style={{ padding: 4 }}><Ionicons name="close-circle" size={20} color={colors.textSecondary} /></TouchableOpacity>
                           </View>
                         </View>
                         
@@ -653,7 +653,7 @@ export default function EditWorkoutScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Mis Píldoras 💊</Text>
-              <TouchableOpacity onPress={() => setShowPillModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowPillModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
             </View>
             {pills.length === 0 ? (
                 <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 20 }}>No tienes píldoras guardadas. Crea una base de ejercicios y dale a "Guardar Base".</Text>
@@ -666,10 +666,10 @@ export default function EditWorkoutScreen() {
                             <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>{p.is_hiit ? 'Formato Circuito' : 'Formato Fuerza'} • {p.exercises?.length || 0} bloques/ejercicios</Text>
                         </View>
                         <View style={{ flexDirection: 'row', gap: 10 }}>
-                            <TouchableOpacity onPress={() => handleDeletePill(p.id)} style={{ padding: 8, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 8 }}>
+                            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => handleDeletePill(p.id)} style={{ padding: 8, backgroundColor: 'rgba(239, 68, 68, 0.1)', borderRadius: 8 }}>
                                 <Ionicons name="trash" size={18} color="#EF4444" />
                             </TouchableOpacity>
-                            <TouchableOpacity onPress={() => injectPill(p)} style={{ padding: 8, backgroundColor: colors.primary, borderRadius: 8 }}>
+                            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Añadir" onPress={() => injectPill(p)} style={{ padding: 8, backgroundColor: colors.primary, borderRadius: 8 }}>
                                 <Ionicons name="add" size={18} color="#FFF" />
                             </TouchableOpacity>
                         </View>
@@ -687,7 +687,7 @@ export default function EditWorkoutScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Guardar Base 💾</Text>
-              <TouchableOpacity onPress={() => setShowSavePillModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowSavePillModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
             </View>
             <Text style={{ color: colors.textSecondary, marginBottom: 15, fontSize: 14 }}>Guarda los ejercicios actuales como una píldora para poder inyectarlos rápidamente en futuros entrenamientos.</Text>
             <TextInput 

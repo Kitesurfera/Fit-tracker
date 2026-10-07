@@ -10,6 +10,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
 import { api } from '../../src/api';
 import { localDateStr } from '../../src/utils/dates';
+import { getStandardizedTestName, isLowerBetter, bestOfSides, isBetterResult } from '../../src/utils/tests';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const isDesktop = SCREEN_WIDTH > 768;
@@ -22,27 +23,6 @@ const INITIAL_CATEGORIES = [
   { key: 'max_force', label: 'F. Máxima' },
 ];
 
-export const getStandardizedTestName = (rawName: string) => {
-  if (!rawName) return "Test";
-  let n = rawName.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  n = n.replace(/\b(rm|1rm|max|maximo)\b/g, "").trim();
-
-  if (n === 'sentadilla' || n === 'squat' || n === 'back squat') return 'Sentadilla RM';
-  if (n === 'peso muerto' || n === 'deadlift') return 'Peso Muerto RM';
-  if (n === 'press banca' || n === 'bench press' || n === 'pecho') return 'Press Banca RM';
-  if (n === 'dominadas' || n === 'dominada' || n === 'pull up' || n === 'pull ups') return 'Dominadas RM';
-  if (n === 'hip thrust' || n === 'puente gluteo') return 'Hip Thrust RM';
-  if (n === 'press militar' || n === 'military press' || n === 'press hombro') return 'Press Militar RM';
-  if (n === 'cmj' || n === 'salto cmj' || n === 'contra movimiento') return 'Salto CMJ';
-  if (n === 'dj' || n === 'drop jump' || n === 'salto dj' || n === 'rsi') return 'Drop Jump (RSI)';
-  if (n === 'sj' || n === 'salto sj' || n === 'squat jump') return 'Salto SJ';
-  if (n === 'isquio' || n === 'isquios' || n === 'isquiotibiales' || n === 'hamstring') return 'Isquiotibiales';
-  if (n === 'cuadriceps' || n === 'quads' || n === 'quad') return 'Cuádriceps';
-  if (n === 'gemelo' || n === 'gemelos' || n === 'calf' || n === 'calves') return 'Gemelos';
-  if (n === 'tibial' || n === 'tibiales') return 'Tibial';
-
-  return rawName.trim().replace(/\b\w/g, l => l.toUpperCase());
-};
 
 export default function TestsScreen() {
   const { user } = useAuth();
@@ -148,7 +128,8 @@ export default function TestsScreen() {
       const valR = parseFloat(String(t.value_right || '0').replace(',', '.')) || 0;
       const val = parseFloat(String(t.value || '0').replace(',', '.')) || 0;
       const isUnilateral = (t.value_left != null && t.value_left !== '') || (t.value_right != null && t.value_right !== '');
-      const maxVal = isUnilateral ? Math.max(valL, valR) : val;
+      const lowerBetter = isLowerBetter(stdName, t.unit);
+      const maxVal = isUnilateral ? bestOfSides(valL, valR, lowerBetter) : val;
 
       if (!groups[stdName]) {
         groups[stdName] = {
@@ -157,6 +138,7 @@ export default function TestsScreen() {
            unit: t.unit,
            isUnilateral,
            bestValue: maxVal,
+           lowerBetter,
            bestLeft: valL,
            bestRight: valR,
            date: t.date,
@@ -166,7 +148,8 @@ export default function TestsScreen() {
 
       groups[stdName].history.push({...t, maxVal, valL, valR, isUnilateral});
 
-      if (maxVal > groups[stdName].bestValue) {
+      // Mejor marca: la más alta o, en tests de tiempo (sprint...), la más baja
+      if (isBetterResult(maxVal, groups[stdName].bestValue, groups[stdName].lowerBetter)) {
         groups[stdName].bestValue = maxVal;
         groups[stdName].bestLeft = valL;
         groups[stdName].bestRight = valR;
@@ -243,7 +226,7 @@ export default function TestsScreen() {
         unit: formData.unit.trim(),
         notes: formData.notes.trim(),
         test_type: formData.category,
-        value: formData.isUnilateral ? Math.max(parseFloat(formData.valueLeft) || 0, parseFloat(formData.valueRight) || 0) : parseFloat(String(formData.value).replace(',', '.') || '0'),
+        value: formData.isUnilateral ? bestOfSides(parseFloat(String(formData.valueLeft).replace(',', '.')) || 0, parseFloat(String(formData.valueRight).replace(',', '.')) || 0, isLowerBetter(formData.name, formData.unit)) : parseFloat(String(formData.value).replace(',', '.') || '0'),
         value_left: formData.isUnilateral ? parseFloat(String(formData.valueLeft).replace(',', '.') || '0') : null,
         value_right: formData.isUnilateral ? parseFloat(String(formData.valueRight).replace(',', '.') || '0') : null,
         date: editTest?.date || todayStr,
@@ -279,7 +262,7 @@ export default function TestsScreen() {
             <View style={{ marginBottom: 20 }}>
               <View style={styles.headerRow}>
                 {isTrainer && selectedAthlete && (
-                  <TouchableOpacity
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Volver"
                     style={{ marginRight: 12, justifyContent: 'center' }}
                     onPress={() => {
                       const ath = athletes.find(a => a.id === selectedAthlete);
@@ -297,14 +280,14 @@ export default function TestsScreen() {
                 </View>
                 <View style={styles.headerActions}>
                   {isTrainer && (
-                    <TouchableOpacity onPress={() => setShowPicker(true)} style={styles.refreshIcon}>
+                    <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cambiar de atleta" onPress={() => setShowPicker(true)} style={styles.refreshIcon}>
                       <Ionicons name="people" size={24} color={colors.primary} />
                     </TouchableOpacity>
                   )}
-                  <TouchableOpacity onPress={onRefresh} style={styles.refreshIcon}>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualizar" onPress={onRefresh} style={styles.refreshIcon}>
                     {refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync-outline" size={24} color={colors.primary} />}
                   </TouchableOpacity>
-                  <TouchableOpacity 
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Añadir" 
                     style={[styles.actionBtn, { backgroundColor: colors.primary }]} 
                     onPress={() => {
                       setEditTest(null);
@@ -327,7 +310,7 @@ export default function TestsScreen() {
                     <Text style={[styles.filterText, { color: colors.textSecondary }, selectedCategory === cat.key && { color: '#FFF' }]}>{cat.label}</Text>
                   </TouchableOpacity>
                 ))}
-                <TouchableOpacity 
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Añadir" 
                   style={[styles.filterChip, { borderColor: colors.primary, backgroundColor: colors.primary + '10', borderStyle: 'dashed' }]} 
                   onPress={() => setShowCategoryModal(true)}
                 >
@@ -389,8 +372,8 @@ export default function TestsScreen() {
                           <Text style={{ fontSize: 12, color: colors.textSecondary }}>{histItem.date.split('-').reverse().join('/')}</Text>
                         </View>
                         <View style={{ flexDirection: 'row', gap: 15 }}>
-                          <TouchableOpacity onPress={() => openEditModal(histItem)}><Ionicons name="create-outline" size={20} color={colors.primary} /></TouchableOpacity>
-                          <TouchableOpacity onPress={() => deleteTest(histItem.id, item.stdName)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
+                          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Editar" onPress={() => openEditModal(histItem)}><Ionicons name="create-outline" size={20} color={colors.primary} /></TouchableOpacity>
+                          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => deleteTest(histItem.id, item.stdName)}><Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>
                         </View>
                       </View>
                     ))}

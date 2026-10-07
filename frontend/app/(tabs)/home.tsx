@@ -634,7 +634,7 @@ export default function HomeScreen() {
               <Text style={[styles.welcomeText, { color: colors.textPrimary }, isDesktop && { fontSize: 32 }]}>Hola, {firstName} 💪</Text>
             </View>
           </View>
-          <TouchableOpacity onPress={handleManualUpdate} disabled={updating} style={styles.refreshBtn}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualizar" onPress={handleManualUpdate} disabled={updating} style={styles.refreshBtn}>
             {updating ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="sync" size={24} color={colors.primary} />}
           </TouchableOpacity>
         </View>
@@ -823,7 +823,7 @@ export default function HomeScreen() {
                   </Text>
                 )}
               </View>
-              <TouchableOpacity style={[styles.actionBtn, { backgroundColor: colors.primary }]} onPress={openNewAthlete}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Añadir deportista" style={[styles.actionBtn, { backgroundColor: colors.primary }]} onPress={openNewAthlete}>
                 <Ionicons name="person-add" size={20} color="#FFF" />
               </TouchableOpacity>
             </View>
@@ -968,6 +968,7 @@ export default function HomeScreen() {
                     <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 4 }}>Permite al atleta registrar sus sesiones en el calendario.</Text>
                   </View>
                   <Switch 
+                    accessibilityLabel="Deporte / Competición"
                     value={athleteForm.has_extra_sport} 
                     onValueChange={(val) => setAthleteForm({...athleteForm, has_extra_sport: val})} 
                     trackColor={{ false: colors.border, true: colors.primary }} 
@@ -1015,7 +1016,7 @@ export default function HomeScreen() {
               <View style={{ alignItems: 'center', width: '100%', flex: 1 }}>
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
                   <View style={[styles.phaseIconBadge, { backgroundColor: (viewMicroInfo.color || colors.primary) + '15' }]}><Ionicons name="flag" size={24} color={viewMicroInfo.color || colors.primary} /></View>
-                  <TouchableOpacity onPress={handleCloseMicroInfo}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={handleCloseMicroInfo}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
                 </View>
                 <Text style={[styles.infoLabel, { color: colors.textSecondary }]}>MACROCICLO:</Text>
                 <Text style={[styles.infoTitleMacro, { color: colors.textPrimary }]}>{viewMicroInfo.macroNombre}</Text>

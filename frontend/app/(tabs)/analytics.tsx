@@ -16,6 +16,7 @@ import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useTrainer } from '../../src/context/TrainerContext';
 import { Video, ResizeMode } from 'expo-av';
+import { getStandardizedTestName, isLowerBetter, bestOfSides, isBetterResult } from '../../src/utils/tests';
 
 const MAX_CONTENT_WIDTH = 1200;
 
@@ -56,28 +57,6 @@ const normalizeName = (name: string) => {
   return n;
 };
 
-// NORMALIZADOR ROBUSTO COMPARTIDO
-const getStandardizedTestName = (rawName: string) => {
-  if (!rawName) return "Test";
-  let n = rawName.toLowerCase().trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-  n = n.replace(/\b(rm|1rm|max|maximo)\b/g, "").trim();
-
-  if (n === 'sentadilla' || n === 'squat' || n === 'back squat') return 'Sentadilla RM';
-  if (n === 'peso muerto' || n === 'deadlift') return 'Peso Muerto RM';
-  if (n === 'press banca' || n === 'bench press' || n === 'pecho') return 'Press Banca RM';
-  if (n === 'dominadas' || n === 'dominada' || n === 'pull up' || n === 'pull ups') return 'Dominadas RM';
-  if (n === 'hip thrust' || n === 'puente gluteo') return 'Hip Thrust RM';
-  if (n === 'press militar' || n === 'military press' || n === 'press hombro') return 'Press Militar RM';
-  if (n === 'cmj' || n === 'salto cmj' || n === 'contra movimiento') return 'Salto CMJ';
-  if (n === 'dj' || n === 'drop jump' || n === 'salto dj' || n === 'rsi') return 'Drop Jump (RSI)';
-  if (n === 'sj' || n === 'salto sj' || n === 'squat jump') return 'Salto SJ';
-  if (n === 'isquio' || n === 'isquios' || n === 'isquiotibiales' || n === 'hamstring') return 'Isquiotibiales';
-  if (n === 'cuadriceps' || n === 'quads' || n === 'quad') return 'Cuádriceps';
-  if (n === 'gemelo' || n === 'gemelos' || n === 'calf' || n === 'calves') return 'Gemelos';
-  if (n === 'tibial' || n === 'tibiales') return 'Tibial';
-
-  return rawName.trim().replace(/\b\w/g, l => l.toUpperCase());
-};
 
 const getLocalDateStr = (date: Date) => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
@@ -275,7 +254,8 @@ export default function AnalyticsScreen() {
           if (isNaN(valR)) valR = NaN;
           
           const hasSides = !isNaN(valL) && !isNaN(valR) && (valL !== 0 || valR !== 0);
-          const maxVal = hasSides ? Math.max(valL, valR) : val;
+          const lowerBetter = isLowerBetter(stdName, r.unit);
+          const maxVal = hasSides ? bestOfSides(valL, valR, lowerBetter) : val;
 
           if (!items[normKey]) { 
             items[normKey] = { 
@@ -283,11 +263,12 @@ export default function AnalyticsScreen() {
               name: stdName, 
               history: [], 
               maxW: 0, 
+              lowerBetter,
               type: typeLabel, 
               unit: r.unit || (isTestItem ? '' : 'kg') 
             }; 
           }
-          if (maxVal > items[normKey].maxW) items[normKey].maxW = maxVal;
+          if (isBetterResult(maxVal, items[normKey].maxW, items[normKey].lowerBetter)) items[normKey].maxW = maxVal;
           
           items[normKey].history.push({ 
             date: w.date, 
@@ -313,12 +294,14 @@ export default function AnalyticsScreen() {
       const val = parseSafe(t.value);
       
       const hasSides = !isNaN(valL) || !isNaN(valR);
-      const maxVal = hasSides ? Math.max(!isNaN(valL) ? valL : 0, !isNaN(valR) ? valR : 0) : (!isNaN(val) ? val : 0);
+      const lowerBetter = isLowerBetter(stdName, t.unit);
+      const maxVal = hasSides ? bestOfSides(!isNaN(valL) ? valL : 0, !isNaN(valR) ? valR : 0, lowerBetter) : (!isNaN(val) ? val : 0);
       
       if (!items[normKey]) { 
-        items[normKey] = { id: normKey, name: stdName, history: [], maxW: 0, type: 'test', unit: t.unit || 'kg', testDoc: t }; 
+        items[normKey] = { id: normKey, name: stdName, history: [], maxW: 0, lowerBetter, type: 'test', unit: t.unit || 'kg', testDoc: t }; 
       }
-      if (maxVal > items[normKey].maxW) items[normKey].maxW = maxVal;
+      // Mejor marca: la más alta o, en tests de tiempo (sprint...), la más baja
+      if (isBetterResult(maxVal, items[normKey].maxW, items[normKey].lowerBetter)) items[normKey].maxW = maxVal;
       
       items[normKey].history.push({ 
         date: t.date, 
@@ -338,7 +321,7 @@ export default function AnalyticsScreen() {
       while (mergeMap[finalTarget] && iterations < 10) { finalTarget = mergeMap[finalTarget]; iterations++; }
       if (itemsRecord[sourceId] && itemsRecord[finalTarget] && sourceId !== finalTarget) {
         itemsRecord[finalTarget].history = [...itemsRecord[finalTarget].history, ...itemsRecord[sourceId].history];
-        itemsRecord[finalTarget].maxW = Math.max(itemsRecord[finalTarget].maxW, itemsRecord[sourceId].maxW);
+        if (isBetterResult(itemsRecord[sourceId].maxW, itemsRecord[finalTarget].maxW, itemsRecord[finalTarget].lowerBetter)) itemsRecord[finalTarget].maxW = itemsRecord[sourceId].maxW;
         itemsRecord[finalTarget].mergedSources = [...(itemsRecord[finalTarget].mergedSources || []), itemsRecord[sourceId].name];
         delete itemsRecord[sourceId];
       }
@@ -900,7 +883,7 @@ export default function AnalyticsScreen() {
   const renderVideoModal = () => (
     <Modal visible={!!expandedVideo} transparent animationType="fade">
       <View style={styles.fullscreenVideoOverlay}>
-        <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}>
           <Ionicons name="close-circle" size={40} color="#FFF" />
         </TouchableOpacity>
         {expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
@@ -915,7 +898,7 @@ export default function AnalyticsScreen() {
           <View style={styles.header}>
             <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
               {isTrainer && selectedAthlete && (
-                <TouchableOpacity
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Volver"
                   style={{ marginRight: 12, justifyContent: 'center' }}
                   onPress={() => router.push({ pathname: '/athlete-detail', params: { id: selectedAthlete.id, name: selectedAthlete.name } })}
                 >
@@ -928,11 +911,11 @@ export default function AnalyticsScreen() {
               </View>
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
-              <TouchableOpacity onPress={exportToPDF} disabled={isGeneratingPDF} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
+              {isTrainer && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cambiar de atleta" onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Descargar informe PDF" onPress={exportToPDF} disabled={isGeneratingPDF} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
                 {isGeneratingPDF ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="document-text" size={22} color={colors.primary} />}
               </TouchableOpacity>
-              <TouchableOpacity onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>{refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}</TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualizar" onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>{refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}</TouchableOpacity>
             </View>
           </View>
 
@@ -954,7 +937,7 @@ export default function AnalyticsScreen() {
                <View>
                  {renderPerformanceSummary()}
                  {renderMeasurementsCard()}
-                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, marginTop: 10 }}><Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Histórico de Tests</Text>{isTrainer && <TouchableOpacity onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}><Ionicons name="git-merge" size={22} color={colors.primary} /></TouchableOpacity>}</View>
+                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, marginTop: 10 }}><Text style={{ fontSize: 18, fontWeight: '800', color: colors.textPrimary }}>Histórico de Tests</Text>{isTrainer && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Unificar ejercicios" onPress={() => { setMergeTargetItem(null); setShowMergeModal(true); }}><Ionicons name="git-merge" size={22} color={colors.primary} /></TouchableOpacity>}</View>
                  <View style={{ flexDirection: isDesktop ? 'row' : 'column', flexWrap: 'wrap', gap: 15, justifyContent: 'space-between' }}>
                     {cleanProgression.filter((item: any) => item.type === 'test').map((item: any, i: number) => renderTestCard(item, i))}
                  </View>
@@ -973,7 +956,7 @@ export default function AnalyticsScreen() {
                     <View key={item.id} style={[styles.progCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
                       <TouchableOpacity onPress={() => setSelectedExercise(selectedExercise === item.id ? null : item.id)} style={styles.progHeader}>
                         <View style={{flex:1}}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 }}><Text style={[styles.progName, {color: colors.textPrimary}]}>{item.name}</Text><View style={{ backgroundColor: item.type === 'test' ? colors.primary + '20' : '#E2E8F0', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}><Text style={{ fontSize: 9, fontWeight: '800', color: item.type === 'test' ? colors.primary : '#64748B' }}>{item.type.toUpperCase()}</Text></View></View><Text style={{color: colors.primary, fontWeight:'700'}}>PR: {item.maxW} {item.unit}</Text></View>
-                        {item.type === 'ejercicio' && isTrainer && <TouchableOpacity style={{ padding: 5 }} onPress={(e) => { e.stopPropagation(); openDictModal(item.name); }}><Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/></TouchableOpacity>}
+                        {item.type === 'ejercicio' && isTrainer && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Asignar músculos" style={{ padding: 5 }} onPress={(e) => { e.stopPropagation(); openDictModal(item.name); }}><Ionicons name="pricetags-outline" size={20} color={colors.textSecondary}/></TouchableOpacity>}
                       </TouchableOpacity>
                       {selectedExercise === item.id && <View style={{padding: 15, borderTopWidth: 1, borderTopColor: colors.border}}>{renderChart(item.history, item.unit)}</View>}
                     </View>
@@ -1015,7 +998,7 @@ export default function AnalyticsScreen() {
                               </TouchableOpacity>
                            </View>
                            {fb.video ? (
-                             <TouchableOpacity onPress={() => setExpandedVideo(fb.video)} style={{backgroundColor: colors.primary + '20', padding: 12, borderRadius: 12, marginLeft: 15}}>
+                             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Iniciar" onPress={() => setExpandedVideo(fb.video)} style={{backgroundColor: colors.primary + '20', padding: 12, borderRadius: 12, marginLeft: 15}}>
                                <Ionicons name="play" size={28} color={colors.primary} />
                              </TouchableOpacity>
                            ) : null}
@@ -1143,7 +1126,7 @@ export default function AnalyticsScreen() {
             <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <Text style={[styles.modalTitle, { margin: 0 }]}>Feedback Archivados</Text>
-                <TouchableOpacity onPress={() => setShowArchivedModal(false)}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowArchivedModal(false)}>
                   <Ionicons name="close" size={24} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>

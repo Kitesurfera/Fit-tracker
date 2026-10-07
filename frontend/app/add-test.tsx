@@ -141,7 +141,7 @@ export default function AddTestScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.flex}>
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => goBack(router)} testID="close-add-test" activeOpacity={0.7}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => goBack(router)} testID="close-add-test" activeOpacity={0.7}>
             <Ionicons name="close" size={28} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nuevo Test</Text>

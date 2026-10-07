@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
 import { syncManager } from './offline';
+import { getStandardizedTestName, isLowerBetter } from './utils/tests';
 
 const BACKEND_URL = "https://fit-tracker-backend-rtx2.onrender.com";
 
@@ -376,12 +377,12 @@ export const api = {
   // Evolución por test (pantalla /progress): agrupa los registros por nombre, del más antiguo al más reciente
   getProgress: async (athleteId: string) => {
     const tests = await api.getTests({ athlete_id: athleteId });
-    const grouped: Record<string, { history: any[]; change_percent: number }> = {};
+    const grouped: Record<string, { history: any[]; change_percent: number; lower_better: boolean }> = {};
     for (const t of Array.isArray(tests) ? tests : []) {
       const value = t.value ?? (t.value_left != null && t.value_right != null ? (t.value_left + t.value_right) / 2 : t.value_left ?? t.value_right);
       if (value == null) continue;
-      const name = t.custom_name || t.test_name;
-      (grouped[name] ||= { history: [], change_percent: 0 }).history.push({ date: t.date, value, unit: t.unit });
+      const name = getStandardizedTestName(t.custom_name || t.test_name);
+      (grouped[name] ||= { history: [], change_percent: 0, lower_better: isLowerBetter(name, t.unit) }).history.push({ date: t.date, value, unit: t.unit });
     }
     for (const entry of Object.values(grouped)) {
       entry.history.sort((a, b) => String(a.date).localeCompare(String(b.date)));

@@ -50,7 +50,7 @@ const FeedbackInputRow = React.memo(({ initialNote, onSave, colors, isDesktop }:
         value={note} 
         onChangeText={setNote} 
       />
-      <TouchableOpacity 
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel={isSaved ? "Guardado" : "Enviar"} 
         style={[styles.sendBtn, { backgroundColor: isSaved ? (colors.success || '#10B981') : colors.primary }]} 
         onPress={() => onSave(note)}
       >
@@ -65,7 +65,7 @@ const MiniVideoPlayer = React.memo(({ url, onExpand }: { url: string, onExpand: 
   return (
     <View style={styles.miniVideoContainer}>
       <Video source={{ uri: url }} style={styles.miniVideo} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted playsInLine />
-      <TouchableOpacity style={styles.expandBtn} onPress={() => onExpand(url)}>
+      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ampliar" style={styles.expandBtn} onPress={() => onExpand(url)}>
         <Ionicons name="expand" size={16} color="#FFF" />
       </TouchableOpacity>
     </View>
@@ -771,15 +771,15 @@ export default function AthleteDetailScreen() {
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 5, marginRight: 10 }}>
             {isTrainer && (
               <>
-                <TouchableOpacity onPress={() => { setWorkoutToDuplicate(wk); setShowDuplicateModal(true); }} style={styles.iconHitbox}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Duplicar" onPress={() => { setWorkoutToDuplicate(wk); setShowDuplicateModal(true); }} style={styles.iconHitbox}>
                   <Ionicons name="copy-outline" size={20} color={colors.primary} />
                 </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDeleteWorkout(wk.id || wk._id, wk.title)} style={styles.iconHitbox}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => handleDeleteWorkout(wk.id || wk._id, wk.title)} style={styles.iconHitbox}>
                   <Ionicons name="trash-outline" size={20} color={colors.error || '#EF4444'} />
                 </TouchableOpacity>
               </>
             )}
-            <TouchableOpacity onPress={() => {
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={isTrainer && !isTest ? (wk.completed ? "Ver" : "Editar") : "Siguiente"} onPress={() => {
               if (isTest) {
                 router.push(`/test-mode?workoutId=${wk.id || wk._id}`);
               } else {
@@ -995,7 +995,7 @@ export default function AthleteDetailScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.replace('/(tabs)/home')}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Volver" onPress={() => router.replace('/(tabs)/home')}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         
@@ -1018,7 +1018,7 @@ export default function AthleteDetailScreen() {
           </Text>
         </View>
 
-        <TouchableOpacity onPress={loadData}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualizar" onPress={loadData}>
           <Ionicons name="sync" size={24} color={colors.primary} />
         </TouchableOpacity>
       </View>
@@ -1051,7 +1051,7 @@ export default function AthleteDetailScreen() {
       )}
 
       {!!athlete?.phone && (
-        <TouchableOpacity 
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Enviar por WhatsApp" 
           style={styles.whatsappFab} 
           onPress={handleTrainerWhatsApp}
         >
@@ -1060,7 +1060,7 @@ export default function AthleteDetailScreen() {
       )}
 
       {isTrainer && (
-        <TouchableOpacity 
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Asistente IA" 
           style={[styles.geminiFab, { backgroundColor: colors.primary }]} 
           onPress={() => setChatVisible(true)}
         >
@@ -1083,7 +1083,7 @@ export default function AthleteDetailScreen() {
 
       <Modal visible={!!expandedVideo} transparent animationType="fade">
         <View style={styles.fullscreenVideoOverlay}>
-          <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
           {!!expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
         </View>
       </Modal>
