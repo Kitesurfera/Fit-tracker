@@ -279,6 +279,61 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return user
 
+# --- CONTROL DE ACCESO ---
+def trainer_signup_allowed(email: str) -> bool:
+    """Solo los emails listados en TRAINER_SIGNUP_EMAILS (separados por comas) pueden crear cuentas de entrenador."""
+    allowed = {e.strip().lower() for e in os.environ.get('TRAINER_SIGNUP_EMAILS', '').split(',') if e.strip()}
+    return (email or '').strip().lower() in allowed
+
+async def find_own_athlete(trainer_id: str, athlete_id: str):
+    return await db.users.find_one({"id": athlete_id, "role": "athlete", "trainer_id": trainer_id}, {"_id": 0, "password": 0})
+
+async def ensure_athlete_access(user: dict, athlete_id: Optional[str]) -> dict:
+    """Permite el acceso a los datos propios o, si es entrenador, a los de sus atletas. Devuelve el usuario objetivo sin contraseña."""
+    if athlete_id and athlete_id == user['id']:
+        return {k: v for k, v in user.items() if k not in ('_id', 'password')}
+    if athlete_id and user['role'] == 'trainer':
+        athlete = await find_own_athlete(user['id'], athlete_id)
+        if athlete:
+            return athlete
+    raise HTTPException(status_code=403, detail="No autorizado")
+
+async def ensure_own_athlete(user: dict, athlete_id: str) -> dict:
+    """Solo el entrenador de la atleta puede gestionarla."""
+    if user['role'] != 'trainer':
+        raise HTTPException(status_code=403, detail="No autorizado")
+    athlete = await find_own_athlete(user['id'], athlete_id)
+    if not athlete:
+        raise HTTPException(status_code=404, detail="Atleta no encontrado")
+    return athlete
+
+async def accessible_athlete_ids(user: dict) -> List[str]:
+    if user['role'] != 'trainer':
+        return [user['id']]
+    athletes = await db.users.find({"trainer_id": user['id'], "role": "athlete"}, {"_id": 0, "id": 1}).to_list(1000)
+    return [user['id']] + [a['id'] for a in athletes]
+
+async def ensure_macro_access(user: dict, macro_id: str) -> dict:
+    macro = await db.macrociclos.find_one({"id": macro_id}, {"_id": 0})
+    if not macro:
+        raise HTTPException(status_code=404, detail="Macrociclo no encontrado")
+    await ensure_athlete_access(user, macro.get('athlete_id'))
+    return macro
+
+async def ensure_micro_access(user: dict, micro_id: str) -> dict:
+    micro = await db.microciclos.find_one({"id": micro_id}, {"_id": 0})
+    if not micro:
+        raise HTTPException(status_code=404, detail="Microciclo no encontrado")
+    await ensure_macro_access(user, micro.get('macrociclo_id'))
+    return micro
+
+async def ensure_workout_access(user: dict, workout_id: str) -> dict:
+    workout = await db.workouts.find_one({"id": workout_id}, {"_id": 0})
+    if not workout:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    await ensure_athlete_access(user, workout.get('athlete_id'))
+    return workout
+
 from pywebpush import webpush, WebPushException
 
 def send_email_async(to_email: str, subject: str, body: str):
@@ -371,13 +426,13 @@ async def delete_pill(pill_id: str, user=Depends(get_current_user)):
 @api_router.get("/brain/memory")
 async def get_brain_memory(user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
-    count = await db.brain_memory.count_documents({})
+    count = await db.brain_memory.count_documents({"trainer_id": user['id']})
     return {"status": "success", "total_learned": count}
 
 @api_router.get("/brain/memory/examples")
 async def get_brain_examples(user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
-    examples = await db.brain_memory.find({}, {"_id": 0, "learned_at": 0, "id": 0}).sort("learned_at", -1).limit(5).to_list(5)
+    examples = await db.brain_memory.find({"trainer_id": user['id']}, {"_id": 0, "learned_at": 0, "id": 0, "trainer_id": 0}).sort("learned_at", -1).limit(5).to_list(5)
     return {"status": "success", "examples": examples}
 
 @api_router.post("/brain/generate-workout")
@@ -386,6 +441,9 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
 
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
+
+    if data.athlete_id:
+        await ensure_athlete_access(user, data.athlete_id)
         
     try:
         contexto_atleta = ""
@@ -413,7 +471,9 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
                     contexto_atleta += f"- {w.get('title')} (RPE reportado: {rpe}/10). Ejercicios: {', '.join(nombres_ejercicios)}...\n"
                     
             today = datetime.now(timezone.utc).isoformat().split('T')[0]
+            athlete_macros = await db.macrociclos.find({"athlete_id": data.athlete_id}, {"_id": 0, "id": 1}).to_list(100)
             current_micro = await db.microciclos.find_one({
+                "macrociclo_id": {"$in": [m.get('id') for m in athlete_macros]},
                 "fecha_inicio": {"$lte": today},
                 "fecha_fin": {"$gte": today}
             })
@@ -591,8 +651,7 @@ async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_
 # --- RUTAS DE WELLNESS ---
 @api_router.get("/wellness/history/{athlete_id}")
 async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
-    if user['role'] != 'trainer' and user['id'] != athlete_id:
-        raise HTTPException(status_code=403, detail="No autorizado")
+    await ensure_athlete_access(user, athlete_id)
     history = await db.wellness.find({"athlete_id": athlete_id}, {"_id": 0}).sort("date", -1).to_list(7)
     return history[::-1]
 
@@ -601,6 +660,7 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
     target_date = data.date if data.date else datetime.now(timezone.utc).isoformat().split('T')[0]
     
     target_athlete_id = data.athlete_id if (data.athlete_id and user['role'] == 'trainer') else user['id']
+    await ensure_athlete_access(user, target_athlete_id)
     
     wellness_data = {
         "fatigue": data.fatigue, 
@@ -672,7 +732,7 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
 @api_router.get("/analytics/summary")
 async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
     target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
-    target_user = await db.users.find_one({"id": target_id}, {"_id": 0})
+    target_user = await ensure_athlete_access(user, target_id)
     total = await db.workouts.count_documents({"athlete_id": target_id})
     completed = await db.workouts.count_documents({"athlete_id": target_id, "completed": True})
     latest_well = await db.wellness.find_one({"athlete_id": target_id}, {"_id": 0}, sort=[("date", -1), ("updated_at", -1)])
@@ -688,6 +748,8 @@ async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_c
 # --- RUTAS DE USUARIOS Y AUTENTICACIÓN ---
 @api_router.post("/auth/register")
 async def register(data: UserRegister):
+    if not trainer_signup_allowed(data.email):
+        raise HTTPException(status_code=403, detail="El registro está cerrado. Pide acceso a tu entrenador o al administrador.")
     existing = await db.users.find_one({"email": data.email})
     if existing: raise HTTPException(status_code=400, detail="Email ya registrado")
     user_id = str(uuid.uuid4())
@@ -718,12 +780,15 @@ async def google_login(data: GoogleAuth):
         
         user = await db.users.find_one({"email": email})
         if not user:
-            if data.role == 'athlete': raise HTTPException(status_code=403, detail="Sin invitación activa.")
+            # El rol nunca se toma del cliente: solo se crean entrenadores autorizados.
+            if not trainer_signup_allowed(email): raise HTTPException(status_code=403, detail="Sin invitación activa.")
             user_id = str(uuid.uuid4())
-            user = {"id": user_id, "email": email, "password": hash_password(str(uuid.uuid4())), "name": id_info.get('name', 'Usuario'), "role": data.role, "created_at": datetime.now(timezone.utc).isoformat()}
+            user = {"id": user_id, "email": email, "password": hash_password(str(uuid.uuid4())), "name": id_info.get('name', 'Usuario'), "role": "trainer", "created_at": datetime.now(timezone.utc).isoformat()}
             await db.users.insert_one(user)
             
         return {"token": create_token(user['id'], user['role']), "user": {k: v for k, v in user.items() if k not in ('_id', 'password')}}
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error Google Login: {str(e)}")
         raise HTTPException(status_code=401, detail="Token de Google inválido")
@@ -746,7 +811,7 @@ async def list_athletes(user=Depends(get_current_user)):
 
 @api_router.get("/athletes/{athlete_id}")
 async def get_athlete(athlete_id: str, user=Depends(get_current_user)):
-    return await db.users.find_one({"id": athlete_id}, {"_id": 0, "password": 0})
+    return await ensure_athlete_access(user, athlete_id)
 
 @api_router.post("/athletes")
 async def create_athlete(data: AthleteCreate, user=Depends(get_current_user)):
@@ -758,7 +823,9 @@ async def create_athlete(data: AthleteCreate, user=Depends(get_current_user)):
 
 @api_router.put("/athletes/{athlete_id}")
 async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_current_user)):
-    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    athlete = await ensure_own_athlete(user, athlete_id)
+    if data.email and data.email != athlete.get('email') and await db.users.find_one({"email": data.email}):
+        raise HTTPException(status_code=400, detail="Email ya registrado")
     update_data = {k: v for k, v in data.dict().items() if v is not None}
     if data.password: update_data["password"] = hash_password(data.password)
     await db.users.update_one({"id": athlete_id}, {"$set": update_data})
@@ -766,7 +833,7 @@ async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_
 
 @api_router.patch("/athletes/{athlete_id}/cycles")
 async def update_athlete_cycles(athlete_id: str, cycles: CycleUpdate, user=Depends(get_current_user)):
-    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    await ensure_own_athlete(user, athlete_id)
     await db.users.update_one(
         {"id": athlete_id}, 
         {"$set": {"macro_ciclo": cycles.macro_ciclo, "micro_ciclo": cycles.micro_ciclo}}
@@ -775,16 +842,21 @@ async def update_athlete_cycles(athlete_id: str, cycles: CycleUpdate, user=Depen
 
 @api_router.delete("/athletes/{athlete_id}")
 async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
-    if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    await ensure_own_athlete(user, athlete_id)
+    macros = await db.macrociclos.find({"athlete_id": athlete_id}, {"_id": 0, "id": 1}).to_list(1000)
     await db.users.delete_one({"id": athlete_id})
     await db.workouts.delete_many({"athlete_id": athlete_id})
     await db.wellness.delete_many({"athlete_id": athlete_id})
+    await db.tests.delete_many({"athlete_id": athlete_id})
+    await db.microciclos.delete_many({"macrociclo_id": {"$in": [m.get('id') for m in macros]}})
     await db.macrociclos.delete_many({"athlete_id": athlete_id})
     return {"status": "success"}
 
 # --- ENTRENAMIENTOS E INTERCEPTOR ML ---
 @api_router.post("/workouts")
 async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    await ensure_athlete_access(user, data.athlete_id)
+    if data.microciclo_id: await ensure_micro_access(user, data.microciclo_id)
     workout = data.dict()
     is_ai = workout.pop("is_ai", False)
     workout.update({"id": str(uuid.uuid4()), "completed": False, "completion_data": None})
@@ -795,6 +867,7 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
     if not is_ai and user['role'] == 'trainer':
         await db.brain_memory.insert_one({
             "id": str(uuid.uuid4()),
+            "trainer_id": user['id'],
             "title": data.title,
             "exercises": data.exercises,
             "notes": data.notes,
@@ -814,6 +887,11 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
 @api_router.post("/workouts/bulk")
 async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     new_workouts, athlete_ids, brain_memories = [], set(), []
+
+    for a_id in {w.athlete_id for w in data.workouts}:
+        await ensure_athlete_access(user, a_id)
+    for m_id in {w.microciclo_id for w in data.workouts if w.microciclo_id}:
+        await ensure_micro_access(user, m_id)
     
     for w in data.workouts:
         workout = w.dict()
@@ -825,6 +903,7 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
         if not is_ai and user['role'] == 'trainer':
             brain_memories.append({
                 "id": str(uuid.uuid4()),
+                "trainer_id": user['id'],
                 "title": w.title,
                 "exercises": w.exercises,
                 "notes": w.notes,
@@ -850,15 +929,22 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
 
 @api_router.get("/workouts")
 async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = None, user=Depends(get_current_user)):
-    query = {'athlete_id': user['id']} if user['role'] == 'athlete' else ({'athlete_id': athlete_id} if athlete_id else {})
+    if user['role'] == 'athlete':
+        query = {'athlete_id': user['id']}
+    elif athlete_id:
+        await ensure_athlete_access(user, athlete_id)
+        query = {'athlete_id': athlete_id}
+    else:
+        query = {'athlete_id': {'$in': await accessible_athlete_ids(user)}}
     if date: query['date'] = date
     return await db.workouts.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
 
 @api_router.put("/workouts/{workout_id}")
 async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
-    existing = await db.workouts.find_one({"id": workout_id})
-    if not existing: raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    existing = await ensure_workout_access(user, workout_id)
     update_data = data.dict(exclude_unset=True)
+    if update_data.get('athlete_id'): await ensure_athlete_access(user, update_data['athlete_id'])
+    if update_data.get('microciclo_id'): await ensure_micro_access(user, update_data['microciclo_id'])
     update_data.pop("is_ai", None) 
     await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
     
@@ -870,12 +956,14 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks:
 
 @api_router.delete("/workouts/{workout_id}")
 async def delete_workout(workout_id: str, user=Depends(get_current_user)):
+    await ensure_workout_access(user, workout_id)
     await db.workouts.delete_one({"id": workout_id})
     return {"status": "success"}
 
 # --- PERIODIZACIÓN (Simplified Tree) ---
 @api_router.get("/periodization/tree/{athlete_id}")
 async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)):
+    await ensure_athlete_access(user, athlete_id)
     try:
         macros = await db.macrociclos.find({"athlete_id": athlete_id}).to_list(100)
         for m in macros:
@@ -903,6 +991,7 @@ async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)
 
 @api_router.post("/macrociclos")
 async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
+    await ensure_athlete_access(user, data.athlete_id)
     macro = data.dict()
     macro["id"] = str(uuid.uuid4())
     await db.macrociclos.insert_one(macro)
@@ -912,6 +1001,7 @@ async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
 @api_router.put("/macrociclos/{macro_id}")
 async def update_macro(macro_id: str, data: Dict[str, Any], user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    await ensure_macro_access(user, macro_id)
     update_data = {k: v for k, v in data.items() if k not in ('id', '_id', 'athlete_id')}
     await db.macrociclos.update_one({"id": macro_id}, {"$set": update_data})
     return {"status": "success"}
@@ -919,6 +1009,7 @@ async def update_macro(macro_id: str, data: Dict[str, Any], user=Depends(get_cur
 @api_router.delete("/macrociclos/{macro_id}")
 async def delete_macro(macro_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    await ensure_macro_access(user, macro_id)
     await db.macrociclos.delete_one({"id": macro_id})
     
     micros = await db.microciclos.find({"macrociclo_id": macro_id}).to_list(100)
@@ -931,6 +1022,7 @@ async def delete_macro(macro_id: str, user=Depends(get_current_user)):
 
 @api_router.post("/microciclos")
 async def create_micro(data: MicroCreate, user=Depends(get_current_user)):
+    await ensure_macro_access(user, data.macrociclo_id)
     micro = data.dict()
     micro["id"] = str(uuid.uuid4())
     await db.microciclos.insert_one(micro)
@@ -940,6 +1032,7 @@ async def create_micro(data: MicroCreate, user=Depends(get_current_user)):
 @api_router.put("/microciclos/{micro_id}")
 async def update_micro(micro_id: str, data: Dict[str, Any], user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    await ensure_micro_access(user, micro_id)
     update_data = {k: v for k, v in data.items() if k not in ('id', '_id', 'macrociclo_id')}
     await db.microciclos.update_one({"id": micro_id}, {"$set": update_data})
     return {"status": "success"}
@@ -947,6 +1040,7 @@ async def update_micro(micro_id: str, data: Dict[str, Any], user=Depends(get_cur
 @api_router.delete("/microciclos/{micro_id}")
 async def delete_micro(micro_id: str, user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
+    await ensure_micro_access(user, micro_id)
     await db.microciclos.delete_one({"id": micro_id})
     
     await db.workouts.update_many({"microciclo_id": micro_id}, {"$set": {"microciclo_id": None}})
@@ -955,6 +1049,7 @@ async def delete_micro(micro_id: str, user=Depends(get_current_user)):
 # --- TESTS FÍSICOS ---
 @api_router.post("/tests")
 async def create_test(data: TestCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    await ensure_athlete_access(user, data.athlete_id)
     test_doc = data.dict()
     test_doc.update({"id": str(uuid.uuid4()), "created_at": datetime.now(timezone.utc).isoformat()})
     await db.tests.insert_one(test_doc)
@@ -969,12 +1064,21 @@ async def create_test(data: TestCreate, background_tasks: BackgroundTasks, user=
 
 @api_router.get("/tests")
 async def get_tests(athlete_id: Optional[str] = None, test_type: Optional[str] = None, user=Depends(get_current_user)):
-    query = {'athlete_id': user['id']} if user['role'] == 'athlete' else ({'athlete_id': athlete_id} if athlete_id else {})
+    if user['role'] == 'athlete':
+        query = {'athlete_id': user['id']}
+    elif athlete_id:
+        await ensure_athlete_access(user, athlete_id)
+        query = {'athlete_id': athlete_id}
+    else:
+        query = {'athlete_id': {'$in': await accessible_athlete_ids(user)}}
     if test_type and test_type != 'all': query['test_type'] = test_type
     return await db.tests.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
 
 @api_router.delete("/tests/{test_id}")
 async def delete_test(test_id: str, user=Depends(get_current_user)):
+    test = await db.tests.find_one({"id": test_id}, {"_id": 0})
+    if not test: raise HTTPException(status_code=404, detail="Test no encontrado")
+    await ensure_athlete_access(user, test.get('athlete_id'))
     await db.tests.delete_one({"id": test_id})
     return {"status": "success"}
 
@@ -986,9 +1090,7 @@ async def get_monthly_summary(athlete_id: str, user=Depends(get_current_user)):
     now = datetime.now(timezone.utc)
     start_date = (now - timedelta(days=30)).isoformat().split('T')[0]
 
-    athlete = await db.users.find_one({"id": athlete_id})
-    if not athlete:
-        raise HTTPException(status_code=404, detail="Atleta no encontrado")
+    athlete = await ensure_own_athlete(user, athlete_id)
 
     workouts = await db.workouts.find({
         "athlete_id": athlete_id,
