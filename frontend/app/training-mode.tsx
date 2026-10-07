@@ -987,7 +987,7 @@ export default function TrainingModeScreen() {
             <View style={[styles.indicationsModalContent, { backgroundColor: colors.surface, maxHeight: '90%', width: '90%' }]}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                 <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Calculadora de Carga</Text>
-                <TouchableOpacity onPress={() => setShowPlateCalculator(false)}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowPlateCalculator(false)}>
                   <Ionicons name="close" size={28} color={colors.textSecondary} />
                 </TouchableOpacity>
               </View>
@@ -1132,7 +1132,7 @@ export default function TrainingModeScreen() {
   const renderVideoModal = () => (
     <Modal visible={!!expandedVideo} transparent animationType="fade" onRequestClose={() => setExpandedVideo(null)}>
       <View style={styles.fullscreenVideoOverlay}>
-        <TouchableOpacity style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}>
           <Ionicons name="close-circle" size={40} color="#FFF" />
         </TouchableOpacity>
         {expandedVideo && (
@@ -1378,7 +1378,7 @@ export default function TrainingModeScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.topBar}>
-            <TouchableOpacity onPress={() => goBack(router)}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => goBack(router)}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
             <Text style={[styles.topTitle, { color: colors.textPrimary }]}>Resumen de Sesión</Text>
             <View style={{ width: 26 }} />
           </View>
@@ -1397,7 +1397,7 @@ export default function TrainingModeScreen() {
                 <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>NIVEL DE ESFUERZO (RPE)</Text>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>{[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => { const isSelected = rpe === num; let c = (num >= 8) ? (colors.error || '#EF4444') : (num >= 4) ? (colors.warning || '#F59E0B') : (colors.success || '#10B981'); return ( <TouchableOpacity key={num} onPress={() => setRpe(num)} style={[styles.rpeCircle, { borderColor: colors.border }, isSelected && { backgroundColor: c, borderColor: c }]}><Text style={[styles.rpeText, { color: isSelected ? '#FFF' : colors.textSecondary }]}>{num}</Text></TouchableOpacity> ); })}</View>
                 </View>
-                <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>CALIDAD DEL SUEÑO</Text><View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>{[1, 2, 3, 4, 5].map(num => ( <TouchableOpacity key={num} onPress={() => setSleepQuality(num)} style={{ padding: 5 }}><Ionicons name={sleepQuality && sleepQuality >= num ? "star" : "star-outline"} size={36} color={colors.warning || '#F59E0B'} /></TouchableOpacity> ))}</View></View>
+                <View><Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>CALIDAD DEL SUEÑO</Text><View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>{[1, 2, 3, 4, 5].map(num => ( <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Puntuar ${num} de 5`} key={num} onPress={() => setSleepQuality(num)} style={{ padding: 5 }}><Ionicons name={sleepQuality && sleepQuality >= num ? "star" : "star-outline"} size={36} color={colors.warning || '#F59E0B'} /></TouchableOpacity> ))}</View></View>
                 
                 <View>
                   <Text style={[styles.label, { color: colors.textSecondary, marginBottom: 12, textAlign: 'center' }]}>FATIGA O IMPACTO</Text>
@@ -1515,7 +1515,7 @@ export default function TrainingModeScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.topBar}>
-            <TouchableOpacity onPress={() => { stopAllTimers(); goBack(router); }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => { stopAllTimers(); goBack(router); }}>
               <Ionicons name="close" size={26} color={colors.textPrimary} />
             </TouchableOpacity>
             <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 10 }}>
@@ -1571,7 +1571,7 @@ export default function TrainingModeScreen() {
               onSkipHiitEx={skipHiitEx} 
             />
           </ScrollView>
-          <TouchableOpacity style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ver lista" style={[styles.floatingInfoBtn, { backgroundColor: colors.primary, bottom: 30 }]} onPress={() => setShowIndicationsModal(true)}>
             <Ionicons name="list" size={24} color="#FFF" />
           </TouchableOpacity>
         </KeyboardAvoidingView>
@@ -1608,7 +1608,7 @@ export default function TrainingModeScreen() {
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
         <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.topBar}>
-            <TouchableOpacity onPress={() => { stopAllTimers(); goBack(router); }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => { stopAllTimers(); goBack(router); }}>
               <Ionicons name="close" size={26} color={colors.textPrimary} />
             </TouchableOpacity>
             <View style={{ alignItems: 'center', flex: 1, paddingHorizontal: 10 }}>
@@ -1640,7 +1640,7 @@ export default function TrainingModeScreen() {
             />
             
             <View style={[styles.compactExerciseCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-              <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{vidUrl && <TouchableOpacity onPress={() => Linking.openURL(vidUrl)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
+              <View style={[styles.compactExHeader, { backgroundColor: colors.surfaceHighlight }]}><Text style={[styles.compactExName, { color: colors.textPrimary }]}>{ex.name}</Text>{vidUrl && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ver vídeo" onPress={() => Linking.openURL(vidUrl)}><Ionicons name="logo-youtube" size={28} color="#EF4444" /></TouchableOpacity>}</View>
               
               <View style={styles.compactDetailsGrid}>
                 {['sets', 'reps', 'weight', 'duration', 'rest'].map(k => {
@@ -1767,7 +1767,7 @@ export default function TrainingModeScreen() {
               </TouchableOpacity>
             )}
 
-            <TouchableOpacity style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ver lista" style={[styles.floatingInfoBtn, { position: 'relative', right: 0, bottom: 0, backgroundColor: colors.primary }]} onPress={() => setShowIndicationsModal(true)}>
               <Ionicons name="list" size={24} color="#FFF" />
             </TouchableOpacity>
           </View>

@@ -840,7 +840,7 @@ export default function CalendarScreen() {
     <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.background }}>
       <View style={styles.topHeader}>
         {isTrainer && selectedAthlete && (
-          <TouchableOpacity
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Volver"
             style={{ marginRight: 12, justifyContent: 'center' }}
             onPress={() => router.push({ pathname: '/athlete-detail', params: { id: selectedAthlete.id, name: selectedAthlete.name } })}
           >
@@ -853,11 +853,11 @@ export default function CalendarScreen() {
         </View>
 
         <View style={styles.viewToggleContainer}>
-          <TouchableOpacity onPress={() => setViewMode('month')} style={[styles.viewToggleBtn, viewMode === 'month' && {backgroundColor: colors.primary}]}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Vista mensual" onPress={() => setViewMode('month')} style={[styles.viewToggleBtn, viewMode === 'month' && {backgroundColor: colors.primary}]}>
              <Ionicons name="calendar-outline" size={14} color={viewMode === 'month' ? '#FFF' : colors.textSecondary} />
              {isDesktop && <Text style={[styles.viewToggleText, viewMode === 'month' && {color: '#FFF'}]}>Mes</Text>}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setViewMode('week')} style={[styles.viewToggleBtn, viewMode === 'week' && {backgroundColor: colors.primary}]}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Vista semanal" onPress={() => setViewMode('week')} style={[styles.viewToggleBtn, viewMode === 'week' && {backgroundColor: colors.primary}]}>
              <Ionicons name="list" size={14} color={viewMode === 'week' ? '#FFF' : colors.textSecondary} />
              {isDesktop && <Text style={[styles.viewToggleText, viewMode === 'week' && {color: '#FFF'}]}>Semana</Text>}
           </TouchableOpacity>
@@ -865,15 +865,15 @@ export default function CalendarScreen() {
 
         <View style={styles.headerActionsRight}>
           {isFemale && (
-            <TouchableOpacity onPress={openCycleSettings} style={[styles.iconBtn, { backgroundColor: '#EF444415' }]}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ciclo menstrual" onPress={openCycleSettings} style={[styles.iconBtn, { backgroundColor: '#EF444415' }]}>
                <Ionicons name="water" size={20} color="#EF4444" />
             </TouchableOpacity>
           )}
 
-          {workoutToCopy && <TouchableOpacity onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: (colors.error || '#EF4444') + '20' }]}><Ionicons name="close" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>}
+          {workoutToCopy && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setWorkoutToCopy(null)} style={[styles.iconBtn, { backgroundColor: (colors.error || '#EF4444') + '20' }]}><Ionicons name="close" size={20} color={colors.error || '#EF4444'} /></TouchableOpacity>}
           
           {isExtraSportEnabled && (
-            <TouchableOpacity onPress={() => {
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Registrar sesión de deporte" onPress={() => {
                 setSportModalTab('single');
                 setRangeStart(selectedDate);
                 setRangeEnd(selectedDate);
@@ -887,7 +887,7 @@ export default function CalendarScreen() {
             </TouchableOpacity>
           )}
           
-          {isTrainer && <TouchableOpacity onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}><Ionicons name="people" size={20} color={colors.primary} /></TouchableOpacity>}
+          {isTrainer && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cambiar de atleta" onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.primary + '15' }]}><Ionicons name="people" size={20} color={colors.primary} /></TouchableOpacity>}
         </View>
       </View>
 
@@ -899,13 +899,13 @@ export default function CalendarScreen() {
             {updating && <View style={[styles.absoluteLoading, {backgroundColor: 'rgba(255,255,255,0.7)'}]}><ActivityIndicator size="small" color={colors.primary} /></View>}
             
             <View style={styles.calendarHeader}>
-              <TouchableOpacity onPress={() => viewMode === 'month' ? changeMonth(-1) : changeWeek(-1)} style={styles.arrowBtn}><Ionicons name="chevron-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Anterior" onPress={() => viewMode === 'month' ? changeMonth(-1) : changeWeek(-1)} style={styles.arrowBtn}><Ionicons name="chevron-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
               <View>
                  <Text style={[styles.monthYearText, { color: colors.textPrimary }]}>
                    {viewMode === 'month' ? `${MONTHS[currentMonth]} ${currentYear}` : `Semana del ${currentWeekStart.getDate()} ${MONTHS[currentWeekStart.getMonth()].substring(0,3)}`}
                  </Text>
               </View>
-              <TouchableOpacity onPress={() => viewMode === 'month' ? changeMonth(1) : changeWeek(1)} style={styles.arrowBtn}><Ionicons name="chevron-forward" size={24} color={colors.textPrimary} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Siguiente" onPress={() => viewMode === 'month' ? changeMonth(1) : changeWeek(1)} style={styles.arrowBtn}><Ionicons name="chevron-forward" size={24} color={colors.textPrimary} /></TouchableOpacity>
             </View>
 
             {viewMode === 'month' ? (
@@ -927,6 +927,8 @@ export default function CalendarScreen() {
                     return (
                       <TouchableOpacity 
                         key={idx} 
+                        accessibilityRole="button"
+                        accessibilityLabel={`Día ${dateStr.split('-').reverse().join('/')}`}
                         onPress={() => handleDatePress(dateStr)} 
                         style={[
                           styles.dayCell, 
@@ -1214,7 +1216,7 @@ export default function CalendarScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.surface, paddingBottom: 30 }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
               <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Programar Tests</Text>
-              <TouchableOpacity onPress={() => setShowTestModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowTestModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
             </View>
 
             {/* BOTÓN PARA CARGAR PLANTILLA */}
@@ -1273,7 +1275,7 @@ export default function CalendarScreen() {
                   value={templateName}
                   onChangeText={setTemplateName}
                 />
-                <TouchableOpacity style={{ backgroundColor: colors.surfaceHighlight, justifyContent: 'center', paddingHorizontal: 15, borderRadius: 12 }} onPress={saveAsTemplate}>
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Guardar" style={{ backgroundColor: colors.surfaceHighlight, justifyContent: 'center', paddingHorizontal: 15, borderRadius: 12 }} onPress={saveAsTemplate}>
                   <Ionicons name="save" size={20} color={colors.primary} />
                 </TouchableOpacity>
               </View>
@@ -1292,7 +1294,7 @@ export default function CalendarScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary }}>Nuevo Test</Text>
-              <TouchableOpacity onPress={() => setShowConfigTestsModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowConfigTestsModal(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
             </View>
 
             <View style={{ marginBottom: 15 }}>
@@ -1332,7 +1334,7 @@ export default function CalendarScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <Text style={{ fontSize: 20, fontWeight: '900', color: colors.textPrimary }}>Ajustes del Ciclo</Text>
-              <TouchableOpacity onPress={() => setShowCycleSettings(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowCycleSettings(false)}><Ionicons name="close" size={24} color={colors.textSecondary} /></TouchableOpacity>
             </View>
 
             <View style={{ marginBottom: 15 }}>
@@ -1397,7 +1399,7 @@ export default function CalendarScreen() {
                 )}
                 <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary }}>Registro de Sesión</Text>
               </View>
-              <TouchableOpacity onPress={() => setShowSportModal(false)}>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowSportModal(false)}>
                 <Ionicons name="close" size={24} color={colors.textSecondary} />
               </TouchableOpacity>
             </View>
@@ -1500,7 +1502,7 @@ export default function CalendarScreen() {
           <View style={[styles.modalContent, { backgroundColor: colors.surface }]}>
              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
                <Text style={{ fontSize: 18, fontWeight: '900', color: colors.textPrimary }}>Seleccionar Atleta</Text>
-               <TouchableOpacity onPress={() => setShowPicker(false)}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
+               <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowPicker(false)}><Ionicons name="close" size={24} color={colors.textPrimary} /></TouchableOpacity>
              </View>
              <ScrollView style={{ maxHeight: 300 }}>
                {athletes.map(a => (

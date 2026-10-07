@@ -48,7 +48,7 @@ export default function ProgressScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
       {/* HEADER */}
       <View style={[styles.header, { borderBottomColor: colors.border }]}>
-        <TouchableOpacity onPress={() => goBack(router)} style={styles.headerBtn}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Volver" onPress={() => goBack(router)} style={styles.headerBtn}>
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>
@@ -89,7 +89,9 @@ export default function ProgressScreen() {
             
             const change = data.change_percent;
             const isPositive = change >= 0;
-            const changeColor = isPositive ? colors.success : colors.error;
+            // En los tests de tiempo (sprint...) bajar es mejorar: el color indica mejora, no subida
+            const improved = data.lower_better ? change <= 0 : change >= 0;
+            const changeColor = improved ? colors.success : colors.error;
 
             return (
               <View key={index} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>

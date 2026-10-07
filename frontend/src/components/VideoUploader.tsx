@@ -101,15 +101,15 @@ export default function VideoUploader({ currentVideo, onUploadSuccess, colors, r
         </View>
       ) : currentVideo ? (
         <>
-          <TouchableOpacity onPress={onPlay} style={{ padding: 8, backgroundColor: '#10B98120', borderRadius: 8 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Iniciar" onPress={onPlay} style={{ padding: 8, backgroundColor: '#10B98120', borderRadius: 8 }}>
             <Ionicons name="play" size={20} color="#10B981" />
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => onUploadSuccess('')} style={{ padding: 8, backgroundColor: '#EF444420', borderRadius: 8 }}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => onUploadSuccess('')} style={{ padding: 8, backgroundColor: '#EF444420', borderRadius: 8 }}>
             <Ionicons name="trash" size={20} color="#EF4444" />
           </TouchableOpacity>
         </>
       ) : (
-        <TouchableOpacity onPress={recordVideo} style={{ padding: 8, backgroundColor: colors?.surfaceHighlight || '#EEE', borderRadius: 8 }}>
+        <TouchableOpacity accessibilityRole="button" accessibilityLabel="Grabar vídeo" onPress={recordVideo} style={{ padding: 8, backgroundColor: colors?.surfaceHighlight || '#EEE', borderRadius: 8 }}>
           <Ionicons name="camera" size={20} color={colors?.textSecondary || '#888'} />
         </TouchableOpacity>
       )}

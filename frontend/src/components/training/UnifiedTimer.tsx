@@ -91,13 +91,13 @@ export default function UnifiedTimer({
         <View style={{ flexDirection: 'row', gap: 12, justifyContent: 'center' }}>
           
           {(isResting || (isWorking && workTotalSeconds > 0)) && (
-            <TouchableOpacity style={[styles.roundBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={isResting ? onResetRest : onResetWork}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualizar" style={[styles.roundBtn, { backgroundColor: colors.surfaceHighlight }]} onPress={isResting ? onResetRest : onResetWork}>
               <Ionicons name="refresh" size={26} color={colors.textPrimary} />
             </TouchableOpacity>
           )}
 
           {hasTime && (
-            <TouchableOpacity style={[styles.roundBtn, { backgroundColor: isPaused ? (colors.warning || '#F59E0B') + '20' : colors.primary + '20' }]} onPress={onTogglePause}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel={isPaused ? "Iniciar" : "Pausar"} style={[styles.roundBtn, { backgroundColor: isPaused ? (colors.warning || '#F59E0B') + '20' : colors.primary + '20' }]} onPress={onTogglePause}>
               <Ionicons name={isPaused ? "play" : "pause"} size={26} color={isPaused ? (colors.warning || '#F59E0B') : colors.primary} />
             </TouchableOpacity>
           )}

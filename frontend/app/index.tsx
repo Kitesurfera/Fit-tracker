@@ -181,7 +181,7 @@ export default function LoginScreen() {
                   placeholderTextColor="#888"
                   secureTextEntry={!showPassword}
                 />
-                <TouchableOpacity 
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"} 
                   style={styles.eyeBtn} 
                   onPress={() => setShowPassword(!showPassword)}
                 >

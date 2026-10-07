@@ -226,7 +226,7 @@ const handleSave = async () => {
         <View style={[styles.content, { backgroundColor: colors.surface }]}>
           <View style={styles.header}>
             <Text style={[styles.title, { color: colors.textPrimary }]}>Estado Diario ⚡</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={onClose} style={styles.closeBtn}>
               <Ionicons name="close-circle" size={32} color={colors.textSecondary} />
             </TouchableOpacity>
           </View>
