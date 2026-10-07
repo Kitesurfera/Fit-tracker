@@ -265,3 +265,11 @@ def test_tests_can_be_edited_only_by_owner(client, world):
     stored = [t for t in client.get("/api/tests", headers=auth(world["token_b"])).json() if t["id"] == world["test_b"]][0]
     assert stored["value"] == 120 and stored["date"] == "2026-10-01"
     assert client.put(f"/api/tests/{world['test_b']}", headers=auth(world["token_a"]), json={"value": 1}).status_code == 403
+
+
+def test_google_login_accepts_new_web_client(client, monkeypatch):
+    from google.oauth2 import id_token
+    monkeypatch.setattr(id_token, "verify_oauth2_token", lambda token, request, audience=None: {"aud": server.GOOGLE_WEB_CLIENT_ID, "email": "coach.a@test.com", "name": "G"})
+    assert client.post("/api/auth/google", json={"token": "x"}).status_code == 200
+    monkeypatch.setattr(id_token, "verify_oauth2_token", lambda token, request, audience=None: {"aud": "otra-app.apps.googleusercontent.com", "email": "coach.a@test.com", "name": "G"})
+    assert client.post("/api/auth/google", json={"token": "x"}).status_code == 401

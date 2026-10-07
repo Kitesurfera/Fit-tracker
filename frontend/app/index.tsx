@@ -27,7 +27,10 @@ import * as AuthSession from 'expo-auth-session'; // <-- 1. AÑADIDO: Para gener
 // Cierra la sesión del navegador web de Expo si se queda pillada
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_WEB_CLIENT_ID = '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com';
+// Cliente web de Google (cuenta propia, con https://fit-tracker-azure-iota.vercel.app autorizado)
+const GOOGLE_WEB_CLIENT_ID = '510108017704-t0p5iojgsmuvqu6ekbh5rvejm6muslka.apps.googleusercontent.com';
+// Cliente anterior: lo sigue usando el flujo de la app nativa
+const GOOGLE_LEGACY_CLIENT_ID = '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com';
 
 export default function LoginScreen() {
   const { user, loading, login, register, loginWithToken } = useAuth() as any; 
@@ -47,8 +50,8 @@ export default function LoginScreen() {
   // --- 2. CONFIGURACIÓN DE GOOGLE OAUTH ---
   // En la web se usa el botón oficial de Google (GoogleWebButton); este flujo queda para la app nativa
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId: GOOGLE_WEB_CLIENT_ID,
-    webClientId: GOOGLE_WEB_CLIENT_ID,
+    clientId: GOOGLE_LEGACY_CLIENT_ID,
+    webClientId: GOOGLE_LEGACY_CLIENT_ID,
     androidClientId: '351214985492-ahg14f57mak2mcj47q6jucsvcieu4dq9.apps.googleusercontent.com',
     iosClientId: '351214985492-r7k26kmllj5j7nef3bpdcv8vg5c4robk.apps.googleusercontent.com',
     redirectUri: AuthSession.makeRedirectUri(), // <-- GARANTIZA COMPATIBILIDAD EN FIREFOX/WEB
