@@ -20,6 +20,7 @@ import TimerControls from '../src/components/training/TimerControls';
 import VideoUploader from '../src/components/VideoUploader';
 import { localDateStr } from '../src/utils/dates';
 import { goBack } from '../src/utils/navigation';
+import { installWebAudioUnlock, unlockWebAudio, playWebBeep, setIgnoreSilentSwitch, SILENT_MODE_KEY } from '../src/utils/webAudio';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -51,22 +52,6 @@ const AVAILABLE_PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
 const PLATE_COLORS: Record<number, string> = {
   25: '#EF4444', 20: '#3B82F6', 15: '#F59E0B', 10: '#10B981', 
   5: '#FFFFFF', 2.5: '#000000', 1.25: '#6B7280'
-};
-
-let sharedAudioCtx: AudioContext | null = null;
-const getWebAudioCtx = () => {
-  if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
-  const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-  if (!AudioContextClass) return null;
-  
-  if (!sharedAudioCtx || sharedAudioCtx.state === 'closed') {
-    sharedAudioCtx = new AudioContextClass();
-  }
-  
-  if (sharedAudioCtx.state === 'suspended') {
-    sharedAudioCtx.resume().catch(() => {});
-  }
-  return sharedAudioCtx;
 };
 
 const parseTimeToSeconds = (timeStr: string | number | undefined | null): number => {
@@ -261,6 +246,8 @@ export default function TrainingModeScreen() {
         try {
           const s = await AsyncStorage.getItem('timer_sounds_enabled');
           setTimerSoundsEnabled(s !== 'false'); 
+          const silent = await AsyncStorage.getItem(SILENT_MODE_KEY);
+          setIgnoreSilentSwitch(silent !== 'false');
         } catch (e) { console.log("⚠️ Error cargando preferencias:", e); }
       };
       loadPreferences();
@@ -275,17 +262,8 @@ export default function TrainingModeScreen() {
       }
       
       if (Platform.OS === 'web') {
-        const unlockAudioOnInteraction = () => {
-          getWebAudioCtx();
-          document.removeEventListener('touchstart', unlockAudioOnInteraction);
-          document.removeEventListener('click', unlockAudioOnInteraction);
-        };
-        document.addEventListener('touchstart', unlockAudioOnInteraction);
-        document.addEventListener('click', unlockAudioOnInteraction);
-        return () => {
-          document.removeEventListener('touchstart', unlockAudioOnInteraction);
-          document.removeEventListener('click', unlockAudioOnInteraction);
-        };
+        // Desbloquea y despierta el audio en cada toque mientras estás en el entrenamiento
+        return installWebAudioUnlock();
       }
     }, [])
   );
@@ -293,9 +271,6 @@ export default function TrainingModeScreen() {
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
       if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-        if (Platform.OS === 'web') {
-          getWebAudioCtx();
-        }
         if (backgroundTimeRef.current && !isPaused && !finished) {
           const timeAway = Math.floor((Date.now() - backgroundTimeRef.current) / 1000);
           setGlobalSeconds(prev => prev + timeAway);
@@ -333,51 +308,11 @@ export default function TrainingModeScreen() {
       return;
     }
 
-    try {
-      const ctx = getWebAudioCtx();
-      if (!ctx) return;
-
-      const playClassicBeep = (freq: number, startTime: number, duration: number) => {
-        const osc1 = ctx.createOscillator();
-        const osc2 = ctx.createOscillator(); 
-        const gainNode = ctx.createGain();
-
-        osc1.type = 'triangle';
-        osc2.type = 'sine';
-
-        osc1.frequency.setValueAtTime(freq, ctx.currentTime + startTime);
-        osc2.frequency.setValueAtTime(freq * 2, ctx.currentTime + startTime + startTime);
-
-        gainNode.gain.setValueAtTime(0, ctx.currentTime + startTime);
-        gainNode.gain.linearRampToValueAtTime(0.75, ctx.currentTime + startTime + 0.01);
-        gainNode.gain.setValueAtTime(0.75, ctx.currentTime + startTime + duration - 0.02);
-        gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + startTime + duration);
-
-        osc1.connect(gainNode);
-        osc2.connect(gainNode);
-        gainNode.connect(ctx.destination);
-
-        osc1.start(ctx.currentTime + startTime);
-        osc2.start(ctx.currentTime + startTime);
-        osc1.stop(ctx.currentTime + startTime + duration);
-        osc2.stop(ctx.currentTime + startTime + duration);
-      };
-
-      if (type === 'short') {
-        playClassicBeep(800, 0, 0.15); 
-      } else if (type === 'long') {
-        playClassicBeep(1200, 0, 0.5); 
-      } else if (type === 'double') {
-        playClassicBeep(400, 0, 0.15); 
-        playClassicBeep(400, 0.25, 0.15); 
-      }
-    } catch (e) {
-      console.log("Error Web Audio API:", e);
-    }
+    playWebBeep(type);
   };
 
   const togglePause = () => {
-    if (Platform.OS === 'web') getWebAudioCtx();
+    if (Platform.OS === 'web') unlockWebAudio();
     
     if (isPaused) {
       setIsPaused(false);
@@ -437,7 +372,7 @@ export default function TrainingModeScreen() {
   const resetRestTimer = () => { if (restIntervalRef.current) clearInterval(restIntervalRef.current); setIsPaused(false); setTargetTime(Date.now() + restTotalSeconds * 1000); setRestSeconds(restTotalSeconds); setIsResting(true); };
 
   const handleWorkComplete = () => { 
-    if (Platform.OS === 'web') getWebAudioCtx(); 
+    if (Platform.OS === 'web') unlockWebAudio(); 
     stopWorkTimer(); 
     if (isHiit) advanceHiitLogic(); 
     else completeSet(); 
@@ -676,20 +611,20 @@ export default function TrainingModeScreen() {
 
   const advanceHiit = () => advanceHiitLogic(false);
   const skipHiitEx = () => { 
-    if (Platform.OS === 'web') getWebAudioCtx();
+    if (Platform.OS === 'web') unlockWebAudio();
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); 
     setHiitSkipped(prev => ({ ...prev, [`${hiitBlockIdx}-${hiitExIdx}`]: (prev[`${hiitBlockIdx}-${hiitExIdx}`] || 0) + 1 })); 
     advanceHiitLogic(true); 
   };
   
-  const skipHiitRest = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); justFinishedRestRef.current = true; };
-  const skipTradRest = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); justFinishedRestRef.current = true; };
+  const skipHiitRest = () => { if (Platform.OS === 'web') unlockWebAudio(); stopAllTimers(); justFinishedRestRef.current = true; };
+  const skipTradRest = () => { if (Platform.OS === 'web') unlockWebAudio(); stopAllTimers(); justFinishedRestRef.current = true; };
 
   const updateSetStatus = (exIdx: number, setIdx: number, status: SetStatus) => { setSetsStatus(prev => { const updated = { ...prev }; updated[exIdx] = [...(prev[exIdx] || [])]; updated[exIdx][setIdx] = status; return updated; }); };
   const autoAdvance = (exIdx: number) => { stopAllTimers(); setTradSide(1); if (exIdx < (workout.exercises?.length || 0) - 1) setTimeout(() => setCurrentExIndex(exIdx + 1), 400); else { setTimeout(() => setFinished(true), 400); } };
 
   const completeSet = () => {
-    if (Platform.OS === 'web') getWebAudioCtx();
+    if (Platform.OS === 'web') unlockWebAudio();
     stopAllTimers(); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     const exercises = workout.exercises || []; const currentEx = exercises[currentExIndex]; const s = setsStatus[currentExIndex] || [];
     const next = s.findIndex(i => i === 'pending'); if (next === -1) return;
@@ -715,8 +650,8 @@ export default function TrainingModeScreen() {
     }
   };
 
-  const skipSet = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); setTradSide(1); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
-  const skipEntireExercise = () => { if (Platform.OS === 'web') getWebAudioCtx(); stopAllTimers(); setTradSide(1); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
+  const skipSet = () => { if (Platform.OS === 'web') unlockWebAudio(); stopAllTimers(); setTradSide(1); Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); const s = setsStatus[currentExIndex] || []; const next = s.findIndex(i => i === 'pending'); if (next === -1) return; updateSetStatus(currentExIndex, next, 'skipped'); if (s.filter((item, i) => i !== next && item === 'pending').length === 0) autoAdvance(currentExIndex); };
+  const skipEntireExercise = () => { if (Platform.OS === 'web') unlockWebAudio(); stopAllTimers(); setTradSide(1); setSetsStatus(prev => { const updated = { ...prev }; updated[currentExIndex] = (updated[currentExIndex] || []).map(item => item === 'pending' ? 'skipped' : item); return updated; }); autoAdvance(currentExIndex); };
 
   const buildCompletionData = () => {
     const common = {

@@ -15,6 +15,7 @@ import { api } from '../../src/api';
 import { syncManager } from '../../src/offline';
 import { localDateStr } from '../../src/utils/dates';
 import { goBack } from '../../src/utils/navigation';
+import { unlockWebAudio, playWebBeep, setIgnoreSilentSwitch, SILENT_MODE_KEY } from '../../src/utils/webAudio';
 
 const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'kite': { icon: 'kitesurfing', lib: 'MaterialCommunity' },
@@ -52,6 +53,7 @@ export default function SettingsScreen() {
   });
   const [savingMeasures, setSavingMeasures] = useState(false);
   const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
+  const [silentModeSounds, setSilentModeSounds] = useState(true);
 
   const [pills, setPills] = useState<any[]>([]);
   const [athletes, setAthletes] = useState<any[]>([]);
@@ -67,6 +69,9 @@ export default function SettingsScreen() {
   useEffect(() => {
     AsyncStorage.getItem('timer_sounds_enabled').then(val => {
       if (val === 'false') setTimerSoundsEnabled(false);
+    });
+    AsyncStorage.getItem(SILENT_MODE_KEY).then(val => {
+      if (val === 'false') setSilentModeSounds(false);
     });
     
     AsyncStorage.getItem('theme_preference').then(val => {
@@ -185,6 +190,15 @@ export default function SettingsScreen() {
   const toggleTimerSounds = async (value: boolean) => {
     setTimerSoundsEnabled(value);
     await AsyncStorage.setItem('timer_sounds_enabled', value ? 'true' : 'false');
+    // Al activarlos suena un pitido de prueba (y el toque deja el audio del navegador desbloqueado)
+    if (value && Platform.OS === 'web') { unlockWebAudio(); playWebBeep('long'); }
+  };
+
+  const toggleSilentModeSounds = async (value: boolean) => {
+    setSilentModeSounds(value);
+    setIgnoreSilentSwitch(value);
+    await AsyncStorage.setItem(SILENT_MODE_KEY, value ? 'true' : 'false');
+    if (Platform.OS === 'web') { unlockWebAudio(); playWebBeep('short'); }
   };
 
   const toggleEmail = async (value: boolean) => {
@@ -510,6 +524,21 @@ export default function SettingsScreen() {
                   </View>
                   <Switch accessibilityLabel="Pitidos de entreno" value={timerSoundsEnabled} onValueChange={toggleTimerSounds} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
                 </View>
+                {Platform.OS === 'web' && timerSoundsEnabled && (
+                  <>
+                    <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                    <View style={styles.settingRowAction}>
+                      <View style={styles.settingIconText}>
+                        <View style={[styles.iconBox, { backgroundColor: '#10B98115' }]}><Ionicons name="notifications-off" size={20} color="#10B981" /></View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={[styles.settingText, { color: colors.textPrimary }]}>Sonar en modo silencio</Text>
+                          <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>En iPhone los pitidos suenan aunque esté en silencio, pero se pausa tu música</Text>
+                        </View>
+                      </View>
+                      <Switch accessibilityLabel="Sonar en modo silencio" value={silentModeSounds} onValueChange={toggleSilentModeSounds} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
+                    </View>
+                  </>
+                )}
               </>
             )}
           </View>
