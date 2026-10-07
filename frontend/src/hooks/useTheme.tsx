@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type ThemeMode = 'light' | 'dark' | 'system';
@@ -46,6 +46,14 @@ export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
     error: '#ef4444',
     success: '#10b981',
   };
+
+  // En la web, el fondo de la página toma el color de la barra de pestañas: así, si el navegador deja
+  // algún hueco bajo la app (p. ej. en el iPhone), no se ve una franja de otro color
+  useEffect(() => {
+    if (Platform.OS !== 'web' || typeof document === 'undefined') return;
+    document.documentElement.style.backgroundColor = colors.surface;
+    document.body.style.backgroundColor = colors.surface;
+  }, [colors.surface]);
 
   // Evita parpadeos de colores extraños mientras carga la memoria del teléfono
   if (!isLoaded) return null;

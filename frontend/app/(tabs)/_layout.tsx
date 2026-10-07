@@ -5,11 +5,13 @@ import { Ionicons } from '@expo/vector-icons';
 import { ThemeProvider, useTheme } from '../../src/hooks/useTheme'; 
 import { useAuth } from '../../src/context/AuthContext';
 import { Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // 1. Separamos la navegación para poder leer los colores por dentro
 function TabNavigation() {
   const { colors } = useTheme();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
 
   return (
     <Tabs
@@ -19,9 +21,10 @@ function TabNavigation() {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 0.5,
-          paddingBottom: Platform.OS === 'ios' ? 24 : 8,
+          // En la web sumamos el espacio de la rayita de inicio del iPhone (0 en el resto de dispositivos)
+          paddingBottom: Platform.OS === 'ios' ? 24 : 8 + (Platform.OS === 'web' ? insets.bottom : 0),
           paddingTop: 8,
-          height: Platform.OS === 'ios' ? 88 : 64,
+          height: Platform.OS === 'ios' ? 88 : 64 + (Platform.OS === 'web' ? insets.bottom : 0),
         },
         tabBarActiveTintColor: colors.primary,
         tabBarInactiveTintColor: colors.textSecondary,
