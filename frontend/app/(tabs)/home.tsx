@@ -918,7 +918,7 @@ export default function HomeScreen() {
   };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
+    <SafeAreaView edges={['top', 'left', 'right']} style={{ flex: 1, backgroundColor: colors.background }}>
       {isTrainer ? renderTrainerView() : renderAthleteView()}
       
       <WellnessModal isVisible={showWellness} onClose={() => { setShowWellness(false); loadData(true); }} />
