@@ -8,6 +8,7 @@ import { syncManager } from '../src/offline'; // <-- Importar el syncManager
 import { TrainerProvider } from '../src/context/TrainerContext';
 import SyncStatusBanner, { subscribeToConnection } from '../src/components/SyncStatusBanner';
 import { installWebAlert } from '../src/utils/webAlert';
+import { registerServiceWorker } from '../src/utils/registerServiceWorker';
 
 installWebAlert();
 
@@ -16,6 +17,7 @@ export default function RootLayout() {
   useEffect(() => {
     // 1. Intentar sincronizar al abrir la app
     syncManager.syncPendingActions();
+    registerServiceWorker();
 
     // 2. Escuchar cambios de conexión (ej. sales de un túnel, vuelve el WiFi)
     const unsubscribe = subscribeToConnection(isOnline => {

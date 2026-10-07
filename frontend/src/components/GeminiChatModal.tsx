@@ -6,6 +6,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { api } from '../api';
+import { localDateStr } from '../utils/dates';
 
 interface ChatMessage {
   id: string;
@@ -45,7 +46,7 @@ export default function GeminiChatModal({
 
   // <-- ESTADOS PARA PREGUNTAR LA FECHA -->
   const [schedulingId, setSchedulingId] = useState<string | null>(null);
-  const [scheduleDate, setScheduleDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [scheduleDate, setScheduleDate] = useState(() => localDateStr());
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -251,7 +252,7 @@ export default function GeminiChatModal({
                 <TouchableOpacity 
                   style={[styles.acceptBtn, { backgroundColor: colors.primary }]}
                   onPress={() => {
-                    setScheduleDate(new Date().toISOString().split('T')[0]); // Resetear al día de hoy
+                    setScheduleDate(localDateStr()); // Resetear al día de hoy
                     setSchedulingId(item.id);
                   }}
                 >

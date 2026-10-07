@@ -13,6 +13,7 @@ import { useTheme } from '../src/hooks/useTheme';
 import { useAuth } from '../src/context/AuthContext';
 import { api } from '../src/api';
 import VideoUploader from '../src/components/VideoUploader';
+import { localDateStr } from '../src/utils/dates';
 
 export default function TestModeScreen() {
   const { workoutId } = useLocalSearchParams();
@@ -213,7 +214,7 @@ export default function TestModeScreen() {
         // 2. GUARDADO DE HISTORIAL: Validación estricta anti-NaN
         if (api.createTest) {
           const targetAthleteId = workout.athlete_id || user?.id;
-          const targetDate = workout.date || new Date().toISOString().split('T')[0];
+          const targetDate = workout.date || localDateStr();
   
           for (const ex of exercisesToSave) {
              const valL = parseFloat(ex.result_left);

@@ -13,6 +13,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
 import { syncManager } from '../../src/offline';
+import { localDateStr } from '../../src/utils/dates';
 
 const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'kite': { icon: 'kitesurfing', lib: 'MaterialCommunity' },
@@ -225,7 +226,7 @@ export default function SettingsScreen() {
     if (!hasData) return;
     setSavingMeasures(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
+      const today = localDateStr();
       const measuresToSave = [
         { key: 'weight', name: 'peso', val: measurements.weight, unit: 'kg' },
         { key: 'shoulders', name: 'hombros', val: measurements.shoulders, unit: 'cm' },

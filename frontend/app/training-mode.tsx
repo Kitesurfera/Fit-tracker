@@ -18,6 +18,7 @@ import { useAuth } from '../src/context/AuthContext';
 import UnifiedTimer from '../src/components/training/UnifiedTimer';
 import HiitCard from '../src/components/training/HiitCard';
 import VideoUploader from '../src/components/VideoUploader';
+import { localDateStr } from '../src/utils/dates';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -498,7 +499,7 @@ export default function TrainingModeScreen() {
               setRecordedVideos(savedVideos);
             }
           } else {
-            const today = new Date().toISOString().split('T')[0];
+            const today = localDateStr();
             const wellness = Array.isArray(wellnessData) ? wellnessData.find((w: any) => w.date === today) : null;
             if (wellness) { setSleepQuality(wellness.sleep_quality || null); setSleepHours(wellness.sleep_hours || ''); }
             if (!isWorkoutHiit) {

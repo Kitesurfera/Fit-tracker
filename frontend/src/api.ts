@@ -220,12 +220,12 @@ export const api = {
     try {
       const res = await authFetch(url, { headers });
       const data = await res.json();
-      await syncManager.cacheData(`workouts_${params?.athlete_id || 'all'}`, data);
+      await syncManager.cacheData(`workouts_${params?.athlete_id || 'all'}${params?.date ? `_${params.date}` : ''}`, data);
       return data;
     } catch (e) {
       if (shouldFallbackToOffline(e)) {
         console.log('Modo offline: Cargando entrenamientos desde caché');
-        const cached = await syncManager.getCachedData(`workouts_${params?.athlete_id || 'all'}`);
+        const cached = await syncManager.getCachedData(`workouts_${params?.athlete_id || 'all'}${params?.date ? `_${params.date}` : ''}`);
         return cached || []; 
       }
       throw e;

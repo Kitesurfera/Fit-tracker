@@ -11,6 +11,7 @@ import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
+import { localDateStr } from '../src/utils/dates';
 
 const parseCSV = (str: string) => {
   const arr: string[][] = [];
@@ -39,7 +40,7 @@ export default function AddWorkoutScreen() {
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(localDateStr());
   const [error, setError] = useState('');
   
   const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
