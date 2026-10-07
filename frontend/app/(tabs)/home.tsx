@@ -412,8 +412,11 @@ export default function HomeScreen() {
     setShowAthleteModal(true); 
   };
 
+  const showMessage = (title: string, message: string) => { if (Platform.OS === 'web') window.alert(`${title}\n\n${message}`); else Alert.alert(title, message); };
+
   const handleSaveAthlete = async () => {
-    if (!athleteForm.name || !athleteForm.email || (!editingAthleteId && !athleteForm.password)) { Alert.alert("Campos incompletos", "Rellena todos los datos obligatorios."); return; }
+    if (!athleteForm.name || !athleteForm.email || (!editingAthleteId && !athleteForm.password)) { showMessage("Campos incompletos", "Rellena todos los datos obligatorios."); return; }
+    if (athleteForm.password && athleteForm.password.length < 8) { showMessage("Contraseña demasiado corta", "La contraseña debe tener al menos 8 caracteres."); return; }
     try { 
       if (editingAthleteId) { 
         if (api.updateAthlete) await api.updateAthlete(editingAthleteId, athleteForm); 
@@ -422,8 +425,8 @@ export default function HomeScreen() {
       } 
       setShowAthleteModal(false); 
       loadData(); 
-    } catch (e) { 
-      if (Platform.OS !== 'web') Alert.alert("Error", "No se pudo guardar la información."); 
+    } catch (e: any) { 
+      showMessage("Error", e?.message && !['NETWORK_ERROR', 'SERVER_ERROR'].includes(e.message) ? e.message : "No se pudo guardar la información.");
     }
   };
 

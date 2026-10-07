@@ -6,6 +6,7 @@ Se ejecutan contra la app en memoria (mongomock-motor), sin servidor real:
 """
 import os
 import sys
+import time
 import uuid
 from pathlib import Path
 
@@ -26,6 +27,7 @@ import server  # noqa: E402
 @pytest.fixture()
 def client():
     server.db = mongomock_motor.AsyncMongoMockClient()[f"test_{uuid.uuid4().hex}"]
+    server._rate_buckets.clear()
     return TestClient(server.app)
 
 
@@ -201,3 +203,54 @@ def test_athlete_accesses_own_data(client, world):
 def test_brain_memory_is_scoped_per_trainer(client, world):
     assert client.get("/api/brain/memory", headers=auth(world["token_b"])).json()["total_learned"] == 1
     assert client.get("/api/brain/memory", headers=auth(world["token_a"])).json()["total_learned"] == 0
+
+
+# --- Contraseñas, sesiones y límites ---
+
+def test_editing_athlete_without_password_keeps_old_password(client, world):
+    res = client.put(f"/api/athletes/{world['athlete_a']}", headers=auth(world["token_a"]), json={"name": "Nuevo nombre", "password": ""})
+    assert res.status_code == 200
+    login(client, "athlete.a@test.com", "athlete123")
+
+
+def test_short_passwords_are_rejected(client, world):
+    h = auth(world["token_a"])
+    res = client.post("/api/athletes", headers=h, json={"email": "corta@test.com", "password": "123", "name": "x", "gender": "Femenino"})
+    assert res.status_code == 400
+    assert client.put(f"/api/athletes/{world['athlete_a']}", headers=h, json={"password": "123"}).status_code == 400
+
+
+def test_login_is_blocked_after_repeated_failures(client, world):
+    for _ in range(server.LOGIN_MAX_FAILURES):
+        assert client.post("/api/auth/login", json={"email": "coach.a@test.com", "password": "mala"}).status_code == 401
+    res = client.post("/api/auth/login", json={"email": "coach.a@test.com", "password": "secret123"})
+    assert res.status_code == 429
+
+
+def test_tokens_expire_in_days_not_centuries(client):
+    import jwt
+    token = register(client, "coach.a@test.com")
+    payload = jwt.decode(token, server.JWT_SECRET, algorithms=["HS256"])
+    assert payload["exp"] - time.time() <= 31 * 24 * 3600
+
+
+def test_ai_requests_are_rate_limited(client, world, monkeypatch):
+    monkeypatch.setattr(server, "GEMINI_API_KEY", "fake")
+    monkeypatch.setattr(server, "AI_MAX_REQUESTS_PER_HOUR", 2)
+
+    class FakeModel:
+        def __init__(self, *a, **k): pass
+        def generate_content(self, prompt):
+            return type("R", (), {"text": "{}"})()
+
+    monkeypatch.setattr(server.genai, "GenerativeModel", FakeModel)
+    body = {"athlete_name": "x", "fatigue_data": [], "soreness_data": [], "recent_workouts_count": 0, "recent_prs": []}
+    h = auth(world["token_a"])
+    assert client.post("/api/brain/analyze-analytics", headers=h, json=body).status_code == 200
+    assert client.post("/api/brain/analyze-analytics", headers=h, json=body).status_code == 200
+    assert client.post("/api/brain/analyze-analytics", headers=h, json=body).status_code == 429
+
+
+def test_server_upload_endpoint_is_removed(client, world):
+    res = client.post("/api/upload", headers=auth(world["token_a"]), files={"file": ("x.m3u8", b"#EXTM3U")})
+    assert res.status_code in (404, 405)

@@ -1,5 +1,5 @@
 import requests
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, UploadFile, File, Header, Request, BackgroundTasks
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -15,11 +15,11 @@ from pathlib import Path
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
-import shutil
 import asyncio
 import time
 import json
 import re
+import html
 import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
 import smtplib
@@ -51,7 +51,7 @@ COOLDOWN_PRO_UNTIL = 0
 
 JWT_SECRET = os.environ.get('JWT_SECRET')
 JWT_ALGORITHM = 'HS256'
-JWT_EXPIRATION_HOURS = 876000
+JWT_EXPIRATION_DAYS = int(os.environ.get('JWT_EXPIRATION_DAYS', 30))
 if not JWT_SECRET:
     logger.error("¡ERROR CRÍTICO: No se ha encontrado JWT_SECRET!")
 
@@ -256,13 +256,22 @@ def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
 def verify_password(password: str, hashed: str) -> bool:
-    return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
+    try:
+        return bcrypt.checkpw(password.encode('utf-8'), (hashed or '').encode('utf-8'))
+    except ValueError:
+        return False
+
+MIN_PASSWORD_LENGTH = 8
+
+def validate_password(password: str):
+    if len(password or '') < MIN_PASSWORD_LENGTH:
+        raise HTTPException(status_code=400, detail=f"La contraseña debe tener al menos {MIN_PASSWORD_LENGTH} caracteres")
 
 def create_token(user_id: str, role: str) -> str:
     payload = {
         'user_id': user_id,
         'role': role,
-        'exp': datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+        'exp': datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRATION_DAYS)
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
 
@@ -278,6 +287,30 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     if not user:
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return user
+
+# --- LÍMITE DE INTENTOS (en memoria del servidor) ---
+LOGIN_MAX_FAILURES = 10
+LOGIN_WINDOW_SECONDS = 15 * 60
+AI_MAX_REQUESTS_PER_HOUR = int(os.environ.get('AI_MAX_REQUESTS_PER_HOUR', 60))
+_rate_buckets: Dict[str, List[float]] = {}
+
+def too_many_attempts(key: str, limit: int, window_seconds: int) -> bool:
+    now = time.time()
+    if len(_rate_buckets) > 10000:
+        for k in [k for k, v in _rate_buckets.items() if not v or now - v[-1] >= window_seconds]:
+            _rate_buckets.pop(k, None)
+    recent = [t for t in _rate_buckets.get(key, []) if now - t < window_seconds]
+    _rate_buckets[key] = recent
+    return len(recent) >= limit
+
+def record_attempt(key: str):
+    _rate_buckets.setdefault(key, []).append(time.time())
+
+def check_ai_quota(user: dict):
+    key = f"ai:{user['id']}"
+    if too_many_attempts(key, AI_MAX_REQUESTS_PER_HOUR, 3600):
+        raise HTTPException(status_code=429, detail="Has alcanzado el límite de peticiones a la IA. Prueba de nuevo en un rato.")
+    record_attempt(key)
 
 # --- CONTROL DE ACCESO ---
 def trainer_signup_allowed(email: str) -> bool:
@@ -367,14 +400,17 @@ def send_email_async(to_email: str, subject: str, body: str):
         return False
 
 # Configuración VAPID
-VAPID_PRIVATE_KEY = "HEbQpgf3KOB2smfjz8recSVKHC7p3sjZBjznzxrct-c"
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY')
 VAPID_CLAIMS = {
-    "sub": "mailto:claudiakiter31@gmail.com"
+    "sub": os.environ.get('VAPID_SUBJECT', "mailto:claudiakiter31@gmail.com")
 }
 
 def send_web_push(subscription_info: dict, title: str, message: str):
     if not subscription_info or not isinstance(subscription_info, dict):
         logger.warning("No hay información de suscripción web válida.")
+        return False
+    if not VAPID_PRIVATE_KEY:
+        logger.warning("VAPID_PRIVATE_KEY no configurada. Saltando web push.")
         return False
 
     try:
@@ -444,6 +480,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
 
     if data.athlete_id:
         await ensure_athlete_access(user, data.athlete_id)
+    check_ai_quota(user)
         
     try:
         contexto_atleta = ""
@@ -581,7 +618,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
                     raise HTTPException(status_code=429, detail="Límite de peticiones alcanzado. Por favor, espera un poco.")
             else:
                 logger.error(f"Error IA desconocido: {error_str}")
-                raise HTTPException(status_code=500, detail=f"Error conectando con la IA: {error_str}")
+                raise HTTPException(status_code=500, detail="Error conectando con la IA.")
 
         raw_text = response.text.strip()
         if raw_text.startswith("```"):
@@ -589,15 +626,18 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         
         return json.loads(raw_text)
         
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error general en endpoint IA: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error conectando con la IA: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error conectando con la IA.")
 
 @api_router.post("/brain/analyze-analytics")
 async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_current_user)):
     global COOLDOWN_PRO_UNTIL
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
+    check_ai_quota(user)
         
     try:
         system_prompt = f"""
@@ -646,7 +686,7 @@ async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_
         
     except Exception as e:
         logger.error(f"Error en analíticas IA: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error conectando con la IA: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error conectando con la IA.")
 
 # --- RUTAS DE WELLNESS ---
 @api_router.get("/wellness/history/{athlete_id}")
@@ -705,7 +745,7 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
         trainer = await db.users.find_one({"id": user['trainer_id']})
         # Verificamos si tiene los emails activados (por defecto asumimos que Sí)
         if trainer and trainer.get('email_notifications', True) is not False:
-            athlete_name = user.get('name', 'Un deportista')
+            athlete_name = html.escape(user.get('name', 'Un deportista'))
             
             titulo = f"📊 {athlete_name} ha actualizado su Wellness"
             mensaje_html = f"""
@@ -725,7 +765,7 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
                 mensaje_html += "<br><p style='color: orange;'><b>⚠️ Atención:</b> El atleta ha reportado niveles altos de fatiga o dolor. Se recomienda revisar su estado y, si es necesario, inyectar una píldora de recuperación desde su perfil.</p>"
                     
             if data.notes:
-                mensaje_html += f"<p><b>Notas del atleta:</b> {data.notes}</p>"
+                mensaje_html += f"<p><b>Notas del atleta:</b> {html.escape(data.notes)}</p>"
                 
             background_tasks.add_task(send_email_async, trainer['email'], titulo, mensaje_html)
 
@@ -750,6 +790,7 @@ async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_c
 async def register(data: UserRegister):
     if not trainer_signup_allowed(data.email):
         raise HTTPException(status_code=403, detail="El registro está cerrado. Pide acceso a tu entrenador o al administrador.")
+    validate_password(data.password)
     existing = await db.users.find_one({"email": data.email})
     if existing: raise HTTPException(status_code=400, detail="Email ya registrado")
     user_id = str(uuid.uuid4())
@@ -759,9 +800,14 @@ async def register(data: UserRegister):
 
 @api_router.post("/auth/login")
 async def login(data: UserLogin):
+    attempts_key = f"login:{data.email.strip().lower()}"
+    if too_many_attempts(attempts_key, LOGIN_MAX_FAILURES, LOGIN_WINDOW_SECONDS):
+        raise HTTPException(status_code=429, detail="Demasiados intentos fallidos. Espera 15 minutos y vuelve a probar.")
     user = await db.users.find_one({"email": data.email})
-    if not user or not verify_password(data.password, user['password']):
+    if not user or not verify_password(data.password, user.get('password')):
+        record_attempt(attempts_key)
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
+    _rate_buckets.pop(attempts_key, None)
     return {"token": create_token(user['id'], user['role']), "user": {k: v for k, v in user.items() if k not in ('_id', 'password')}}
 
 @api_router.post("/auth/google")
@@ -817,6 +863,7 @@ async def get_athlete(athlete_id: str, user=Depends(get_current_user)):
 async def create_athlete(data: AthleteCreate, user=Depends(get_current_user)):
     if user['role'] != 'trainer': raise HTTPException(status_code=403, detail="No autorizado")
     if await db.users.find_one({"email": data.email}): raise HTTPException(status_code=400, detail="Email ya registrado")
+    validate_password(data.password)
     athlete_id = str(uuid.uuid4())
     await db.users.insert_one({"id": athlete_id, "email": data.email, "password": hash_password(data.password), "name": data.name, "gender": data.gender, "role": "athlete", "sport": data.sport, "phone": data.phone, "trainer_id": user['id'], "created_at": datetime.now(timezone.utc).isoformat()})
     return {"status": "success", "id": athlete_id}
@@ -827,7 +874,11 @@ async def update_athlete(athlete_id: str, data: AthleteUpdate, user=Depends(get_
     if data.email and data.email != athlete.get('email') and await db.users.find_one({"email": data.email}):
         raise HTTPException(status_code=400, detail="Email ya registrado")
     update_data = {k: v for k, v in data.dict().items() if v is not None}
-    if data.password: update_data["password"] = hash_password(data.password)
+    # Contraseña vacía = no cambiarla (el formulario de edición la envía vacía)
+    update_data.pop("password", None)
+    if data.password:
+        validate_password(data.password)
+        update_data["password"] = hash_password(data.password)
     await db.users.update_one({"id": athlete_id}, {"$set": update_data})
     return {"status": "success"}
 
@@ -879,9 +930,9 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
     if user['role'] == 'trainer':
         athlete = await db.users.find_one({"id": data.athlete_id})
         if athlete and athlete.get('email_notifications', True) is not False:
-            trainer_name = user.get('name', 'Tu entrenador')
+            trainer_name = html.escape(user.get('name', 'Tu entrenador'))
             titulo = "🏋️‍♂️ ¡Nueva sesión en tu calendario!"
-            mensaje_html = f"<p>Hola {athlete.get('name', '')},</p><p><b>{trainer_name}</b> acaba de programarte la sesión <b>'{data.title}'</b> para el día {data.date}.</p><p>Abre la app para ver los detalles.</p>"
+            mensaje_html = f"<p>Hola {html.escape(athlete.get('name', ''))},</p><p><b>{trainer_name}</b> acaba de programarte la sesión <b>'{html.escape(data.title)}'</b> para el día {html.escape(data.date)}.</p><p>Abre la app para ver los detalles.</p>"
             background_tasks.add_task(send_email_async, athlete['email'], titulo, mensaje_html)
 
 @api_router.post("/workouts/bulk")
@@ -916,13 +967,13 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
             await db.brain_memory.insert_many(brain_memories) 
             
         if user['role'] == 'trainer':
-            trainer_name = user.get('name', 'Tu entrenador')
+            trainer_name = html.escape(user.get('name', 'Tu entrenador'))
             for a_id in athlete_ids:
                 athlete = await db.users.find_one({"id": a_id})
                 if athlete and athlete.get('email_notifications', True) is not False:
                     count = sum(1 for wk in data.workouts if wk.athlete_id == a_id)
                     titulo = "📅 Tu calendario ha sido actualizado"
-                    mensaje_html = f"<p>Hola {athlete.get('name', '')},</p><p><b>{trainer_name}</b> ha añadido <b>{count} nuevas sesiones</b> a tu planificación.</p><p>Abre la app para revisar las próximas fechas.</p>"
+                    mensaje_html = f"<p>Hola {html.escape(athlete.get('name', ''))},</p><p><b>{trainer_name}</b> ha añadido <b>{count} nuevas sesiones</b> a tu planificación.</p><p>Abre la app para revisar las próximas fechas.</p>"
                     background_tasks.add_task(send_email_async, athlete['email'], titulo, mensaje_html)
                     
     return {"status": "success", "inserted": len(new_workouts)}
@@ -987,7 +1038,8 @@ async def get_periodization_tree(athlete_id: str, user=Depends(get_current_user)
             
         return {"macros": macros, "unassigned_workouts": unassigned}
     except Exception as e:
-        return {"macros": [], "unassigned_workouts": [], "error": str(e)}
+        logger.error(f"Error cargando periodización: {str(e)}")
+        return {"macros": [], "unassigned_workouts": [], "error": "No se pudo cargar la periodización"}
 
 @api_router.post("/macrociclos")
 async def create_macro(data: MacroCreate, user=Depends(get_current_user)):
@@ -1119,54 +1171,6 @@ async def get_monthly_summary(athlete_id: str, user=Depends(get_current_user)):
         "month_name": nombre_mes
     }
 
-@api_router.post("/upload")
-async def upload_file(request: Request, file: UploadFile = File(...), user=Depends(get_current_user)):
-    try:
-        ext = os.path.splitext(file.filename)[1].lower()
-        unique_id = str(uuid.uuid4())
-        
-        temp_filename = f"temp_{unique_id}{ext}"
-        final_filename = f"{unique_id}.mp4"
-        
-        temp_path = UPLOAD_DIR / temp_filename
-        final_path = UPLOAD_DIR / final_filename
-        
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-            
-        try:
-            process = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-i", str(temp_path),
-                "-c:v", "libx264", "-c:a", "aac",
-                "-preset", "fast", "-movflags", "+faststart", "-y",
-                str(final_path),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            stdout, stderr = await process.communicate()
-            
-            if process.returncode != 0:
-                logger.error(f"Fallo en ffmpeg: {stderr.decode()}")
-                os.rename(temp_path, final_path)
-            else:
-                if temp_path.exists():
-                    os.remove(temp_path)
-                    
-        except Exception as e:
-            logger.error(f"Error procesando vídeo: {str(e)}")
-            os.rename(temp_path, final_path)
-
-        # Detectar el protocolo real de Render (https) para evitar bloqueos de seguridad
-        proto = request.headers.get("x-forwarded-proto", request.url.scheme)
-        base_url = str(request.base_url).rstrip('/')
-        if proto == "https" and base_url.startswith("http://"):
-            base_url = base_url.replace("http://", "https://", 1)
-
-        return {"url": f"{base_url}/uploads/{final_filename}"}
-    except Exception as e:
-        logger.error(f"Error subida general: {str(e)}")
-        raise HTTPException(status_code=500, detail="Fallo al procesar archivo")
-        
 app.include_router(api_router)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
