@@ -97,35 +97,6 @@ export default function HomeScreen() {
   const [skipWorkoutId, setSkipWorkoutId] = useState<string | null>(null);
   const [skipReason, setSkipReason] = useState('');
 
-  const [offlineWorkouts, setOfflineWorkouts] = useState<string[]>([]);
-
-  useFocusEffect(
-    useCallback(() => {
-      const loadOfflineFlags = async () => {
-        try {
-          const stored = await AsyncStorage.getItem('OFFLINE_WORKOUTS_FLAGS');
-          if (stored) setOfflineWorkouts(JSON.parse(stored));
-        } catch (e) {}
-      };
-      loadOfflineFlags();
-    }, [])
-  );
-
-  const toggleOfflineStatus = async (id: string) => {
-    let updated = [...offlineWorkouts];
-    const isNowOffline = !updated.includes(id);
-
-    if (isNowOffline) {
-      updated.push(id);
-      Alert.alert("Disponible Offline ☁️", "Los datos de esta sesión están guardados localmente. Puedes entrenar sin cobertura.");
-    } else {
-      updated = updated.filter(wId => wId !== id);
-    }
-    
-    setOfflineWorkouts(updated);
-    await AsyncStorage.setItem('OFFLINE_WORKOUTS_FLAGS', JSON.stringify(updated));
-  };
-
   const isTrainer = user?.role === 'trainer';
   const firstName = user?.name?.split(' ')[0] || 'Atleta';
   const todayStr = new Date().toISOString().split('T')[0];
@@ -336,7 +307,7 @@ export default function HomeScreen() {
     useCallback(() => { 
       if (authLoading || (!user && !isTrainer)) return; 
       const init = async () => { 
-        try { await syncManager.syncPendingWorkouts(); } catch (e) {} 
+        try { await syncManager.syncPendingActions(); } catch (e) {} 
         
         if (isTrainer) { 
           await loadData(true); 
@@ -524,13 +495,6 @@ export default function HomeScreen() {
 
           {!item.completed && !isTrainer && (
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <TouchableOpacity style={{ padding: 10 }} onPress={() => toggleOfflineStatus(item.id)}>
-                <Ionicons 
-                  name={offlineWorkouts.includes(item.id) ? "cloud-done" : "cloud-download-outline"} 
-                  size={26} 
-                  color={offlineWorkouts.includes(item.id) ? (colors.success || '#10B981') : colors.textSecondary} 
-                />
-              </TouchableOpacity>
               <TouchableOpacity style={{ padding: 10, marginRight: 5 }} onPress={() => { setSkipWorkoutId(item.id); setShowSkipModal(true); }}>
                 <Ionicons name="close-circle-outline" size={26} color={colors.error || '#EF4444'} />
               </TouchableOpacity>

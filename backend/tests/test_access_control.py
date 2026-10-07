@@ -62,8 +62,10 @@ def world(client):
     token_athlete_a = login(client, "athlete.a@test.com", "athlete123")
 
     workout = {"title": "Sesión B", "date": "2026-10-01", "exercises": [], "athlete_id": athlete_b}
-    assert client.post("/api/workouts", headers=auth(token_b), json=workout).status_code == 200
-    workout_b = client.get("/api/workouts", headers=auth(token_b)).json()[0]["id"]
+    res = client.post("/api/workouts", headers=auth(token_b), json=workout)
+    assert res.status_code == 200
+    workout_b = res.json()["id"]
+    assert client.get("/api/workouts", headers=auth(token_b)).json()[0]["id"] == workout_b
 
     test = {"athlete_id": athlete_b, "test_type": "strength", "test_name": "squat", "value": 100, "unit": "kg", "date": "2026-10-01"}
     test_b = client.post("/api/tests", headers=auth(token_b), json=test).json()["test"]["id"]

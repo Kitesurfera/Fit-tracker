@@ -935,6 +935,8 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
             mensaje_html = f"<p>Hola {html.escape(athlete.get('name', ''))},</p><p><b>{trainer_name}</b> acaba de programarte la sesión <b>'{html.escape(data.title)}'</b> para el día {html.escape(data.date)}.</p><p>Abre la app para ver los detalles.</p>"
             background_tasks.add_task(send_email_async, athlete['email'], titulo, mensaje_html)
 
+    return workout
+
 @api_router.post("/workouts/bulk")
 async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     new_workouts, athlete_ids, brain_memories = [], set(), []

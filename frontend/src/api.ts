@@ -17,6 +17,9 @@ const getAuthHeaders = async () => {
   }
 };
 
+// Error con el código HTTP, para poder decidir si merece la pena reintentar
+const httpError = (message: string, status?: number) => Object.assign(new Error(message), { status });
+
 // --- WRAPPER ULTRA ROBUSTO ---
 const authFetch = async (url: string, options?: RequestInit) => {
   let res;
@@ -34,16 +37,16 @@ const authFetch = async (url: string, options?: RequestInit) => {
     } else {
       try { router.replace('/'); } catch (e) { console.log(e); }
     }
-    throw new Error('Sesión expirada. Por favor, vuelve a iniciar sesión.');
+    throw httpError('Sesión expirada. Por favor, vuelve a iniciar sesión.', 401);
   }
 
   if (res.status >= 500) {
-    throw new Error('SERVER_ERROR');
+    throw httpError('SERVER_ERROR', res.status);
   }
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.detail || `Error HTTP: ${res.status}`);
+    throw httpError(errData.detail || `Error HTTP: ${res.status}`, res.status);
   }
   
   return res;
@@ -229,7 +232,8 @@ export const api = {
     }
   },
 
-  createWorkout: async (data: any) => {
+  // queueIfOffline: false lo usa la sincronización, para que un fallo no vuelva a meter la acción en la cola
+  createWorkout: async (data: any, { queueIfOffline = true } = {}) => {
     const headers = await getAuthHeaders();
     try {
       const res = await authFetch(`${BACKEND_URL}/api/workouts`, {
@@ -237,7 +241,7 @@ export const api = {
       });
       return await res.json();
     } catch (e) {
-      if (shouldFallbackToOffline(e)) {
+      if (queueIfOffline && shouldFallbackToOffline(e)) {
         console.log('Modo offline: Encolando creación');
         const tempId = `temp_${Date.now()}`;
         const offlineData = { ...data, id: tempId };
@@ -256,7 +260,7 @@ export const api = {
     return res.json();
   },
 
-  updateWorkout: async (id: string, data: any) => {
+  updateWorkout: async (id: string, data: any, { queueIfOffline = true } = {}) => {
     const headers = await getAuthHeaders();
     try {
       const res = await authFetch(`${BACKEND_URL}/api/workouts/${id}`, {
@@ -264,7 +268,7 @@ export const api = {
       });
       return await res.json();
     } catch (e) {
-      if (shouldFallbackToOffline(e)) {
+      if (queueIfOffline && shouldFallbackToOffline(e)) {
         console.log('Modo offline: Encolando actualización');
         await syncManager.savePendingAction('UPDATE_WORKOUT', data, id);
         return { success: true, offline: true }; 
@@ -273,13 +277,13 @@ export const api = {
     }
   },
 
-  deleteWorkout: async (id: string) => {
+  deleteWorkout: async (id: string, { queueIfOffline = true } = {}) => {
     const headers = await getAuthHeaders();
     try {
       const res = await authFetch(`${BACKEND_URL}/api/workouts/${id}`, { method: 'DELETE', headers });
       return await res.json();
     } catch (e) {
-      if (shouldFallbackToOffline(e)) {
+      if (queueIfOffline && shouldFallbackToOffline(e)) {
         await syncManager.savePendingAction('DELETE_WORKOUT', null, id);
         return { success: true, offline: true };
       }

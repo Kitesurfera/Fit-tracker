@@ -12,6 +12,7 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { api } from '../../src/api';
+import { syncManager } from '../../src/offline';
 
 const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'kite': { icon: 'kitesurfing', lib: 'MaterialCommunity' },
@@ -247,7 +248,7 @@ export default function SettingsScreen() {
   const handleShareApp = async () => {
     try {
       await Share.share({
-        message: '¡Únete a Fit Tracker y entrena conmigo! Regístrate aquí: https://fit-tracker-azure-iota.vercel.app/',
+        message: '¡Entrena conmigo en Fit Tracker! Entra aquí con el email y la contraseña que te he dado: https://fit-tracker-azure-iota.vercel.app/',
         url: 'https://fit-tracker-azure-iota.vercel.app/', 
         title: 'Fit Tracker App'
       });
@@ -255,11 +256,11 @@ export default function SettingsScreen() {
   };
 
   const handleLogout = async () => {
-    if (Platform.OS === 'web') {
-      if (window.confirm('¿Seguro que quieres cerrar sesión?')) { await logout(); router.replace('/'); }
-    } else {
-      Alert.alert('Cerrar sesión', '¿Seguro que quieres salir?', [{ text: 'Cancelar', style: 'cancel' }, { text: 'Salir', style: 'destructive', onPress: async () => { await logout(); router.replace('/'); } }]);
-    }
+    const pending = await syncManager.getPendingCount();
+    const message = pending > 0
+      ? `Tienes ${pending} ${pending === 1 ? 'cambio' : 'cambios'} sin subir al servidor. Si cierras sesión ahora se perderán. Conéctate a internet y espera a que se suban antes de salir.\n\n¿Cerrar sesión igualmente?`
+      : '¿Seguro que quieres salir?';
+    Alert.alert('Cerrar sesión', message, [{ text: 'Cancelar', style: 'cancel' }, { text: 'Salir', style: 'destructive', onPress: async () => { await logout(); router.replace('/'); } }]);
   };
 
   const openNewPillBuilder = () => {
