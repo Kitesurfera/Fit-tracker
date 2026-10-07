@@ -17,6 +17,7 @@ import { useTheme } from '../src/hooks/useTheme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../src/api';
+import GoogleWebButton from '../src/components/GoogleWebButton';
 
 // --- IMPORTACIONES PARA GOOGLE OAUTH ---
 import * as WebBrowser from 'expo-web-browser';
@@ -26,10 +27,12 @@ import * as AuthSession from 'expo-auth-session'; // <-- 1. AÑADIDO: Para gener
 // Cierra la sesión del navegador web de Expo si se queda pillada
 WebBrowser.maybeCompleteAuthSession();
 
+const GOOGLE_WEB_CLIENT_ID = '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com';
+
 export default function LoginScreen() {
   const { user, loading, login, register, loginWithToken } = useAuth() as any; 
   const router = useRouter();
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
 
   const [isLogin, useState_isLogin] = useState(true);
   const isLoginValue = isLogin;
@@ -41,10 +44,11 @@ export default function LoginScreen() {
   const [error, setError] = useState('');
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 
-  // --- 2. CONFIGURACIÓN DE GOOGLE OAUTH CORREGIDA PARA WEB ---
+  // --- 2. CONFIGURACIÓN DE GOOGLE OAUTH ---
+  // En la web se usa el botón oficial de Google (GoogleWebButton); este flujo queda para la app nativa
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId: '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com',
-    webClientId: '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com', // <-- OBLIGATORIO PARA WEB
+    clientId: GOOGLE_WEB_CLIENT_ID,
+    webClientId: GOOGLE_WEB_CLIENT_ID,
     androidClientId: '351214985492-ahg14f57mak2mcj47q6jucsvcieu4dq9.apps.googleusercontent.com',
     iosClientId: '351214985492-r7k26kmllj5j7nef3bpdcv8vg5c4robk.apps.googleusercontent.com',
     redirectUri: AuthSession.makeRedirectUri(), // <-- GARANTIZA COMPATIBILIDAD EN FIREFOX/WEB
@@ -221,9 +225,22 @@ export default function LoginScreen() {
               <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
             </View>
 
+            {Platform.OS === 'web' ? (
+              isGoogleLoading ? (
+                <ActivityIndicator color={colors.textPrimary} style={{ minHeight: 44 }} />
+              ) : (
+                <GoogleWebButton
+                  clientId={GOOGLE_WEB_CLIENT_ID}
+                  dark={isDark}
+                  disabled={submitting}
+                  onCredential={handleGoogleLoginToBackend}
+                  onError={setError}
+                />
+              )
+            ) : (
             <TouchableOpacity 
               style={[styles.googleBtn, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}
-              onPress={() => promptAsync()}
+              onPress={() => promptAsync().catch((e: any) => setError(e?.message || 'No se pudo abrir el inicio de sesión de Google.'))}
               disabled={!request || submitting || isGoogleLoading}
               activeOpacity={0.8}
             >
@@ -238,6 +255,7 @@ export default function LoginScreen() {
                 </>
               )}
             </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               onPress={() => { useState_isLogin(!isLoginValue); setError(''); }}
