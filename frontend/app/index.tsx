@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   ScrollView,
   Image,
+  Linking,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '../src/context/AuthContext';
@@ -28,6 +29,9 @@ import * as AuthSession from 'expo-auth-session'; // <-- 1. AÑADIDO: Para gener
 WebBrowser.maybeCompleteAuthSession();
 
 // Cliente web de Google (cuenta propia, con https://fit-tracker-azure-iota.vercel.app autorizado)
+const SITE_URL = 'https://fit-tracker-azure-iota.vercel.app';
+const openLegalPage = (path: string) => Linking.openURL(Platform.OS === 'web' ? path : `${SITE_URL}${path}`);
+
 const GOOGLE_WEB_CLIENT_ID = '510108017704-t0p5iojgsmuvqu6ekbh5rvejm6muslka.apps.googleusercontent.com';
 // Cliente anterior: lo sigue usando el flujo de la app nativa
 const GOOGLE_LEGACY_CLIENT_ID = '351214985492-nn6efvp8hi5vnqrnk65g6qs1j0qma28e.apps.googleusercontent.com';
@@ -271,6 +275,13 @@ export default function LoginScreen() {
                 </Text>
               </Text>
             </TouchableOpacity>
+
+            {/* Enlaces legales (Google pide que la página principal enlace a la política de privacidad) */}
+            <View style={styles.legalLinks}>
+              <Text accessibilityRole="link" onPress={() => openLegalPage('/privacidad')} style={[styles.legalText, { color: colors.textSecondary }]}>Privacidad</Text>
+              <Text style={[styles.legalText, { color: colors.textSecondary }]}> · </Text>
+              <Text accessibilityRole="link" onPress={() => openLegalPage('/terminos')} style={[styles.legalText, { color: colors.textSecondary }]}>Condiciones de uso</Text>
+            </View>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -334,6 +345,15 @@ const styles = StyleSheet.create({
     borderWidth: 1 
   },
   googleBtnText: { fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
+  legalLinks: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 16,
+  },
+  legalText: {
+    fontSize: 13,
+    textDecorationLine: 'underline',
+  },
   toggleBtn: { alignItems: 'center', paddingVertical: 20 },
   toggleText: { fontSize: 14 },
 });
