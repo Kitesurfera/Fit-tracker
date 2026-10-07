@@ -278,6 +278,8 @@ export default function LoginScreen() {
 
             {/* Enlaces legales (Google pide que la página principal enlace a la política de privacidad) */}
             <View style={styles.legalLinks}>
+              <Text accessibilityRole="link" onPress={() => openLegalPage('/sobre')} style={[styles.legalText, { color: colors.textSecondary }]}>Qué es AM Coaching</Text>
+              <Text style={[styles.legalText, { color: colors.textSecondary }]}> · </Text>
               <Text accessibilityRole="link" onPress={() => openLegalPage('/privacidad')} style={[styles.legalText, { color: colors.textSecondary }]}>Privacidad</Text>
               <Text style={[styles.legalText, { color: colors.textSecondary }]}> · </Text>
               <Text accessibilityRole="link" onPress={() => openLegalPage('/terminos')} style={[styles.legalText, { color: colors.textSecondary }]}>Condiciones de uso</Text>
@@ -347,6 +349,7 @@ const styles = StyleSheet.create({
   googleBtnText: { fontSize: 15, fontWeight: '800', letterSpacing: 0.5 },
   legalLinks: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
     justifyContent: 'center',
     marginTop: 16,
   },
