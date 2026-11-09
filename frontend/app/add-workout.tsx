@@ -6,46 +6,34 @@ import {
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as DocumentPicker from 'expo-document-picker';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
-import { localDateStr } from '../src/utils/dates';
+import { localDateStr, addDaysStr, friendlyDate, normalizeDateInput } from '../src/utils/dates';
 import { goBack } from '../src/utils/navigation';
-
-const parseCSV = (str: string) => {
-  const arr: string[][] = [];
-  let quote = false;
-  let row = 0, col = 0;
-  for (let c = 0; c < str.length; c++) {
-    let cc = str[c], nc = str[c + 1];
-    arr[row] = arr[row] || [];
-    arr[row][col] = arr[row][col] || '';
-    if (cc === '"' && quote && nc === '"') { arr[row][col] += cc; ++c; continue; }
-    if (cc === '"') { quote = !quote; continue; }
-    if (cc === ',' && !quote) { ++col; continue; }
-    if (cc === '\r' && nc === '\n' && !quote) { ++row; col = 0; ++c; continue; }
-    if (cc === '\n' && !quote) { ++row; col = 0; continue; }
-    if (cc === '\r' && !quote) { ++row; col = 0; continue; }
-    arr[row][col] += cc;
-  }
-  return arr;
-};
+import CsvImportSheet, { ResolvedSession } from '../src/components/CsvImportSheet';
+import { buildWorkoutPayload, defaultSessionTitle, findMicroForDate, microId, microsFromTree } from '../src/utils/workoutCsv';
 
 export default function AddWorkoutScreen() {
   const { colors } = useTheme();
   const router = useRouter();
-  const params = useLocalSearchParams<{ athlete_id: string; name: string; microciclo_id?: string; pill_data?: string }>();
+  const params = useLocalSearchParams<{ athlete_id: string; name: string; microciclo_id?: string; pill_data?: string; date?: string }>();
 
   const [saving, setSaving] = useState(false);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [date, setDate] = useState(localDateStr());
+  // Si venimos del calendario, la sesión se crea en el día que estaba seleccionado
+  const [date, setDate] = useState(normalizeDateInput(params.date || '') || localDateStr());
   const [error, setError] = useState('');
   
   const [microciclosDisponibles, setMicrociclosDisponibles] = useState<any[]>([]);
   const [selectedMicroId, setSelectedMicroId] = useState<string | null>(params.microciclo_id || null);
+  // Mientras no elijas una semana a mano, se asigna sola la que contiene la fecha
+  const [microTouched, setMicroTouched] = useState(!!params.microciclo_id);
+  const [showImport, setShowImport] = useState(false);
+  // Programar la misma sesión varias semanas seguidas y/o para más atletas a la vez
+  const [repeatWeeks, setRepeatWeeks] = useState(1);
+  const [otherAthletes, setOtherAthletes] = useState<any[]>([]);
+  const [extraAthleteIds, setExtraAthleteIds] = useState<string[]>([]);
 
   const [workoutType, setWorkoutType] = useState<'traditional' | 'hiit'>('traditional');
 
@@ -99,17 +87,33 @@ export default function AddWorkoutScreen() {
   useEffect(() => {
     if (params.athlete_id) {
       api.getPeriodizationTree(params.athlete_id).then((tree) => {
-        const todosLosMicros = Array.isArray(tree) 
-          ? tree.flatMap((macro: any) => macro.microciclos || macro.microcycles || []) 
-          : (tree?.macros || []).flatMap((macro: any) => macro.microciclos || macro.microcycles || []);
-        
-        todosLosMicros.sort((a: any, b: any) => new Date(a.fecha_inicio || a.start_date).getTime() - new Date(b.fecha_inicio || b.start_date).getTime());
-        setMicrociclosDisponibles(todosLosMicros);
+        setMicrociclosDisponibles(microsFromTree(tree));
       }).catch((e) => console.log("Error cargando microciclos:", e));
+      api.getAthletes().then((list: any[]) => {
+        setOtherAthletes((list || []).filter(a => a.id !== params.athlete_id));
+      }).catch(() => {});
     }
     
     api.getPills().then(setPills).catch(console.log);
   }, [params.athlete_id]);
+
+  useEffect(() => {
+    if (microTouched) return;
+    setSelectedMicroId(microId(findMicroForDate(microciclosDisponibles, normalizeDateInput(date))));
+  }, [date, microciclosDisponibles, microTouched]);
+
+  const chooseMicro = (id: string | null) => { setMicroTouched(true); setSelectedMicroId(id); };
+
+  // Cargar en el formulario una sesión leída del CSV
+  const loadImportedSession = (s: ResolvedSession) => {
+    if (s.title) setTitle(s.title);
+    if (s.notes) setNotes(s.notes);
+    setDate(s.resolvedDate);
+    setMicroTouched(false);
+    setWorkoutType(s.type);
+    if (s.type === 'traditional') setExercises(s.exercises);
+    else setHiitBlocks(s.blocks);
+  };
 
   const exerciseBlocks = React.useMemo(() => {
     const blocks: any[] = [];
@@ -141,7 +145,15 @@ export default function AddWorkoutScreen() {
     setExercises(exercises.map(e => e.group_id === groupId ? { ...e, group_sets: newSets } : e));
   };
   
-  const addExercise = () => setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: '', reps: '', duration: '', weight: '', rest: '', rest_exercise: '', video_url: '', exercise_notes: '', image_path: '', is_unilateral: false, group_sets: '1' }]);
+  // El ejercicio nuevo copia las series y los descansos del anterior (suelen repetirse)
+  const addExercise = () => {
+    const last = exercises[exercises.length - 1] || {};
+    setExercises([...exercises, { _key: Math.random().toString(), name: '', sets: last.sets || '', reps: '', duration: '', weight: '', rest: last.rest || '', rest_exercise: last.rest_exercise || '', video_url: '', exercise_notes: '', image_path: '', is_unilateral: false, group_sets: '1' }]);
+  };
+  const duplicateExercise = (index: number) => {
+    const copy = { ...exercises[index], _key: Math.random().toString() };
+    setExercises([...exercises.slice(0, index + 1), copy, ...exercises.slice(index + 1)]);
+  };
   
   const removeExercise = (index: number) => setExercises(exercises.filter((_, i) => i !== index));
 
@@ -290,144 +302,10 @@ export default function AddWorkoutScreen() {
     setShowPillModal(false);
   };
 
-  const downloadCSVTemplate = async () => {
-    let csvContent = "";
-    let fileName = "";
-    const BOM = "\uFEFF"; 
-
-    if (workoutType === 'traditional') {
-      csvContent = BOM + 
-        "Nombre,Series,Reps,Duración (s),Desc. Serie,Desc. Ejercicio,URL Vídeo,Notas,Unilateral (Sí/No),Indicaciones Generales\n" +
-        "Sentadilla,4,10,,2m,1m,,Mantener espalda recta,No,Calentamiento de 10 min antes de empezar\n" +
-        "Zancadas Búlgaras,3,12,,,1m,,,Sí,";
-      fileName = "Plantilla_Fuerza_FitTracker.csv";
-    } else {
-      csvContent = BOM + 
-        "Nom. Bloque,Vueltas,Desc. Ex,Desc. Vuelta,Desc. Bloques,Nom. Ejercicio,Series Ex,Reps/Dur,Tiempo,Vídeo,Notas,Unilateral (Sí/No),Indicaciones Generales\n" +
-        "Bloque 1,3,15s,60s,120s,Burpees,1,15,45s,,,No,Enfocar en la técnica pese a la fatiga\n" +
-        ",,,,,Jumping Jacks,1,,45s,,,No,\n" +
-        "Bloque 2,4,10s,30s,60s,Flexiones,1,10,30s,,,No,\n" +
-        ",,,,,Plancha lateral,1,,30s,,,Sí,";
-      fileName = "Plantilla_HIIT_FitTracker.csv";
-    }
-
-    if (Platform.OS === 'web') {
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', fileName);
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    } else {
-      try {
-        const fileUri = FileSystem.documentDirectory + fileName;
-        await FileSystem.writeAsStringAsync(fileUri, csvContent, { encoding: FileSystem.EncodingType.UTF8 });
-        if (await Sharing.isAvailableAsync()) {
-          await Sharing.shareAsync(fileUri);
-        } else {
-          Alert.alert("Aviso", "No se puede compartir o guardar el archivo en este dispositivo.");
-        }
-      } catch (error) {
-        Alert.alert("Error", "No se pudo generar la plantilla.");
-      }
-    }
-  };
-
-  const handleCSVUpload = async () => {
-    try {
-      const result = await DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/comma-separated-values', 'application/vnd.ms-excel'] });
-      if (result.canceled || !result.assets) return;
-      const fileUri = result.assets[0].uri;
-      const response = await fetch(fileUri);
-      const csvText = await response.text();
-      const rows = parseCSV(csvText);
-      if (rows.length < 2) { Alert.alert("Error", "El CSV parece estar vacío."); return; }
-
-      let parsedNotes = '';
-
-      if (workoutType === 'traditional') {
-        const newExercises = rows.slice(1).map(row => {
-          if (!parsedNotes && row[9]?.trim()) parsedNotes = row[9].trim();
-          return {
-            _key: Math.random().toString(), 
-            name: row[0]?.trim() || '', 
-            sets: row[1]?.trim() || '', 
-            reps: row[2]?.trim() || '', 
-            duration: row[3]?.trim() || '', 
-            rest: row[4]?.trim() || '', 
-            rest_exercise: row[5]?.trim() || '', 
-            video_url: row[6]?.trim() || '', 
-            exercise_notes: row[7]?.trim() || '',
-            is_unilateral: ['si', 'sí', 'true', '1'].includes((row[8] || '').trim().toLowerCase()),
-            group_sets: '1'
-          };
-        }).filter(e => e.name);
-        
-        if (newExercises.length > 0) setExercises(newExercises);
-        if (parsedNotes) setNotes(parsedNotes);
-      } else {
-        const blocks: any[] = [];
-        let currentBlockName = null;
-        let currentBlockIndex = -1;
-        
-        rows.slice(1).forEach(row => {
-          if (!row.some(cell => cell?.trim())) return;
-          if (!parsedNotes && row[12]?.trim()) parsedNotes = row[12].trim();
-
-          const bName = row[0]?.trim();
-          
-          if (bName && bName !== currentBlockName) {
-            currentBlockName = bName;
-            blocks.push({ 
-              _key: Math.random().toString(), 
-              name: bName, 
-              sets: row[1]?.trim() || '1', 
-              rest_exercise: row[2]?.trim() || '', 
-              rest_block: row[3]?.trim() || '', 
-              rest_between_blocks: row[4]?.trim() || '', 
-              exercises: [] 
-            });
-            currentBlockIndex++;
-          }
-
-          if (currentBlockIndex === -1) {
-            currentBlockName = "Bloque 1";
-            blocks.push({ 
-              _key: Math.random().toString(), 
-              name: currentBlockName, 
-              sets: '1', rest_exercise: '', rest_block: '', rest_between_blocks: '', 
-              exercises: [] 
-            });
-            currentBlockIndex++;
-          }
-
-          const exName = row[5]?.trim();
-          if (exName) {
-            blocks[currentBlockIndex].exercises.push({
-              _key: Math.random().toString(), 
-              name: exName, 
-              sets: row[6]?.trim() || '1', 
-              duration_reps: row[7]?.trim() || '', 
-              duration: row[8]?.trim() || '', 
-              video_url: row[9]?.trim() || '', 
-              exercise_notes: row[10]?.trim() || '', 
-              is_unilateral: ['si', 'sí', 'true', '1'].includes((row[11] || '').trim().toLowerCase())
-            });
-          }
-        });
-        if (blocks.length > 0) setHiitBlocks(blocks);
-        if (parsedNotes) setNotes(parsedNotes);
-      }
-      Alert.alert("Éxito", "Ejercicios importados correctamente.");
-    } catch (err) { Alert.alert("Error", "No se pudo leer el archivo CSV."); }
-  };
-
   const handleSave = () => {
     setError('');
-    if (!title.trim()) { setError('El título es obligatorio'); return; }
-    if (!date.trim()) { setError('La fecha es obligatoria'); return; }
+    const cleanDate = normalizeDateInput(date);
+    if (!cleanDate) { setError('La fecha no es válida. Escríbela como DD/MM/AAAA'); return; }
 
     const exNames = workoutType === 'traditional' 
       ? exercises.map(e => e.name.trim()).filter(Boolean)
@@ -435,40 +313,36 @@ export default function AddWorkoutScreen() {
 
     if (exNames.length === 0) { setError('Añade al menos un ejercicio'); return; }
 
-    executeSave();
+    executeSave(cleanDate);
   };
 
-  const executeSave = async () => {
-    let payloadData: any = {
-      title: title.trim(), date: date.trim(), notes: notes.trim(), athlete_id: params.athlete_id, 
-      microciclo_id: selectedMicroId, microcycle_id: selectedMicroId, hiit_settings: hiitConfig
-    };
+  const totalToCreate = repeatWeeks * (1 + extraAthleteIds.length);
 
-    if (workoutType === 'traditional') {
-      payloadData.exercises = exercises.filter(e => e.name.trim()).map(ex => ({
-        name: ex.name, sets: ex.sets, reps: ex.reps, duration: ex.duration, weight: ex.weight,
-        rest: ex.rest, rest_exercise: ex.rest_exercise, video_url: ex.video_url, exercise_notes: ex.exercise_notes,
-        is_unilateral: !!ex.is_unilateral,
-        group_id: ex.group_id || null, group_name: ex.group_name || null, group_sets: ex.group_sets || '1'
-      }));
-    } else {
-      payloadData.exercises = hiitBlocks.map(block => ({
-        is_hiit_block: true, name: block.name, sets: block.sets, rest_exercise: hiitConfig.restEx ? block.rest_exercise : '',
-        rest_block: hiitConfig.restSet ? block.rest_block : '', rest_between_blocks: hiitConfig.restBlock ? block.rest_between_blocks : '', 
-        hiit_exercises: block.exercises.filter((e: any) => e.name.trim()).map((e: any) => {
-          let dReps = hiitConfig.reps ? (e.duration_reps ? e.duration_reps.trim() : '') : '';
-          if (/^\d+$/.test(dReps)) dReps += 'r';
-          return { 
-            name: e.name, sets: e.sets, duration_reps: dReps, duration: hiitConfig.duration ? e.duration : '', 
-            exercise_notes: e.exercise_notes, video_url: e.video_url, is_unilateral: !!e.is_unilateral
-          };
-        })
-      })).filter(b => b.hiit_exercises.length > 0);
-    }
+  const executeSave = async (cleanDate: string) => {
+    // Sin título, le ponemos uno automático (se puede cambiar luego)
+    const finalTitle = title.trim() || defaultSessionTitle(workoutType, cleanDate);
+    const base = { title: finalTitle, notes, type: workoutType, exercises, blocks: hiitBlocks, hiitConfig };
 
     setSaving(true);
     try { 
-      await api.createWorkout(payloadData); 
+      if (totalToCreate === 1) {
+        await api.createWorkout(buildWorkoutPayload({ ...base, date: cleanDate, athleteId: params.athlete_id, microId: selectedMicroId }));
+      } else {
+        const workouts: any[] = [];
+        for (const athleteId of [params.athlete_id, ...extraAthleteIds]) {
+          const isMain = athleteId === params.athlete_id;
+          const micros = isMain ? microciclosDisponibles : microsFromTree(await api.getPeriodizationTree(athleteId).catch(() => null));
+          for (let w = 0; w < repeatWeeks; w++) {
+            const d = addDaysStr(cleanDate, 7 * w);
+            const micro = isMain && w === 0 ? selectedMicroId : microId(findMicroForDate(micros, d));
+            workouts.push(buildWorkoutPayload({ ...base, date: d, athleteId, microId: micro }));
+          }
+        }
+        const res: any = await api.createWorkoutsBulk({ workouts });
+        Alert.alert(res?.status === 'queued' ? 'Guardado sin conexión' : '¡Listo!', res?.status === 'queued'
+          ? 'Las sesiones se subirán solas cuando vuelva la conexión.'
+          : `Se han programado ${workouts.length} sesiones.`);
+      }
       handleClose(); 
     } 
     catch (e: any) { setError(e.message || 'Error al guardar'); } 
@@ -488,6 +362,7 @@ export default function AddWorkoutScreen() {
       <View style={styles.exerciseHeader}>
         <TextInput style={[styles.exNameInput, { color: colors.textPrimary }]} value={ex.name} onChangeText={v => updateExercise(absoluteIndex, 'name', v)} placeholder="Nombre del ejercicio" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
         <View style={styles.exActions}>
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Duplicar ejercicio" onPress={() => duplicateExercise(absoluteIndex)} style={styles.iconBtn}><Ionicons name="copy-outline" size={18} color={colors.textSecondary} /></TouchableOpacity>
           {!isGrouped && bIndex > 0 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover arriba" onPress={() => moveBlockUp(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-up" size={18} color={colors.textSecondary} /></TouchableOpacity>}
           {!isGrouped && bIndex < exerciseBlocks.length - 1 && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Mover abajo" onPress={() => moveBlockDown(bIndex)} style={styles.iconBtn}><Ionicons name="arrow-down" size={18} color={colors.textSecondary} /></TouchableOpacity>}
           {(!isGrouped ? exerciseBlocks.length > 1 : true) && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Eliminar" onPress={() => removeExercise(absoluteIndex)} style={styles.iconBtn}><Ionicons name="trash-outline" size={18} color={colors.error || '#EF4444'} /></TouchableOpacity>}
@@ -497,6 +372,7 @@ export default function AddWorkoutScreen() {
         <View style={styles.exDetailsRow}>
           <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Series</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.sets} onChangeText={v => updateExercise(absoluteIndex, 'sets', v)} placeholder="-" keyboardType="numeric" /></View>
           <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Reps</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.reps} onChangeText={v => updateExercise(absoluteIndex, 'reps', v)} placeholder="-" keyboardType="numeric" /></View>
+          <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Kg</Text><TextInput accessibilityLabel="Peso en kg" style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.weight} onChangeText={v => updateExercise(absoluteIndex, 'weight', v)} placeholder="-" keyboardType="decimal-pad" /></View>
           <View style={styles.exDetail}><Text style={[styles.exDetailLabel, { color: colors.textSecondary }]}>Dur. (s)</Text><TextInput style={[styles.exDetailInput, { color: colors.textPrimary, backgroundColor: colors.surfaceHighlight }]} value={ex.duration} onChangeText={v => updateExercise(absoluteIndex, 'duration', v)} placeholder="Ej: 90s" /></View>
         </View>
         <View style={[styles.exDetailsRow, { borderTopWidth: 0, backgroundColor: 'rgba(59, 130, 246, 0.03)' }]}>
@@ -534,26 +410,56 @@ export default function AddWorkoutScreen() {
             <Ionicons name="close" size={24} color={colors.textPrimary} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Nueva Sesión</Text>
-          <TouchableOpacity onPress={handleSave} style={styles.headerBtn} disabled={saving}>{saving ? <ActivityIndicator color={colors.primary} size="small" /> : <Text style={[styles.saveText, { color: colors.primary }]}>Guardar</Text>}</TouchableOpacity>
+          <TouchableOpacity onPress={handleSave} style={styles.headerBtn} disabled={saving}>{saving ? <ActivityIndicator color={colors.primary} size="small" /> : <Text style={[styles.saveText, { color: colors.primary }]}>{totalToCreate > 1 ? `Guardar (${totalToCreate})` : 'Guardar'}</Text>}</TouchableOpacity>
         </View>
 
         <ScrollView contentContainerStyle={styles.form} keyboardShouldPersistTaps="handled">
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>TÍTULO Y FECHA</Text>
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TextInput style={[styles.input, { flex: 2, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} value={title} onChangeText={setTitle} placeholder="Ej: Core y Estabilidad" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
-              <TextInput style={[styles.input, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+              <TextInput accessibilityLabel="Título de la sesión" style={[styles.input, { flex: 2, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]} value={title} onChangeText={setTitle} placeholder="Ej: Core y Estabilidad" placeholderTextColor="rgba(150, 150, 150, 0.5)" />
+              <TextInput
+                accessibilityLabel="Fecha de la sesión"
+                style={[styles.input, { flex: 1, backgroundColor: colors.surfaceHighlight, color: colors.textPrimary, borderColor: colors.border }]}
+                value={date} onChangeText={setDate}
+                onBlur={() => { const d = normalizeDateInput(date); if (d) setDate(d); }}
+                placeholder="DD/MM/AAAA" placeholderTextColor="rgba(150, 150, 150, 0.5)"
+              />
             </View>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+              {[
+                { label: 'Hoy', value: localDateStr() },
+                { label: 'Mañana', value: addDaysStr(localDateStr(), 1) },
+              ].map(o => {
+                const active = normalizeDateInput(date) === o.value;
+                return (
+                  <TouchableOpacity key={o.label} accessibilityRole="button" accessibilityLabel={`Fecha: ${o.label.toLowerCase()}`} onPress={() => setDate(o.value)}
+                    style={[styles.dateChip, { borderColor: colors.border }, active && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                    <Text style={{ color: active ? '#FFF' : colors.textPrimary, fontSize: 12, fontWeight: '700' }}>{o.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Una semana después" onPress={() => { const d = normalizeDateInput(date); if (d) setDate(addDaysStr(d, 7)); }}
+                style={[styles.dateChip, { borderColor: colors.border }]}>
+                <Text style={{ color: colors.textPrimary, fontSize: 12, fontWeight: '700' }}>+1 semana</Text>
+              </TouchableOpacity>
+              <Text style={{ color: normalizeDateInput(date) ? colors.textSecondary : (colors.error || '#EF4444'), fontSize: 12, fontWeight: '600' }}>
+                {normalizeDateInput(date) ? friendlyDate(normalizeDateInput(date)) : 'Fecha no válida'}
+              </Text>
+            </View>
+            {!title.trim() && (
+              <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Si no pones título se llamará «{defaultSessionTitle(workoutType, normalizeDateInput(date))}».</Text>
+            )}
           </View>
 
           <View style={styles.section}>
             <Text style={[styles.label, { color: colors.textSecondary }]}>ASIGNAR A SEMANA</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <TouchableOpacity style={[styles.microChip, { borderColor: colors.border }, selectedMicroId === null && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => setSelectedMicroId(null)}>
+              <TouchableOpacity style={[styles.microChip, { borderColor: colors.border }, selectedMicroId === null && { backgroundColor: colors.primary, borderColor: colors.primary }]} onPress={() => chooseMicro(null)}>
                 <Text style={{ color: selectedMicroId === null ? '#FFF' : colors.textPrimary, fontSize: 13, fontWeight: '700' }}>Suelto / Sin asignar</Text>
               </TouchableOpacity>
               {microciclosDisponibles.map(m => (
-                <TouchableOpacity key={m.id || m._id} style={[styles.microChip, { borderColor: colors.border }, selectedMicroId === (m.id || m._id) && { backgroundColor: m.color || colors.primary, borderColor: m.color || colors.primary }]} onPress={() => setSelectedMicroId(m.id || m._id)}>
+                <TouchableOpacity key={m.id || m._id} style={[styles.microChip, { borderColor: colors.border }, selectedMicroId === (m.id || m._id) && { backgroundColor: m.color || colors.primary, borderColor: m.color || colors.primary }]} onPress={() => chooseMicro(m.id || m._id)}>
                   <Text style={{ color: selectedMicroId === (m.id || m._id) ? '#FFF' : colors.textPrimary, fontSize: 13, fontWeight: '700' }}>{m.nombre || m.name}</Text>
                 </TouchableOpacity>
               ))}
@@ -573,30 +479,21 @@ export default function AddWorkoutScreen() {
             <TouchableOpacity style={[styles.typeBtn, workoutType === 'hiit' && { backgroundColor: colors.error || '#EF4444' }]} onPress={() => setWorkoutType('hiit')}><Text style={{ color: workoutType === 'hiit' ? '#FFF' : colors.textSecondary, fontWeight: '700' }}>Circuito HIIT</Text></TouchableOpacity>
           </View>
 
-          <View style={[styles.csvSection, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>IMPORTAR DESDE CSV</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity style={[styles.csvBtn, { backgroundColor: 'transparent', borderWidth: 1, borderColor: colors.primary }]} onPress={downloadCSVTemplate}>
-                  <Ionicons name="download-outline" size={16} color={colors.primary} />
-                  <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 12 }}>Plantilla</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.csvBtn, { backgroundColor: colors.primary }]} onPress={handleCSVUpload}>
-                  <Ionicons name="document-text" size={16} color="#FFF" />
-                  <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Subir</Text>
-                </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Importar desde CSV" style={[styles.quickAction, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]} onPress={() => setShowImport(true)}>
+              <Ionicons name="document-text" size={20} color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 13 }}>Importar CSV</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Uno o varios días</Text>
               </View>
-            </View>
-          </View>
-
-          <View style={[styles.csvSection, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border, marginTop: -10 }]}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Text style={[styles.label, { color: colors.textSecondary }]}>PÍLDORAS (ACTIVACIÓN/PREHAB)</Text>
-              <TouchableOpacity style={[styles.csvBtn, { backgroundColor: colors.primary }]} onPress={() => setShowPillModal(true)}>
-                <Ionicons name="flask" size={16} color="#FFF" />
-                <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 12 }}>Añadir Píldora</Text>
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Añadir píldora" style={[styles.quickAction, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]} onPress={() => setShowPillModal(true)}>
+              <Ionicons name="flask" size={20} color={colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 13 }}>Añadir píldora</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: 11 }}>Activación / prehab</Text>
+              </View>
+            </TouchableOpacity>
           </View>
 
           {workoutType === 'hiit' && (
@@ -756,9 +653,56 @@ export default function AddWorkoutScreen() {
             </View>
           )}
 
+          <View style={styles.section}>
+            <Text style={[styles.label, { color: colors.textSecondary }]}>AL GUARDAR: REPETIR CADA SEMANA</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+              {[1, 2, 4, 6, 8].map(n => (
+                <TouchableOpacity key={n} accessibilityRole="button" accessibilityLabel={n === 1 ? 'Solo esta semana' : `Repetir ${n} semanas`} onPress={() => setRepeatWeeks(n)}
+                  style={[styles.dateChip, { borderColor: colors.border }, repeatWeeks === n && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                  <Text style={{ color: repeatWeeks === n ? '#FFF' : colors.textPrimary, fontSize: 12, fontWeight: '700' }}>{n === 1 ? 'Solo esta' : `${n} semanas`}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+            {otherAthletes.length > 0 && (
+              <>
+                <Text style={[styles.label, { color: colors.textSecondary, marginTop: 6 }]}>PROGRAMAR TAMBIÉN PARA</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                  {otherAthletes.map(a => {
+                    const on = extraAthleteIds.includes(a.id);
+                    return (
+                      <TouchableOpacity key={a.id} accessibilityRole="button" accessibilityLabel={`${on ? 'Quitar' : 'Añadir'} a ${a.name}`}
+                        onPress={() => setExtraAthleteIds(on ? extraAthleteIds.filter(id => id !== a.id) : [...extraAthleteIds, a.id])}
+                        style={[styles.dateChip, { borderColor: colors.border, flexDirection: 'row', alignItems: 'center', gap: 4 }, on && { backgroundColor: colors.primary, borderColor: colors.primary }]}>
+                        <Ionicons name={on ? 'checkmark' : 'person-add-outline'} size={13} color={on ? '#FFF' : colors.textSecondary} />
+                        <Text style={{ color: on ? '#FFF' : colors.textPrimary, fontSize: 12, fontWeight: '700' }}>{a.name}</Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </>
+            )}
+            {totalToCreate > 1 && (
+              <Text style={{ color: colors.primary, fontSize: 12, fontWeight: '700' }}>
+                Se crearán {totalToCreate} sesiones{repeatWeeks > 1 ? `, del ${friendlyDate(normalizeDateInput(date))} al ${friendlyDate(addDaysStr(normalizeDateInput(date) || localDateStr(), 7 * (repeatWeeks - 1)))}` : ''}. Cada una se asigna sola a su semana.
+              </Text>
+            )}
+          </View>
+
           {error ? <Text style={[styles.errorText, { color: colors.error || '#EF4444' }]}>{error}</Text> : null}
+
+          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Guardar sesión" onPress={handleSave} disabled={saving}
+            style={[styles.bottomSave, { backgroundColor: colors.primary, opacity: saving ? 0.6 : 1 }]}>
+            {saving ? <ActivityIndicator color="#FFF" /> : <Ionicons name="checkmark-circle" size={22} color="#FFF" />}
+            <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 16 }}>{totalToCreate > 1 ? `Guardar ${totalToCreate} sesiones` : 'Guardar sesión'}</Text>
+          </TouchableOpacity>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <CsvImportSheet
+        visible={showImport} onClose={() => setShowImport(false)}
+        athleteId={params.athlete_id} athleteName={params.name} mode="single" defaultDate={date}
+        onUseInForm={loadImportedSession} onCreated={() => handleClose()}
+      />
 
       {/* MODAL INYECTAR PÍLDORA */}
       <Modal visible={showPillModal} transparent animationType="slide">
@@ -844,8 +788,9 @@ const styles = StyleSheet.create({
   errorText: { textAlign: 'center', fontWeight: '600', marginTop: 10 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   modalContent: { padding: 25, borderTopLeftRadius: 30, borderTopRightRadius: 30 },
-  csvSection: { padding: 15, borderRadius: 12, borderWidth: 1, marginBottom: 10 },
-  csvBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  bottomSave: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingVertical: 16, borderRadius: 14 },
+  quickAction: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, borderRadius: 12, borderWidth: 1 },
+  dateChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1 },
   dynamicJumpBtn: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 },
   dynamicJumpText: { color: '#FFF', fontSize: 11, fontWeight: '800' }
 });

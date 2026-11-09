@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, StyleSheet,
   ActivityIndicator, ScrollView, Alert, Platform, Modal, TextInput, Linking, useWindowDimensions, Image
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Video, ResizeMode } from 'expo-av';
@@ -14,6 +14,7 @@ import { useTrainer } from '../src/context/TrainerContext';
 import GeminiChatModal from '../src/components/GeminiChatModal'; 
 import WellnessModal from '../src/components/WellnessModal'; 
 import { saveAiWorkout } from '../src/utils/aiWorkout';
+import CsvImportSheet from '../src/components/CsvImportSheet';
 
 const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
@@ -109,15 +110,18 @@ export default function AthleteDetailScreen() {
 
   const [isChatVisible, setChatVisible] = useState(false);
   const [showWellnessModal, setShowWellnessModal] = useState(false);
+  const [showImport, setShowImport] = useState(false);
   
   const [allPills, setAllPills] = useState<any[]>([]);
 
   const todayStr = useMemo(() => getLocalDateStr(new Date()), []);
 
   useEffect(() => { 
-    loadData(); 
     api.getPills().then(res => setAllPills(Array.isArray(res) ? res : [])).catch(console.log);
   }, []);
+
+  // Recargar al volver a esta pantalla (por ejemplo, después de crear o importar una sesión)
+  useFocusEffect(useCallback(() => { loadData(); }, [params.id]));
 
   const loadData = async () => {
     try {
@@ -959,10 +963,16 @@ export default function AthleteDetailScreen() {
         
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
           <Text style={[styles.sectionTitle, { marginBottom: 0, color: colors.primary }, isDesktop && { fontSize: 13 }]}>SEMANA ACTUAL</Text>
-          <TouchableOpacity style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}>
-            <Ionicons name="add" size={16} color="#FFF" />
-            <Text style={{ color: '#FFF', fontSize: isDesktop ? 13 : 11, fontWeight: '800' }}>NUEVA</Text>
-          </TouchableOpacity>
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Importar sesiones desde CSV" style={{ borderWidth: 1, borderColor: colors.primary, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={() => setShowImport(true)}>
+              <Ionicons name="document-text-outline" size={15} color={colors.primary} />
+              <Text style={{ color: colors.primary, fontSize: isDesktop ? 13 : 11, fontWeight: '800' }}>CSV</Text>
+            </TouchableOpacity>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Nueva sesión" style={{ backgroundColor: colors.primary, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 }} onPress={() => router.push(`/add-workout?athlete_id=${params.id}&name=${encodeURIComponent(params.name)}`)}>
+              <Ionicons name="add" size={16} color="#FFF" />
+              <Text style={{ color: '#FFF', fontSize: isDesktop ? 13 : 11, fontWeight: '800' }}>NUEVA</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 11, marginBottom: 15, marginTop: -10 }}>Del {activeWindow.startStr.split('-').reverse().join('/')} al {activeWindow.endStr.split('-').reverse().join('/')}</Text>
         
@@ -1104,6 +1114,12 @@ export default function AthleteDetailScreen() {
             Alert.alert('Error', e?.message || 'No se pudo guardar la sesión.');
           }
         }}
+      />
+
+      <CsvImportSheet
+        visible={showImport} onClose={() => setShowImport(false)}
+        athleteId={params.id!} athleteName={athlete?.name || params.name} mode="multi"
+        onCreated={() => loadData()}
       />
 
       <WellnessModal
