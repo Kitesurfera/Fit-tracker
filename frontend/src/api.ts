@@ -229,10 +229,21 @@ export const api = {
 
   createWorkoutsBulk: async (data: { workouts: any[] }) => {
     const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/workouts/bulk`, {
-      method: 'POST', headers, body: JSON.stringify(data),
-    });
-    return res.json();
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/workouts/bulk`, {
+        method: 'POST', headers, body: JSON.stringify(data),
+      });
+      return await res.json();
+    } catch (e) {
+      // Sin conexión: guardamos cada sesión en la cola y se suben solas al volver la conexión
+      if (shouldFallbackToOffline(e)) {
+        for (const [i, w] of data.workouts.entries()) {
+          await syncManager.savePendingAction('CREATE_WORKOUT', { ...w, id: `temp_${Date.now()}_${i}` });
+        }
+        return { status: 'queued', inserted: data.workouts.length };
+      }
+      throw e;
+    }
   },
 
   updateWorkout: async (id: string, data: any, { queueIfOffline = true } = {}) => {
