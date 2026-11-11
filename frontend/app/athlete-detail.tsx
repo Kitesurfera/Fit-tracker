@@ -13,8 +13,8 @@ import { useAuth } from '../src/context/AuthContext';
 import { useTrainer } from '../src/context/TrainerContext'; 
 import GeminiChatModal from '../src/components/GeminiChatModal'; 
 import WellnessModal from '../src/components/WellnessModal'; 
-import { saveAiWorkout } from '../src/utils/aiWorkout';
 import CsvImportSheet from '../src/components/CsvImportSheet';
+import { strengthTarget, hiitTarget, hiitBlockSummary } from '../src/utils/exerciseFormat';
 
 const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
 
@@ -571,12 +571,12 @@ export default function AthleteDetailScreen() {
                       return (
                         <View key={idx} style={{ marginBottom: 12 }}>
                           <Text style={{ color: colors.error || '#EF4444', fontSize: isDesktop ? 15 : 13, fontWeight: '800', marginBottom: 6 }}>
-                            <Ionicons name="flame" size={12} /> {ex.name} ({ex.sets} Vueltas)
+                            <Ionicons name="flame" size={12} /> {ex.name}{hiitBlockSummary(ex) ? ` (${hiitBlockSummary(ex)})` : ''}
                           </Text>
                           {ex.hiit_exercises?.map((hEx: any, hIdx: number) => (
                             <View key={hIdx} style={{ flexDirection: 'row', justifyContent: 'space-between', paddingLeft: 10, marginBottom: 4 }}>
                               <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 14 : 12, flex: 1, fontWeight: '500' }}>• {hEx.name}</Text>
-                              <Text style={{ color: colors.primary, fontSize: isDesktop ? 14 : 12, fontWeight: '800' }}>{hEx.duration_reps || hEx.duration}</Text>
+                              <Text style={{ color: colors.primary, fontSize: isDesktop ? 14 : 12, fontWeight: '800' }}>{hiitTarget(hEx)}</Text>
                             </View>
                           ))}
                         </View>
@@ -588,8 +588,7 @@ export default function AthleteDetailScreen() {
                             <Ionicons name="barbell-outline" size={14} color={colors.textSecondary} /> {ex.name}
                           </Text>
                           <View style={{ alignItems: 'flex-end', marginLeft: 10 }}>
-                            {(ex.sets && ex.reps) && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>{ex.sets}x{ex.reps}</Text>}
-                            {ex.duration && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>{ex.duration}</Text>}
+                            {!!strengthTarget(ex) && <Text style={{ color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>{strengthTarget(ex)}</Text>}
                             {ex.weight ? <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 11, fontWeight: '600' }}>{ex.weight} kg</Text> : null}
                           </View>
                         </View>
@@ -881,7 +880,10 @@ export default function AthleteDetailScreen() {
                         activeOpacity={0.7}
                       >
                         <Ionicons name="flame" size={18} color={colors.error || '#EF4444'} />
-                        <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 18 : 15, fontWeight: '800', flex: 1 }}>{blockOrEx.name}</Text>
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 18 : 15, fontWeight: '800' }}>{blockOrEx.name}</Text>
+                          {!!hiitBlockSummary(blockOrEx) && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 11, fontWeight: '600', marginTop: 2 }}>{hiitBlockSummary(blockOrEx)}</Text>}
+                        </View>
                         <Ionicons name={isBlockExpanded ? "chevron-up" : "chevron-down"} size={20} color={colors.textSecondary} />
                       </TouchableOpacity>
                       
@@ -890,7 +892,7 @@ export default function AthleteDetailScreen() {
                           {blockOrEx.hiit_exercises?.map((ex: any, eIdx: number) => {
                             return (
                               <View key={eIdx} style={{ marginBottom: 15, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.primary + '50' }}>
-                                  <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontWeight: '700' }}>{ex.name} <Text style={{ color: colors.primary, fontWeight: '800' }}>({ex.duration_reps})</Text></Text>
+                                  <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontWeight: '700' }}>{ex.name}{hiitTarget(ex) ? <Text style={{ color: colors.primary, fontWeight: '800' }}> ({hiitTarget(ex)})</Text> : null}</Text>
                                   
                                   {(wk.completed && !!ex.recorded_video_url) && <View style={{ marginTop: 8 }}><MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} /></View>}
                                   
@@ -923,7 +925,7 @@ export default function AthleteDetailScreen() {
                         <Text style={[styles.exerciseName, { color: colors.textPrimary, flex: 1 }, isDesktop && { fontSize: 16 }]}><Ionicons name="barbell-outline" size={14} color={colors.textSecondary} /> {blockOrEx.name}</Text>
                         {!wk.completed && (
                           <View style={{alignItems: 'flex-end'}}>
-                            {(blockOrEx.sets && blockOrEx.reps) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: isDesktop ? 14 : 12}}>{blockOrEx.sets}x{blockOrEx.reps}</Text> : null}
+                            {strengthTarget(blockOrEx) ? <Text style={{color: colors.primary, fontWeight: '700', fontSize: isDesktop ? 14 : 12}}>{strengthTarget(blockOrEx)}</Text> : null}
                             {blockOrEx.weight ? <Text style={{color: colors.textSecondary, fontSize: isDesktop ? 13 : 11}}>{blockOrEx.weight} kg</Text> : null}
                           </View>
                         )}
@@ -1104,16 +1106,7 @@ export default function AthleteDetailScreen() {
         athleteContext={summary?.latest_wellness} 
         athleteId={params.id}
         athleteName={athlete?.name || params.name}
-        onSaveWorkout={async (workoutData: any, targetDate: string) => {
-          try {
-            await saveAiWorkout(params.id!, workoutData, targetDate);
-            setChatVisible(false);
-            loadData();
-            Alert.alert('¡Hecho!', `Sesión guardada en la agenda para el ${targetDate}.`);
-          } catch (e: any) {
-            Alert.alert('Error', e?.message || 'No se pudo guardar la sesión.');
-          }
-        }}
+        onSaved={() => loadData()}
       />
 
       <CsvImportSheet

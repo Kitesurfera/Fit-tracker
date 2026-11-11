@@ -9,6 +9,7 @@ import { useRouter, useFocusEffect, Link } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
+import { strengthTarget, hiitTarget, hiitBlockSummary } from '../../src/utils/exerciseFormat';
 import { api } from '../../src/api';
 import WellnessModal from '../../src/components/WellnessModal';
 import { syncManager } from '../../src/offline';
@@ -565,14 +566,15 @@ export default function HomeScreen() {
                       <Ionicons name={ex.is_hiit_block ? "flash" : (item.is_test_battery ? "trophy-outline" : "barbell-outline")} size={16} color={item.is_test_battery ? "#F59E0B" : colors.primary} />
                       <View style={{ flex: 1, marginLeft: 10 }}>
                         <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: isDesktop ? 14 : 13 }}>{ex.name}</Text>
-                        {!ex.is_hiit_block && !item.is_test_battery && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 12 : 11 }}>{ex.sets} series x {ex.reps} reps</Text>}
+                        {!ex.is_hiit_block && !item.is_test_battery && !!strengthTarget(ex) && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 12 : 11 }}>{strengthTarget(ex)}{ex.weight ? ` · ${ex.weight}${/^[\d.,]+$/.test(String(ex.weight)) ? ' kg' : ''}` : ''}</Text>}
+                        {ex.is_hiit_block && !!hiitBlockSummary(ex) && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 12 : 11 }}>{hiitBlockSummary(ex)}</Text>}
                         {item.is_test_battery && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 12 : 11 }}>Unidad: {ex.unit} {ex.is_bilateral ? '• Bilateral' : ''}</Text>}
                       </View>
                       <Ionicons name={isBlockExpanded ? "chevron-up" : "chevron-down"} size={18} color={colors.textSecondary} />
                     </TouchableOpacity>
                     {isBlockExpanded && (
                       <View style={[styles.microWorkoutExercises, { borderTopColor: colors.border, backgroundColor: colors.surface }]}>
-                        {ex.is_hiit_block ? (ex.hiit_exercises?.map((he: any, j: number) => (<Text key={j} style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginBottom: 4 }}>• {he.name} <Text style={{fontWeight: '700', color: colors.textPrimary}}>({he.duration_reps})</Text></Text>))) : item.is_test_battery ? (<Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>Evaluación de test físico personalizado.</Text>) : (<View><Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>Objetivo: <Text style={{fontWeight: '700', color: colors.textPrimary}}>{ex.sets} series de {ex.reps} {ex.weight ? `con ${ex.weight}` : ''}</Text></Text>{ex.rest && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginTop: 2 }}>Descanso: {ex.rest}</Text>}{ex.exercise_notes && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginTop: 4, fontStyle: 'italic' }}>Nota: {ex.exercise_notes}</Text>}</View>)}
+                        {ex.is_hiit_block ? (ex.hiit_exercises?.map((he: any, j: number) => (<Text key={j} style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginBottom: 4 }}>• {he.name}{hiitTarget(he) ? <Text style={{fontWeight: '700', color: colors.textPrimary}}> ({hiitTarget(he)})</Text> : null}</Text>))) : item.is_test_battery ? (<Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>Evaluación de test físico personalizado.</Text>) : (<View><Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12 }}>Objetivo: <Text style={{fontWeight: '700', color: colors.textPrimary}}>{strengthTarget(ex) || '—'}{ex.weight ? ` con ${ex.weight}${/^[\d.,]+$/.test(String(ex.weight)) ? ' kg' : ''}` : ''}</Text></Text>{ex.rest && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginTop: 2 }}>Descanso: {ex.rest}</Text>}{ex.exercise_notes && <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginTop: 4, fontStyle: 'italic' }}>Nota: {ex.exercise_notes}</Text>}</View>)}
                       </View>
                     )}
                   </View>
@@ -1043,9 +1045,9 @@ export default function HomeScreen() {
                           <View style={[styles.microWorkoutExercises, { borderTopColor: colors.border }]}>
                             {wk.exercises && wk.exercises.length > 0 ? (wk.exercises.map((ex: any, i: number) => { 
                               if (ex.is_hiit_block) { 
-                                return (<View key={i} style={{ marginBottom: 8 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 12 }}>⚡ {ex.name}</Text>{ex.hiit_exercises?.map((he: any, j: number) => (<Text key={j} style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 15 }}>• {he.name} ({he.duration_reps})</Text>))}</View>); 
+                                return (<View key={i} style={{ marginBottom: 8 }}><Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 12 }}>⚡ {ex.name}</Text>{ex.hiit_exercises?.map((he: any, j: number) => (<Text key={j} style={{ color: colors.textSecondary, fontSize: 12, marginLeft: 15 }}>• {he.name}{hiitTarget(he) ? ` (${hiitTarget(he)})` : ''}</Text>))}</View>); 
                               } else { 
-                                return (<Text key={i} style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>• {ex.name} <Text style={{fontWeight: '600', color: viewMicroInfo.color || colors.primary}}>{ex.sets ? `${ex.sets}x${ex.reps}` : `${ex.unit}`}</Text></Text>); 
+                                return (<Text key={i} style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 4 }}>• {ex.name} <Text style={{fontWeight: '600', color: viewMicroInfo.color || colors.primary}}>{strengthTarget(ex) || ex.unit || ''}</Text></Text>); 
                               } 
                             })) : (<Text style={{ color: colors.textSecondary, fontSize: 12 }}>Sin ejercicios.</Text>)}
                           </View>
