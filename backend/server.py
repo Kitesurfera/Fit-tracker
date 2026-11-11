@@ -46,10 +46,14 @@ gemini_client = google_genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY el
 if not GEMINI_API_KEY:
     logger.warning("No se ha encontrado GEMINI_API_KEY en el entorno. El chat de IA no funcionará.")
 
-# Modelos que se prueban en orden. Si uno falla por lo que sea (retirado, saturado, cuota...), se pasa al siguiente.
+# Modelos que se prueban en orden. Si uno falla por lo que sea (retirado, saturado, cuota, tarda demasiado...), se pasa al siguiente.
+# Primero los "Flash", que responden en segundos; el "Pro" piensa mucho más y puede tardar minutos.
 # Se pueden cambiar sin tocar el código con la variable de entorno GEMINI_MODELS (separados por comas).
-GEMINI_MODELS = [m.strip() for m in os.environ.get('GEMINI_MODELS', 'gemini-3.1-pro-preview,gemini-flash-latest,gemini-2.5-flash').split(',') if m.strip()]
-GEMINI_COOLDOWN_UNTIL: Dict[str, float] = {}   # modelo -> momento en que se puede volver a probar tras agotar cuota
+GEMINI_MODELS = [m.strip() for m in os.environ.get('GEMINI_MODELS', 'gemini-flash-latest,gemini-2.5-flash,gemini-3.1-pro-preview').split(',') if m.strip()]
+# Límites de tiempo: cada modelo tiene un máximo y la petición entera también (para no dejar a nadie esperando sin respuesta)
+GEMINI_TIMEOUT_SECONDS = float(os.environ.get('GEMINI_TIMEOUT_SECONDS', 45))
+GEMINI_TOTAL_BUDGET_SECONDS = float(os.environ.get('GEMINI_TOTAL_BUDGET_SECONDS', 100))
+GEMINI_COOLDOWN_UNTIL: Dict[str, float] = {}   # modelo -> momento en que se puede volver a probar (tras agotar cuota o tardar demasiado)
 _gemini_discovered: List[str] = []
 
 JWT_SECRET = os.environ.get('JWT_SECRET')
@@ -494,12 +498,20 @@ def parse_ai_json(text: str) -> dict:
             return json.loads(raw[start:end + 1])
         raise
 
-async def gemini_generate(model: str, system_prompt: str, contents: list) -> str:
-    """Una petición a un modelo concreto. Devuelve el texto (JSON) de la respuesta."""
-    response = await gemini_client.aio.models.generate_content(
-        model=model,
-        contents=contents,
-        config=genai_types.GenerateContentConfig(system_instruction=system_prompt, response_mime_type="application/json"),
+async def gemini_generate(model: str, system_prompt: str, contents: list, timeout_s: float = 45) -> str:
+    """Una petición a un modelo concreto, con un tiempo máximo. Devuelve el texto (JSON) de la respuesta."""
+    # Sin límite, la librería de Google espera indefinidamente: por eso a veces "no respondía nunca"
+    response = await asyncio.wait_for(
+        gemini_client.aio.models.generate_content(
+            model=model,
+            contents=contents,
+            config=genai_types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                response_mime_type="application/json",
+                http_options=genai_types.HttpOptions(timeout=int(timeout_s * 1000)),
+            ),
+        ),
+        timeout=timeout_s + 2,
     )
     return response.text or ""
 
@@ -542,16 +554,28 @@ async def ask_gemini_json(system_prompt: str, user_message: str, history: Option
             contents.append(genai_types.Content(role=role, parts=[genai_types.Part(text=text)]))
     contents.append(genai_types.Content(role="user", parts=[genai_types.Part(text=user_message)]))
 
-    tried, quota_failures, key_invalid = [], 0, False
+    tried, quota_failures, key_invalid, timeouts = [], 0, False, 0
+    deadline = time.time() + GEMINI_TOTAL_BUDGET_SECONDS
 
     async def try_models(models: List[str]):
-        nonlocal quota_failures, key_invalid
+        nonlocal quota_failures, key_invalid, timeouts
         for model in models:
             if model in tried or key_invalid:
                 continue
+            remaining = deadline - time.time()
+            if remaining < 8:  # no queda tiempo para otro intento
+                break
             tried.append(model)
+            started = time.time()
             try:
-                return parse_ai_json(await gemini_generate(model, system_prompt, contents))
+                result = parse_ai_json(await gemini_generate(model, system_prompt, contents, min(GEMINI_TIMEOUT_SECONDS, remaining - 3)))
+                logger.info(f"Gemini: respuesta de {model} en {time.time() - started:.1f}s")
+                return result
+            except asyncio.TimeoutError:
+                timeouts += 1
+                GEMINI_COOLDOWN_UNTIL[model] = time.time() + 300  # durante 5 min, empezar por el siguiente modelo
+                logger.warning(f"Gemini: el modelo {model} ha tardado más de {time.time() - started:.0f}s. Probando el siguiente...")
+                continue
             except Exception as e:
                 if _is_key_error(e):
                     key_invalid = True
@@ -577,6 +601,8 @@ async def ask_gemini_json(system_prompt: str, user_message: str, history: Option
             raise HTTPException(status_code=500, detail="La clave de la IA (GEMINI_API_KEY) no es válida o ha caducado. Hay que renovarla en Render.")
         if tried and quota_failures == len(tried):
             raise HTTPException(status_code=429, detail="La IA está saturada en este momento. Prueba de nuevo en un minuto.")
+        if timeouts:
+            raise HTTPException(status_code=504, detail="La IA está tardando demasiado en responder. Vuelve a intentarlo; si pides varias sesiones, prueba con una cada vez.")
         raise HTTPException(status_code=503, detail="La IA no responde ahora mismo. Inténtalo de nuevo en unos minutos.")
     return result
 
@@ -668,8 +694,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         Para ejercicios por tiempo usa "duration" (ej. "30s") y deja "reps" vacío.
 
         {{
-            "coach_analysis": "Análisis interno. ¿Cómo afecta su fatiga, lesiones o historial al plan de hoy?",
-            "response_message": "Respuesta conversacional motivadora dirigiéndote a {nombre_atleta}.",
+            "response_message": "Respuesta breve y motivadora dirigiéndote a {nombre_atleta}. Explica en 1-3 frases cómo has adaptado la sesión a su fatiga, lesiones o historial.",
             "workouts": [{{
                 "date": "AAAA-MM-DD (o vacío si no se ha dicho un día)",
                 "title": "Nombre de la sesión",

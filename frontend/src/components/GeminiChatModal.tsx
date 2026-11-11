@@ -22,6 +22,7 @@ interface ChatMessage {
 // Explicación clara de por qué no ha respondido la IA
 const errorText = (e: any) => {
   if (typeof e?.detail === 'string' && e.detail) return e.detail;
+  if (e?.message === 'AI_TIMEOUT') return 'La IA ha tardado demasiado en responder. Vuelve a intentarlo; si pides varias sesiones, prueba con una cada vez.';
   if (e?.message === 'NETWORK_ERROR') return 'No hay conexión con el servidor. Comprueba tu internet e inténtalo de nuevo.';
   if (e?.message === 'SERVER_ERROR') return 'El servidor no ha podido responder. Si llevaba un rato parado tarda en arrancar: espera un minuto y vuelve a intentarlo.';
   return e?.message || 'No se ha podido contactar con la IA.';
@@ -54,12 +55,21 @@ export default function GeminiChatModal({
   ]);
   const [inputText, setInputText] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [waitSeconds, setWaitSeconds] = useState(0);
   const flatListRef = useRef<FlatList>(null);
 
   // Fecha elegida y estado de guardado de cada sesión propuesta (clave: idMensaje-índice)
   const [dates, setDates] = useState<Record<string, string>>({});
   const [saved, setSaved] = useState<Record<string, boolean>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
+
+  // Contador de segundos mientras la IA prepara la respuesta, para que se vea que sigue trabajando
+  useEffect(() => {
+    if (!isTyping) { setWaitSeconds(0); return; }
+    const started = Date.now();
+    const t = setInterval(() => setWaitSeconds(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [isTyping]);
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -90,7 +100,7 @@ export default function GeminiChatModal({
           athleteContext: athleteContext || { fatigue: 3, soreness: 3, cyclePhase: 'No definida' },
           chatHistory,
           athlete_id: athleteId
-      } as any);
+      });
 
       const workouts = Array.isArray(aiData?.workouts) ? aiData.workouts : (aiData?.workoutData ? [aiData.workoutData] : []);
       const id = (Date.now() + 1).toString();
@@ -362,8 +372,10 @@ export default function GeminiChatModal({
           {isTyping && (
             <View style={styles.typingContainer}>
               <ActivityIndicator size="small" color={colors.primary} />
-              <Text style={{ color: colors.textSecondary, fontSize: 13, marginLeft: 8, fontWeight: '500' }}>
-                Preparando la propuesta… (puede tardar hasta un minuto)
+              <Text style={{ color: colors.textSecondary, fontSize: 13, marginLeft: 8, fontWeight: '500', flex: 1 }}>
+                {waitSeconds < 20
+                  ? `Preparando la propuesta… ${waitSeconds} s`
+                  : `Sigo trabajando… ${waitSeconds} s (si la app llevaba rato sin usarse, el servidor tarda en despertar)`}
               </Text>
             </View>
           )}
