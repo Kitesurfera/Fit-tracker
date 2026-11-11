@@ -78,12 +78,23 @@ export const api = {
   },
 
   // --- IA / GEMINI ---
-  generateWorkout: async (data: { userMessage: string; athleteContext: any; chatHistory: any[] }) => {
+  generateWorkout: async (data: { userMessage: string; athleteContext: any; chatHistory: any[]; athlete_id?: string }) => {
     const headers = await getAuthHeaders();
-    const res = await authFetch(`${BACKEND_URL}/api/brain/generate-workout`, {
-      method: 'POST', headers, body: JSON.stringify(data),
-    });
-    return res.json();
+    // Como mucho 3 minutos (el servidor puede tardar en despertar y la IA en pensar); después avisamos en vez de esperar sin fin
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, 180000);
+    try {
+      const res = await authFetch(`${BACKEND_URL}/api/brain/generate-workout`, {
+        method: 'POST', headers, body: JSON.stringify(data), signal: controller.signal,
+      });
+      return await res.json();
+    } catch (e) {
+      if (timedOut) throw new Error('AI_TIMEOUT');
+      throw e;
+    } finally {
+      clearTimeout(timer);
+    }
   },
   
   analyzeAnalytics: async (data: any) => {

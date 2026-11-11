@@ -243,7 +243,7 @@ def fake_gemini(monkeypatch, responses):
     monkeypatch.setattr(server, "gemini_client", object())
     server.GEMINI_COOLDOWN_UNTIL.clear()
 
-    async def fake_generate(model, system_prompt, contents):
+    async def fake_generate(model, system_prompt, contents, timeout_s=45):
         calls.append((model, contents))
         r = responses.get(model, Exception("404 NOT_FOUND: model is no longer available"))
         if isinstance(r, Exception):
@@ -344,3 +344,38 @@ def test_ai_model_without_permission_tries_next(client, world, monkeypatch):
     first, second = server.GEMINI_MODELS[0], server.GEMINI_MODELS[1]
     fake_gemini(monkeypatch, {first: Exception("403 PERMISSION_DENIED: model not available for this project"), second: AI_SESSION})
     assert client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"}).status_code == 200
+
+
+
+def test_ai_slow_model_is_skipped_and_remembered(client, world, monkeypatch):
+    import asyncio
+    first, second = server.GEMINI_MODELS[0], server.GEMINI_MODELS[1]
+    calls = fake_gemini(monkeypatch, {first: asyncio.TimeoutError(), second: AI_SESSION})
+    h = auth(world["token_b"])
+    assert client.post("/api/brain/generate-workout", headers=h, json={"userMessage": "hola"}).status_code == 200
+    assert [c[0] for c in calls] == [first, second]
+    # La siguiente petición empieza directamente por el modelo que sí respondió
+    assert client.post("/api/brain/generate-workout", headers=h, json={"userMessage": "otra"}).status_code == 200
+    assert calls[-1][0] == second and len(calls) == 3
+
+
+def test_ai_all_slow_returns_clear_timeout(client, world, monkeypatch):
+    import asyncio
+    fake_gemini(monkeypatch, {m: asyncio.TimeoutError() for m in server.GEMINI_MODELS})
+    res = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"})
+    assert res.status_code == 504 and "tardando demasiado" in res.json()["detail"]
+
+
+def test_gemini_generate_has_a_time_limit(monkeypatch):
+    import asyncio
+
+    class SlowModels:
+        async def generate_content(self, **kwargs):
+            await asyncio.sleep(10)
+
+    slow_client = type("C", (), {"aio": type("A", (), {"models": SlowModels()})()})()
+    monkeypatch.setattr(server, "gemini_client", slow_client)
+    started = time.time()
+    with pytest.raises(asyncio.TimeoutError):
+        asyncio.run(server.gemini_generate("x", "prompt", [], timeout_s=0.2))
+    assert time.time() - started < 5
