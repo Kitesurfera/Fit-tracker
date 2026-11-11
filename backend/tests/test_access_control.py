@@ -236,16 +236,31 @@ def test_tokens_expire_in_days_not_centuries(client):
     assert payload["exp"] - time.time() <= 31 * 24 * 3600
 
 
-def test_ai_requests_are_rate_limited(client, world, monkeypatch):
+def fake_gemini(monkeypatch, responses):
+    """Sustituye la llamada real a Gemini. `responses` = {modelo: texto JSON o excepción}. Devuelve la lista de modelos usados."""
+    calls = []
     monkeypatch.setattr(server, "GEMINI_API_KEY", "fake")
+    monkeypatch.setattr(server, "gemini_client", object())
+    server.GEMINI_COOLDOWN_UNTIL.clear()
+
+    async def fake_generate(model, system_prompt, contents):
+        calls.append((model, contents))
+        r = responses.get(model, Exception("404 NOT_FOUND: model is no longer available"))
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    async def fake_discover():
+        return [m for m in responses if m.startswith("descubierto")]
+
+    monkeypatch.setattr(server, "gemini_generate", fake_generate)
+    monkeypatch.setattr(server, "discover_gemini_models", fake_discover)
+    return calls
+
+
+def test_ai_requests_are_rate_limited(client, world, monkeypatch):
     monkeypatch.setattr(server, "AI_MAX_REQUESTS_PER_HOUR", 2)
-
-    class FakeModel:
-        def __init__(self, *a, **k): pass
-        def generate_content(self, prompt):
-            return type("R", (), {"text": "{}"})()
-
-    monkeypatch.setattr(server.genai, "GenerativeModel", FakeModel)
+    fake_gemini(monkeypatch, {m: "{}" for m in server.GEMINI_MODELS})
     body = {"athlete_name": "x", "fatigue_data": [], "soreness_data": [], "recent_workouts_count": 0, "recent_prs": []}
     h = auth(world["token_a"])
     assert client.post("/api/brain/analyze-analytics", headers=h, json=body).status_code == 200
@@ -273,3 +288,59 @@ def test_google_login_accepts_new_web_client(client, monkeypatch):
     assert client.post("/api/auth/google", json={"token": "x"}).status_code == 200
     monkeypatch.setattr(id_token, "verify_oauth2_token", lambda token, request, audience=None: {"aud": "otra-app.apps.googleusercontent.com", "email": "coach.a@test.com", "name": "G"})
     assert client.post("/api/auth/google", json={"token": "x"}).status_code == 401
+
+
+AI_SESSION = '{"response_message": "Aquí tienes", "workouts": [{"date": "2026-11-12", "title": "Fuerza", "notes": "", "exercises": [{"name": "Plancha", "sets": "3", "reps": "", "duration": "30s"}]}, {"date": "2026-11-14", "title": "Core", "exercises": [{"name": "Dead bug", "sets": "3", "reps": "10"}]}]}'
+
+
+def test_ai_falls_back_to_next_model_when_one_is_retired(client, world, monkeypatch):
+    first, second = server.GEMINI_MODELS[0], server.GEMINI_MODELS[1]
+    calls = fake_gemini(monkeypatch, {first: Exception("404 NOT_FOUND: model is no longer available"), second: "```json\n" + AI_SESSION + "\n```"})
+    history = [{"role": "user", "parts": [{"text": "hola"}]}, {"role": "model", "parts": [{"text": "¿Qué preparo?"}]}]
+    res = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]),
+                      json={"userMessage": "sesiones para mañana y el viernes", "athlete_id": world["athlete_b"], "chatHistory": history})
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert [w["date"] for w in data["workouts"]] == ["2026-11-12", "2026-11-14"]
+    assert data["workoutData"]["title"] == "Fuerza"  # compatibilidad con versiones antiguas de la app
+    assert [c[0] for c in calls] == [first, second]
+    contents = calls[-1][1]
+    assert [c.role for c in contents] == ["user", "model", "user"]  # el historial de la conversación llega a la IA
+    assert contents[-1].parts[0].text == "sesiones para mañana y el viernes"
+
+
+def test_ai_uses_discovered_model_when_all_configured_fail(client, world, monkeypatch):
+    calls = fake_gemini(monkeypatch, {"descubierto-flash": AI_SESSION})
+    res = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"})
+    assert res.status_code == 200, res.text
+    assert calls[-1][0] == "descubierto-flash"
+
+
+def test_ai_old_single_workout_format_still_works(client, world, monkeypatch):
+    fake_gemini(monkeypatch, {server.GEMINI_MODELS[0]: '{"response_message": "ok", "workoutData": {"title": "A", "exercises": [{"name": "Sentadilla"}]}}'})
+    data = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"}).json()
+    assert len(data["workouts"]) == 1 and data["workouts"][0]["title"] == "A"
+
+
+def test_ai_errors_are_clear(client, world, monkeypatch):
+    fake_gemini(monkeypatch, {m: Exception("429 RESOURCE_EXHAUSTED") for m in server.GEMINI_MODELS})
+    res = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"})
+    assert res.status_code == 429 and "saturada" in res.json()["detail"]
+
+    server._rate_buckets.clear()
+    fake_gemini(monkeypatch, {m: Exception("500 INTERNAL") for m in server.GEMINI_MODELS})
+    res = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"})
+    assert res.status_code == 503 and "no responde" in res.json()["detail"]
+
+
+def test_ai_invalid_key_is_reported(client, world, monkeypatch):
+    calls = fake_gemini(monkeypatch, {m: Exception("400 INVALID_ARGUMENT. API key not valid. Please pass a valid API key.") for m in server.GEMINI_MODELS})
+    res = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"})
+    assert res.status_code == 500 and "GEMINI_API_KEY" in res.json()["detail"]
+    assert len(calls) == 1  # no sigue probando modelos si la clave está mal
+
+
+def test_ai_model_without_permission_tries_next(client, world, monkeypatch):
+    first, second = server.GEMINI_MODELS[0], server.GEMINI_MODELS[1]
+    fake_gemini(monkeypatch, {first: Exception("403 PERMISSION_DENIED: model not available for this project"), second: AI_SESSION})
+    assert client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"}).status_code == 200

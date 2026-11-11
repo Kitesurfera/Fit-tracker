@@ -42,7 +42,9 @@ const authFetch = async (url: string, options?: RequestInit) => {
   }
 
   if (res.status >= 500) {
-    throw httpError('SERVER_ERROR', res.status);
+    // Guardamos también la explicación del servidor (si la hay) para poder mostrarla
+    const errData = await res.json().catch(() => ({}));
+    throw Object.assign(httpError('SERVER_ERROR', res.status), { detail: typeof errData.detail === 'string' ? errData.detail : undefined });
   }
 
   if (!res.ok) {

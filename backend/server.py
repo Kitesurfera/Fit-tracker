@@ -20,8 +20,8 @@ import time
 import json
 import re
 import html
-import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted
+from google import genai as google_genai
+from google.genai import types as genai_types
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -40,14 +40,17 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 # --- CONFIGURACIÓN GEMINI IA ---
+# Usamos la librería oficial actual de Google (google-genai). La antigua (google-generativeai) ya no tiene soporte.
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-if GEMINI_API_KEY:
-    genai.configure(api_key=GEMINI_API_KEY)
-else:
+gemini_client = google_genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+if not GEMINI_API_KEY:
     logger.warning("No se ha encontrado GEMINI_API_KEY en el entorno. El chat de IA no funcionará.")
 
-# Variable global para el Cortocircuito del modelo Pro
-COOLDOWN_PRO_UNTIL = 0
+# Modelos que se prueban en orden. Si uno falla por lo que sea (retirado, saturado, cuota...), se pasa al siguiente.
+# Se pueden cambiar sin tocar el código con la variable de entorno GEMINI_MODELS (separados por comas).
+GEMINI_MODELS = [m.strip() for m in os.environ.get('GEMINI_MODELS', 'gemini-3.1-pro-preview,gemini-flash-latest,gemini-2.5-flash').split(',') if m.strip()]
+GEMINI_COOLDOWN_UNTIL: Dict[str, float] = {}   # modelo -> momento en que se puede volver a probar tras agotar cuota
+_gemini_discovered: List[str] = []
 
 JWT_SECRET = os.environ.get('JWT_SECRET')
 JWT_ALGORITHM = 'HS256'
@@ -478,12 +481,129 @@ async def get_brain_examples(user=Depends(get_current_user)):
     examples = await db.brain_memory.find({"trainer_id": user['id']}, {"_id": 0, "learned_at": 0, "id": 0, "trainer_id": 0}).sort("learned_at", -1).limit(5).to_list(5)
     return {"status": "success", "examples": examples}
 
+# --- LLAMADAS A GEMINI ---
+def parse_ai_json(text: str) -> dict:
+    raw = (text or "").strip()
+    if raw.startswith("```"):
+        raw = raw.replace("```json", "").replace("```", "").strip()
+    try:
+        return json.loads(raw)
+    except Exception:
+        start, end = raw.find("{"), raw.rfind("}")
+        if start != -1 and end > start:
+            return json.loads(raw[start:end + 1])
+        raise
+
+async def gemini_generate(model: str, system_prompt: str, contents: list) -> str:
+    """Una petición a un modelo concreto. Devuelve el texto (JSON) de la respuesta."""
+    response = await gemini_client.aio.models.generate_content(
+        model=model,
+        contents=contents,
+        config=genai_types.GenerateContentConfig(system_instruction=system_prompt, response_mime_type="application/json"),
+    )
+    return response.text or ""
+
+async def discover_gemini_models() -> List[str]:
+    """Si fallan todos los modelos configurados, pregunta a Google qué modelos Flash tiene disponibles esta clave."""
+    global _gemini_discovered
+    if _gemini_discovered:
+        return _gemini_discovered
+    found = []
+    pager = await gemini_client.aio.models.list()
+    async for m in pager:
+        name = (m.name or "").replace("models/", "")
+        actions = m.supported_actions or []
+        if "generateContent" in actions and "flash" in name and not re.search(r"image|tts|audio|live|embed|lite|exp|thinking", name):
+            found.append(name)
+    found.sort(reverse=True)  # versiones más nuevas primero
+    _gemini_discovered = found[:3]
+    logger.info(f"Modelos Gemini disponibles detectados: {_gemini_discovered}")
+    return _gemini_discovered
+
+def _is_key_error(e: Exception) -> bool:
+    text = str(e)
+    # Solo la clave en sí; un 403 puede ser "este modelo no está disponible para ti" y entonces se prueba el siguiente
+    return "API key" in text or "API_KEY_INVALID" in text or getattr(e, "code", None) == 401
+
+def _is_quota_error(e: Exception) -> bool:
+    text = str(e)
+    return getattr(e, "code", None) == 429 or "429" in text or "RESOURCE_EXHAUSTED" in text or "quota" in text.lower()
+
+async def ask_gemini_json(system_prompt: str, user_message: str, history: Optional[list] = None) -> dict:
+    """Pide a Gemini una respuesta en JSON probando varios modelos hasta que uno responda bien."""
+    if not GEMINI_API_KEY or not gemini_client:
+        raise HTTPException(status_code=500, detail="La IA no está configurada en el servidor (falta GEMINI_API_KEY).")
+
+    contents = []
+    for h in (history or [])[-12:]:
+        role = "model" if h.get("role") in ("model", "assistant") else "user"
+        text = " ".join(str(p.get("text", "")) for p in (h.get("parts") or []) if isinstance(p, dict)).strip()
+        if text:
+            contents.append(genai_types.Content(role=role, parts=[genai_types.Part(text=text)]))
+    contents.append(genai_types.Content(role="user", parts=[genai_types.Part(text=user_message)]))
+
+    tried, quota_failures, key_invalid = [], 0, False
+
+    async def try_models(models: List[str]):
+        nonlocal quota_failures, key_invalid
+        for model in models:
+            if model in tried or key_invalid:
+                continue
+            tried.append(model)
+            try:
+                return parse_ai_json(await gemini_generate(model, system_prompt, contents))
+            except Exception as e:
+                if _is_key_error(e):
+                    key_invalid = True
+                    logger.error(f"Gemini: la clave GEMINI_API_KEY no es válida o no tiene permiso ({str(e)[:200]})")
+                    return None
+                if _is_quota_error(e):
+                    quota_failures += 1
+                    GEMINI_COOLDOWN_UNTIL[model] = time.time() + 60
+                logger.warning(f"Gemini: el modelo {model} ha fallado ({type(e).__name__}: {str(e)[:300]}). Probando el siguiente...")
+        return None
+
+    now = time.time()
+    available = [m for m in GEMINI_MODELS if GEMINI_COOLDOWN_UNTIL.get(m, 0) <= now] or list(GEMINI_MODELS)
+    result = await try_models(available)
+    if result is None and not key_invalid:
+        try:
+            result = await try_models(await discover_gemini_models())
+        except Exception as e:
+            logger.warning(f"Gemini: no se pudo consultar la lista de modelos ({str(e)[:200]})")
+    if result is None:
+        logger.error(f"Gemini: han fallado todos los modelos probados: {tried}")
+        if key_invalid:
+            raise HTTPException(status_code=500, detail="La clave de la IA (GEMINI_API_KEY) no es válida o ha caducado. Hay que renovarla en Render.")
+        if tried and quota_failures == len(tried):
+            raise HTTPException(status_code=429, detail="La IA está saturada en este momento. Prueba de nuevo en un minuto.")
+        raise HTTPException(status_code=503, detail="La IA no responde ahora mismo. Inténtalo de nuevo en unos minutos.")
+    return result
+
+def today_context() -> str:
+    """Fecha de hoy en España, para que la IA entienda "mañana", "el viernes"..."""
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Europe/Madrid"))
+    except Exception:
+        now = datetime.now(timezone.utc)
+    dias = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+    return f"Hoy es {dias[now.weekday()]} {now.strftime('%Y-%m-%d')}."
+
+def normalize_ai_workouts(result: dict) -> dict:
+    """Acepta una o varias sesiones y devuelve siempre 'workouts' (lista) y 'workoutData' (la primera, para versiones antiguas de la app)."""
+    workouts = result.get("workouts")
+    if not isinstance(workouts, list):
+        workouts = [result["workoutData"]] if isinstance(result.get("workoutData"), dict) else []
+    workouts = [w for w in workouts if isinstance(w, dict) and w.get("exercises")]
+    result["workouts"] = workouts
+    result["workoutData"] = workouts[0] if workouts else None
+    return result
+
 @api_router.post("/brain/generate-workout")
 async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current_user)):
-    global COOLDOWN_PRO_UNTIL
-
     if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
+        raise HTTPException(status_code=500, detail="La IA no está configurada en el servidor (falta GEMINI_API_KEY).")
 
     if data.athlete_id:
         await ensure_athlete_access(user, data.athlete_id)
@@ -538,14 +658,20 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
         
         ESTADO HOY: 
         Fatiga {fatiga}/5, Dolor/Agujetas {dolor}/5. Fase del ciclo: {fase_ciclo}.
-        
+
+        FECHA: {today_context()} Si piden sesiones para "mañana", "el viernes", etc., calcula la fecha exacta (AAAA-MM-DD).
+        Si piden varias sesiones o varios días, crea una sesión por día dentro de "workouts".
+        Si la petición no es para crear o cambiar sesiones (una duda, un consejo...), responde en "response_message" y deja "workouts" vacío.
+
         RESPONDE ÚNICAMENTE CON JSON PURO USANDO ESTA ESTRUCTURA EXACTA. 
         Tienes dos formas de crear bloques dentro de "exercises": TRADICIONAL (Fuerza) o HIIT (Circuito). Puedes mezclarlos.
+        Para ejercicios por tiempo usa "duration" (ej. "30s") y deja "reps" vacío.
 
         {{
             "coach_analysis": "Análisis interno. ¿Cómo afecta su fatiga, lesiones o historial al plan de hoy?",
             "response_message": "Respuesta conversacional motivadora dirigiéndote a {nombre_atleta}.",
-            "workoutData": {{
+            "workouts": [{{
+                "date": "AAAA-MM-DD (o vacío si no se ha dicho un día)",
                 "title": "Nombre de la sesión",
                 "notes": "Indicaciones generales (calentamiento, enfoque).",
                 "exercises": [
@@ -555,6 +681,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
                         "sets": "3", 
                         "reps": "10-12", 
                         "duration": "", 
+                        "weight": "", 
                         "rest": "90s", 
                         "rest_exercise": "60s", 
                         "exercise_notes": "Enfoque en excéntrica."
@@ -577,61 +704,12 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
                         ]
                     }}
                 ]
-            }}
+            }}]
         }}
         """
 
-        model_pro_id = "models/gemini-3.1-pro-preview"
-        model_flash_id = "models/gemini-2.5-flash"
-        
-        intentar_pro = time.time() > COOLDOWN_PRO_UNTIL
-        modelo_actual_id = model_pro_id if intentar_pro else model_flash_id
-        
-        if not intentar_pro:
-            tiempo_restante = int(COOLDOWN_PRO_UNTIL - time.time())
-            logger.info(f"Usando modelo Flash (Pro en cooldown por {tiempo_restante}s más).")
-
-        try:
-            model = genai.GenerativeModel(model_name=modelo_actual_id)
-            model.generation_config = {"response_mime_type": "application/json"}
-            chat = model.start_chat(history=[])
-            chat.send_message(system_prompt)
-            response = chat.send_message(data.userMessage)
-            
-        except Exception as e:
-            error_str = str(e)
-            if "429" in error_str or "Quota" in error_str or isinstance(e, ResourceExhausted):
-                if intentar_pro:
-                    cooldown_seconds = 60
-                    match = re.search(r'retry_delay\s*\{\s*seconds:\s*(\d+)\s*\}', error_str)
-                    if match:
-                        cooldown_seconds = int(match.group(1)) + 5
-                        
-                    logger.warning(f"Cuota de Gemini Pro excedida. Aplicando cooldown de {cooldown_seconds}s. Cambiando a Flash...")
-                    COOLDOWN_PRO_UNTIL = time.time() + cooldown_seconds
-                    
-                    try:
-                        logger.info("Lanzando petición de rescate con modelo Flash...")
-                        model_fallback = genai.GenerativeModel(model_name=model_flash_id)
-                        model_fallback.generation_config = {"response_mime_type": "application/json"}
-                        chat = model_fallback.start_chat(history=[])
-                        chat.send_message(system_prompt)
-                        response = chat.send_message(data.userMessage)
-                    except Exception as e_fallback:
-                        logger.error(f"Error en modelo Flash de rescate: {str(e_fallback)}")
-                        raise HTTPException(status_code=500, detail="Error en IA (ambos modelos fallaron).")
-                else:
-                    logger.error("Cuota excedida incluso en el modelo Flash.")
-                    raise HTTPException(status_code=429, detail="Límite de peticiones alcanzado. Por favor, espera un poco.")
-            else:
-                logger.error(f"Error IA desconocido: {error_str}")
-                raise HTTPException(status_code=500, detail="Error conectando con la IA.")
-
-        raw_text = response.text.strip()
-        if raw_text.startswith("```"):
-            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-        
-        return json.loads(raw_text)
+        result = await ask_gemini_json(system_prompt, data.userMessage, data.chatHistory)
+        return normalize_ai_workouts(result)
         
     except HTTPException:
         raise
@@ -641,9 +719,8 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
 
 @api_router.post("/brain/analyze-analytics")
 async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_current_user)):
-    global COOLDOWN_PRO_UNTIL
     if not GEMINI_API_KEY:
-        raise HTTPException(status_code=500, detail="API de Gemini no configurada.")
+        raise HTTPException(status_code=500, detail="La IA no está configurada en el servidor (falta GEMINI_API_KEY).")
     check_ai_quota(user)
         
     try:
@@ -665,32 +742,10 @@ async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_
         }}
         """
 
-        model_pro_id = "models/gemini-3.1-pro-preview"
-        model_flash_id = "models/gemini-2.5-flash"
+        return await ask_gemini_json(system_prompt, "Analiza los datos y responde con el JSON indicado.")
         
-        intentar_pro = time.time() > COOLDOWN_PRO_UNTIL
-        modelo_actual_id = model_pro_id if intentar_pro else model_flash_id
-
-        try:
-            model = genai.GenerativeModel(model_name=modelo_actual_id)
-            model.generation_config = {"response_mime_type": "application/json"}
-            response = model.generate_content(system_prompt)
-        except Exception as e:
-            # CORRECCIÓN BUG 1 APLICADA AQUÍ (isinstance sin comillas)
-            if intentar_pro and ("429" in str(e) or "Quota" in str(e) or isinstance(e, ResourceExhausted)):
-                COOLDOWN_PRO_UNTIL = time.time() + 60
-                model_fallback = genai.GenerativeModel(model_name=model_flash_id)
-                model_fallback.generation_config = {"response_mime_type": "application/json"}
-                response = model_fallback.generate_content(system_prompt)
-            else:
-                raise e
-
-        raw_text = response.text.strip()
-        if raw_text.startswith("```"):
-            raw_text = raw_text.replace("```json", "").replace("```", "").strip()
-        
-        return json.loads(raw_text)
-        
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error en analíticas IA: {str(e)}")
         raise HTTPException(status_code=500, detail="Error conectando con la IA.")

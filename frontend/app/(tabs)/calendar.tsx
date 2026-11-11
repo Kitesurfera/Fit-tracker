@@ -8,6 +8,7 @@ import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../src/context/AuthContext';
 import { useTheme } from '../../src/hooks/useTheme';
+import { strengthTarget, hiitBlockSummary } from '../../src/utils/exerciseFormat';
 import { api } from '../../src/api';
 import GeminiChatModal from '../../src/components/GeminiChatModal';
 import { useTrainer } from '../../src/context/TrainerContext';
@@ -755,57 +756,6 @@ export default function CalendarScreen() {
     }
   };
 
-  const handleSaveWorkoutFromAI = async (workoutData: any, targetDate: string) => {
-    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-    if (!dateRegex.test(targetDate)) {
-      if (Platform.OS === 'web') window.alert("⚠️ Formato incorrecto. Usa AAAA-MM-DD");
-      else Alert.alert("Error", "El formato de fecha debe ser AAAA-MM-DD (Ej: 2026-04-15)");
-      return;
-    }
-
-    setUpdating(true);
-    try {
-      let matchedMicroId = null;
-      if (macros && Array.isArray(macros)) {
-        for (const macro of macros) {
-          const micros = macro.microciclos || macro.microcycles || [];
-          for (const m of micros) {
-            const start = extractDateString(m.fecha_inicio || m.start_date);
-            const end = extractDateString(m.fecha_fin || m.end_date);
-            if (start && end && targetDate >= start && targetDate <= end) {
-              matchedMicroId = m.id || m._id;
-              break;
-            }
-          }
-          if (matchedMicroId) break;
-        }
-      }
-
-      const payload = {
-        title: workoutData.title || "Entrenamiento de IA",
-        date: targetDate,
-        athlete_id: selectedAthlete.id,
-        exercises: workoutData.exercises || [],
-        notes: workoutData.notes || "",
-        completed: false,
-        is_ai: true,
-        microciclo_id: matchedMicroId 
-      };
-
-      await api.createWorkout(payload);
-      setChatVisible(false);
-      refreshAthleteData(selectedAthlete);
-      
-      if (Platform.OS === 'web') window.alert("¡Entrenamiento guardado y asignado correctamente!");
-      else Alert.alert("¡Hecho!", "Entrenamiento agendado en el calendario.");
-    } catch (error) {
-      console.error("Error al guardar desde IA:", error);
-      if (Platform.OS === 'web') window.alert("Ocurrió un error al guardar la sesión.");
-      else Alert.alert("Error", "No se pudo guardar la sesión.");
-      setUpdating(false);
-    }
-  };
-
   if (authLoading || loading) {
     return (
       <View style={{flex:1, justifyContent:'center', alignItems:'center', backgroundColor: colors.background, padding: 20}}>
@@ -1049,7 +999,7 @@ export default function CalendarScreen() {
                                 <View style={{ marginTop: 6, gap: 4, paddingLeft: 2 }}>
                                   {wk.exercises.map((ex: any, exIdx: number) => (
                                     <Text key={exIdx} style={{ fontSize: 11, color: colors.textSecondary }} numberOfLines={1}>
-                                      • {ex.name || 'Ejercicio'} {ex.sets && ex.sets.length > 0 ? `(${ex.sets.length} series)` : ''}
+                                      • {ex.name || 'Ejercicio'}{(() => { const t = ex.is_hiit_block ? hiitBlockSummary(ex) : strengthTarget(ex); return t ? ` (${t})` : ''; })()}
                                     </Text>
                                   ))}
                                 </View>
@@ -1494,7 +1444,7 @@ export default function CalendarScreen() {
         </View>
       </Modal>
 
-      <GeminiChatModal isVisible={isChatVisible} onClose={() => setChatVisible(false)} athleteId={selectedAthlete?.id} athleteName={selectedAthlete?.name} onSaveWorkout={handleSaveWorkoutFromAI} />
+      <GeminiChatModal isVisible={isChatVisible} onClose={() => setChatVisible(false)} athleteId={selectedAthlete?.id} athleteName={selectedAthlete?.name} onSaved={() => { if (selectedAthlete) refreshAthleteData(selectedAthlete); }} />
 
       {/* SELECTOR DE ATLETA */}
       <Modal visible={showPicker} transparent animationType="fade">
