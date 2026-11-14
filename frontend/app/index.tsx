@@ -19,6 +19,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { api } from '../src/api';
 import GoogleWebButton from '../src/components/GoogleWebButton';
+import { consumeGoogleRedirect } from '../src/utils/googleRedirect';
 
 // --- IMPORTACIONES PARA GOOGLE OAUTH ---
 import * as WebBrowser from 'expo-web-browser';
@@ -77,11 +78,11 @@ export default function LoginScreen() {
     }
   }, [response]);
 
-  const handleGoogleLoginToBackend = async (idToken: string) => {
+  const handleGoogleLoginToBackend = async (idToken: string, mode?: 'login' | 'register') => {
     setIsGoogleLoading(true);
     setError('');
     try {
-      const role = isLoginValue ? 'athlete' : 'trainer';
+      const role = (mode ? mode === 'login' : isLoginValue) ? 'athlete' : 'trainer';
       const data = await api.googleLogin(idToken, role);
       
       if (loginWithToken) {
@@ -95,6 +96,16 @@ export default function LoginScreen() {
       setIsGoogleLoading(false);
     }
   };
+
+  // Web: al volver de la página de Google, la respuesta llega en la dirección (#id_token=…)
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const result = consumeGoogleRedirect();
+    if (!result) return;
+    if ('error' in result) { setError(result.error); return; }
+    if (result.mode === 'register') useState_isLogin(false);
+    handleGoogleLoginToBackend(result.idToken, result.mode);
+  }, []);
 
   useEffect(() => {
     if (!loading && user) {
@@ -238,9 +249,9 @@ export default function LoginScreen() {
               ) : (
                 <GoogleWebButton
                   clientId={GOOGLE_WEB_CLIENT_ID}
+                  mode={isLoginValue ? 'login' : 'register'}
                   dark={isDark}
                   disabled={submitting}
-                  onCredential={handleGoogleLoginToBackend}
                   onError={setError}
                 />
               )
