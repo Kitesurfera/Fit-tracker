@@ -73,7 +73,11 @@ export const api = {
     const res = await fetch(`${BACKEND_URL}/api/auth/google`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: googleToken, role }),
     });
-    if (!res.ok) throw new Error('Error al iniciar sesión con Google');
+    if (!res.ok) {
+      if (res.status === 403) throw new Error('Esta cuenta de Google no tiene acceso a la app. Entra con el mismo email con el que te dio de alta tu entrenador.');
+      if (res.status === 401) throw new Error('Google no ha podido confirmar tu cuenta. Vuelve a intentarlo.');
+      throw new Error('Error al iniciar sesión con Google. Inténtalo de nuevo en un momento.');
+    }
     return await res.json();
   },
 
