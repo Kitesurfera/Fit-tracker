@@ -1,0 +1,38 @@
+name: Lunas
+
+on:
+  push:
+    paths:
+      - "lunas/**"
+      - ".github/workflows/lunas.yml"
+  pull_request:
+    paths:
+      - "lunas/**"
+      - ".github/workflows/lunas.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: lunas
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: lunas/package-lock.json
+      - run: npm ci
+      - name: Tests de la lógica del ciclo
+        run: npm test
+      - name: Comprobación de tipos
+        run: npm run typecheck
+      - name: Build de producción
+        run: npm run build
+        env:
+          AUTH_SECRET: solo-para-compilar-en-ci
+          NEXT_TELEMETRY_DISABLED: 1

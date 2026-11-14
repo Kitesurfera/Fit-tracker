@@ -1,0 +1,29 @@
+{
+  "name": "lunas",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lunas: dos personas comparten y siguen sus ciclos menstruales.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test src/lib/cycle.test.ts"
+  },
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "dependencies": {
+    "mongodb": "^7.9.0",
+    "next": "^16.4.6",
+    "next-auth": "5.0.0-beta.32",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "typescript": "^5.9.3"
+  }
+}
