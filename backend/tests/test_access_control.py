@@ -27,7 +27,6 @@ import server  # noqa: E402
 @pytest.fixture()
 def client():
     server.db = mongomock_motor.AsyncMongoMockClient()[f"test_{uuid.uuid4().hex}"]
-    server._rate_buckets.clear()
     return TestClient(server.app)
 
 
@@ -240,7 +239,6 @@ def fake_gemini(monkeypatch, responses):
     """Sustituye la llamada real a Gemini. `responses` = {modelo: texto JSON o excepción}. Devuelve la lista de modelos usados."""
     calls = []
     monkeypatch.setattr(server, "GEMINI_API_KEY", "fake")
-    monkeypatch.setattr(server, "gemini_client", object())
     server.GEMINI_COOLDOWN_UNTIL.clear()
 
     async def fake_generate(model, system_prompt, contents, timeout_s=45):
@@ -327,7 +325,6 @@ def test_ai_errors_are_clear(client, world, monkeypatch):
     res = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"})
     assert res.status_code == 429 and "saturada" in res.json()["detail"]
 
-    server._rate_buckets.clear()
     fake_gemini(monkeypatch, {m: Exception("500 INTERNAL") for m in server.GEMINI_MODELS})
     res = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"})
     assert res.status_code == 503 and "no responde" in res.json()["detail"]
@@ -374,8 +371,52 @@ def test_gemini_generate_has_a_time_limit(monkeypatch):
             await asyncio.sleep(10)
 
     slow_client = type("C", (), {"aio": type("A", (), {"models": SlowModels()})()})()
-    monkeypatch.setattr(server, "gemini_client", slow_client)
+    monkeypatch.setattr(server, "get_gemini_client", lambda: slow_client)
     started = time.time()
     with pytest.raises(asyncio.TimeoutError):
         asyncio.run(server.gemini_generate("x", "prompt", [], timeout_s=0.2))
     assert time.time() - started < 5
+
+
+
+def test_rate_limits_are_stored_in_the_database(client, world):
+    """En Vercel puede haber varias copias del servidor: los intentos fallidos se cuentan en MongoDB, no en memoria."""
+    for _ in range(3):
+        assert client.post("/api/auth/login", json={"email": "coach.a@test.com", "password": "mala"}).status_code == 401
+    import asyncio
+    assert asyncio.run(server.db.rate_limits.count_documents({"key": "login:coach.a@test.com"})) == 3
+    assert client.post("/api/auth/login", json={"email": "coach.a@test.com", "password": "secret123"}).status_code == 200
+    assert asyncio.run(server.db.rate_limits.count_documents({"key": "login:coach.a@test.com"})) == 0
+
+
+def test_notifications_are_sent_before_responding_on_vercel(client, world, monkeypatch):
+    sent = []
+    monkeypatch.setattr(server, "ON_VERCEL", True)
+    monkeypatch.setattr(server, "send_email_async", lambda *a: sent.append(a[0]) or True)
+    workout = {"title": "Sesión", "date": "2026-10-02", "exercises": [], "athlete_id": world["athlete_b"]}
+    assert client.post("/api/workouts", headers=auth(world["token_b"]), json=workout).status_code == 200
+    assert sent == ["athlete.b@test.com"]
+
+
+def test_database_works_across_event_loops(monkeypatch):
+    """Simula Vercel: cada petición con un bucle de eventos distinto. La base de datos debe seguir funcionando."""
+    import asyncio
+    created = []
+
+    class FakeMotor:
+        def __init__(self, url, io_loop=None):
+            created.append(io_loop)
+        def __getitem__(self, name):
+            return {"users": "coleccion"}
+        def close(self):
+            pass
+
+    monkeypatch.setattr(server, "AsyncIOMotorClient", FakeMotor)
+    safe_db = server.LoopSafeDatabase("mongodb://x", "db")
+
+    async def use():
+        return safe_db["users"]
+
+    assert asyncio.run(use()) == "coleccion"
+    assert asyncio.run(use()) == "coleccion"
+    assert len(created) == 2 and created[0] is not created[1]  # un cliente por bucle

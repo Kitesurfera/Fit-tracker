@@ -1,0 +1,5 @@
+# Para ejecutar las pruebas en tu ordenador:  pip install -r requirements-dev.txt  y luego  pytest tests/test_access_control.py
+-r requirements.txt
+pytest==9.0.2
+httpx==0.28.1
+mongomock-motor

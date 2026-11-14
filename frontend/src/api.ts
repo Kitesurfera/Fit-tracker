@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { syncManager } from './offline';
 import { getStandardizedTestName, isLowerBetter } from './utils/tests';
 
-const BACKEND_URL = "https://fit-tracker-backend-rtx2.onrender.com";
+import { BACKEND_URL } from './config';
 
 const getAuthHeaders = async () => {
   try {

@@ -2,7 +2,7 @@ import requests
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Header, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import Response
-from fastapi.staticfiles import StaticFiles
+from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -36,13 +36,59 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
+DB_NAME = os.environ['DB_NAME']
+
+# ¿Estamos en Vercel? (Vercel define esta variable). Algunas cosas cambian en servidores "serverless".
+ON_VERCEL = bool(os.environ.get('VERCEL'))
+
+class LoopSafeDatabase:
+    """Acceso a MongoDB que funciona aunque cambie el "bucle de eventos" entre peticiones (puede pasar en Vercel).
+    Crea un cliente por bucle y lo reutiliza; en un servidor normal (Render) solo hay uno."""
+    def __init__(self, url: str, name: str):
+        self._url, self._name, self._clients = url, name, {}
+
+    def _database(self):
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        entry = self._clients.get(id(loop))
+        if entry is None or entry[0] is not loop:
+            for key, (old_loop, old_client) in list(self._clients.items()):
+                if old_loop is not None and old_loop.is_closed():
+                    old_client.close()
+                    self._clients.pop(key, None)
+            new_client = AsyncIOMotorClient(self._url, io_loop=loop) if loop else AsyncIOMotorClient(self._url)
+            entry = (loop, new_client)
+            self._clients[id(loop)] = entry
+        return entry[1][self._name]
+
+    def __getattr__(self, collection):
+        return getattr(self._database(), collection)
+
+    def __getitem__(self, collection):
+        return self._database()[collection]
+
+db = LoopSafeDatabase(mongo_url, DB_NAME)
 
 # --- CONFIGURACIÓN GEMINI IA ---
 # Usamos la librería oficial actual de Google (google-genai). La antigua (google-generativeai) ya no tiene soporte.
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-gemini_client = google_genai.Client(api_key=GEMINI_API_KEY) if GEMINI_API_KEY else None
+_gemini_clients: Dict[int, Any] = {}
+
+def get_gemini_client():
+    """Cliente de Gemini (uno por bucle de eventos, por el mismo motivo que la base de datos)."""
+    if not GEMINI_API_KEY:
+        return None
+    loop = asyncio.get_running_loop()
+    entry = _gemini_clients.get(id(loop))
+    if entry is None or entry[0] is not loop:
+        for key, (old_loop, _) in list(_gemini_clients.items()):
+            if old_loop.is_closed():
+                _gemini_clients.pop(key, None)
+        entry = (loop, google_genai.Client(api_key=GEMINI_API_KEY))
+        _gemini_clients[id(loop)] = entry
+    return entry[1]
 if not GEMINI_API_KEY:
     logger.warning("No se ha encontrado GEMINI_API_KEY en el entorno. El chat de IA no funcionará.")
 
@@ -72,31 +118,8 @@ GOOGLE_ALLOWED_AUDIENCES = {GOOGLE_CLIENT_ID, GOOGLE_WEB_CLIENT_ID, GOOGLE_ANDRO
 security = HTTPBearer()
 app = FastAPI()
 
-# --- CONFIGURACIÓN CARPETA DE VÍDEOS ---
-UPLOAD_DIR = ROOT_DIR / "uploads"
-UPLOAD_DIR.mkdir(exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
-
-# --- LIMPIEZA AUTOMÁTICA DE VÍDEOS (30 DÍAS) ---
-async def cleanup_old_videos():
-    while True:
-        try:
-            now = time.time()
-            thirty_days_seconds = 30 * 24 * 60 * 60  
-            if UPLOAD_DIR.exists():
-                for file_path in UPLOAD_DIR.iterdir():
-                    if file_path.is_file():
-                        file_age = now - file_path.stat().st_mtime
-                        if file_age > thirty_days_seconds:
-                            file_path.unlink() 
-                            logger.info(f"Vídeo antiguo eliminado: {file_path.name}")
-        except Exception as e:
-            logger.error(f"Error en la limpieza: {str(e)}")
-        await asyncio.sleep(86400)
-
-@app.on_event("startup")
-async def start_cleanup_task():
-    asyncio.create_task(cleanup_old_videos())
+# Los vídeos se guardan en Cloudinary: el servidor ya no guarda archivos en su disco
+# (en Vercel tampoco se podría).
 
 @app.get("/ping")
 async def ping():
@@ -302,29 +325,41 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Usuario no encontrado")
     return user
 
-# --- LÍMITE DE INTENTOS (en memoria del servidor) ---
+# --- LÍMITE DE INTENTOS (guardados en la base de datos) ---
+# Se guardan en MongoDB y no en la memoria del servidor: en Vercel puede haber varias copias del servidor a la vez
+# y cada una tendría su propia cuenta.
 LOGIN_MAX_FAILURES = 10
 LOGIN_WINDOW_SECONDS = 15 * 60
 AI_MAX_REQUESTS_PER_HOUR = int(os.environ.get('AI_MAX_REQUESTS_PER_HOUR', 60))
-_rate_buckets: Dict[str, List[float]] = {}
+_rate_index_ready = False
 
-def too_many_attempts(key: str, limit: int, window_seconds: int) -> bool:
-    now = time.time()
-    if len(_rate_buckets) > 10000:
-        for k in [k for k, v in _rate_buckets.items() if not v or now - v[-1] >= window_seconds]:
-            _rate_buckets.pop(k, None)
-    recent = [t for t in _rate_buckets.get(key, []) if now - t < window_seconds]
-    _rate_buckets[key] = recent
-    return len(recent) >= limit
+async def _ensure_rate_index():
+    global _rate_index_ready
+    if _rate_index_ready:
+        return
+    try:
+        # MongoDB borra solo los registros viejos (al día siguiente)
+        await db.rate_limits.create_index("expires_at", expireAfterSeconds=0)
+    except Exception as e:
+        logger.warning(f"No se pudo crear el índice de rate_limits: {e}")
+    _rate_index_ready = True
 
-def record_attempt(key: str):
-    _rate_buckets.setdefault(key, []).append(time.time())
+async def too_many_attempts(key: str, limit: int, window_seconds: int) -> bool:
+    since = time.time() - window_seconds
+    return await db.rate_limits.count_documents({"key": key, "ts": {"$gte": since}}) >= limit
 
-def check_ai_quota(user: dict):
+async def record_attempt(key: str):
+    await _ensure_rate_index()
+    await db.rate_limits.insert_one({"key": key, "ts": time.time(), "expires_at": datetime.now(timezone.utc) + timedelta(days=1)})
+
+async def clear_attempts(key: str):
+    await db.rate_limits.delete_many({"key": key})
+
+async def check_ai_quota(user: dict):
     key = f"ai:{user['id']}"
-    if too_many_attempts(key, AI_MAX_REQUESTS_PER_HOUR, 3600):
+    if await too_many_attempts(key, AI_MAX_REQUESTS_PER_HOUR, 3600):
         raise HTTPException(status_code=429, detail="Has alcanzado el límite de peticiones a la IA. Prueba de nuevo en un rato.")
-    record_attempt(key)
+    await record_attempt(key)
 
 # --- CONTROL DE ACCESO ---
 def trainer_signup_allowed(email: str) -> bool:
@@ -402,7 +437,7 @@ def send_email_async(to_email: str, subject: str, body: str):
         # Se envía como HTML para que quede presentable
         msg.attach(MIMEText(body, 'html'))
 
-        server = smtplib.SMTP(smtp_server, smtp_port)
+        server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
         server.starttls()
         server.login(smtp_user, smtp_pass)
         server.send_message(msg)
@@ -412,6 +447,18 @@ def send_email_async(to_email: str, subject: str, body: str):
     except Exception as e:
         logger.error(f"Fallo al enviar email a {to_email}: {str(e)}")
         return False
+
+async def notify(background_tasks: BackgroundTasks, func, *args):
+    """Envía un email o una notificación.
+    En Render se envía después de responder (la app va más rápida). En Vercel se envía antes de responder,
+    porque al terminar la respuesta el servidor se "congela" y el aviso podría no salir nunca."""
+    if ON_VERCEL:
+        try:
+            await run_in_threadpool(func, *args)
+        except Exception as e:
+            logger.error(f"No se pudo enviar el aviso: {e}")
+    else:
+        background_tasks.add_task(func, *args)
 
 # Configuración VAPID
 VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY')
@@ -502,7 +549,7 @@ async def gemini_generate(model: str, system_prompt: str, contents: list, timeou
     """Una petición a un modelo concreto, con un tiempo máximo. Devuelve el texto (JSON) de la respuesta."""
     # Sin límite, la librería de Google espera indefinidamente: por eso a veces "no respondía nunca"
     response = await asyncio.wait_for(
-        gemini_client.aio.models.generate_content(
+        get_gemini_client().aio.models.generate_content(
             model=model,
             contents=contents,
             config=genai_types.GenerateContentConfig(
@@ -521,7 +568,7 @@ async def discover_gemini_models() -> List[str]:
     if _gemini_discovered:
         return _gemini_discovered
     found = []
-    pager = await gemini_client.aio.models.list()
+    pager = await get_gemini_client().aio.models.list()
     async for m in pager:
         name = (m.name or "").replace("models/", "")
         actions = m.supported_actions or []
@@ -543,7 +590,7 @@ def _is_quota_error(e: Exception) -> bool:
 
 async def ask_gemini_json(system_prompt: str, user_message: str, history: Optional[list] = None) -> dict:
     """Pide a Gemini una respuesta en JSON probando varios modelos hasta que uno responda bien."""
-    if not GEMINI_API_KEY or not gemini_client:
+    if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="La IA no está configurada en el servidor (falta GEMINI_API_KEY).")
 
     contents = []
@@ -633,7 +680,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
 
     if data.athlete_id:
         await ensure_athlete_access(user, data.athlete_id)
-    check_ai_quota(user)
+    await check_ai_quota(user)
         
     try:
         contexto_atleta = ""
@@ -746,7 +793,7 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
 async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_current_user)):
     if not GEMINI_API_KEY:
         raise HTTPException(status_code=500, detail="La IA no está configurada en el servidor (falta GEMINI_API_KEY).")
-    check_ai_quota(user)
+    await check_ai_quota(user)
         
     try:
         system_prompt = f"""
@@ -854,7 +901,7 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
             if data.notes:
                 mensaje_html += f"<p><b>Notas del atleta:</b> {html.escape(data.notes)}</p>"
                 
-            background_tasks.add_task(send_email_async, trainer['email'], titulo, mensaje_html)
+            await notify(background_tasks, send_email_async, trainer['email'], titulo, mensaje_html)
 
 @api_router.get("/analytics/summary")
 async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
@@ -888,13 +935,13 @@ async def register(data: UserRegister):
 @api_router.post("/auth/login")
 async def login(data: UserLogin):
     attempts_key = f"login:{data.email.strip().lower()}"
-    if too_many_attempts(attempts_key, LOGIN_MAX_FAILURES, LOGIN_WINDOW_SECONDS):
+    if await too_many_attempts(attempts_key, LOGIN_MAX_FAILURES, LOGIN_WINDOW_SECONDS):
         raise HTTPException(status_code=429, detail="Demasiados intentos fallidos. Espera 15 minutos y vuelve a probar.")
     user = await db.users.find_one({"email": data.email})
     if not user or not verify_password(data.password, user.get('password')):
-        record_attempt(attempts_key)
+        await record_attempt(attempts_key)
         raise HTTPException(status_code=401, detail="Email o contraseña incorrectos")
-    _rate_buckets.pop(attempts_key, None)
+    await clear_attempts(attempts_key)
     return {"token": create_token(user['id'], user['role']), "user": {k: v for k, v in user.items() if k not in ('_id', 'password')}}
 
 @api_router.post("/auth/google")
@@ -1020,7 +1067,7 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
             trainer_name = html.escape(user.get('name', 'Tu entrenador'))
             titulo = "🏋️‍♂️ ¡Nueva sesión en tu calendario!"
             mensaje_html = f"<p>Hola {html.escape(athlete.get('name', ''))},</p><p><b>{trainer_name}</b> acaba de programarte la sesión <b>'{html.escape(data.title)}'</b> para el día {html.escape(data.date)}.</p><p>Abre la app para ver los detalles.</p>"
-            background_tasks.add_task(send_email_async, athlete['email'], titulo, mensaje_html)
+            await notify(background_tasks, send_email_async, athlete['email'], titulo, mensaje_html)
 
     return workout
 
@@ -1063,7 +1110,7 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
                     count = sum(1 for wk in data.workouts if wk.athlete_id == a_id)
                     titulo = "📅 Tu calendario ha sido actualizado"
                     mensaje_html = f"<p>Hola {html.escape(athlete.get('name', ''))},</p><p><b>{trainer_name}</b> ha añadido <b>{count} nuevas sesiones</b> a tu planificación.</p><p>Abre la app para revisar las próximas fechas.</p>"
-                    background_tasks.add_task(send_email_async, athlete['email'], titulo, mensaje_html)
+                    await notify(background_tasks, send_email_async, athlete['email'], titulo, mensaje_html)
                     
     return {"status": "success", "inserted": len(new_workouts)}
 
@@ -1091,7 +1138,7 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks:
     if data.completed is True and not existing.get('completed') and user.get('role') == 'athlete' and user.get('trainer_id'):
         trainer = await db.users.find_one({"id": user['trainer_id']})
         if trainer and trainer.get('web_push_subscription'):
-            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], "✅ ¡Entrenamiento superado!", f"{user.get('name')} ha terminado '{existing.get('title')}'.")
+            await notify(background_tasks, send_web_push, trainer['web_push_subscription'], "✅ ¡Entrenamiento superado!", f"{user.get('name')} ha terminado '{existing.get('title')}'.")
     return {"status": "success"}
 
 @api_router.delete("/workouts/{workout_id}")
@@ -1200,7 +1247,7 @@ async def create_test(data: TestCreate, background_tasks: BackgroundTasks, user=
         trainer = await db.users.find_one({"id": user['trainer_id']})
         if trainer and trainer.get('web_push_subscription'):
             nombre_test = (data.custom_name if data.custom_name else data.test_name).upper()
-            background_tasks.add_task(send_web_push, trainer['web_push_subscription'], "📏 Nuevo registro físico", f"{user.get('name')} ha registrado: {nombre_test} ({data.value} {data.unit})")
+            await notify(background_tasks, send_web_push, trainer['web_push_subscription'], "📏 Nuevo registro físico", f"{user.get('name')} ha registrado: {nombre_test} ({data.value} {data.unit})")
     return {"status": "success", "test": test_doc}
 
 @api_router.get("/tests")

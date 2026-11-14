@@ -1,0 +1,6 @@
+# Archivos que no se suben a Vercel (no hacen falta para que funcione el servidor)
+tests/
+__pycache__/
+.pytest_cache/
+uploads/
+.env
