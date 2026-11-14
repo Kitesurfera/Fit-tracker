@@ -51,7 +51,7 @@ Vamos a crear un **segundo proyecto en Vercel** para el servidor. Render sigue f
 
 ## Paso 3 · Comprobar que el servidor nuevo funciona
 
-Abre en el navegador `https://amcoaching-api.vercel.app/ping` (con el nombre que hayas puesto).
+Abre en el navegador `https://am-coaching-api.vercel.app/ping` (con el nombre que hayas puesto).
 Debe aparecer: `{"status":"awake","message":"El servidor está activo."}`
 
 Si sale un error, mira **Deployments → (el último) → Logs** en Vercel y mándame una captura.
