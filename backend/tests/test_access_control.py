@@ -420,3 +420,114 @@ def test_database_works_across_event_loops(monkeypatch):
     assert asyncio.run(use()) == "coleccion"
     assert asyncio.run(use()) == "coleccion"
     assert len(created) == 2 and created[0] is not created[1]  # un cliente por bucle
+
+
+# --- VÍDEOS DE TÉCNICA ---
+CLOUD_URL = "https://res.cloudinary.com/slsdfq8t/video/upload/v1700000000/sentadilla_abc.mov"
+
+
+def _workout_for_athlete_a(client, world, completed=False, completion_data=None):
+    body = {"title": "Fuerza", "date": "2026-11-10", "athlete_id": world["athlete_a"], "exercises": [{"name": "Sentadilla"}, {"name": "Press"}]}
+    wid = client.post("/api/workouts", headers=auth(world["token_a"]), json=body).json()["id"]
+    if completed:
+        client.put(f"/api/workouts/{wid}", headers=auth(world["token_a"]), json={"completed": True, "completion_data": completion_data or {}})
+    return wid
+
+
+@pytest.fixture()
+def cloud_deletes(monkeypatch):
+    deleted = []
+    monkeypatch.setattr(server, "delete_cloudinary_video", lambda public_id: deleted.append(public_id) or True)
+    return deleted
+
+
+def test_cloudinary_public_id_parsing():
+    assert server.cloudinary_public_id(CLOUD_URL) == "sentadilla_abc"
+    assert server.cloudinary_public_id("https://res.cloudinary.com/slsdfq8t/video/upload/q_auto,w_720/v12/carpeta/clip.mp4") == "carpeta/clip"
+    assert server.cloudinary_public_id("https://otra-web.com/video.mp4") is None
+
+
+def test_athlete_uploads_video_and_trainer_comments(client, world, cloud_deletes):
+    wid = _workout_for_athlete_a(client, world)
+    ha, hc, hb = auth(world["token_athlete_a"]), auth(world["token_a"]), auth(world["token_b"])
+    res = client.post("/api/videos", headers=ha, json={"url": CLOUD_URL, "workout_id": wid, "exercise_name": "Sentadilla", "exercise_key": "0"})
+    assert res.status_code == 200, res.text
+    video = res.json()
+    assert video["workout_title"] == "Fuerza" and video["public_id"] == "sentadilla_abc"
+    # El entrenador lo ve; otro entrenador no
+    assert [v["id"] for v in client.get(f"/api/videos?athlete_id={world['athlete_a']}", headers=hc).json()] == [video["id"]]
+    assert client.get(f"/api/videos?athlete_id={world['athlete_a']}", headers=hb).status_code == 403
+    assert client.post(f"/api/videos/{video['id']}/comments", headers=hb, json={"text": "x"}).status_code == 403
+    # Comentario en un segundo concreto
+    c = client.post(f"/api/videos/{video['id']}/comments", headers=hc, json={"text": "Rodillas hacia fuera", "time_s": 3.46}).json()
+    assert c["time_s"] == 3.5 and c["author_role"] == "trainer"
+    mine = client.get("/api/videos", headers=ha).json()[0]
+    assert mine["comments"][0]["text"] == "Rodillas hacia fuera"
+    # La atleta no puede borrar el comentario del entrenador; el entrenador sí
+    assert client.delete(f"/api/videos/{video['id']}/comments/{c['id']}", headers=ha).status_code == 403
+    assert client.delete(f"/api/videos/{video['id']}/comments/{c['id']}", headers=hc).status_code == 200
+    assert client.get("/api/videos", headers=ha).json()[0]["comments"] == []
+    assert client.post(f"/api/videos/{video['id']}/comments", headers=hc, json={"text": "   "}).status_code == 400
+
+
+def test_new_recording_replaces_previous_and_delete_removes_everything(client, world, cloud_deletes):
+    wid = _workout_for_athlete_a(client, world)
+    ha = auth(world["token_athlete_a"])
+    first = client.post("/api/videos", headers=ha, json={"url": CLOUD_URL, "workout_id": wid, "exercise_key": "0"}).json()
+    second_url = CLOUD_URL.replace("sentadilla_abc", "sentadilla_def")
+    second = client.post("/api/videos", headers=ha, json={"url": second_url, "workout_id": wid, "exercise_key": "0"}).json()
+    videos = client.get("/api/videos", headers=ha).json()
+    assert [v["id"] for v in videos] == [second["id"]] and cloud_deletes == ["sentadilla_abc"]
+    assert client.delete(f"/api/videos/{second['id']}", headers=ha).json()["cloud_deleted"] is True
+    assert client.get("/api/videos", headers=ha).json() == [] and cloud_deletes[-1] == "sentadilla_def"
+    assert client.delete(f"/api/videos/{first['id']}", headers=ha).status_code == 404
+
+
+def test_only_cloud_videos_and_own_workouts_are_accepted(client, world):
+    ha = auth(world["token_athlete_a"])
+    assert client.post("/api/videos", headers=ha, json={"url": "https://malicioso.com/x.mp4"}).status_code == 400
+    assert client.post("/api/videos", headers=ha, json={"url": CLOUD_URL, "workout_id": world["workout_b"]}).status_code == 404
+    assert client.post("/api/videos", headers=ha, json={"url": CLOUD_URL, "athlete_id": world["athlete_b"]}).status_code == 403
+
+
+def test_videos_from_previous_version_are_imported_and_can_be_deleted(client, world, cloud_deletes):
+    completion = {"exercise_results": [{"name": "Sentadilla", "recorded_video_url": CLOUD_URL, "coach_note": "Baja más la cadera"}, {"name": "Press"}],
+                  "hiit_results": [{"hiit_exercises": [{"name": "Burpees", "recorded_video_url": CLOUD_URL.replace("abc", "hiit")}]}]}
+    wid = _workout_for_athlete_a(client, world, completed=True, completion_data=completion)
+    hc = auth(world["token_a"])
+    videos = client.get(f"/api/videos?athlete_id={world['athlete_a']}", headers=hc).json()
+    assert sorted(v["exercise_key"] for v in videos) == ["0", "0-0"]
+    squat = next(v for v in videos if v["exercise_key"] == "0")
+    assert squat["comments"][0]["text"] == "Baja más la cadera" and squat["legacy"] is True
+    # Volver a pedir la lista no duplica
+    assert len(client.get(f"/api/videos?athlete_id={world['athlete_a']}", headers=hc).json()) == 2
+    # Al borrarlo desaparece también de la sesión (y su comentario antiguo), así que no se vuelve a importar
+    assert client.delete(f"/api/videos/{squat['id']}", headers=hc).status_code == 200
+    stored = [w for w in client.get(f"/api/workouts?athlete_id={world['athlete_a']}", headers=hc).json() if w["id"] == wid][0]
+    assert stored["completion_data"]["exercise_results"][0]["recorded_video_url"] == ""
+    assert stored["completion_data"]["exercise_results"][0]["coach_note"] == ""
+    assert len(client.get(f"/api/videos?athlete_id={world['athlete_a']}", headers=hc).json()) == 1
+
+
+def test_cloudinary_delete_is_signed(monkeypatch):
+    import hashlib
+    sent = {}
+
+    class Res:
+        text = '{"result":"ok"}'
+        def json(self):
+            return {"result": "ok"}
+
+    def fake_post(url, data=None, timeout=None):
+        sent.update(url=url, data=data)
+        return Res()
+
+    monkeypatch.setattr(server, "CLOUDINARY_API_KEY", "clave")
+    monkeypatch.setattr(server, "CLOUDINARY_API_SECRET", "secreto")
+    monkeypatch.setattr(server.requests, "post", fake_post)
+    assert server.delete_cloudinary_video("carpeta/clip") is True
+    d = sent["data"]
+    expected = hashlib.sha1(f"invalidate=true&public_id=carpeta/clip&timestamp={d['timestamp']}secreto".encode()).hexdigest()
+    assert sent["url"].endswith("/slsdfq8t/video/destroy") and d["signature"] == expected and d["api_key"] == "clave"
+    monkeypatch.setattr(server, "CLOUDINARY_API_SECRET", None)
+    assert server.delete_cloudinary_video("carpeta/clip") is False

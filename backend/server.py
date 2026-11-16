@@ -19,6 +19,7 @@ import asyncio
 import time
 import json
 import re
+import hashlib
 import html
 from google import genai as google_genai
 from google.genai import types as genai_types
@@ -822,6 +823,206 @@ async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_
         logger.error(f"Error en analíticas IA: {str(e)}")
         raise HTTPException(status_code=500, detail="Error conectando con la IA.")
 
+# --- VÍDEOS DE TÉCNICA ---
+# Cada vídeo se guarda en su propia colección en cuanto se sube (antes solo se guardaba al terminar la sesión),
+# con los comentarios del entrenador (opcionalmente en un segundo concreto del vídeo).
+# Los archivos están en Cloudinary. Para borrarlos también de allí, el servidor necesita CLOUDINARY_API_KEY y
+# CLOUDINARY_API_SECRET (Cloudinary → Settings → API Keys); sin ellas, el vídeo se quita de la app pero el archivo queda en la nube.
+CLOUDINARY_CLOUD_NAME = os.environ.get('CLOUDINARY_CLOUD_NAME', 'slsdfq8t')
+CLOUDINARY_API_KEY = os.environ.get('CLOUDINARY_API_KEY')
+CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET')
+
+class TechniqueVideoCreate(BaseModel):
+    url: str
+    public_id: Optional[str] = None
+    athlete_id: Optional[str] = None
+    workout_id: Optional[str] = None
+    exercise_name: Optional[str] = ''
+    exercise_key: Optional[str] = None
+
+class VideoCommentCreate(BaseModel):
+    text: str
+    time_s: Optional[float] = None
+
+def cloudinary_public_id(url: str) -> Optional[str]:
+    """De https://res.cloudinary.com/<nube>/video/upload/[transformaciones/]v123/carpeta/nombre.mov saca "carpeta/nombre"."""
+    prefix = f"https://res.cloudinary.com/{CLOUDINARY_CLOUD_NAME}/video/upload/"
+    if not url or not url.startswith(prefix):
+        return None
+    parts = url[len(prefix):].split('?')[0].split('/')
+    versions = [i for i, p in enumerate(parts) if re.fullmatch(r"v\d+", p)]
+    if versions:
+        parts = parts[versions[0] + 1:]
+    public_id = re.sub(r"\.[A-Za-z0-9]+$", "", '/'.join(parts))
+    return public_id or None
+
+def delete_cloudinary_video(public_id: Optional[str]) -> bool:
+    """Borra el archivo de Cloudinary (llamada firmada). Devuelve False si no hay claves o falla."""
+    if not (CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET and public_id):
+        return False
+    timestamp = int(time.time())
+    to_sign = f"invalidate=true&public_id={public_id}&timestamp={timestamp}"
+    signature = hashlib.sha1((to_sign + CLOUDINARY_API_SECRET).encode()).hexdigest()
+    try:
+        res = requests.post(
+            f"https://api.cloudinary.com/v1_1/{CLOUDINARY_CLOUD_NAME}/video/destroy",
+            data={"public_id": public_id, "timestamp": timestamp, "api_key": CLOUDINARY_API_KEY, "signature": signature, "invalidate": "true"},
+            timeout=15,
+        )
+        result = res.json().get("result")
+        if result not in ("ok", "not found"):
+            logger.warning(f"Cloudinary no borró {public_id}: {res.text[:200]}")
+        return result in ("ok", "not found")
+    except Exception as e:
+        logger.error(f"Error borrando vídeo en Cloudinary: {e}")
+        return False
+
+def _workout_video_items(completion_data: dict):
+    """Ejercicios de una sesión completada con su clave: "3" (fuerza) o "1-2" (bloque-ejercicio HIIT)."""
+    items = [(str(i), ex) for i, ex in enumerate(completion_data.get('exercise_results') or [])]
+    for b, block in enumerate(completion_data.get('hiit_results') or []):
+        items += [(f"{b}-{e}", ex) for e, ex in enumerate(block.get('hiit_exercises') or [])]
+    return items
+
+async def import_legacy_videos(athlete_id: str):
+    """Los vídeos de la versión anterior estaban guardados dentro de cada sesión: se copian a la colección (una sola vez)."""
+    workouts = await db.workouts.find({"athlete_id": athlete_id, "completed": True}, {"_id": 0, "id": 1, "title": 1, "date": 1, "completion_data": 1}).to_list(1000)
+    known = {v.get('url') for v in await db.technique_videos.find({"athlete_id": athlete_id}, {"_id": 0, "url": 1}).to_list(5000)}
+    athlete = await db.users.find_one({"id": athlete_id}, {"_id": 0, "trainer_id": 1}) or {}
+    new_docs = []
+    for w in workouts:
+        for key, ex in _workout_video_items(w.get('completion_data') or {}):
+            url = (ex or {}).get('recorded_video_url')
+            if not url or url in known:
+                continue
+            known.add(url)
+            created = f"{w.get('date') or datetime.now(timezone.utc).date().isoformat()}T12:00:00+00:00"
+            comments = []
+            if ex.get('coach_note'):
+                comments.append({"id": str(uuid.uuid4()), "text": ex['coach_note'], "time_s": None, "author_id": athlete.get('trainer_id'),
+                                 "author_name": "Entrenador", "author_role": "trainer", "created_at": created})
+            new_docs.append({
+                "id": str(uuid.uuid4()), "athlete_id": athlete_id, "trainer_id": athlete.get('trainer_id'), "uploaded_by": athlete_id,
+                "workout_id": w.get('id'), "workout_title": w.get('title', ''), "workout_date": w.get('date', ''),
+                "exercise_name": ex.get('name', ''), "exercise_key": key, "url": url, "public_id": cloudinary_public_id(url),
+                "comments": comments, "legacy": True, "created_at": created,
+            })
+    if new_docs:
+        await db.technique_videos.insert_many(new_docs)
+
+async def _unlink_video_from_workout(video: dict):
+    """Quita el vídeo de la sesión donde se guardó (para que no vuelva a aparecer)."""
+    if not video.get('workout_id'):
+        return
+    workout = await db.workouts.find_one({"id": video['workout_id']}, {"_id": 0, "completion_data": 1})
+    cd = (workout or {}).get('completion_data')
+    if not cd:
+        return
+    changed = False
+    for _, ex in _workout_video_items(cd):
+        if ex.get('recorded_video_url') == video.get('url'):
+            ex['recorded_video_url'] = ''
+            if video.get('legacy'):
+                ex['coach_note'] = ''  # su comentario ya era parte del vídeo
+            changed = True
+    if changed:
+        await db.workouts.update_one({"id": video['workout_id']}, {"$set": {"completion_data": cd}})
+
+async def _remove_video(video: dict) -> bool:
+    cloud_deleted = await run_in_threadpool(delete_cloudinary_video, video.get('public_id') or cloudinary_public_id(video.get('url', '')))
+    await db.technique_videos.delete_one({"id": video['id']})
+    await _unlink_video_from_workout(video)
+    return cloud_deleted
+
+async def _get_accessible_video(user: dict, video_id: str) -> dict:
+    video = await db.technique_videos.find_one({"id": video_id}, {"_id": 0})
+    if not video:
+        raise HTTPException(status_code=404, detail="Vídeo no encontrado")
+    await ensure_athlete_access(user, video['athlete_id'])
+    return video
+
+@api_router.get("/videos")
+async def list_videos(athlete_id: Optional[str] = None, workout_id: Optional[str] = None, user=Depends(get_current_user)):
+    if user['role'] != 'trainer':
+        athlete_ids = [user['id']]
+    elif athlete_id:
+        await ensure_athlete_access(user, athlete_id)
+        athlete_ids = [athlete_id]
+    else:
+        athlete_ids = await accessible_athlete_ids(user)
+    for a_id in athlete_ids:
+        await import_legacy_videos(a_id)
+    query: Dict[str, Any] = {"athlete_id": {"$in": athlete_ids}}
+    if workout_id:
+        query["workout_id"] = workout_id
+    return await db.technique_videos.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+
+@api_router.post("/videos")
+async def create_video(data: TechniqueVideoCreate, user=Depends(get_current_user)):
+    athlete_id = data.athlete_id or user['id']
+    athlete = await ensure_athlete_access(user, athlete_id)
+    if not data.url.startswith("https://res.cloudinary.com/"):
+        raise HTTPException(status_code=400, detail="El vídeo tiene que estar subido a la nube de la app.")
+    workout = None
+    if data.workout_id:
+        workout = await db.workouts.find_one({"id": data.workout_id, "athlete_id": athlete_id}, {"_id": 0, "title": 1, "date": 1})
+        if not workout:
+            raise HTTPException(status_code=404, detail="Sesión no encontrada")
+        # Un vídeo por ejercicio y sesión: si se vuelve a grabar, el nuevo sustituye al anterior
+        if data.exercise_key is not None:
+            old_videos = await db.technique_videos.find({"athlete_id": athlete_id, "workout_id": data.workout_id, "exercise_key": data.exercise_key}, {"_id": 0}).to_list(20)
+            for old in old_videos:
+                if old.get('url') != data.url:
+                    await _remove_video(old)
+    video = {
+        "id": str(uuid.uuid4()), "athlete_id": athlete_id, "trainer_id": athlete.get('trainer_id') if user['role'] != 'trainer' else user['id'],
+        "uploaded_by": user['id'], "workout_id": data.workout_id, "workout_title": (workout or {}).get('title', ''),
+        "workout_date": (workout or {}).get('date', datetime.now(timezone.utc).date().isoformat()),
+        "exercise_name": (data.exercise_name or '').strip(), "exercise_key": data.exercise_key,
+        "url": data.url, "public_id": data.public_id or cloudinary_public_id(data.url),
+        "comments": [], "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.technique_videos.insert_one(video)
+    video.pop('_id', None)
+    return video
+
+@api_router.delete("/videos/{video_id}")
+async def delete_video(video_id: str, user=Depends(get_current_user)):
+    video = await _get_accessible_video(user, video_id)
+    cloud_deleted = await _remove_video(video)
+    return {"status": "deleted", "cloud_deleted": cloud_deleted}
+
+@api_router.post("/videos/{video_id}/comments")
+async def add_video_comment(video_id: str, data: VideoCommentCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    video = await _get_accessible_video(user, video_id)
+    text = (data.text or '').strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Escribe el comentario.")
+    comment = {
+        "id": str(uuid.uuid4()), "text": text[:2000],
+        "time_s": round(max(0.0, float(data.time_s)), 1) if data.time_s is not None else None,
+        "author_id": user['id'], "author_name": user.get('name', ''), "author_role": user['role'],
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.technique_videos.update_one({"id": video_id}, {"$push": {"comments": comment}})
+    if user['role'] == 'trainer':
+        athlete = await db.users.find_one({"id": video['athlete_id']}, {"_id": 0, "web_push_subscription": 1})
+        if athlete and athlete.get('web_push_subscription'):
+            await notify(background_tasks, send_web_push, athlete['web_push_subscription'], "🎥 Corrección de técnica",
+                         f"Tu entrenador ha comentado tu vídeo de {video.get('exercise_name') or 'técnica'}.")
+    return comment
+
+@api_router.delete("/videos/{video_id}/comments/{comment_id}")
+async def delete_video_comment(video_id: str, comment_id: str, user=Depends(get_current_user)):
+    video = await _get_accessible_video(user, video_id)
+    comment = next((c for c in video.get('comments', []) if c.get('id') == comment_id), None)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comentario no encontrado")
+    if comment.get('author_id') != user['id'] and user['role'] != 'trainer':
+        raise HTTPException(status_code=403, detail="Solo puedes borrar tus comentarios")
+    await db.technique_videos.update_one({"id": video_id}, {"$pull": {"comments": {"id": comment_id}}})
+    return {"status": "deleted"}
+
 # --- RUTAS DE WELLNESS ---
 @api_router.get("/wellness/history/{athlete_id}")
 async def get_wellness_history(athlete_id: str, user=Depends(get_current_user)):
@@ -1033,6 +1234,9 @@ async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
     await db.workouts.delete_many({"athlete_id": athlete_id})
     await db.wellness.delete_many({"athlete_id": athlete_id})
     await db.tests.delete_many({"athlete_id": athlete_id})
+    for video in await db.technique_videos.find({"athlete_id": athlete_id}, {"_id": 0}).to_list(1000):
+        await run_in_threadpool(delete_cloudinary_video, video.get('public_id'))
+    await db.technique_videos.delete_many({"athlete_id": athlete_id})
     await db.microciclos.delete_many({"macrociclo_id": {"$in": [m.get('id') for m in macros]}})
     await db.macrociclos.delete_many({"athlete_id": athlete_id})
     return {"status": "success"}

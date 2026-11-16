@@ -81,6 +81,34 @@ export const api = {
     return await res.json();
   },
 
+  // --- VÍDEOS DE TÉCNICA ---
+  getTechniqueVideos: async (params?: { athlete_id?: string; workout_id?: string }) => {
+    const headers = await getAuthHeaders();
+    const query = params ? `?${new URLSearchParams(Object.entries(params).filter(([, v]) => !!v) as any).toString()}` : '';
+    const res = await authFetch(`${BACKEND_URL}/api/videos${query}`, { headers });
+    return res.json();
+  },
+  saveTechniqueVideo: async (data: { url: string; public_id?: string; athlete_id?: string; workout_id?: string; exercise_name?: string; exercise_key?: string }) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/videos`, { method: 'POST', headers, body: JSON.stringify(data) });
+    return res.json();
+  },
+  deleteTechniqueVideo: async (id: string) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/videos/${id}`, { method: 'DELETE', headers });
+    return res.json();
+  },
+  addVideoComment: async (id: string, text: string, time_s?: number | null) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/videos/${id}/comments`, { method: 'POST', headers, body: JSON.stringify({ text, time_s: time_s ?? null }) });
+    return res.json();
+  },
+  deleteVideoComment: async (id: string, commentId: string) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/videos/${id}/comments/${commentId}`, { method: 'DELETE', headers });
+    return res.json();
+  },
+
   // --- IA / GEMINI ---
   generateWorkout: async (data: { userMessage: string; athleteContext: any; chatHistory: any[]; athlete_id?: string }) => {
     const headers = await getAuthHeaders();

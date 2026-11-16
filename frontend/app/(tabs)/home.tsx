@@ -376,6 +376,13 @@ export default function HomeScreen() {
           });
         }
       });
+      // Correcciones del entrenador en los vídeos de técnica
+      try {
+        const videos = await api.getTechniqueVideos();
+        (Array.isArray(videos) ? videos : []).forEach((v: any) => (v.comments || []).forEach((c: any) => {
+          if (c.author_role === 'trainer') sig += `vc-${c.id}|`;
+        }));
+      } catch {}
       setFeedbackSignature(sig);
       
       if (sig) {

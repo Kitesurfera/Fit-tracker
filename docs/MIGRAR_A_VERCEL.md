@@ -29,6 +29,7 @@ Vamos a crear un **segundo proyecto en Vercel** para el servidor. Render sigue f
    | `SMTP_USER`, `SMTP_PASSWORD` (y `SMTP_SERVER`, `SMTP_PORT` si los tienes) | Envío de emails |
    | `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Notificaciones |
    | `GOOGLE_...` (si tienes alguna) | Inicio de sesión con Google |
+   | `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Para que al borrar un vídeo de técnica se borre también de la nube (Cloudinary → Settings → API Keys) |
 
    No copies `PORT` ni `PYTHON_VERSION` (en Vercel no hacen falta).
    Truco: en Vercel puedes pegar varias variables a la vez en formato `NOMBRE=valor`, una por línea.
