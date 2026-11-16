@@ -6,7 +6,6 @@ import {
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { Video, ResizeMode } from 'expo-av';
 import { useTheme } from '../src/hooks/useTheme';
 import { api } from '../src/api';
 import { useAuth } from '../src/context/AuthContext';
@@ -14,6 +13,8 @@ import { useTrainer } from '../src/context/TrainerContext';
 import GeminiChatModal from '../src/components/GeminiChatModal'; 
 import WellnessModal from '../src/components/WellnessModal'; 
 import CsvImportSheet from '../src/components/CsvImportSheet';
+import TechniqueVideoCard from '../src/components/TechniqueVideoCard';
+import TechniqueVideoPlayer from '../src/components/TechniqueVideoPlayer';
 import { strengthTarget, hiitTarget, hiitBlockSummary } from '../src/utils/exerciseFormat';
 
 const WEEKDAYS = ['DOM', 'LUN', 'MAR', 'MIÉ', 'JUE', 'VIE', 'SÁB'];
@@ -61,18 +62,6 @@ const FeedbackInputRow = React.memo(({ initialNote, onSave, colors, isDesktop }:
   );
 });
 
-const MiniVideoPlayer = React.memo(({ url, onExpand }: { url: string, onExpand: (u: string) => void }) => {
-  if (!url) return null;
-  return (
-    <View style={styles.miniVideoContainer}>
-      <Video source={{ uri: url }} style={styles.miniVideo} resizeMode={ResizeMode.CONTAIN} shouldPlay isLooping isMuted playsInLine />
-      <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ampliar" style={styles.expandBtn} onPress={() => onExpand(url)}>
-        <Ionicons name="expand" size={16} color="#FFF" />
-      </TouchableOpacity>
-    </View>
-  );
-});
-
 export default function AthleteDetailScreen() {
   const { colors } = useTheme();
   const { user } = useAuth();
@@ -104,6 +93,9 @@ export default function AthleteDetailScreen() {
   const [workoutToDuplicate, setWorkoutToDuplicate] = useState<any>(null);
   const [duplicateDate, setDuplicateDate] = useState(getLocalDateStr(new Date()));
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
+  // Vídeos de técnica de la atleta (con sus correcciones) y el que se está revisando
+  const [techVideos, setTechVideos] = useState<any[]>([]);
+  const [reviewVideoId, setReviewVideoId] = useState<string | null>(null);
 
   // Estado para forzar recarga de imágenes (Cache Buster)
   const [refreshStamp, setRefreshStamp] = useState(Date.now());
@@ -139,6 +131,7 @@ export default function AthleteDetailScreen() {
       setHistory(Array.isArray(hist) ? hist : []);
       
       setRefreshStamp(Date.now());
+      api.getTechniqueVideos({ athlete_id: params.id! }).then((v: any) => setTechVideos(Array.isArray(v) ? v : [])).catch(() => {});
     } catch (e) { 
       console.log("Error cargando detalle:", e); 
     } finally { 
@@ -628,6 +621,24 @@ export default function AthleteDetailScreen() {
           </View>
         )}
 
+        {isTrainer && techVideos.length > 0 && (() => {
+          const pending = techVideos.filter(v => !(v.comments || []).some((c: any) => c.author_role === 'trainer')).length;
+          return (
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ver vídeos de técnica"
+              onPress={() => router.push('/analytics?tab=feedback')}
+              style={[styles.nextWorkoutCard, { backgroundColor: colors.surface, flexDirection: 'row', alignItems: 'center', gap: 12, borderLeftWidth: 4, borderLeftColor: pending ? (colors.warning || '#F59E0B') : colors.primary }]}>
+              <Ionicons name="videocam" size={26} color={pending ? (colors.warning || '#F59E0B') : colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: isDesktop ? 16 : 14 }}>Vídeos de técnica</Text>
+                <Text style={{ color: colors.textSecondary, fontSize: isDesktop ? 13 : 12, marginTop: 2 }}>
+                  {techVideos.length} {techVideos.length === 1 ? 'vídeo' : 'vídeos'}{pending ? ` · ${pending} sin corregir` : ' · todos corregidos'}
+                </Text>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+          );
+        })()}
+
         {(isFemale && phaseInfo) && (
           <View style={{ marginBottom: 25 }}>
             <Text style={styles.sectionTitle}>BIOLOGÍA Y RENDIMIENTO (DÍA {phaseInfo.day})</Text>
@@ -741,6 +752,7 @@ export default function AthleteDetailScreen() {
       itemsToRender = (wk.completed && wk.completion_data?.exercise_results) ? wk.completion_data.exercise_results : (wk.exercises || []);
     }
 
+    if (techVideos.some(v => v.workout_id === wk.id)) hasVideos = true;
     if (wk.completed && wk.completion_data) {
         wk.completion_data.exercise_results?.forEach((ex: any) => {
             if (ex.recorded_video_url) hasVideos = true;
@@ -894,7 +906,7 @@ export default function AthleteDetailScreen() {
                               <View key={eIdx} style={{ marginBottom: 15, paddingLeft: 10, borderLeftWidth: 2, borderLeftColor: colors.primary + '50' }}>
                                   <Text style={{ color: colors.textPrimary, fontSize: isDesktop ? 15 : 13, fontWeight: '700' }}>{ex.name}{hiitTarget(ex) ? <Text style={{ color: colors.primary, fontWeight: '800' }}> ({hiitTarget(ex)})</Text> : null}</Text>
                                   
-                                  {(wk.completed && !!ex.recorded_video_url) && <View style={{ marginTop: 8 }}><MiniVideoPlayer url={ex.recorded_video_url} onExpand={setExpandedVideo} /></View>}
+                                  {renderVideoReviewButton(wk, `${idx}-${eIdx}`, ex.recorded_video_url)}
                                   
                                   {(!wk.completed && !!ex.video_url) && (
                                       <TouchableOpacity onPress={() => Linking.openURL(ex.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
@@ -931,7 +943,7 @@ export default function AthleteDetailScreen() {
                         )}
                       </View>
                       
-                      {(wk.completed && !!blockOrEx.recorded_video_url) && <MiniVideoPlayer url={blockOrEx.recorded_video_url} onExpand={setExpandedVideo} />}
+                      {renderVideoReviewButton(wk, String(idx), blockOrEx.recorded_video_url)}
                       
                       {(!wk.completed && !!blockOrEx.video_url) && (
                         <TouchableOpacity onPress={() => Linking.openURL(blockOrEx.video_url)} style={{flexDirection:'row', alignItems:'center', marginTop:5}}>
@@ -956,6 +968,28 @@ export default function AthleteDetailScreen() {
           </View>
         )}
       </View>
+    );
+  };
+
+  const findTechVideo = (wk: any, key: string, url?: string) =>
+    (url && techVideos.find(v => v.url === url)) || techVideos.find(v => v.workout_id === wk.id && v.exercise_key === key) || null;
+
+  const renderVideoReviewButton = (wk: any, key: string, url?: string) => {
+    const video = findTechVideo(wk, key, url);
+    if (!video && !url) return null;
+    const count = video?.comments?.length || 0;
+    return (
+      <TouchableOpacity
+        accessibilityRole="button" accessibilityLabel={isTrainer ? 'Ver vídeo y corregir' : 'Ver vídeo'}
+        onPress={() => (video ? setReviewVideoId(video.id) : setExpandedVideo(url!))}
+        style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', marginTop: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.primary + '15', borderWidth: 1, borderColor: colors.primary + '40' }}
+      >
+        <Ionicons name="videocam" size={16} color={colors.primary} />
+        <Text style={{ color: colors.primary, fontWeight: '800', fontSize: isDesktop ? 14 : 12 }}>{isTrainer ? 'Ver vídeo y corregir' : 'Ver vídeo'}</Text>
+        <View style={{ backgroundColor: count ? colors.primary : (colors.warning || '#F59E0B'), borderRadius: 8, paddingHorizontal: 6, paddingVertical: 1 }}>
+          <Text style={{ color: '#FFF', fontSize: 10, fontWeight: '900' }}>{count ? `${count} ${count === 1 ? 'corrección' : 'correcciones'}` : 'SIN CORREGIR'}</Text>
+        </View>
+      </TouchableOpacity>
     );
   };
 
@@ -1096,7 +1130,33 @@ export default function AthleteDetailScreen() {
       <Modal visible={!!expandedVideo} transparent animationType="fade">
         <View style={styles.fullscreenVideoOverlay}>
           <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}><Ionicons name="close-circle" size={40} color="#FFF" /></TouchableOpacity>
-          {!!expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
+          {!!expandedVideo && <View style={{ width: '100%', paddingHorizontal: 12 }}><TechniqueVideoPlayer url={expandedVideo} autoPlay colors={colors} maxHeight={700} /></View>}
+        </View>
+      </Modal>
+
+      <Modal visible={!!reviewVideoId} transparent animationType="slide" onRequestClose={() => setReviewVideoId(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' }}>
+          <View style={{ backgroundColor: colors.background, borderTopLeftRadius: 24, borderTopRightRadius: 24, maxHeight: '94%', width: '100%', maxWidth: 760, alignSelf: 'center' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 16 }}>
+              <Text style={{ color: colors.textPrimary, fontWeight: '900', fontSize: 18 }}>Revisar técnica</Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setReviewVideoId(null)}><Ionicons name="close" size={26} color={colors.textPrimary} /></TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 16, paddingTop: 0, paddingBottom: 32 }} keyboardShouldPersistTaps="handled">
+              {(() => {
+                const video = techVideos.find(v => v.id === reviewVideoId);
+                if (!video) return null;
+                return (
+                  <TechniqueVideoCard
+                    video={video} colors={colors} currentUser={user as any} startPlaying
+                    onChange={(updated) => {
+                      if (!updated) { setReviewVideoId(null); setTechVideos(prev => prev.filter(v => v.id !== video.id)); loadData(); }
+                      else setTechVideos(prev => prev.map(v => (v.id === updated.id ? updated : v)));
+                    }}
+                  />
+                );
+              })()}
+            </ScrollView>
+          </View>
         </View>
       </Modal>
 

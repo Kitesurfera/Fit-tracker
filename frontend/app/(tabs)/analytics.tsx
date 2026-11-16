@@ -15,7 +15,8 @@ import { LineChart, BarChart } from 'react-native-chart-kit';
 import * as Print from 'expo-print';
 import * as Sharing from 'expo-sharing';
 import { useTrainer } from '../../src/context/TrainerContext';
-import { Video, ResizeMode } from 'expo-av';
+import TechniqueVideoCard from '../../src/components/TechniqueVideoCard';
+import TechniqueVideoPlayer from '../../src/components/TechniqueVideoPlayer';
 import { getStandardizedTestName, isLowerBetter, bestOfSides, isBetterResult } from '../../src/utils/tests';
 
 const MAX_CONTENT_WIDTH = 1200;
@@ -113,6 +114,7 @@ export default function AnalyticsScreen() {
   const [mergeTargetItem, setMergeTargetItem] = useState<any>(null);
 
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
+  const [techVideos, setTechVideos] = useState<any[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -142,18 +144,21 @@ export default function AnalyticsScreen() {
       }
     };
     init();
-  }, [isTrainer]);
+    // También cuando la cuenta termina de cargar (al abrir la página directamente o recargarla, al principio aún no se conoce)
+  }, [isTrainer, user?.id]);
 
   const loadAthleteData = async (athleteId: string | undefined) => {
     if (!athleteId) return;
     setLoading(true);
     try {
-      const [ts, wk, wl, tree] = await Promise.all([
+      const [ts, wk, wl, tree, vids] = await Promise.all([
         api.getTests({ athlete_id: athleteId }).catch(() => []),
         api.getWorkouts({ athlete_id: athleteId }).catch(() => []),
         api.getWellnessHistory(athleteId).catch(() => []),
-        api.getPeriodizationTree(athleteId).catch(() => ({ macros: [] }))
+        api.getPeriodizationTree(athleteId).catch(() => ({ macros: [] })),
+        api.getTechniqueVideos({ athlete_id: athleteId }).catch(() => []),
       ]);
+      setTechVideos(Array.isArray(vids) ? vids : []);
       setTestHistory(Array.isArray(ts) ? [...ts].sort((a,b) => b.date.localeCompare(a.date)) : []);
       setWorkoutHistory(Array.isArray(wk) ? wk : []);
       setWellnessHistory(Array.isArray(wl) ? wl : (wl?.data || []));
@@ -378,13 +383,13 @@ export default function AnalyticsScreen() {
     workoutHistory.forEach(w => {
       if (w.completed && w.completion_data) {
         w.completion_data.exercise_results?.forEach((ex: any) => {
-          if (ex.coach_note) {
+          if (ex.coach_note && !ex.recorded_video_url) {
             list.push({ id: `${w.id}-${ex.name}`, date: w.date, name: ex.name, note: ex.coach_note, video: ex.recorded_video_url });
           }
         });
         w.completion_data.hiit_results?.forEach((b: any) => {
           b.hiit_exercises?.forEach((ex: any) => {
-            if (ex.coach_note) {
+            if (ex.coach_note && !ex.recorded_video_url) {
               list.push({ id: `${w.id}-${ex.name}`, date: w.date, name: ex.name, note: ex.coach_note, video: ex.recorded_video_url });
             }
           });
@@ -886,7 +891,7 @@ export default function AnalyticsScreen() {
         <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" style={styles.closeModalBtn} onPress={() => setExpandedVideo(null)}>
           <Ionicons name="close-circle" size={40} color="#FFF" />
         </TouchableOpacity>
-        {expandedVideo && <Video source={{ uri: expandedVideo }} style={styles.fullVideo} resizeMode={ResizeMode.CONTAIN} useNativeControls shouldPlay />}
+        {expandedVideo && <View style={{ width: '100%', paddingHorizontal: 12 }}><TechniqueVideoPlayer url={expandedVideo} autoPlay colors={colors} maxHeight={700} /></View>}
       </View>
     </Modal>
   );
@@ -924,7 +929,7 @@ export default function AnalyticsScreen() {
               {['summary', 'progress', 'workload', 'feedback'].map(tab => (
                 <TouchableOpacity key={tab} style={[styles.tabButton, activeTab === tab && { backgroundColor: colors.primary }]} onPress={() => setActiveTab(tab as any)}>
                   <Text style={[styles.tabButtonText, { color: activeTab === tab ? '#FFF' : colors.textSecondary }]}>
-                    {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'workload' ? 'CARGA Y FATIGA' : 'FEEDBACK'}
+                    {tab === 'summary' ? 'TESTS' : tab === 'progress' ? 'EVOLUCIÓN' : tab === 'workload' ? 'CARGA Y FATIGA' : 'VÍDEOS Y FEEDBACK'}
                   </Text>
                 </TouchableOpacity>
               ))}
@@ -966,6 +971,28 @@ export default function AnalyticsScreen() {
                 renderWorkloadDashboard()
              ) : (
                 <View>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: 6 }}>VÍDEOS DE TÉCNICA ({techVideos.length})</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 12 }}>
+                    {isTrainer
+                      ? 'Pausa el vídeo en el momento clave y escribe la corrección: quedará enganchada a ese segundo.'
+                      : 'Toca el tiempo de una corrección para ver ese momento del vídeo. Puedes responder a tu entrenador o borrar tus vídeos.'}
+                  </Text>
+                  {techVideos.length === 0 ? (
+                    <Text style={{ color: colors.textSecondary, textAlign: 'center', marginVertical: 16 }}>
+                      {isTrainer ? 'Esta deportista aún no ha subido vídeos.' : 'Aún no has subido vídeos. Hazlo desde el modo entrenamiento, con el botón de vídeo de cada ejercicio.'}
+                    </Text>
+                  ) : (
+                    <View style={{ gap: 14, marginBottom: 28 }}>
+                      {techVideos.map(v => (
+                        <TechniqueVideoCard
+                          key={v.id} video={v} colors={colors} currentUser={user as any}
+                          onChange={(updated) => setTechVideos(prev => (updated ? prev.map(x => (x.id === updated.id ? updated : x)) : prev.filter(x => x.id !== v.id)))}
+                        />
+                      ))}
+                    </View>
+                  )}
+
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: 6 }}>NOTAS DEL ENTRENADOR</Text>
                   <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 15 }}>
                     <TouchableOpacity 
                       style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surfaceHighlight, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}

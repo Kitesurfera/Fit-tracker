@@ -7,7 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
-import { Video, ResizeMode, Audio } from 'expo-av';
+import { Audio } from 'expo-av';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useKeepAwake } from 'expo-keep-awake';
 import * as Haptics from 'expo-haptics';
@@ -18,6 +18,7 @@ import { useAuth } from '../src/context/AuthContext';
 import TimerRing from '../src/components/training/TimerRing';
 import TimerControls from '../src/components/training/TimerControls';
 import VideoUploader from '../src/components/VideoUploader';
+import TechniqueVideoPlayer from '../src/components/TechniqueVideoPlayer';
 import { localDateStr } from '../src/utils/dates';
 import { goBack } from '../src/utils/navigation';
 import { installWebAudioUnlock, unlockWebAudio, playWebBeep, setIgnoreSilentSwitch, SILENT_MODE_KEY } from '../src/utils/webAudio';
@@ -115,6 +116,8 @@ export default function TrainingModeScreen() {
   const [hiitLogs, setHiitLogs] = useState<Record<string, {note?: string, coach_note?: string}>>({});
   
   const [recordedVideos, setRecordedVideos] = useState<Record<string, string>>({});
+  // Id de cada vídeo ya guardado en el servidor (clave del ejercicio → id), para poder borrarlo
+  const [videoIds, setVideoIds] = useState<Record<string, string>>({});
   const [expandedVideo, setExpandedVideo] = useState<string | null>(null);
   const displayVideos = recordedVideos;
   
@@ -408,6 +411,13 @@ export default function TrainingModeScreen() {
         const currentWorkout = allWorkouts.find((w: any) => w.id === stableWorkoutId);
         if (currentWorkout && isMounted) {
           setWorkout(currentWorkout);
+          api.getTechniqueVideos({ workout_id: currentWorkout.id, athlete_id: currentWorkout.athlete_id }).then((list: any[]) => {
+            if (!isMounted || !Array.isArray(list)) return;
+            const urls: Record<string, string> = {}, ids: Record<string, string> = {};
+            list.forEach(v => { if (v.exercise_key != null) { urls[v.exercise_key] = v.url; ids[v.exercise_key] = v.id; } });
+            setRecordedVideos(prev => ({ ...prev, ...urls }));
+            setVideoIds(ids);
+          }).catch(() => {});
           const isWorkoutHiit = currentWorkout.exercises?.length > 0 && currentWorkout.exercises[0].is_hiit_block === true;
           setIsHiit(isWorkoutHiit);
           if (currentWorkout.completed) {
@@ -1016,14 +1026,54 @@ export default function TrainingModeScreen() {
     );
   };
 
+  // Nombre del ejercicio a partir de su clave ("2" en fuerza, "1-0" en HIIT)
+  const exerciseNameForKey = (key: string) => {
+    if (!workout?.exercises) return '';
+    if (key.includes('-')) { const [b, e] = key.split('-').map(Number); return workout.exercises[b]?.hiit_exercises?.[e]?.name || ''; }
+    return workout.exercises[Number(key)]?.name || '';
+  };
+
+  // El vídeo se guarda en el servidor nada más subirlo (aunque no se termine la sesión)
+  const handleVideoUploaded = async (key: string, url: string, meta?: { publicId?: string }) => {
+    setRecordedVideos(prev => ({ ...prev, [key]: url }));
+    if (!url || !workout) return;
+    try {
+      const saved = await api.saveTechniqueVideo({
+        url, public_id: meta?.publicId, athlete_id: workout.athlete_id, workout_id: workout.id,
+        exercise_name: exerciseNameForKey(key), exercise_key: key,
+      });
+      if (saved?.id) setVideoIds(prev => ({ ...prev, [key]: saved.id }));
+    } catch (e) {
+      // Sin conexión: el vídeo queda en la sesión y se guardará al terminarla
+      console.log('No se pudo registrar el vídeo ahora:', e);
+    }
+  };
+
+  const handleVideoDeleted = async (key: string) => {
+    const id = videoIds[key];
+    try {
+      if (id) await api.deleteTechniqueVideo(id);
+      setRecordedVideos(prev => ({ ...prev, [key]: '' }));
+      setVideoIds(prev => { const next = { ...prev }; delete next[key]; return next; });
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'No se pudo borrar el vídeo.');
+    }
+  };
+
   const renderVideoSheet = (key: string) => (
     <Modal visible={showVideoSheet} transparent animationType="fade" onRequestClose={() => setShowVideoSheet(false)}>
       <View style={styles.modalOverlay}>
         <View style={[styles.sheet, { backgroundColor: colors.surface }]}>
           <Text style={[styles.sheetTitle, { color: colors.textPrimary }]}>Vídeo de tu ejecución</Text>
+          <Text style={{ color: colors.textSecondary, fontSize: 13, marginTop: -6 }}>{exerciseNameForKey(key)}</Text>
           <VideoUploader
+            variant="full"
             currentVideo={displayVideos[key]}
-            onUploadSuccess={(url) => setRecordedVideos(prev => ({ ...prev, [key]: url }))}
+            onUploadSuccess={(url, meta) => handleVideoUploaded(key, url, meta)}
+            onDelete={() => Alert.alert('Eliminar vídeo', '¿Seguro que quieres borrar este vídeo?', [
+              { text: 'Cancelar', style: 'cancel' },
+              { text: 'Eliminar', style: 'destructive', onPress: () => handleVideoDeleted(key) },
+            ])}
             colors={colors}
             onPlay={() => { setShowVideoSheet(false); setExpandedVideo(displayVideos[key]); }}
           />
@@ -1195,13 +1245,9 @@ export default function TrainingModeScreen() {
           <Ionicons name="close-circle" size={40} color="#FFF" />
         </TouchableOpacity>
         {expandedVideo && (
-          <Video 
-            source={{ uri: expandedVideo }} 
-            style={styles.fullVideo} 
-            resizeMode={ResizeMode.CONTAIN} 
-            useNativeControls={true}
-            shouldPlay={true}
-          />
+          <View style={{ width: '100%', paddingHorizontal: 12 }}>
+            <TechniqueVideoPlayer url={expandedVideo} autoPlay colors={colors} maxHeight={700} />
+          </View>
         )}
       </View>
     </Modal>
