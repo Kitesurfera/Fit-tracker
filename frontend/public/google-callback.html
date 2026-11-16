@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Entrando… · AM Coaching</title>
+  <style>
+    body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+           font: 16px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f8fafc; color: #0f172a; }
+    @media (prefers-color-scheme: dark) { body { background: #0f172a; color: #f8fafc; } }
+  </style>
+</head>
+<body>
+  <p>Entrando con Google…</p>
+  <script>
+    // Google vuelve aquí con la cuenta elegida en la dirección (#id_token=…).
+    // La guardamos para que la recoja la pantalla de inicio de sesión y volvemos a la app con la dirección limpia.
+    try { localStorage.setItem('google_redirect_result', JSON.stringify({ hash: location.hash.slice(1), ts: Date.now() })); } catch (e) {}
+    location.replace('/');
+  </script>
+</body>
+</html>

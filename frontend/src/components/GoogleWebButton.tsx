@@ -1,85 +1,68 @@
-import React, { useEffect, useRef } from 'react';
-import { View } from 'react-native';
+import React, { useState } from 'react';
+import { TouchableOpacity, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import Svg, { Path } from 'react-native-svg';
+import { startGoogleRedirect, GoogleMode } from '../utils/googleRedirect';
 
-// Botón oficial "Continuar con Google" (Google Identity Services) para la versión web.
-// Lo mantiene Google y funciona igual en Chrome, Safari y Firefox; devuelve directamente el ID token
-// que valida el backend en /api/auth/google.
-
-const GIS_SRC = 'https://accounts.google.com/gsi/client?hl=es';
-let gisLoading: Promise<void> | null = null;
-
-function loadGoogleIdentity(): Promise<void> {
-  const w = window as any;
-  if (w.google?.accounts?.id) return Promise.resolve();
-  if (!gisLoading) {
-    gisLoading = new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = GIS_SRC;
-      script.async = true;
-      script.onload = () => resolve();
-      script.onerror = () => { gisLoading = null; reject(new Error('gis-load-failed')); };
-      document.head.appendChild(script);
-    });
-  }
-  return gisLoading;
-}
+// Botón "Continuar con Google" para la versión web.
+// Lleva a la página de Google y Google devuelve a la app (sin ventana emergente), así funciona igual
+// en Chrome, Safari, Firefox y en la app instalada. La respuesta se recoge en la pantalla de inicio
+// de sesión con consumeGoogleRedirect().
 
 type Props = {
   clientId: string;
-  onCredential: (idToken: string) => void;
+  mode: GoogleMode;
   onError: (message: string) => void;
   dark?: boolean;
   disabled?: boolean;
 };
 
-export default function GoogleWebButton({ clientId, onCredential, onError, dark, disabled }: Props) {
-  const containerRef = useRef<any>(null);
-  // Guardamos los callbacks en refs para no volver a dibujar el botón en cada render
-  const onCredentialRef = useRef(onCredential);
-  const onErrorRef = useRef(onError);
-  onCredentialRef.current = onCredential;
-  onErrorRef.current = onError;
+const GoogleLogo = () => (
+  <Svg width={20} height={20} viewBox="0 0 48 48">
+    <Path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z" />
+    <Path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z" />
+    <Path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z" />
+    <Path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z" />
+  </Svg>
+);
 
-  useEffect(() => {
-    let cancelled = false;
-    loadGoogleIdentity()
-      .then(() => {
-        const container = containerRef.current as HTMLElement | null;
-        if (cancelled || !container) return;
-        const google = (window as any).google;
-        google.accounts.id.initialize({
-          client_id: clientId,
-          ux_mode: 'popup',
-          callback: (res: any) => {
-            if (res?.credential) onCredentialRef.current(res.credential);
-            else onErrorRef.current('Google no devolvió la cuenta. Inténtalo de nuevo.');
-          },
-        });
-        container.innerHTML = '';
-        google.accounts.id.renderButton(container, {
-          type: 'standard',
-          theme: dark ? 'filled_black' : 'outline',
-          size: 'large',
-          text: 'continue_with',
-          shape: 'pill',
-          locale: 'es',
-          width: Math.max(200, Math.min(container.offsetWidth || 320, 400)),
-        });
-      })
-      .catch(() => {
-        if (!cancelled) {
-          onErrorRef.current('No se pudo cargar el inicio de sesión de Google. Revisa la conexión o desactiva el bloqueador de contenido para esta web.');
-        }
-      });
-    return () => { cancelled = true; };
-  }, [clientId, dark]);
+export default function GoogleWebButton({ clientId, mode, onError, dark, disabled }: Props) {
+  const [opening, setOpening] = useState(false);
+
+  const handlePress = () => {
+    try {
+      setOpening(true);
+      startGoogleRedirect(clientId, mode);
+    } catch (e) {
+      setOpening(false);
+      onError('No se pudo abrir el inicio de sesión de Google. Inténtalo otra vez.');
+    }
+  };
 
   return (
-    <View
-      ref={containerRef}
+    <TouchableOpacity
+      accessibilityRole="button"
       accessibilityLabel="Continuar con Google"
-      pointerEvents={disabled ? 'none' : 'auto'}
-      style={{ width: '100%', minHeight: 44, alignItems: 'center', justifyContent: 'center', opacity: disabled ? 0.5 : 1 }}
-    />
+      disabled={disabled || opening}
+      onPress={handlePress}
+      activeOpacity={0.85}
+      style={[
+        styles.btn,
+        dark ? { backgroundColor: '#131314', borderColor: '#8E918F' } : { backgroundColor: '#FFFFFF', borderColor: '#747775' },
+        (disabled || opening) && { opacity: 0.7 },
+      ]}
+    >
+      {opening ? <ActivityIndicator color={dark ? '#E3E3E3' : '#1F1F1F'} /> : <GoogleLogo />}
+      <Text style={[styles.text, { color: dark ? '#E3E3E3' : '#1F1F1F' }]}>
+        {opening ? 'Abriendo Google…' : 'Continuar con Google'}
+      </Text>
+    </TouchableOpacity>
   );
 }
+
+const styles = StyleSheet.create({
+  btn: {
+    width: '100%', maxWidth: 400, alignSelf: 'center', minHeight: 44, borderWidth: 1, borderRadius: 22,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, paddingHorizontal: 16,
+  },
+  text: { fontSize: 15, fontWeight: '600' },
+});
