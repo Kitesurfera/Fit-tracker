@@ -12,11 +12,10 @@ import { api } from '../../src/api';
 import { useAuth } from '../../src/context/AuthContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { LineChart, BarChart } from 'react-native-chart-kit';
-import * as Print from 'expo-print';
-import * as Sharing from 'expo-sharing';
 import { useTrainer } from '../../src/context/TrainerContext';
 import TechniqueVideoCard from '../../src/components/TechniqueVideoCard';
 import TechniqueVideoPlayer from '../../src/components/TechniqueVideoPlayer';
+import ReportViewer, { ReportBaseInput } from '../../src/components/ReportViewer';
 import { getStandardizedTestName, isLowerBetter, bestOfSides, isBetterResult } from '../../src/utils/tests';
 
 const MAX_CONTENT_WIDTH = 1200;
@@ -87,7 +86,7 @@ export default function AnalyticsScreen() {
   const [mergeMap, setMergeMap] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [showReport, setShowReport] = useState(false);
   
   const [testHistory, setTestHistory] = useState<any[]>([]);
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
@@ -338,7 +337,7 @@ export default function AnalyticsScreen() {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const limitDateStr = getLocalDateStr(thirtyDaysAgo);
-    return workoutHistory.filter(w => w.completed && w.date >= limitDateStr).length;
+    return workoutHistory.filter(w => w.completed && !String(w.observations || '').includes('[NO COMPLETADA]') && w.date >= limitDateStr).length;
   }, [workoutHistory]);
 
   const workloadData = useMemo(() => {
@@ -423,234 +422,21 @@ export default function AnalyticsScreen() {
     ]);
   };
 
-  const exportToPDF = async () => {
-    // En el navegador abrimos la pestaña del informe en el mismo clic (si se abre después de esperar a la IA,
-    // el navegador la bloquea) y la rellenamos cuando el informe esté listo
-    const reportWindow = Platform.OS === 'web' ? window.open('', '_blank') : null;
-    reportWindow?.document.write('<p style="font-family:sans-serif;padding:24px">Generando informe…</p>');
-    setIsGeneratingPDF(true);
-    try {
-      const athleteName = selectedAthlete?.name || user?.name || 'Deportista';
-      
-      const topPRs = cleanProgression
-        .filter((item: any) => item.maxW > 0)
-        .sort((a: any, b: any) => b.maxW - a.maxW)
-        .slice(0, 5)
-        .map((item: any) => `${item.name}: ${item.maxW}${item.unit}`);
+  // Datos para el informe (se abre dentro de la app, con botón "Volver")
+  const reportAthlete = isTrainer ? selectedAthlete : user;
+  const reportBase: ReportBaseInput = useMemo(() => ({
+    athleteName: reportAthlete?.name || 'Deportista',
+    athleteSport: reportAthlete?.sport || '',
+    today: getLocalDateStr(new Date()),
+    phase: currentPeriodizationPhase,
+    workouts: workoutHistory,
+    wellness: wellnessHistory,
+    tests: testHistory,
+    progression: cleanProgression,
+    videos: techVideos,
+  }), [reportAthlete?.name, reportAthlete?.sport, currentPeriodizationPhase, workoutHistory, wellnessHistory, testHistory, cleanProgression, techVideos]);
+  const closeReport = useCallback(() => setShowReport(false), []);
 
-      let aiAnalysis = {
-        workload_analysis: "Datos insuficientes para análisis.",
-        progress_analysis: "Sigue registrando entrenamientos para ver tu evolución.",
-        recommendations: ["Mantén la constancia.", "Registra tu fatiga diariamente."]
-      };
-      
-      try {
-        if (api.analyzeAnalytics) {
-            aiAnalysis = await api.analyzeAnalytics({
-                athlete_name: athleteName,
-                fatigue_data: workloadData.fatigueData,
-                soreness_data: workloadData.sorenessData,
-                recent_workouts_count: recentWorkoutsCount,
-                recent_prs: topPRs,
-                current_phase: currentPeriodizationPhase
-            });
-        }
-      } catch (e) { console.log("Aviso: Error generando IA, usando template base."); }
-
-      const htmlContent = `
-      <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no" />
-          <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-          <style>
-            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
-            body { font-family: 'Inter', sans-serif; padding: 40px; color: #1e293b; background-color: #f8fafc; }
-            .header { text-align: center; margin-bottom: 40px; border-bottom: 3px solid #3b82f6; padding-bottom: 20px; }
-            h1 { font-size: 32px; font-weight: 900; margin: 0; color: #0f172a; text-transform: uppercase; letter-spacing: -1px; }
-            .subtitle { color: #64748b; font-size: 16px; margin-top: 5px; }
-            
-            .section { background: #fff; padding: 25px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); margin-bottom: 30px; }
-            h2 { font-size: 20px; font-weight: 800; color: #3b82f6; margin-top: 0; margin-bottom: 15px; border-bottom: 1px solid #e2e8f0; padding-bottom: 10px; }
-            
-            .stats-grid { display: flex; gap: 15px; margin-bottom: 20px; }
-            .stat-box { flex: 1; background: #f1f5f9; padding: 15px; border-radius: 12px; text-align: center; }
-            .stat-value { font-size: 28px; font-weight: 900; color: #0f172a; }
-            .stat-label { font-size: 12px; color: #64748b; font-weight: 700; text-transform: uppercase; }
-
-            .text-content { font-size: 15px; line-height: 1.6; color: #334155; }
-            .recommendation-list { margin: 0; padding-left: 20px; }
-            .recommendation-list li { margin-bottom: 8px; }
-
-            .chart-container { width: 100%; height: 350px; position: relative; margin-top: 20px; }
-            
-            .footer { text-align: center; margin-top: 50px; font-size: 12px; color: #94a3b8; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Rendimiento Técnico</h1>
-            <div class="subtitle">Reporte de Inteligencia Deportiva: ${athleteName} • ${getLocalDateStr(new Date())}</div>
-          </div>
-
-          <div class="section">
-            <h2>Resumen General</h2>
-            <div class="stats-grid">
-              <div class="stat-box">
-                <div class="stat-value">${recentWorkoutsCount}</div>
-                <div class="stat-label">Sesiones (30d)</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-value">${topPRs.length}</div>
-                <div class="stat-label">Récords Activos</div>
-              </div>
-              <div class="stat-box">
-                <div class="stat-value" style="font-size: 15px; margin-top: 8px;">${currentPeriodizationPhase}</div>
-                <div class="stat-label" style="margin-top: 10px;">Fase Actual</div>
-              </div>
-            </div>
-            <div class="text-content">
-              <strong>Análisis de Evolución:</strong><br/>
-              ${aiAnalysis.progress_analysis}
-            </div>
-          </div>
-
-          <div class="section">
-            <h2>Carga Interna (RPE) vs Fatiga (Últimos 14 días)</h2>
-            <div class="text-content" style="margin-bottom: 15px;">
-              <strong>Estado Actual del SNC:</strong><br/>
-              ${aiAnalysis.workload_analysis}
-            </div>
-            
-            <div class="chart-container">
-              <canvas id="workloadChart"></canvas>
-            </div>
-          </div>
-
-          <div class="section">
-            <h2>Recomendaciones Técnicas del Coach IA</h2>
-            <div class="text-content">
-              <ul class="recommendation-list">
-                ${aiAnalysis.recommendations.map((r: string) => `<li>${r}</li>`).join('')}
-              </ul>
-            </div>
-          </div>
-          
-          ${topPRs.length > 0 ? `
-          <div class="section">
-            <h2>Top Récords Personales</h2>
-            <div class="text-content">
-              <ul class="recommendation-list">
-                ${topPRs.map((pr: string) => `<li><strong>${pr.split(':')[0]}</strong>: ${pr.split(':')[1]}</li>`).join('')}
-              </ul>
-            </div>
-          </div>
-          ` : ''}
-
-          <div class="footer">
-            Generado automáticamente por Fit Tracker App.
-          </div>
-
-          <script>
-            const ctx = document.getElementById('workloadChart').getContext('2d');
-            new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels: ${JSON.stringify(workloadData.labels)},
-                    datasets: [
-                        {
-                            type: 'bar',
-                            label: 'Carga (RPE)',
-                            data: ${JSON.stringify(workloadData.rpeData)},
-                            backgroundColor: 'rgba(16, 185, 129, 0.4)',
-                            borderColor: 'rgba(16, 185, 129, 1)',
-                            borderWidth: 1,
-                            yAxisID: 'y1'
-                        },
-                        {
-                            type: 'line',
-                            label: 'Fatiga General',
-                            data: ${JSON.stringify(workloadData.fatigueData)},
-                            borderColor: '#EF4444',
-                            backgroundColor: 'transparent',
-                            borderWidth: 3,
-                            tension: 0.4,
-                            yAxisID: 'y'
-                        },
-                        {
-                            type: 'line',
-                            label: 'Agujetas / Dolor',
-                            data: ${JSON.stringify(workloadData.sorenessData)},
-                            borderColor: '#F59E0B',
-                            backgroundColor: 'transparent',
-                            borderWidth: 3,
-                            borderDash: [5, 5],
-                            tension: 0.4,
-                            yAxisID: 'y'
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        y: { 
-                          type: 'linear', 
-                          display: true, 
-                          position: 'left',
-                          beginAtZero: true, 
-                          max: 5, 
-                          title: { display: true, text: 'Nivel (0-5)' }
-                        },
-                        y1: { 
-                          type: 'linear', 
-                          display: true, 
-                          position: 'right',
-                          beginAtZero: true, 
-                          max: 10,
-                          grid: { drawOnChartArea: false },
-                          title: { display: true, text: 'RPE (0-10)' }
-                        }
-                    },
-                    plugins: {
-                        legend: { position: 'bottom' }
-                    },
-                    animation: { duration: 0 }
-                }
-            });
-          </script>
-        </body>
-      </html>
-      `;
-
-      if (Platform.OS === 'web') {
-        // En el navegador no existe printToFileAsync: abrimos el informe en otra pestaña y lanzamos "Imprimir",
-        // desde donde se puede guardar como PDF (en iPhone: Compartir > Imprimir > Guardar en Archivos)
-        if (!reportWindow) {
-          Alert.alert('Aviso', 'El navegador ha bloqueado la ventana del informe. Permite las ventanas emergentes para esta web e inténtalo de nuevo.');
-          return;
-        }
-        reportWindow.document.open();
-        reportWindow.document.write(htmlContent);
-        reportWindow.document.close();
-        reportWindow.document.title = `Reporte_${athleteName.replace(/\s+/g, '_')}`;
-        // Imprimir cuando carguen las gráficas; si el navegador no avisa de la carga, a los 3 segundos
-        let printed = false;
-        const printOnce = () => { if (!printed) { printed = true; reportWindow.print(); } };
-        reportWindow.onload = () => setTimeout(printOnce, 600);
-        setTimeout(printOnce, 3000);
-        return;
-      }
-
-      const { uri } = await Print.printToFileAsync({ html: htmlContent });
-      await Sharing.shareAsync(uri, { UTI: '.pdf', mimeType: 'application/pdf' });
-
-    } catch (e: any) {
-      reportWindow?.close();
-      Alert.alert("Error", "No se pudo generar el documento PDF: " + e.message);
-    } finally {
-      setIsGeneratingPDF(false);
-    }
-  };
 
   const renderPerformanceSummary = () => {
     return (
@@ -901,8 +687,8 @@ export default function AnalyticsScreen() {
             </View>
             <View style={{ flexDirection: 'row', gap: 10 }}>
               {isTrainer && <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cambiar de atleta" onPress={() => setShowPicker(true)} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}><Ionicons name="people" size={22} color={colors.primary} /></TouchableOpacity>}
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Descargar informe PDF" onPress={exportToPDF} disabled={isGeneratingPDF} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>
-                {isGeneratingPDF ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="document-text" size={22} color={colors.primary} />}
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ver informe" onPress={() => setShowReport(true)} disabled={loading} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight, opacity: loading ? 0.5 : 1 }]}>
+                <Ionicons name="document-text" size={22} color={colors.primary} />
               </TouchableOpacity>
               <TouchableOpacity accessibilityRole="button" accessibilityLabel="Actualizar" onPress={onRefresh} style={[styles.iconBtn, { backgroundColor: colors.surfaceHighlight }]}>{refreshing ? <ActivityIndicator size="small" color={colors.primary} /> : <Ionicons name="refresh" size={22} color={colors.primary} />}</TouchableOpacity>
             </View>
@@ -1117,6 +903,7 @@ export default function AnalyticsScreen() {
         </Modal>
 
         {renderVideoModal()}
+        <ReportViewer visible={showReport} onClose={closeReport} athleteId={String(reportAthlete?.id || '')} base={reportBase} isTrainer={isTrainer} colors={colors} />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
