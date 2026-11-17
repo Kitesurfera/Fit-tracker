@@ -15,7 +15,7 @@ import { api } from '../../src/api';
 import { syncManager } from '../../src/offline';
 import { localDateStr } from '../../src/utils/dates';
 import { goBack } from '../../src/utils/navigation';
-import { unlockWebAudio, playWebBeep, setIgnoreSilentSwitch, SILENT_MODE_KEY } from '../../src/utils/webAudio';
+import { unlockWebAudio, playWebBeep, playCountdownDemo, setSoundInSilentMode, SILENT_MODE_KEY } from '../../src/utils/webAudio';
 
 const SPORT_ICON_MAP: Record<string, {icon: any, lib: string}> = {
   'kite': { icon: 'kitesurfing', lib: 'MaterialCommunity' },
@@ -53,7 +53,7 @@ export default function SettingsScreen() {
   });
   const [savingMeasures, setSavingMeasures] = useState(false);
   const [timerSoundsEnabled, setTimerSoundsEnabled] = useState(true);
-  const [silentModeSounds, setSilentModeSounds] = useState(true);
+  const [silentModeSounds, setSilentModeSounds] = useState(false);
 
   const [pills, setPills] = useState<any[]>([]);
   const [athletes, setAthletes] = useState<any[]>([]);
@@ -71,7 +71,8 @@ export default function SettingsScreen() {
       if (val === 'false') setTimerSoundsEnabled(false);
     });
     AsyncStorage.getItem(SILENT_MODE_KEY).then(val => {
-      if (val === 'false') setSilentModeSounds(false);
+      setSilentModeSounds(val === 'true');
+      setSoundInSilentMode(val === 'true');
     });
     
     AsyncStorage.getItem('theme_preference').then(val => {
@@ -196,7 +197,7 @@ export default function SettingsScreen() {
 
   const toggleSilentModeSounds = async (value: boolean) => {
     setSilentModeSounds(value);
-    setIgnoreSilentSwitch(value);
+    setSoundInSilentMode(value);
     await AsyncStorage.setItem(SILENT_MODE_KEY, value ? 'true' : 'false');
     if (Platform.OS === 'web') { unlockWebAudio(); playWebBeep('short'); }
   };
@@ -519,11 +520,18 @@ export default function SettingsScreen() {
                     <View style={[styles.iconBox, { backgroundColor: '#10B98115' }]}><Ionicons name="volume-high" size={20} color="#10B981" /></View>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.settingText, { color: colors.textPrimary }]}>Pitidos de Entreno</Text>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Avisos de 3, 2, 1, Trabajo y Descanso</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Cortos en 3, 2, 1 · largo al empezar y al terminar el ejercicio</Text>
                     </View>
                   </View>
                   <Switch accessibilityLabel="Pitidos de entreno" value={timerSoundsEnabled} onValueChange={toggleTimerSounds} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />
                 </View>
+                {Platform.OS === 'web' && timerSoundsEnabled && (
+                  <TouchableOpacity accessibilityRole="button" accessibilityLabel="Probar pitidos" onPress={playCountdownDemo}
+                    style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', marginLeft: 52, marginBottom: 12, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10, backgroundColor: colors.primary + '15' }}>
+                    <Ionicons name="play" size={14} color={colors.primary} />
+                    <Text style={{ color: colors.primary, fontWeight: '800', fontSize: 13 }}>Probar pitidos (3, 2, 1… ¡ya!)</Text>
+                  </TouchableOpacity>
+                )}
                 {Platform.OS === 'web' && timerSoundsEnabled && (
                   <>
                     <View style={[styles.divider, { backgroundColor: colors.border }]} />
@@ -531,8 +539,12 @@ export default function SettingsScreen() {
                       <View style={styles.settingIconText}>
                         <View style={[styles.iconBox, { backgroundColor: '#10B98115' }]}><Ionicons name="notifications-off" size={20} color="#10B981" /></View>
                         <View style={{ flex: 1 }}>
-                          <Text style={[styles.settingText, { color: colors.textPrimary }]}>Sonar en modo silencio</Text>
-                          <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>En iPhone los pitidos suenan aunque esté en silencio, pero se pausa tu música</Text>
+                          <Text style={[styles.settingText, { color: colors.textPrimary }]}>Sonar con el iPhone en silencio</Text>
+                          <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                            {silentModeSounds
+                              ? 'Activado: suenan aunque el iPhone esté en silencio, pero tu música se pausa.'
+                              : 'Desactivado (recomendado): suenan por encima de tu música sin pararla. Con el interruptor de silencio puesto, no suenan.'}
+                          </Text>
                         </View>
                       </View>
                       <Switch accessibilityLabel="Sonar en modo silencio" value={silentModeSounds} onValueChange={toggleSilentModeSounds} trackColor={{ false: colors.border, true: colors.primary }} thumbColor="#FFF" />

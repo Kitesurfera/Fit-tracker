@@ -21,7 +21,7 @@ import VideoUploader from '../src/components/VideoUploader';
 import TechniqueVideoPlayer from '../src/components/TechniqueVideoPlayer';
 import { localDateStr } from '../src/utils/dates';
 import { goBack } from '../src/utils/navigation';
-import { installWebAudioUnlock, unlockWebAudio, playWebBeep, setIgnoreSilentSwitch, SILENT_MODE_KEY } from '../src/utils/webAudio';
+import { installWebAudioUnlock, unlockWebAudio, playWebBeep, setSoundInSilentMode, SILENT_MODE_KEY } from '../src/utils/webAudio';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -250,7 +250,7 @@ export default function TrainingModeScreen() {
           const s = await AsyncStorage.getItem('timer_sounds_enabled');
           setTimerSoundsEnabled(s !== 'false'); 
           const silent = await AsyncStorage.getItem(SILENT_MODE_KEY);
-          setIgnoreSilentSwitch(silent !== 'false');
+          setSoundInSilentMode(silent === 'true');
         } catch (e) { console.log("⚠️ Error cargando preferencias:", e); }
       };
       loadPreferences();
@@ -297,13 +297,12 @@ export default function TrainingModeScreen() {
     };
   }, [isPaused, finished, isPrep, prepSeconds, isWorking, workSeconds, isRestingStatus, restSeconds]);
 
-  const playTimerSound = (type: 'short' | 'long' | 'double') => {
+  // Pitidos: corto en la cuenta atrás 3-2-1; largo al empezar y al terminar el tiempo de ejercicio
+  const playTimerSound = (type: 'short' | 'long') => {
     if (!timerSoundsEnabled || finished) return;
 
     if (Platform.OS !== 'web') {
-      if (type === 'double') {
-         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(()=>{});
-      } else if (type === 'long') {
+      if (type === 'long') {
          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(()=>{});
       } else {
          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(()=>{});
@@ -368,7 +367,6 @@ export default function TrainingModeScreen() {
   const startRestTimer = (seconds: number) => {
     stopAllTimers(); setTargetTime(Date.now() + seconds * 1000);
     setRestSeconds(seconds); setRestTotalSeconds(seconds); setIsResting(true);
-    playTimerSound('double'); 
   };
 
   const resetWorkTimer = () => { if (workIntervalRef.current) clearInterval(workIntervalRef.current); setIsPaused(false); setWorkTargetTime(Date.now() + workTotalSeconds * 1000); setWorkSeconds(workTotalSeconds); setIsWorking(true); };
@@ -524,6 +522,7 @@ export default function TrainingModeScreen() {
       workIntervalRef.current = setInterval(() => {
         const remaining = Math.ceil((workTargetTime - Date.now()) / 1000);
         if (remaining <= 0) { 
+          playTimerSound('long'); // fin del tiempo de ejercicio
           handleWorkComplete(); 
         } 
         else { setWorkSeconds(remaining); }
