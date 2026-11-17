@@ -565,3 +565,32 @@ def test_coach_notes_can_be_deleted_for_good(client, world):
     # Ya no existe: 404
     assert client.delete(f"/api/workouts/{wid}/coach-note/0", headers=ha).status_code == 404
     assert client.delete("/api/workouts/no-existe/coach-note/0", headers=ha).status_code == 404
+
+
+def test_analytics_report_uses_period_summary_and_normalizes_answer(client, world, monkeypatch):
+    fake_gemini(monkeypatch, {server.GEMINI_MODELS[0]: '{"workload_analysis": "Carga bien asimilada.", "progress_analysis": "Cumple 9 de 10.", "recommendations": "Dormir más"}'})
+    prompts = []
+    inner = server.gemini_generate
+
+    async def capture(model, system_prompt, contents, timeout_s=45):
+        prompts.append(system_prompt)
+        return await inner(model, system_prompt, contents, timeout_s)
+    monkeypatch.setattr(server, "gemini_generate", capture)
+    body = {
+        "athlete_name": "Ana", "period_days": 30, "current_phase": "Fuerza (BASE)",
+        "fatigue_data": [2, None, 3], "soreness_data": [1, None, 2], "recent_workouts_count": 9, "recent_prs": ["Sentadilla: 80 kg"],
+        "summary": {"cumplimiento_pct": 90, "molestias": [{"zona": "Rodillas", "veces": 2, "fuertes": 0}]},
+    }
+    r = client.post("/api/brain/analyze-analytics", json=body, headers=auth(world["token_a"]))
+    assert r.status_code == 200, r.text
+    assert r.json() == {"workload_analysis": "Carga bien asimilada.", "progress_analysis": "Cumple 9 de 10.", "recommendations": ["Dormir más"]}
+    # La IA recibe el periodo, la fase y el resumen completo
+    assert prompts and "últimos 30 días" in prompts[0] and "Fuerza (BASE)" in prompts[0] and "Rodillas" in prompts[0]
+
+
+def test_analytics_report_old_app_payload_still_works(client, world, monkeypatch):
+    fake_gemini(monkeypatch, {server.GEMINI_MODELS[0]: '[{"workload_analysis": "a", "progress_analysis": "b", "recommendations": ["c"]}]'})
+    body = {"athlete_name": "x", "fatigue_data": [], "soreness_data": [], "recent_workouts_count": 0, "recent_prs": [], "current_phase": "BASE"}
+    r = client.post("/api/brain/analyze-analytics", json=body, headers=auth(world["token_a"]))
+    assert r.status_code == 200, r.text
+    assert r.json()["recommendations"] == ["c"]

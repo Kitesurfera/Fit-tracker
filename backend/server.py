@@ -131,11 +131,15 @@ api_router = APIRouter(prefix="/api")
 # --- MODELOS PYDANTIC ---
 class AnalyticsAnalyzeRequest(BaseModel):
     athlete_name: str
-    fatigue_data: list
-    soreness_data: list
-    recent_workouts_count: int
-    recent_prs: list
-    
+    fatigue_data: list = []
+    soreness_data: list = []
+    recent_workouts_count: int = 0
+    recent_prs: list = []
+    # Informe por periodo (opcionales: las versiones antiguas de la app no los mandan)
+    period_days: Optional[int] = None
+    current_phase: Optional[str] = None
+    summary: Optional[dict] = None
+
 class WellnessCreate(BaseModel):
     fatigue: int
     stress: int
@@ -807,26 +811,44 @@ async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_
     await check_ai_quota(user)
         
     try:
+        days = data.period_days if data.period_days and 1 <= data.period_days <= 366 else 14
+        resumen = ''
+        if data.summary:
+            resumen = json.dumps(data.summary, ensure_ascii=False, default=str)[:8000]
         system_prompt = f"""
-        Eres un preparador físico de élite analizando los datos recientes de {data.athlete_name}.
-        Analiza estos datos con un tono muy profesional, directo y científico.
-        
-        Datos de los últimos 14 días:
-        - Curva de Fatiga (0-5): {data.fatigue_data}
-        - Curva de Agujetas/Dolor (0-5): {data.soreness_data}
-        - Entrenamientos (últimos 30d): {data.recent_workouts_count}
-        - Mejores marcas recientes (PRs): {', '.join(data.recent_prs) if data.recent_prs else 'Ninguno registrado'}
-        
+        Eres un preparador físico de élite analizando los datos de {data.athlete_name} para su informe de rendimiento.
+        Escribe en español, con tono profesional, cercano y directo. Usa los números que te doy; no inventes datos.
+        Si faltan datos (p. ej. no registra el bienestar), dilo y recomienda registrarlos.
+
+        Periodo analizado: últimos {days} días. {('Fase de la planificación: ' + data.current_phase + '.') if data.current_phase else ''}
+        - Fatiga (0-5) en el periodo (null = sin registro): {data.fatigue_data}
+        - Agujetas/dolor (0-5) en el periodo: {data.soreness_data}
+        - Sesiones hechas: {data.recent_workouts_count}
+        - Mejores marcas: {', '.join(map(str, data.recent_prs)) if data.recent_prs else 'Ninguna registrada'}
+        {('- Resumen completo del periodo (JSON): ' + resumen) if resumen else ''}
+
         RESPONDE ÚNICAMENTE CON JSON PURO USANDO ESTA ESTRUCTURA EXACTA:
         {{
-            "workload_analysis": "Párrafo analizando la tendencia de su fatiga y dolor en estos 14 días. ¿Hay riesgo de sobreentrenamiento o está asimilando bien las cargas?",
-            "progress_analysis": "Párrafo evaluando su constancia ({data.recent_workouts_count} sesiones) y su evolución en las marcas (PRs).",
-            "recommendations": ["Tip técnico 1", "Tip técnico 2", "Tip técnico 3"]
+            "workload_analysis": "Un párrafo (3-5 frases) sobre carga, fatiga, sueño y molestias: ¿asimila bien las cargas o hay señales de riesgo?",
+            "progress_analysis": "Un párrafo (3-5 frases) sobre cumplimiento de sesiones, tests y marcas: qué mejora y qué no.",
+            "recommendations": ["3 o 4 recomendaciones concretas y accionables para las próximas semanas"]
         }}
         """
 
-        return await ask_gemini_json(system_prompt, "Analiza los datos y responde con el JSON indicado.")
-        
+        result = await ask_gemini_json(system_prompt, "Analiza los datos y responde con el JSON indicado.")
+        if isinstance(result, list):
+            result = result[0] if result and isinstance(result[0], dict) else {}
+        if not isinstance(result, dict):
+            result = {}
+        recs = result.get('recommendations') or []
+        if isinstance(recs, str):
+            recs = [recs]
+        return {
+            "workload_analysis": str(result.get('workload_analysis') or ''),
+            "progress_analysis": str(result.get('progress_analysis') or ''),
+            "recommendations": [str(r) for r in recs if r][:6],
+        }
+
     except HTTPException:
         raise
     except Exception as e:

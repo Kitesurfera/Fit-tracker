@@ -21,6 +21,7 @@ import VideoUploader from '../src/components/VideoUploader';
 import TechniqueVideoPlayer from '../src/components/TechniqueVideoPlayer';
 import { localDateStr } from '../src/utils/dates';
 import { goBack } from '../src/utils/navigation';
+import { SLUG_TRANSLATIONS } from '../src/utils/bodyParts';
 import { installWebAudioUnlock, unlockWebAudio, playWebBeep, setSoundInSilentMode, SILENT_MODE_KEY } from '../src/utils/webAudio';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
@@ -31,23 +32,6 @@ const { height: screenHeight } = Dimensions.get('window');
 
 type SetStatus = 'pending' | 'completed' | 'skipped';
 
-const SLUG_TRANSLATIONS: Record<string, string> = {
-  'chest-left': 'Pecho Izquierdo', 'chest-right': 'Pecho Derecho',
-  'upper-back-left': 'Espalda Alta Izq.', 'upper-back-right': 'Espalda Alta Der.',
-  'lower-back-left': 'Lumbar Izquierdo', 'lower-back-right': 'Lumbar Derecho',
-  'quadriceps-left': 'Cuádriceps Izq.', 'quadriceps-right': 'Cuádriceps Der.',
-  'hamstring-left': 'Isquio Izquierdo', 'hamstring-right': 'Isquio Derecho',
-  'gluteal-left': 'Glúteo Izquierdo', 'gluteal-right': 'Glúteo Derecho',
-  'shoulders-left': 'Hombro Izquierdo', 'shoulders-right': 'Hombro Derecho',
-  'biceps-left': 'Bíceps Izquierdo', 'biceps-right': 'Bíceps Derecho',
-  'triceps-left': 'Tríceps Izquierdo', 'triceps-right': 'Tríceps Derecho',
-  'forearm-left': 'Antebrazo Izquierdo', 'forearm-right': 'Antebrazo Derecho',
-  'calves-left': 'Gemelo Izquierdo', 'calves-right': 'Gemelo Derecho',
-  'knees-left': 'Rodilla Izquierda', 'knees-right': 'Rodilla Derecha',
-  'ankles-left': 'Tobillo Izquierdo', 'ankles-right': 'Tobillo Derecho',
-  'feet-left': 'Pie Izquierdo', 'feet-right': 'Pie Derecho',
-  'abs': 'Abdomen Central', 'neck': 'Cuello / Trapecio'
-};
 
 const AVAILABLE_PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
 const PLATE_COLORS: Record<number, string> = {
