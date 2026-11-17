@@ -77,20 +77,24 @@ export default function GeminiChatModal({
     }
   }, [messages]);
 
-  const sendMessage = async (text: string) => {
+  // retry = volver a enviar el último mensaje que falló (sin repetirlo en la conversación)
+  const sendMessage = async (text: string, retry = false) => {
     const clean = text.trim();
     if (!clean || isTyping) return;
 
     const newUserMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: clean };
+    let previous = messages.filter(m => m.id !== 'welcome-1' && !m.isError);
+    if (retry && previous.length && previous[previous.length - 1].role === 'user' && previous[previous.length - 1].content === clean) {
+      previous = previous.slice(0, -1);
+    }
     // El historial lleva también las sesiones propuestas, para poder pedir cambios ("cambia el ejercicio 2 del viernes")
-    const chatHistory = messages
-      .filter(m => m.id !== 'welcome-1' && !m.isError)
+    const chatHistory = previous
       .map(m => ({
         role: m.role === 'assistant' ? 'model' : 'user',
         parts: [{ text: m.workouts?.length ? `${m.content}\n[Sesiones propuestas: ${JSON.stringify(m.workouts).slice(0, 4000)}]` : m.content }]
       }));
 
-    setMessages(prev => [...prev.filter(m => !m.retryText), newUserMsg]);
+    setMessages(prev => (retry ? prev.filter(m => !m.retryText) : [...prev.filter(m => !m.retryText), newUserMsg]));
     setInputText('');
     setIsTyping(true);
 
@@ -316,7 +320,7 @@ export default function GeminiChatModal({
               {item.content}
             </Text>
             {!!item.retryText && (
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Reintentar" onPress={() => sendMessage(item.retryText!)} disabled={isTyping}
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel="Reintentar" onPress={() => sendMessage(item.retryText!, true)} disabled={isTyping}
                 style={[styles.retryBtn, { borderColor: colors.primary }]}>
                 <Ionicons name="refresh" size={16} color={colors.primary} />
                 <Text style={{ color: colors.primary, fontWeight: '800' }}>Reintentar</Text>

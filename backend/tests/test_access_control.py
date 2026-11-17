@@ -531,3 +531,19 @@ def test_cloudinary_delete_is_signed(monkeypatch):
     assert sent["url"].endswith("/slsdfq8t/video/destroy") and d["signature"] == expected and d["api_key"] == "clave"
     monkeypatch.setattr(server, "CLOUDINARY_API_SECRET", None)
     assert server.delete_cloudinary_video("carpeta/clip") is False
+
+
+def test_ai_works_when_recent_sessions_were_skipped(client, world, monkeypatch):
+    """Una sesión saltada ([NO COMPLETADA]) está completada pero sin resultados: antes hacía fallar la IA."""
+    calls = fake_gemini(monkeypatch, {m: AI_SESSION for m in server.GEMINI_MODELS})
+    hb = auth(world["token_b"])
+    client.put(f"/api/workouts/{world['workout_b']}", headers=hb, json={"completed": True, "observations": "[NO COMPLETADA] Motivo: lluvia"})
+    res = client.post("/api/brain/generate-workout", headers=hb, json={"userMessage": "hola", "athlete_id": world["athlete_b"], "athleteContext": None})
+    assert res.status_code == 200, res.text
+    assert len(res.json()["workouts"]) == 2
+
+
+def test_ai_accepts_a_bare_list_of_sessions(client, world, monkeypatch):
+    fake_gemini(monkeypatch, {m: '[{"title": "A", "exercises": [{"name": "Plancha"}]}]' for m in server.GEMINI_MODELS})
+    res = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"})
+    assert res.status_code == 200 and res.json()["workouts"][0]["title"] == "A"

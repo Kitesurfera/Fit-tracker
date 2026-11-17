@@ -277,7 +277,7 @@ class TestUpdate(BaseModel):
 
 class GeminiChatRequest(BaseModel):
     userMessage: str
-    athleteContext: dict = {}
+    athleteContext: Optional[dict] = None
     chatHistory: list = []
     athlete_id: Optional[str] = None
 
@@ -664,8 +664,12 @@ def today_context() -> str:
     dias = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
     return f"Hoy es {dias[now.weekday()]} {now.strftime('%Y-%m-%d')}."
 
-def normalize_ai_workouts(result: dict) -> dict:
+def normalize_ai_workouts(result: Any) -> dict:
     """Acepta una o varias sesiones y devuelve siempre 'workouts' (lista) y 'workoutData' (la primera, para versiones antiguas de la app)."""
+    if isinstance(result, list):  # a veces el modelo devuelve directamente la lista de sesiones
+        result = {"workouts": result}
+    if not isinstance(result, dict):
+        result = {"response_message": str(result)}
     workouts = result.get("workouts")
     if not isinstance(workouts, list):
         workouts = [result["workoutData"]] if isinstance(result.get("workoutData"), dict) else []
@@ -704,8 +708,12 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
             if recent_workouts:
                 contexto_atleta += "\nHISTORIAL RECIENTE (Últimas sesiones completadas):\n"
                 for w in recent_workouts:
-                    rpe = w.get('completion_data', {}).get('rpe', '?')
-                    nombres_ejercicios = [ex.get('name') for ex in w.get('exercises', [])[:3]]
+                    # Una sesión saltada está "completada" pero sin resultados (completion_data = None)
+                    if '[NO COMPLETADA]' in (w.get('observations') or ''):
+                        contexto_atleta += f"- {w.get('title')}: NO la hizo ({(w.get('observations') or '').replace('[NO COMPLETADA] ', '')}).\n"
+                        continue
+                    rpe = (w.get('completion_data') or {}).get('rpe') or '?'
+                    nombres_ejercicios = [str(ex.get('name')) for ex in (w.get('exercises') or [])[:3] if isinstance(ex, dict) and ex.get('name')]
                     contexto_atleta += f"- {w.get('title')} (RPE reportado: {rpe}/10). Ejercicios: {', '.join(nombres_ejercicios)}...\n"
                     
             today = datetime.now(timezone.utc).isoformat().split('T')[0]
@@ -718,9 +726,10 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
             if current_micro:
                 contexto_atleta += f"\n📅 FASE DE PERIODIZACIÓN ACTUAL: {current_micro.get('nombre')} (Tipo: {current_micro.get('tipo', 'CARGA')}). Adapta la intensidad a esta fase.\n"
 
-        fatiga = data.athleteContext.get('fatigue', '-')
-        dolor = data.athleteContext.get('soreness', '-')
-        fase_ciclo = data.athleteContext.get('cycle_phase', 'No registrada')
+        estado = data.athleteContext if isinstance(data.athleteContext, dict) else {}
+        fatiga = estado.get('fatigue', '-')
+        dolor = estado.get('soreness', '-')
+        fase_ciclo = estado.get('cycle_phase') or estado.get('cyclePhase') or 'No registrada'
         
         system_prompt = f"""
         Eres un preparador físico de élite y experto en alto rendimiento.
@@ -787,8 +796,9 @@ async def generate_workout_api(data: GeminiChatRequest, user=Depends(get_current
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error general en endpoint IA: {str(e)}")
-        raise HTTPException(status_code=500, detail="Error conectando con la IA.")
+        logger.exception(f"Error general en endpoint IA: {str(e)}")
+        # El tipo de error ayuda a encontrar la causa si vuelve a pasar (sale en el mensaje de la app)
+        raise HTTPException(status_code=500, detail=f"Error preparando la petición a la IA ({type(e).__name__}). Inténtalo de nuevo; si se repite, avisa.")
 
 @api_router.post("/brain/analyze-analytics")
 async def analyze_analytics_api(data: AnalyticsAnalyzeRequest, user=Depends(get_current_user)):
