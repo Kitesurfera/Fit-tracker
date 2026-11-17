@@ -547,3 +547,21 @@ def test_ai_accepts_a_bare_list_of_sessions(client, world, monkeypatch):
     fake_gemini(monkeypatch, {m: '[{"title": "A", "exercises": [{"name": "Plancha"}]}]' for m in server.GEMINI_MODELS})
     res = client.post("/api/brain/generate-workout", headers=auth(world["token_b"]), json={"userMessage": "hola"})
     assert res.status_code == 200 and res.json()["workouts"][0]["title"] == "A"
+
+
+def test_coach_notes_can_be_deleted_for_good(client, world):
+    completion = {"exercise_results": [{"name": "Sentadilla", "coach_note": "Más profundidad"}, {"name": "Press", "coach_note": "Codos cerrados"}],
+                  "hiit_results": [{"hiit_exercises": [{"name": "Burpees", "coach_note": "Ritmo"}]}]}
+    wid = _workout_for_athlete_a(client, world, completed=True, completion_data=completion)
+    ha, hb = auth(world["token_athlete_a"]), auth(world["token_b"])
+    # Otro entrenador no puede
+    assert client.delete(f"/api/workouts/{wid}/coach-note/0", headers=hb).status_code == 403
+    # La deportista borra una de fuerza y una de HIIT
+    assert client.delete(f"/api/workouts/{wid}/coach-note/0", headers=ha).status_code == 200
+    assert client.delete(f"/api/workouts/{wid}/coach-note/0-0", headers=ha).status_code == 200
+    stored = [w for w in client.get("/api/workouts", headers=ha).json() if w["id"] == wid][0]["completion_data"]
+    assert [e["coach_note"] for e in stored["exercise_results"]] == ["", "Codos cerrados"]
+    assert stored["hiit_results"][0]["hiit_exercises"][0]["coach_note"] == ""
+    # Ya no existe: 404
+    assert client.delete(f"/api/workouts/{wid}/coach-note/0", headers=ha).status_code == 404
+    assert client.delete("/api/workouts/no-existe/coach-note/0", headers=ha).status_code == 404

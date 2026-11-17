@@ -93,8 +93,7 @@ export default function AnalyticsScreen() {
   const [workoutHistory, setWorkoutHistory] = useState<any[]>([]);
   const [wellnessHistory, setWellnessHistory] = useState<any[]>([]);
   const [macros, setMacros] = useState<any[]>([]); 
-  const [archivedFeedbacks, setArchivedFeedbacks] = useState<string[]>([]);
-  const [showArchivedModal, setShowArchivedModal] = useState(false);
+  const [deletingNoteId, setDeletingNoteId] = useState<string | null>(null);
   
   const [athletes, setAthletes] = useState<any[]>([]);
   const { selectedAthlete, setSelectedAthlete } = useTrainer();
@@ -120,13 +119,6 @@ export default function AnalyticsScreen() {
     useCallback(() => {
       AsyncStorage.getItem('custom_exercise_muscles').then(res => { if (res) setCustomExerciseMuscles(JSON.parse(res)); });
       AsyncStorage.getItem('custom_merge_map').then(res => { if (res) setMergeMap(JSON.parse(res)); });
-      
-      const targetId = isTrainer ? selectedAthlete?.id : user?.id;
-      if (targetId) {
-        AsyncStorage.getItem(`archived_feedbacks_${targetId}`).then(res => {
-          if (res) setArchivedFeedbacks(JSON.parse(res));
-        });
-      }
     }, [user, selectedAthlete])
   );
 
@@ -382,15 +374,15 @@ export default function AnalyticsScreen() {
     const list: any[] = [];
     workoutHistory.forEach(w => {
       if (w.completed && w.completion_data) {
-        w.completion_data.exercise_results?.forEach((ex: any) => {
+        w.completion_data.exercise_results?.forEach((ex: any, i: number) => {
           if (ex.coach_note && !ex.recorded_video_url) {
-            list.push({ id: `${w.id}-${ex.name}`, date: w.date, name: ex.name, note: ex.coach_note, video: ex.recorded_video_url });
+            list.push({ id: `${w.id}-${i}`, workoutId: w.id, key: String(i), date: w.date, title: w.title, name: ex.name, note: ex.coach_note });
           }
         });
-        w.completion_data.hiit_results?.forEach((b: any) => {
-          b.hiit_exercises?.forEach((ex: any) => {
+        w.completion_data.hiit_results?.forEach((b: any, bIdx: number) => {
+          b.hiit_exercises?.forEach((ex: any, eIdx: number) => {
             if (ex.coach_note && !ex.recorded_video_url) {
-              list.push({ id: `${w.id}-${ex.name}`, date: w.date, name: ex.name, note: ex.coach_note, video: ex.recorded_video_url });
+              list.push({ id: `${w.id}-${bIdx}-${eIdx}`, workoutId: w.id, key: `${bIdx}-${eIdx}`, date: w.date, title: w.title, name: ex.name, note: ex.coach_note });
             }
           });
         });
@@ -399,45 +391,37 @@ export default function AnalyticsScreen() {
     return list.sort((a, b) => b.date.localeCompare(a.date));
   }, [workoutHistory]);
 
-  const handleArchiveFeedback = async (fbId: string) => {
-    const targetId = isTrainer ? selectedAthlete?.id : user?.id;
-    if (!targetId) return;
-    const updated = [...archivedFeedbacks, fbId];
-    setArchivedFeedbacks(updated);
-    await AsyncStorage.setItem(`archived_feedbacks_${targetId}`, JSON.stringify(updated));
-  };
-
-  const handleRestoreFeedback = async (fbId: string) => {
-    const targetId = isTrainer ? selectedAthlete?.id : user?.id;
-    if (!targetId) return;
-    const updated = archivedFeedbacks.filter(id => id !== fbId);
-    setArchivedFeedbacks(updated);
-    await AsyncStorage.setItem(`archived_feedbacks_${targetId}`, JSON.stringify(updated));
-  };
-
-  const handleDeleteArchivedFeedback = async (fbId: string) => {
-    const targetId = isTrainer ? selectedAthlete?.id : user?.id;
-    if (!targetId) return;
-    Alert.alert(
-      "Eliminar Feedback",
-      "¿Estás seguro de que quieres eliminar este feedback permanentemente?",
-      [
-        { text: "Cancelar", style: "cancel" },
-        { 
-          text: "Eliminar", 
-          style: "destructive", 
-          onPress: async () => {
-            const updated = archivedFeedbacks.filter(id => id !== fbId);
-            setArchivedFeedbacks(updated);
-            await AsyncStorage.setItem(`archived_feedbacks_${targetId}`, JSON.stringify(updated));
+  // Elimina la nota del entrenador del servidor (desaparece para la deportista y para el entrenador, en todos los dispositivos)
+  const handleDeleteNote = (fb: any) => {
+    Alert.alert('Eliminar nota', '¿Seguro que quieres eliminar esta nota del entrenador? No se puede deshacer.', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Eliminar', style: 'destructive', onPress: async () => {
+          setDeletingNoteId(fb.id);
+          try {
+            await api.deleteCoachNote(fb.workoutId, fb.key);
+            setWorkoutHistory(prev => prev.map(w => {
+              if (w.id !== fb.workoutId || !w.completion_data) return w;
+              const cd = { ...w.completion_data };
+              if (fb.key.includes('-')) {
+                const [bi, ei] = fb.key.split('-').map(Number);
+                cd.hiit_results = (cd.hiit_results || []).map((blk: any, i: number) => i !== bi ? blk : {
+                  ...blk, hiit_exercises: (blk.hiit_exercises || []).map((ex: any, j: number) => (j === ei ? { ...ex, coach_note: '' } : ex)),
+                });
+              } else {
+                cd.exercise_results = (cd.exercise_results || []).map((ex: any, i: number) => (i === Number(fb.key) ? { ...ex, coach_note: '' } : ex));
+              }
+              return { ...w, completion_data: cd };
+            }));
+          } catch (e: any) {
+            Alert.alert('Error', e?.message || 'No se pudo eliminar la nota.');
+          } finally {
+            setDeletingNoteId(null);
           }
-        }
-      ]
-    );
+        },
+      },
+    ]);
   };
-
-  const visibleFeedbacks = allFeedbacks.filter(fb => !archivedFeedbacks.includes(fb.id));
-  const archivedFeedbacksList = allFeedbacks.filter(fb => archivedFeedbacks.includes(fb.id));
 
   const exportToPDF = async () => {
     // En el navegador abrimos la pestaña del informe en el mismo clic (si se abre después de esperar a la IA,
@@ -993,42 +977,27 @@ export default function AnalyticsScreen() {
                   )}
 
                   <Text style={{ color: colors.textSecondary, fontSize: 12, fontWeight: '800', letterSpacing: 1, marginBottom: 6 }}>NOTAS DEL ENTRENADOR</Text>
-                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 15 }}>
-                    <TouchableOpacity 
-                      style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.surfaceHighlight, paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: colors.border }}
-                      onPress={() => setShowArchivedModal(true)}
-                    >
-                      <Ionicons name="archive" size={16} color={colors.primary} />
-                      <Text style={{ color: colors.textPrimary, fontWeight: '700', fontSize: 13 }}>
-                        Ver Archivados ({archivedFeedbacksList.length})
-                      </Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {visibleFeedbacks.length === 0 ? (
-                    <Text style={{color: colors.textSecondary, textAlign: 'center', marginTop: 20}}>No tienes feedback pendiente.</Text>
+                  {allFeedbacks.length === 0 ? (
+                    <Text style={{color: colors.textSecondary, textAlign: 'center', marginTop: 20}}>No hay notas del entrenador.</Text>
                   ) : (
-                    visibleFeedbacks.map((fb, i) => (
+                    allFeedbacks.map((fb) => (
                       <View key={fb.id} style={[styles.feedbackCard, { backgroundColor: colors.surface, borderColor: colors.primary + '40' }]}>
                         <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start'}}>
                            <View style={{flex: 1}}>
-                              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{fb.date}</Text>
+                              <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{[fb.date?.split('-').reverse().join('/'), fb.title].filter(Boolean).join(' · ')}</Text>
                               <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 8 }}>{fb.name}</Text>
                               <Text style={{ color: colors.textPrimary, fontStyle: 'italic', lineHeight: 22 }}>"{fb.note}"</Text>
-                              
-                              <TouchableOpacity 
-                                style={{flexDirection: 'row', alignItems: 'center', marginTop: 15}}
-                                onPress={() => handleArchiveFeedback(fb.id)}
-                              >
-                                <Ionicons name="archive-outline" size={16} color={colors.textSecondary} />
-                                <Text style={{color: colors.textSecondary, marginLeft: 5, fontSize: 12, fontWeight: '700'}}>Marcar como leído / Archivar</Text>
-                              </TouchableOpacity>
                            </View>
-                           {fb.video ? (
-                             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Iniciar" onPress={() => setExpandedVideo(fb.video)} style={{backgroundColor: colors.primary + '20', padding: 12, borderRadius: 12, marginLeft: 15}}>
-                               <Ionicons name="play" size={28} color={colors.primary} />
-                             </TouchableOpacity>
-                           ) : null}
+                           <TouchableOpacity
+                             accessibilityRole="button" accessibilityLabel={`Eliminar nota de ${fb.name}`}
+                             onPress={() => handleDeleteNote(fb)} disabled={deletingNoteId === fb.id}
+                             style={{ flexDirection: 'row', alignItems: 'center', gap: 4, padding: 8, marginLeft: 10, borderRadius: 10, backgroundColor: (colors.error || '#EF4444') + '12' }}
+                           >
+                             {deletingNoteId === fb.id
+                               ? <ActivityIndicator size="small" color={colors.error || '#EF4444'} />
+                               : <Ionicons name="trash-outline" size={18} color={colors.error || '#EF4444'} />}
+                             <Text style={{ color: colors.error || '#EF4444', fontWeight: '700', fontSize: 12 }}>Eliminar</Text>
+                           </TouchableOpacity>
                         </View>
                       </View>
                     ))
@@ -1147,54 +1116,6 @@ export default function AnalyticsScreen() {
           </View>
         </Modal>
 
-        {/* MODAL: FEEDBACK ARCHIVADOS */}
-        <Modal visible={showArchivedModal} transparent animationType="slide">
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: colors.surface, maxHeight: '85%' }]}>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                <Text style={[styles.modalTitle, { margin: 0 }]}>Feedback Archivados</Text>
-                <TouchableOpacity accessibilityRole="button" accessibilityLabel="Cerrar" onPress={() => setShowArchivedModal(false)}>
-                  <Ionicons name="close" size={24} color={colors.textSecondary} />
-                </TouchableOpacity>
-              </View>
-
-              <ScrollView showsVerticalScrollIndicator={false}>
-                {archivedFeedbacksList.length === 0 ? (
-                  <Text style={{ color: colors.textSecondary, textAlign: 'center', marginTop: 30, marginBottom: 30 }}>
-                    No hay feedback archivados.
-                  </Text>
-                ) : (
-                  archivedFeedbacksList.map((fb) => (
-                    <View key={fb.id} style={[styles.feedbackCard, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
-                      <Text style={{ color: colors.textSecondary, fontSize: 12 }}>{fb.date}</Text>
-                      <Text style={{ color: colors.textPrimary, fontWeight: '800', fontSize: 16, marginBottom: 8 }}>{fb.name}</Text>
-                      <Text style={{ color: colors.textPrimary, fontStyle: 'italic', lineHeight: 22, marginBottom: 15 }}>"{fb.note}"</Text>
-                      
-                      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 15, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12 }}>
-                        <TouchableOpacity 
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                          onPress={() => handleRestoreFeedback(fb.id)}
-                        >
-                          <Ionicons name="arrow-undo" size={16} color={colors.primary} />
-                          <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 13 }}>Restaurar</Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity 
-                          style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                          onPress={() => handleDeleteArchivedFeedback(fb.id)}
-                        >
-                          <Ionicons name="trash-outline" size={16} color={colors.error || '#EF4444'} />
-                          <Text style={{ color: colors.error || '#EF4444', fontWeight: '700', fontSize: 13 }}>Eliminar</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  ))
-                )}
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
-        
         {renderVideoModal()}
       </KeyboardAvoidingView>
     </SafeAreaView>
