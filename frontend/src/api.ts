@@ -81,6 +81,13 @@ export const api = {
     return await res.json();
   },
 
+  // Borra de verdad una nota del entrenador (clave del ejercicio: "3" en fuerza, "1-2" en HIIT)
+  deleteCoachNote: async (workoutId: string, exerciseKey: string) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/workouts/${workoutId}/coach-note/${exerciseKey}`, { method: 'DELETE', headers });
+    return res.json();
+  },
+
   // --- VÍDEOS DE TÉCNICA ---
   getTechniqueVideos: async (params?: { athlete_id?: string; workout_id?: string }) => {
     const headers = await getAuthHeaders();

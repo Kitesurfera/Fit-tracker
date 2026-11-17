@@ -951,6 +951,24 @@ async def _get_accessible_video(user: dict, video_id: str) -> dict:
     await ensure_athlete_access(user, video['athlete_id'])
     return video
 
+@api_router.delete("/workouts/{workout_id}/coach-note/{exercise_key}")
+async def delete_coach_note(workout_id: str, exercise_key: str, user=Depends(get_current_user)):
+    """Borra de verdad una nota del entrenador de un ejercicio (clave "3" en fuerza o "1-2" en HIIT)."""
+    workout = await db.workouts.find_one({"id": workout_id}, {"_id": 0, "athlete_id": 1, "completion_data": 1})
+    if not workout:
+        raise HTTPException(status_code=404, detail="Sesión no encontrada")
+    await ensure_athlete_access(user, workout['athlete_id'])
+    completion_data = workout.get('completion_data') or {}
+    found = False
+    for key, ex in _workout_video_items(completion_data):
+        if key == exercise_key and isinstance(ex, dict) and ex.get('coach_note'):
+            ex['coach_note'] = ''
+            found = True
+    if not found:
+        raise HTTPException(status_code=404, detail="Nota no encontrada")
+    await db.workouts.update_one({"id": workout_id}, {"$set": {"completion_data": completion_data}})
+    return {"status": "deleted"}
+
 @api_router.get("/videos")
 async def list_videos(athlete_id: Optional[str] = None, workout_id: Optional[str] = None, user=Depends(get_current_user)):
     if user['role'] != 'trainer':
