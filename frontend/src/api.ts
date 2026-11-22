@@ -88,6 +88,33 @@ export const api = {
     return res.json();
   },
 
+  // --- NOTIFICACIONES PUSH ---
+  getPushConfig: async (): Promise<{ public_key: string; prefs: Record<string, boolean>; devices: number }> => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/push/config`, { headers });
+    return res.json();
+  },
+  savePushPrefs: async (prefs: Record<string, boolean>): Promise<{ prefs: Record<string, boolean> }> => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/push/prefs`, { method: 'PUT', headers, body: JSON.stringify({ prefs }) });
+    return res.json();
+  },
+  pushSubscribe: async (subscription: any, device: string) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/push/subscribe`, { method: 'POST', headers, body: JSON.stringify({ subscription, device }) });
+    return res.json();
+  },
+  pushUnsubscribe: async (endpoint: string) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/push/unsubscribe`, { method: 'POST', headers, body: JSON.stringify({ endpoint }) });
+    return res.json();
+  },
+  pushTest: async (): Promise<{ sent: number; devices: number }> => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/push/test`, { method: 'POST', headers });
+    return res.json();
+  },
+
   // --- VÍDEOS DE TÉCNICA ---
   getTechniqueVideos: async (params?: { athlete_id?: string; workout_id?: string }) => {
     const headers = await getAuthHeaders();

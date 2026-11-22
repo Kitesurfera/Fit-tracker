@@ -9,6 +9,7 @@ import { TrainerProvider } from '../src/context/TrainerContext';
 import SyncStatusBanner, { subscribeToConnection } from '../src/components/SyncStatusBanner';
 import { installWebAlert } from '../src/utils/webAlert';
 import { registerServiceWorker } from '../src/utils/registerServiceWorker';
+import PushBridge from '../src/components/PushBridge';
 
 installWebAlert();
 
@@ -35,6 +36,7 @@ export default function RootLayout() {
       <ThemeProvider>
         <AuthProvider>
           <StatusBar style="auto" />
+          <PushBridge />
           <View style={{ flex: 1 }}>
             <SyncStatusBanner />
             <Stack screenOptions={{ headerShown: false }}>
