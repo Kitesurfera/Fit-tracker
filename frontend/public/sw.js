@@ -1,4 +1,5 @@
-// Service worker de AM Coaching: guarda la app en el dispositivo para que abra rápido y sin conexión.
+// Service worker de AM Coaching: guarda la app en el dispositivo para que abra rápido y sin conexión,
+// y muestra las notificaciones (al final del archivo).
 // - Páginas: primero internet (siempre la última versión); sin conexión, la copia guardada.
 // - Código, imágenes y fuentes (/_expo, /assets, /icons): la copia guardada; sus nombres cambian en cada versión.
 // - Las peticiones a otros dominios (servidor de datos en Render, Cloudinary) no se tocan.
@@ -100,4 +101,38 @@ self.addEventListener('fetch', (event) => {
       return res;
     })());
   }
+});
+
+// --- NOTIFICACIONES ---
+// El servidor manda {title, body, url, tag}. Se muestran aunque la app esté cerrada.
+self.addEventListener('push', (event) => {
+  let data = {};
+  try { data = event.data ? event.data.json() : {}; } catch (e) { data = { body: event.data ? event.data.text() : '' }; }
+  const title = data.title || 'AM Coaching';
+  event.waitUntil(self.registration.showNotification(title, {
+    body: data.body || '',
+    icon: '/icons/icon-192.png',
+    badge: '/icons/badge-96.png',
+    tag: data.tag || undefined,
+    renotify: !!data.tag,          // si sustituye a otra del mismo tipo, vuelve a sonar
+    lang: 'es',
+    data: { url: data.url || '/' },
+  }));
+});
+
+// Al tocar la notificación: abre la app en la pantalla del aviso (si ya estaba abierta, la trae delante)
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = new URL((event.notification.data && event.notification.data.url) || '/', self.location.origin);
+  const path = url.pathname + url.search;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const app = windows.find((c) => new URL(c.url).origin === self.location.origin);
+    if (app) {
+      await app.focus().catch(() => {});
+      app.postMessage({ type: 'OPEN_URL', url: path });
+      return;
+    }
+    await self.clients.openWindow(path);
+  })());
 });

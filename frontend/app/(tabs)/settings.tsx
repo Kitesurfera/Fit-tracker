@@ -11,6 +11,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
+import PushSettings from '../../src/components/PushSettings';
 import { api } from '../../src/api';
 import { syncManager } from '../../src/offline';
 import { localDateStr } from '../../src/utils/dates';
@@ -489,6 +490,8 @@ export default function SettingsScreen() {
             </View>
           </View>
           
+          {(user?.role === 'athlete' || user?.role === 'trainer') && <PushSettings role={user.role} colors={colors} />}
+
           <Text style={[styles.sectionTitle, { marginTop: 25 }]}>NOTIFICACIONES Y AUDIO</Text>
           <View style={[styles.cardList, { backgroundColor: colors.surface }]}>
             <View style={styles.settingRowAction}>

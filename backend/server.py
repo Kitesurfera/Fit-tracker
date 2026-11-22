@@ -200,7 +200,6 @@ class ProfileUpdate(BaseModel):
     is_injured: Optional[bool] = None
     injury_notes: Optional[str] = None
     equipment: Optional[str] = None
-    web_push_subscription: Optional[dict] = None
     last_period_date: Optional[str] = None  
     cycle_length: Optional[int] = None      
     period_length: Optional[int] = None     
@@ -465,32 +464,235 @@ async def notify(background_tasks: BackgroundTasks, func, *args):
     else:
         background_tasks.add_task(func, *args)
 
-# Configuración VAPID
-VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY')
-VAPID_CLAIMS = {
-    "sub": os.environ.get('VAPID_SUBJECT', "mailto:claudiakiter31@gmail.com")
+# --- NOTIFICACIONES PUSH (al móvil, también con la app cerrada) ---
+# Cada persona puede tener varios dispositivos (colección push_subscriptions) y elige en Ajustes qué avisos recibe
+# (campo push_prefs del usuario). Las claves VAPID (las que identifican al servidor ante Google/Apple/Mozilla) se leen de
+# VAPID_PRIVATE_KEY o, si no existe, se crean una vez y se guardan en la base de datos: no hay que configurar nada.
+VAPID_CLAIMS = {"sub": os.environ.get('VAPID_SUBJECT', "mailto:claudiakiter31@gmail.com")}
+
+# Avisos que puede elegir cada perfil, con su valor por defecto
+PUSH_EVENTS = {
+    "athlete": {
+        "workout_assigned": True,    # el entrenador te programa una sesión
+        "workout_changed": True,     # cambia de fecha, de ejercicios o la quita
+        "coach_feedback": True,      # correcciones en vídeos y notas en los ejercicios
+    },
+    "trainer": {
+        "workout_completed": True,   # una deportista termina una sesión
+        "workout_skipped": True,     # marca una sesión como no hecha
+        "wellness_alert": True,      # bienestar con fatiga/dolor/estrés altos, mal sueño, molestias o lesión
+        "wellness_submitted": False, # todos los formularios de bienestar
+        "video_uploaded": True,      # sube un vídeo de técnica o comenta uno
+        "test_recorded": True,       # registra un test o una medida
+    },
 }
 
-def send_web_push(subscription_info: dict, title: str, message: str):
-    if not subscription_info or not isinstance(subscription_info, dict):
-        logger.warning("No hay información de suscripción web válida.")
-        return False
-    if not VAPID_PRIVATE_KEY:
-        logger.warning("VAPID_PRIVATE_KEY no configurada. Saltando web push.")
-        return False
+# Solo se envían avisos a los servicios de notificaciones de verdad (evita que alguien use el servidor para llamar a otras webs)
+PUSH_ENDPOINT_HOSTS = ("fcm.googleapis.com", "android.googleapis.com", "push.services.mozilla.com", "push.apple.com", "notify.windows.com")
 
-    try:
-        payload = json.dumps({"title": title, "body": message})
-        webpush(
-            subscription_info=subscription_info,
-            data=payload,
-            vapid_private_key=VAPID_PRIVATE_KEY,
-            vapid_claims=VAPID_CLAIMS
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Fallo enviando web push: {str(e)}")
+_vapid_cache: Dict[str, Any] = {}
+
+def _vapid_from_text(text: str):
+    from py_vapid import Vapid02
+    text = text.strip()
+    if 'BEGIN' in text:
+        return Vapid02.from_pem(text.encode())
+    return Vapid02.from_string(text)
+
+def _vapid_public_key(vv) -> str:
+    from cryptography.hazmat.primitives import serialization
+    import base64
+    raw = vv.public_key.public_bytes(serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint)
+    return base64.urlsafe_b64encode(raw).decode().rstrip('=')
+
+async def get_vapid():
+    """Devuelve (clave privada para firmar, clave pública para el navegador)."""
+    if _vapid_cache.get('vv'):
+        return _vapid_cache['vv'], _vapid_cache['public']
+    vv = None
+    env_key = os.environ.get('VAPID_PRIVATE_KEY')
+    if env_key:
+        try:
+            vv = _vapid_from_text(env_key)
+        except Exception as e:
+            logger.error(f"VAPID_PRIVATE_KEY no es válida ({type(e).__name__}); se usa la clave guardada en la base de datos.")
+    if vv is None:
+        from py_vapid import Vapid02
+        import base64
+        doc = await db.app_config.find_one({"_id": "vapid"})
+        if not doc:
+            new = Vapid02()
+            new.generate_keys()
+            raw = new.private_key.private_numbers().private_value.to_bytes(32, 'big')
+            try:
+                await db.app_config.insert_one({"_id": "vapid", "private_raw": base64.urlsafe_b64encode(raw).decode().rstrip('='),
+                                                "created_at": datetime.now(timezone.utc).isoformat()})
+            except Exception:
+                pass  # otra copia del servidor la creó a la vez: usamos la suya
+            doc = await db.app_config.find_one({"_id": "vapid"})
+        vv = Vapid02.from_raw(doc["private_raw"].encode())
+    _vapid_cache.update(vv=vv, public=_vapid_public_key(vv))
+    return _vapid_cache['vv'], _vapid_cache['public']
+
+def push_pref_enabled(target_user: dict, event: str) -> bool:
+    defaults = PUSH_EVENTS.get(target_user.get('role') or '', {})
+    if event not in defaults:
         return False
+    prefs = target_user.get('push_prefs') or {}
+    value = prefs.get(event)
+    return defaults[event] if value is None else bool(value)
+
+def _webpush_one(sub: dict, payload: str, vv) -> str:
+    """Envía un aviso a un dispositivo. Devuelve 'ok', 'gone' (el dispositivo ya no existe) o 'error'."""
+    try:
+        webpush(subscription_info={"endpoint": sub["endpoint"], "keys": sub["keys"]}, data=payload,
+                vapid_private_key=vv, vapid_claims=dict(VAPID_CLAIMS), ttl=24 * 3600, timeout=8,
+                headers={"Urgency": "high"})
+        return 'ok'
+    except WebPushException as e:
+        status = getattr(getattr(e, 'response', None), 'status_code', None)
+        if status in (403, 404, 410):
+            return 'gone'
+        logger.warning(f"Aviso push no enviado ({status}): {str(e)[:200]}")
+        return 'error'
+    except Exception as e:
+        logger.warning(f"Aviso push no enviado: {type(e).__name__}: {str(e)[:200]}")
+        return 'error'
+
+async def deliver_push(subs: list, payload: dict) -> int:
+    if not subs:
+        return 0
+    vv, _ = await get_vapid()
+    text = json.dumps(payload, ensure_ascii=False)
+    results = await asyncio.gather(*(run_in_threadpool(_webpush_one, s, text, vv) for s in subs))
+    gone = [s["endpoint"] for s, r in zip(subs, results) if r == 'gone']
+    if gone:
+        await db.push_subscriptions.delete_many({"endpoint": {"$in": gone}})
+    ok = [s["endpoint"] for s, r in zip(subs, results) if r == 'ok']
+    if ok:
+        await db.push_subscriptions.update_many({"endpoint": {"$in": ok}}, {"$set": {"last_ok_at": datetime.now(timezone.utc).isoformat()}})
+    return len(ok)
+
+async def push_to_user(user_id: str, event: Optional[str], title: str, body: str, url: str = "/", tag: Optional[str] = None) -> int:
+    """Envía un aviso a todos los dispositivos de una persona, si tiene ese tipo de aviso activado (event=None: siempre)."""
+    try:
+        target = await db.users.find_one({"id": user_id}, {"_id": 0, "role": 1, "push_prefs": 1})
+        if not target or (event and not push_pref_enabled(target, event)):
+            return 0
+        subs = await db.push_subscriptions.find({"user_id": user_id}, {"_id": 0, "endpoint": 1, "keys": 1}).to_list(20)
+        payload = {"title": title[:120], "body": body[:400], "url": url or "/", "tag": tag or event or "general"}
+        return await asyncio.wait_for(deliver_push(subs, payload), timeout=12)
+    except Exception as e:
+        logger.error(f"No se pudo enviar el aviso push: {type(e).__name__}: {e}")
+        return 0
+
+async def push_event(background_tasks: BackgroundTasks, user_id: Optional[str], event: str, title: str, body: str, url: str = "/", tag: Optional[str] = None):
+    """Como notify(): en Vercel se envía antes de responder; en un servidor normal, después."""
+    if not user_id:
+        return
+    if ON_VERCEL:
+        await push_to_user(user_id, event, title, body, url, tag)
+    else:
+        background_tasks.add_task(push_to_user, user_id, event, title, body, url, tag)
+
+try:
+    from zoneinfo import ZoneInfo
+    _APP_TZ = ZoneInfo(os.environ.get('APP_TIMEZONE', 'Europe/Madrid'))
+except Exception:
+    _APP_TZ = timezone.utc
+
+DIAS_SEMANA = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+
+def local_today() -> str:
+    return datetime.now(_APP_TZ).date().isoformat()
+
+def fecha_amable(date_str: str) -> str:
+    """'2026-11-24' -> 'hoy', 'mañana' o 'el lunes 24/11'."""
+    try:
+        d = datetime.strptime((date_str or '')[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return date_str or ''
+    today = datetime.now(_APP_TZ).date()
+    if d == today: return "hoy"
+    if d == today + timedelta(days=1): return "mañana"
+    return f"el {DIAS_SEMANA[d.weekday()]} {d.day}/{d.month}"
+
+def athlete_url(athlete: dict) -> str:
+    from urllib.parse import urlencode
+    return "/athlete-detail?" + urlencode({"id": athlete.get('id', ''), "name": athlete.get('name', '')})
+
+class PushKeys(BaseModel):
+    p256dh: str
+    auth: str
+
+class PushSubscriptionIn(BaseModel):
+    endpoint: str
+    keys: PushKeys
+
+class PushSubscribeRequest(BaseModel):
+    subscription: PushSubscriptionIn
+    device: Optional[str] = ''
+
+class PushUnsubscribeRequest(BaseModel):
+    endpoint: str
+
+class PushPrefsUpdate(BaseModel):
+    prefs: Dict[str, bool]
+
+def push_endpoint_allowed(endpoint: str) -> bool:
+    from urllib.parse import urlparse
+    try:
+        u = urlparse(endpoint)
+    except Exception:
+        return False
+    host = (u.hostname or '').lower()
+    return u.scheme == 'https' and any(host == h or host.endswith('.' + h) for h in PUSH_ENDPOINT_HOSTS)
+
+def push_prefs_for(user: dict) -> dict:
+    return {k: push_pref_enabled(user, k) for k in PUSH_EVENTS.get(user.get('role') or '', {})}
+
+@api_router.get("/push/config")
+async def push_config(user=Depends(get_current_user)):
+    _, public_key = await get_vapid()
+    devices = await db.push_subscriptions.count_documents({"user_id": user['id']})
+    return {"public_key": public_key, "prefs": push_prefs_for(user), "devices": devices}
+
+@api_router.put("/push/prefs")
+async def update_push_prefs(data: PushPrefsUpdate, user=Depends(get_current_user)):
+    allowed = PUSH_EVENTS.get(user.get('role') or '', {})
+    clean = {k: bool(v) for k, v in data.prefs.items() if k in allowed}
+    if clean:
+        await db.users.update_one({"id": user['id']}, {"$set": {f"push_prefs.{k}": v for k, v in clean.items()}})
+    updated = await db.users.find_one({"id": user['id']}, {"_id": 0, "role": 1, "push_prefs": 1})
+    return {"prefs": push_prefs_for(updated or user)}
+
+@api_router.post("/push/subscribe")
+async def push_subscribe(data: PushSubscribeRequest, user=Depends(get_current_user)):
+    sub = data.subscription
+    if len(sub.endpoint) > 1000 or not push_endpoint_allowed(sub.endpoint):
+        raise HTTPException(status_code=400, detail="Este navegador no es compatible con las notificaciones de la app.")
+    now = datetime.now(timezone.utc).isoformat()
+    # El mismo dispositivo solo pertenece a una cuenta: si otra persona inicia sesión en él, pasa a ser suyo
+    await db.push_subscriptions.update_one(
+        {"endpoint": sub.endpoint},
+        {"$set": {"user_id": user['id'], "keys": {"p256dh": sub.keys.p256dh[:200], "auth": sub.keys.auth[:100]},
+                  "device": (data.device or '')[:80], "updated_at": now},
+         "$setOnInsert": {"id": str(uuid.uuid4()), "created_at": now}},
+        upsert=True)
+    return {"status": "subscribed", "devices": await db.push_subscriptions.count_documents({"user_id": user['id']})}
+
+@api_router.post("/push/unsubscribe")
+async def push_unsubscribe(data: PushUnsubscribeRequest, user=Depends(get_current_user)):
+    await db.push_subscriptions.delete_one({"endpoint": data.endpoint, "user_id": user['id']})
+    return {"status": "unsubscribed", "devices": await db.push_subscriptions.count_documents({"user_id": user['id']})}
+
+@api_router.post("/push/test")
+async def push_test(user=Depends(get_current_user)):
+    devices = await db.push_subscriptions.count_documents({"user_id": user['id']})
+    if not devices:
+        raise HTTPException(status_code=400, detail="Activa primero las notificaciones en este dispositivo.")
+    sent = await push_to_user(user['id'], None, "🔔 Notificaciones activadas", "Así te llegarán los avisos de AM Coaching.", "/settings", "test")
+    return {"sent": sent, "devices": devices}
 
 # --- RUTAS DE PÍLDORAS (PREHAB/ACTIVACIÓN) ---
 @api_router.post("/pills")
@@ -1008,7 +1210,7 @@ async def list_videos(athlete_id: Optional[str] = None, workout_id: Optional[str
     return await db.technique_videos.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
 
 @api_router.post("/videos")
-async def create_video(data: TechniqueVideoCreate, user=Depends(get_current_user)):
+async def create_video(data: TechniqueVideoCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     athlete_id = data.athlete_id or user['id']
     athlete = await ensure_athlete_access(user, athlete_id)
     if not data.url.startswith("https://res.cloudinary.com/"):
@@ -1034,6 +1236,11 @@ async def create_video(data: TechniqueVideoCreate, user=Depends(get_current_user
     }
     await db.technique_videos.insert_one(video)
     video.pop('_id', None)
+    if user['role'] == 'athlete' and user.get('trainer_id'):
+        where = f" ({video['workout_title']})" if video.get('workout_title') else ''
+        await push_event(background_tasks, user['trainer_id'], "video_uploaded", f"🎥 {user.get('name', 'Tu deportista')} ha subido un vídeo",
+                         f"{video['exercise_name'] or 'Vídeo de técnica'}{where}. Pulsa para verlo y corregir.",
+                         f"/analytics?tab=feedback&athlete_id={user['id']}", f"video-{video['id']}")
     return video
 
 @api_router.delete("/videos/{video_id}")
@@ -1055,11 +1262,13 @@ async def add_video_comment(video_id: str, data: VideoCommentCreate, background_
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.technique_videos.update_one({"id": video_id}, {"$push": {"comments": comment}})
+    exercise = video.get('exercise_name') or 'técnica'
     if user['role'] == 'trainer':
-        athlete = await db.users.find_one({"id": video['athlete_id']}, {"_id": 0, "web_push_subscription": 1})
-        if athlete and athlete.get('web_push_subscription'):
-            await notify(background_tasks, send_web_push, athlete['web_push_subscription'], "🎥 Corrección de técnica",
-                         f"Tu entrenador ha comentado tu vídeo de {video.get('exercise_name') or 'técnica'}.")
+        await push_event(background_tasks, video['athlete_id'], "coach_feedback", f"🎥 Corrección en tu vídeo de {exercise}",
+                         text, "/analytics?tab=feedback", f"video-{video_id}")
+    elif user.get('trainer_id'):
+        await push_event(background_tasks, user['trainer_id'], "video_uploaded", f"💬 {user.get('name', 'Tu deportista')} ha comentado su vídeo",
+                         f"{exercise}: {text}", f"/analytics?tab=feedback&athlete_id={user['id']}", f"video-{video_id}")
     return comment
 
 @api_router.delete("/videos/{video_id}/comments/{comment_id}")
@@ -1154,6 +1363,26 @@ async def create_wellness(data: WellnessCreate, background_tasks: BackgroundTask
                 
             await notify(background_tasks, send_email_async, trainer['email'], titulo, mensaje_html)
 
+    if user.get('role') == 'athlete' and user.get('trainer_id'):
+        # Valores marcados con ⚠️ cuando son preocupantes (mismos umbrales que el aviso por WhatsApp)
+        values = [("Fatiga", data.fatigue, data.fatigue >= 4), ("Dolor", data.soreness, data.soreness >= 4),
+                  ("Estrés", data.stress, data.stress >= 4), ("Sueño", data.sleep_quality, data.sleep_quality <= 2)]
+        parts = [f"{label} {v}/5{' ⚠️' if bad else ''}" for label, v, bad in values]
+        molestias = [f"{zona}{' (fuerte)' if nivel == 'fuerte' else ''}" for zona, nivel in (data.discomforts or {}).items()]
+        if molestias: parts.append("Molestias: " + ", ".join(molestias))
+        if data.notes: parts.append(f"«{data.notes[:120]}»")
+        alerts = any(bad for *_, bad in values) or bool(molestias)
+        resumen = " · ".join(parts)
+        name = user.get('name', 'Tu deportista')
+        target = await db.users.find_one({"id": user['trainer_id']}, {"_id": 0, "role": 1, "push_prefs": 1})
+        if target:
+            url, tag = athlete_url(user), f"wellness-{user['id']}"
+            if alerts and push_pref_enabled(target, "wellness_alert"):
+                await push_event(background_tasks, user['trainer_id'], "wellness_alert", f"⚠️ Alerta de bienestar: {name}", resumen, url, tag)
+            elif push_pref_enabled(target, "wellness_submitted"):
+                await push_event(background_tasks, user['trainer_id'], "wellness_submitted", f"📊 {name} ha rellenado el bienestar", resumen, url, tag)
+    return {"status": "success"}
+
 @api_router.get("/analytics/summary")
 async def analytics_summary(athlete_id: Optional[str] = None, user=Depends(get_current_user)):
     target_id = athlete_id if (user['role'] == 'trainer' and athlete_id) else user['id']
@@ -1229,9 +1458,13 @@ async def get_me(user=Depends(get_current_user)):
     return {"user": {k: v for k, v in user.items() if k not in ('_id', 'password')}}
 
 @api_router.put("/profile")
-async def update_profile(data: ProfileUpdate, user=Depends(get_current_user)):
+async def update_profile(data: ProfileUpdate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     update_data = {k: v for k, v in data.dict().items() if v is not None}
     await db.users.update_one({"id": user['id']}, {"$set": update_data})
+    if user['role'] == 'athlete' and user.get('trainer_id') and update_data.get('is_injured') is True and not user.get('is_injured'):
+        notes = (update_data.get('injury_notes') or user.get('injury_notes') or '').strip()
+        await push_event(background_tasks, user['trainer_id'], "wellness_alert", f"🩹 {user.get('name', 'Tu deportista')} ha marcado una lesión",
+                         notes[:200] or "Revisa su perfil y ajusta las próximas sesiones.", athlete_url(user), f"injury-{user['id']}")
     return {"status": "success"}
 
 # --- GESTIÓN DE ATLETAS ---
@@ -1281,6 +1514,7 @@ async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
     await ensure_own_athlete(user, athlete_id)
     macros = await db.macrociclos.find({"athlete_id": athlete_id}, {"_id": 0, "id": 1}).to_list(1000)
     await db.users.delete_one({"id": athlete_id})
+    await db.push_subscriptions.delete_many({"user_id": athlete_id})
     await db.workouts.delete_many({"athlete_id": athlete_id})
     await db.wellness.delete_many({"athlete_id": athlete_id})
     await db.tests.delete_many({"athlete_id": athlete_id})
@@ -1322,6 +1556,9 @@ async def create_workout(data: WorkoutCreate, background_tasks: BackgroundTasks,
             titulo = "🏋️‍♂️ ¡Nueva sesión en tu calendario!"
             mensaje_html = f"<p>Hola {html.escape(athlete.get('name', ''))},</p><p><b>{trainer_name}</b> acaba de programarte la sesión <b>'{html.escape(data.title)}'</b> para el día {html.escape(data.date)}.</p><p>Abre la app para ver los detalles.</p>"
             await notify(background_tasks, send_email_async, athlete['email'], titulo, mensaje_html)
+        kind = "batería de tests" if data.is_test_battery else "sesión"
+        await push_event(background_tasks, data.athlete_id, "workout_assigned", f"🏋️ Nueva {kind}: {data.title}",
+                         f"{user.get('name', 'Tu entrenador')} te la ha programado para {fecha_amable(data.date)}.", "/home", "new-workouts")
 
     return workout
 
@@ -1365,7 +1602,14 @@ async def create_workouts_bulk(data: WorkoutBulkCreate, background_tasks: Backgr
                     titulo = "📅 Tu calendario ha sido actualizado"
                     mensaje_html = f"<p>Hola {html.escape(athlete.get('name', ''))},</p><p><b>{trainer_name}</b> ha añadido <b>{count} nuevas sesiones</b> a tu planificación.</p><p>Abre la app para revisar las próximas fechas.</p>"
                     await notify(background_tasks, send_email_async, athlete['email'], titulo, mensaje_html)
-                    
+            for a_id in athlete_ids:
+                mine = sorted((wk for wk in data.workouts if wk.athlete_id == a_id), key=lambda wk: wk.date)
+                if len(mine) == 1:
+                    title, body = f"🏋️ Nueva sesión: {mine[0].title}", f"{user.get('name', 'Tu entrenador')} te la ha programado para {fecha_amable(mine[0].date)}."
+                else:
+                    title, body = f"📅 Tienes {len(mine)} sesiones nuevas", f"La primera es {fecha_amable(mine[0].date)}: {mine[0].title}."
+                await push_event(background_tasks, a_id, "workout_assigned", title, body, "/home", "new-workouts")
+
     return {"status": "success", "inserted": len(new_workouts)}
 
 @api_router.get("/workouts")
@@ -1380,6 +1624,73 @@ async def list_workouts(athlete_id: Optional[str] = None, date: Optional[str] = 
     if date: query['date'] = date
     return await db.workouts.find(query, {"_id": 0}).sort("date", -1).to_list(1000)
 
+def _coach_notes(cd) -> dict:
+    """Notas del entrenador en una sesión hecha: {'2': ('Sentadilla', 'Baja más'), '0-1': (...)}."""
+    out = {}
+    if not isinstance(cd, dict):
+        return out
+    for i, ex in enumerate(cd.get('exercise_results') or []):
+        if isinstance(ex, dict) and str(ex.get('coach_note') or '').strip():
+            out[str(i)] = (ex.get('name') or 'Ejercicio', str(ex['coach_note']).strip())
+    for b, blk in enumerate(cd.get('hiit_results') or []):
+        for e, ex in enumerate((blk or {}).get('hiit_exercises') or [] if isinstance(blk, dict) else []):
+            if isinstance(ex, dict) and str(ex.get('coach_note') or '').strip():
+                out[f"{b}-{e}"] = (ex.get('name') or 'Ejercicio', str(ex['coach_note']).strip())
+    return out
+
+async def notify_workout_update(background_tasks: BackgroundTasks, user: dict, existing: dict, update: dict):
+    """Avisos al guardar una sesión: la deportista la termina o la salta (→ entrenador), o el entrenador la cambia,
+    la mueve de día o deja notas en los ejercicios (→ deportista)."""
+    wid = existing.get('id')
+    title = update.get('title') or existing.get('title') or 'Sesión'
+    if user['role'] == 'athlete':
+        if not user.get('trainer_id') or update.get('completed') is not True or existing.get('completed'):
+            return
+        name = user.get('name', 'Tu deportista')
+        obs = (update.get('observations') if 'observations' in update else existing.get('observations')) or ''
+        if '[NO COMPLETADA]' in obs:
+            motivo = obs.replace('[NO COMPLETADA] Motivo:', '').replace('[NO COMPLETADA]', '').strip()
+            await push_event(background_tasks, user['trainer_id'], "workout_skipped", f"⏭️ {name} no ha hecho «{title}»",
+                             f"Motivo: {motivo}" if motivo else "No ha indicado el motivo.", athlete_url(user), f"workout-{wid}")
+            return
+        cd = update.get('completion_data') if isinstance(update.get('completion_data'), dict) else {}
+        details = []
+        if cd.get('rpe') not in (None, '', 0):
+            details.append(f"RPE {cd['rpe']}/10")
+        if cd.get('duration_seconds'):
+            details.append(f"{max(1, round(float(cd['duration_seconds']) / 60))} min")
+        if cd.get('sore_joints'):
+            details.append("ha marcado molestias")
+        if obs.strip():
+            details.append(f"«{obs.strip()[:120]}»")
+        await push_event(background_tasks, user['trainer_id'], "workout_completed", f"✅ {name} ha terminado «{title}»",
+                         " · ".join(details) or "Pulsa para ver cómo le ha ido.", athlete_url(user), f"workout-{wid}")
+        return
+
+    if user['role'] != 'trainer':
+        return
+    athlete_id = existing.get('athlete_id')
+    if 'completion_data' in update:
+        old = _coach_notes(existing.get('completion_data'))
+        changed = [v for k, v in _coach_notes(update.get('completion_data')).items() if old.get(k, ('', ''))[1] != v[1]]
+        if changed:
+            exercise, note = changed[0]
+            more = f" (y {len(changed) - 1} más)" if len(changed) > 1 else ""
+            await push_event(background_tasks, athlete_id, "coach_feedback", f"📝 Nota de tu entrenador: {exercise}{more}",
+                             note, "/analytics?tab=feedback", f"notes-{wid}")
+    if existing.get('completed') or update.get('completed'):
+        return
+    old_date = existing.get('date') or ''
+    new_date = update.get('date') or old_date
+    if max(old_date, new_date) < local_today():
+        return
+    if new_date != old_date:
+        await push_event(background_tasks, athlete_id, "workout_changed", f"📅 Sesión movida: {title}",
+                         f"Ahora es {fecha_amable(new_date)} (antes, {fecha_amable(old_date)}).", "/home", f"workout-{wid}")
+    elif any(k in update and (update[k] or '') != (existing.get(k) or '') for k in ('exercises', 'title', 'notes')):
+        await push_event(background_tasks, athlete_id, "workout_changed", f"✏️ Cambios en tu sesión: {title}",
+                         f"Tu entrenador la ha actualizado. Es {fecha_amable(new_date)}.", "/home", f"workout-{wid}")
+
 @api_router.put("/workouts/{workout_id}")
 async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
     existing = await ensure_workout_access(user, workout_id)
@@ -1388,17 +1699,16 @@ async def update_workout(workout_id: str, data: WorkoutUpdate, background_tasks:
     if update_data.get('microciclo_id'): await ensure_micro_access(user, update_data['microciclo_id'])
     update_data.pop("is_ai", None) 
     await db.workouts.update_one({"id": workout_id}, {"$set": update_data})
-    
-    if data.completed is True and not existing.get('completed') and user.get('role') == 'athlete' and user.get('trainer_id'):
-        trainer = await db.users.find_one({"id": user['trainer_id']})
-        if trainer and trainer.get('web_push_subscription'):
-            await notify(background_tasks, send_web_push, trainer['web_push_subscription'], "✅ ¡Entrenamiento superado!", f"{user.get('name')} ha terminado '{existing.get('title')}'.")
+    await notify_workout_update(background_tasks, user, existing, update_data)
     return {"status": "success"}
 
 @api_router.delete("/workouts/{workout_id}")
-async def delete_workout(workout_id: str, user=Depends(get_current_user)):
-    await ensure_workout_access(user, workout_id)
+async def delete_workout(workout_id: str, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    existing = await ensure_workout_access(user, workout_id)
     await db.workouts.delete_one({"id": workout_id})
+    if user['role'] == 'trainer' and not existing.get('completed') and (existing.get('date') or '') >= local_today():
+        await push_event(background_tasks, existing.get('athlete_id'), "workout_changed", f"🗑️ Sesión eliminada: {existing.get('title', '')}",
+                         f"Tu entrenador ha quitado la sesión de {fecha_amable(existing.get('date', ''))}.", "/home", f"workout-{workout_id}")
     return {"status": "success"}
 
 # --- PERIODIZACIÓN (Simplified Tree) ---
@@ -1498,10 +1808,13 @@ async def create_test(data: TestCreate, background_tasks: BackgroundTasks, user=
     test_doc.pop('_id', None)
     
     if user.get('role') == 'athlete' and user.get('trainer_id'):
-        trainer = await db.users.find_one({"id": user['trainer_id']})
-        if trainer and trainer.get('web_push_subscription'):
-            nombre_test = (data.custom_name if data.custom_name else data.test_name).upper()
-            await notify(background_tasks, send_web_push, trainer['web_push_subscription'], "📏 Nuevo registro físico", f"{user.get('name')} ha registrado: {nombre_test} ({data.value} {data.unit})")
+        nombre_test = data.custom_name or data.test_name
+        if data.value is not None:
+            valor = f"{data.value:g} {data.unit}"
+        else:
+            valor = " / ".join(f"{lado} {v:g}" for lado, v in (("I", data.value_left), ("D", data.value_right)) if v is not None) + f" {data.unit}"
+        await push_event(background_tasks, user['trainer_id'], "test_recorded", f"📏 {user.get('name', 'Tu deportista')}: nuevo registro",
+                         f"{nombre_test}: {valor.strip()}", f"/analytics?athlete_id={user['id']}", f"test-{user['id']}")
     return {"status": "success", "test": test_doc}
 
 @api_router.get("/tests")

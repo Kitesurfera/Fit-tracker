@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { syncManager } from '../offline';
 
 import { BACKEND_URL } from '../config';
+import { forgetPushOnLogout } from '../utils/push';
+import { Platform } from 'react-native';
 
 interface User {
   id: string;
@@ -104,6 +106,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
+    // Este dispositivo deja de recibir las notificaciones de esta cuenta (antes de borrar la sesión: hace falta para avisar al servidor)
+    if (Platform.OS === 'web') await forgetPushOnLogout();
     try {
       // Borramos la sesión y los datos de esta cuenta, pero no las preferencias ni las plantillas guardadas en el dispositivo
       await AsyncStorage.multiRemove(['auth_token', 'user_data', 'cached_avatar']);
