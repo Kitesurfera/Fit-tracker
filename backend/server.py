@@ -422,7 +422,7 @@ async def ensure_workout_access(user: dict, workout_id: str) -> dict:
 
 from pywebpush import webpush, WebPushException
 
-def send_email_async(to_email: str, subject: str, body: str):
+def send_email_async(to_email: str, subject: str, body: str, attachments: Optional[list] = None):
     smtp_user = os.environ.get("SMTP_USER")
     smtp_pass = os.environ.get("SMTP_PASSWORD")
     smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
@@ -440,6 +440,11 @@ def send_email_async(to_email: str, subject: str, body: str):
 
         # Se envía como HTML para que quede presentable
         msg.attach(MIMEText(body, 'html'))
+        for filename, data, subtype in attachments or []:
+            from email.mime.image import MIMEImage
+            img = MIMEImage(data, _subtype=subtype)
+            img.add_header('Content-Disposition', 'attachment', filename=filename)
+            msg.attach(img)
 
         server = smtplib.SMTP(smtp_server, smtp_port, timeout=15)
         server.starttls()
@@ -476,6 +481,7 @@ PUSH_EVENTS = {
         "workout_assigned": True,    # el entrenador te programa una sesión
         "workout_changed": True,     # cambia de fecha, de ejercicios o la quita
         "coach_feedback": True,      # correcciones en vídeos y notas en los ejercicios
+        "report_updates": True,      # respuesta o solución a un problema que ha informado
     },
     "trainer": {
         "workout_completed": True,   # una deportista termina una sesión
@@ -484,6 +490,7 @@ PUSH_EVENTS = {
         "wellness_submitted": False, # todos los formularios de bienestar
         "video_uploaded": True,      # sube un vídeo de técnica o comenta uno
         "test_recorded": True,       # registra un test o una medida
+        "problem_reported": True,    # una deportista informa de un problema en la app
     },
 }
 
@@ -693,6 +700,145 @@ async def push_test(user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="Activa primero las notificaciones en este dispositivo.")
     sent = await push_to_user(user['id'], None, "🔔 Notificaciones activadas", "Así te llegarán los avisos de AM Coaching.", "/settings", "test")
     return {"sent": sent, "devices": devices}
+
+# --- INFORMES DE PROBLEMAS (Ajustes > Informar de un problema) ---
+# Se guardan en la base de datos, llegan por email a SUPPORT_EMAIL (o, si no existe, a los emails de TRAINER_SIGNUP_EMAILS)
+# y el entrenador los ve en Ajustes > Problemas reportados, donde puede responder y marcarlos como resueltos.
+REPORT_CATEGORIES = {"bug": "Algo no funciona", "idea": "Sugerencia", "other": "Otra cosa"}
+REPORT_MAX_PER_HOUR = 10
+REPORT_SCREENSHOT_MAX_CHARS = 1_600_000   # ~1,2 MB de imagen
+_SCREENSHOT_RE = re.compile(r'^data:image/(jpeg|png|webp);base64,([A-Za-z0-9+/]+={0,2})$')
+
+class ProblemReportCreate(BaseModel):
+    category: str = "bug"
+    area: Optional[str] = ""
+    description: str
+    screenshot: Optional[str] = None      # data:image/jpeg;base64,...
+    diagnostics: Optional[dict] = None    # dispositivo, navegador, versión de la app, errores recientes…
+
+class ProblemReportUpdate(BaseModel):
+    status: Optional[str] = None          # 'open' | 'resolved'
+    reply: Optional[str] = None
+
+def support_emails() -> list:
+    raw = os.environ.get('SUPPORT_EMAIL') or os.environ.get('TRAINER_SIGNUP_EMAILS', '')
+    return [e.strip() for e in raw.split(',') if '@' in e]
+
+def _clean_diagnostics(d) -> dict:
+    out = {}
+    if not isinstance(d, dict):
+        return out
+    for k, v in list(d.items())[:40]:
+        key = str(k)[:40]
+        if isinstance(v, list):
+            out[key] = [str(x)[:300] for x in v[:10]]
+        elif v is None or isinstance(v, (bool, int, float)):
+            out[key] = v
+        else:
+            out[key] = str(v)[:500]
+    return out
+
+async def _get_accessible_report(user: dict, report_id: str) -> dict:
+    report = await db.problem_reports.find_one({"id": report_id}, {"_id": 0})
+    if not report or not (report.get('user_id') == user['id'] or (user['role'] == 'trainer' and report.get('trainer_id') == user['id'])):
+        raise HTTPException(status_code=404, detail="Informe no encontrado")
+    return report
+
+def _report_email_html(report: dict) -> str:
+    e = html.escape
+    rows = "".join(f"<tr><td style='color:#64748b;padding:2px 10px 2px 0'>{e(str(k))}</td><td>{e(json.dumps(v, ensure_ascii=False) if isinstance(v, list) else str(v))}</td></tr>"
+                   for k, v in (report.get('diagnostics') or {}).items())
+    return f"""
+    <h3>{e(REPORT_CATEGORIES.get(report['category'], 'Informe'))} · {e(report.get('area') or 'Sin indicar')}</h3>
+    <p><b>{e(report.get('user_name', ''))}</b> ({e(report.get('role', ''))}, {e(report.get('user_email', ''))}) · referencia <b>{e(report['ref'])}</b></p>
+    <p style="white-space:pre-wrap;background:#f1f5f9;padding:12px;border-radius:8px">{e(report['description'])}</p>
+    <p>{'📎 Captura de pantalla adjunta.' if report.get('has_screenshot') else 'Sin captura de pantalla.'}</p>
+    <h4>Datos del dispositivo</h4><table style="font-size:13px">{rows or '<tr><td>No disponibles</td></tr>'}</table>
+    """
+
+@api_router.post("/reports")
+async def create_problem_report(data: ProblemReportCreate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    description = (data.description or '').strip()
+    if len(description) < 10:
+        raise HTTPException(status_code=400, detail="Cuéntanos un poco más (mínimo 10 caracteres).")
+    shot = None
+    if data.screenshot:
+        m = _SCREENSHOT_RE.match(data.screenshot)
+        if not m or len(data.screenshot) > REPORT_SCREENSHOT_MAX_CHARS:
+            raise HTTPException(status_code=400, detail="La captura no es válida o es demasiado grande.")
+        shot = (m.group(1), data.screenshot)
+    since = (datetime.now(timezone.utc) - timedelta(hours=1)).isoformat()
+    if await db.problem_reports.count_documents({"user_id": user['id'], "created_at": {"$gte": since}}) >= REPORT_MAX_PER_HOUR:
+        raise HTTPException(status_code=429, detail="Has enviado muchos informes seguidos. Inténtalo dentro de un rato.")
+
+    report_id = str(uuid.uuid4())
+    report = {
+        "id": report_id, "ref": report_id[:6].upper(),
+        "user_id": user['id'], "user_name": user.get('name', ''), "user_email": user.get('email', ''), "role": user['role'],
+        "trainer_id": user['id'] if user['role'] == 'trainer' else user.get('trainer_id'),
+        "category": data.category if data.category in REPORT_CATEGORIES else "other",
+        "area": (data.area or '').strip()[:60], "description": description[:4000],
+        "diagnostics": _clean_diagnostics(data.diagnostics), "has_screenshot": bool(shot),
+        "status": "open", "reply": "", "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.problem_reports.insert_one(report)
+    report.pop('_id', None)
+    if shot:
+        await db.problem_report_images.insert_one({"report_id": report_id, "data": shot[1]})
+
+    to = support_emails()
+    if to:
+        attachments = []
+        if shot:
+            import base64 as _b64
+            ext = 'jpg' if shot[0] == 'jpeg' else shot[0]
+            attachments.append((f"captura-{report['ref']}.{ext}", _b64.b64decode(shot[1].split(',', 1)[1]), shot[0]))
+        subject = f"🐞 [{REPORT_CATEGORIES[report['category']]}] {report['user_name']}: {description[:60]}"
+        await notify(background_tasks, send_email_async, ", ".join(to), subject, _report_email_html(report), attachments)
+    if user['role'] == 'athlete' and user.get('trainer_id'):
+        await push_event(background_tasks, user['trainer_id'], "problem_reported", f"🐞 {user.get('name', 'Una deportista')} ha informado de un problema",
+                         f"{report['area'] or REPORT_CATEGORIES[report['category']]}: {description[:150]}", "/settings?reports=1", f"report-{report_id}")
+    return report
+
+@api_router.get("/reports")
+async def list_problem_reports(user=Depends(get_current_user)):
+    query = {"trainer_id": user['id']} if user['role'] == 'trainer' else {"user_id": user['id']}
+    return await db.problem_reports.find(query, {"_id": 0}).sort("created_at", -1).to_list(200)
+
+@api_router.get("/reports/{report_id}/screenshot")
+async def get_problem_report_screenshot(report_id: str, user=Depends(get_current_user)):
+    await _get_accessible_report(user, report_id)
+    img = await db.problem_report_images.find_one({"report_id": report_id}, {"_id": 0})
+    if not img:
+        raise HTTPException(status_code=404, detail="Este informe no tiene captura")
+    return {"data": img["data"]}
+
+@api_router.patch("/reports/{report_id}")
+async def update_problem_report(report_id: str, data: ProblemReportUpdate, background_tasks: BackgroundTasks, user=Depends(get_current_user)):
+    report = await _get_accessible_report(user, report_id)
+    if user['role'] != 'trainer':
+        raise HTTPException(status_code=403, detail="Solo el entrenador puede responder a los informes")
+    now = datetime.now(timezone.utc).isoformat()
+    changes = {}
+    if data.status in ("open", "resolved") and data.status != report.get('status'):
+        changes.update(status=data.status, resolved_at=now if data.status == "resolved" else None)
+    if data.reply is not None and data.reply.strip() != (report.get('reply') or ''):
+        changes.update(reply=data.reply.strip()[:2000], replied_at=now, replied_by=user.get('name', ''))
+    if changes:
+        await db.problem_reports.update_one({"id": report_id}, {"$set": changes})
+        report.update(changes)
+        if report['user_id'] != user['id'] and (changes.get('status') == 'resolved' or changes.get('reply')):
+            title = "✅ Tu informe está resuelto" if report['status'] == 'resolved' else "💬 Respuesta a tu informe"
+            body = report.get('reply') or f"«{report['description'][:120]}»"
+            await push_event(background_tasks, report['user_id'], "report_updates", title, body, "/settings?reports=1", f"report-{report_id}")
+    return report
+
+@api_router.delete("/reports/{report_id}")
+async def delete_problem_report(report_id: str, user=Depends(get_current_user)):
+    await _get_accessible_report(user, report_id)
+    await db.problem_reports.delete_one({"id": report_id})
+    await db.problem_report_images.delete_one({"report_id": report_id})
+    return {"status": "deleted"}
 
 # --- RUTAS DE PÍLDORAS (PREHAB/ACTIVACIÓN) ---
 @api_router.post("/pills")
@@ -1515,6 +1661,9 @@ async def delete_athlete(athlete_id: str, user=Depends(get_current_user)):
     macros = await db.macrociclos.find({"athlete_id": athlete_id}, {"_id": 0, "id": 1}).to_list(1000)
     await db.users.delete_one({"id": athlete_id})
     await db.push_subscriptions.delete_many({"user_id": athlete_id})
+    for r in await db.problem_reports.find({"user_id": athlete_id}, {"_id": 0, "id": 1}).to_list(1000):
+        await db.problem_report_images.delete_one({"report_id": r["id"]})
+    await db.problem_reports.delete_many({"user_id": athlete_id})
     await db.workouts.delete_many({"athlete_id": athlete_id})
     await db.wellness.delete_many({"athlete_id": athlete_id})
     await db.tests.delete_many({"athlete_id": athlete_id})

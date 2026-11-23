@@ -14,6 +14,7 @@ const EVENTS: Record<'athlete' | 'trainer', EventInfo[]> = {
     { key: 'workout_assigned', label: 'Nuevas sesiones', hint: 'Cuando tu entrenador te programa una sesión o una batería de tests', icon: 'barbell-outline' },
     { key: 'workout_changed', label: 'Cambios en tus sesiones', hint: 'Si una sesión cambia de día, de ejercicios o se quita', icon: 'calendar-outline' },
     { key: 'coach_feedback', label: 'Correcciones del entrenador', hint: 'Comentarios en tus vídeos y notas en los ejercicios', icon: 'chatbubble-ellipses-outline' },
+    { key: 'report_updates', label: 'Respuestas a tus informes', hint: 'Cuando tu entrenador responde o resuelve un problema que has informado', icon: 'construct-outline' },
   ],
   trainer: [
     { key: 'workout_completed', label: 'Sesión terminada', hint: 'Con el esfuerzo (RPE), la duración y si hay molestias', icon: 'checkmark-circle-outline' },
@@ -22,6 +23,7 @@ const EVENTS: Record<'athlete' | 'trainer', EventInfo[]> = {
     { key: 'wellness_submitted', label: 'Todos los formularios de bienestar', hint: 'Cada vez que una deportista lo rellena, aunque esté todo bien', icon: 'pulse-outline' },
     { key: 'video_uploaded', label: 'Vídeos de técnica', hint: 'Cuando suben un vídeo o te responden a un comentario', icon: 'videocam-outline' },
     { key: 'test_recorded', label: 'Tests y medidas', hint: 'Cuando una deportista registra un test o una medida', icon: 'speedometer-outline' },
+    { key: 'problem_reported', label: 'Problemas reportados', hint: 'Cuando una deportista informa de un problema en la app', icon: 'bug-outline' },
   ],
 };
 

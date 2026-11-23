@@ -10,8 +10,10 @@ import SyncStatusBanner, { subscribeToConnection } from '../src/components/SyncS
 import { installWebAlert } from '../src/utils/webAlert';
 import { registerServiceWorker } from '../src/utils/registerServiceWorker';
 import PushBridge from '../src/components/PushBridge';
+import { installErrorBuffer } from '../src/utils/diagnostics';
 
 installWebAlert();
+installErrorBuffer();
 
 export default function RootLayout() {
 

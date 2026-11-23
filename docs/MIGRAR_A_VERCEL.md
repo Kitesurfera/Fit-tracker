@@ -26,6 +26,7 @@ Vamos a crear un **segundo proyecto en Vercel** para el servidor. Render sigue f
    | `JWT_SECRET` | Las sesiones iniciadas (si cambia, todos tendréis que volver a entrar) |
    | `GEMINI_API_KEY` | La IA |
    | `TRAINER_SIGNUP_EMAILS` | Quién puede registrarse como entrenador |
+   | `SUPPORT_EMAIL` | (Opcional) Email que recibe los «Informes de problemas» de Ajustes. Si no lo pones, llegan a los emails de `TRAINER_SIGNUP_EMAILS`. Puedes poner varios separados por comas |
    | `SMTP_USER`, `SMTP_PASSWORD` (y `SMTP_SERVER`, `SMTP_PORT` si los tienes) | Envío de emails |
    | `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` | Notificaciones al móvil (opcional: si no están, el servidor crea sus propias claves la primera vez y las guarda en la base de datos) |
    | `GOOGLE_...` (si tienes alguna) | Inicio de sesión con Google |
