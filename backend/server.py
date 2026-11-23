@@ -422,7 +422,7 @@ async def ensure_workout_access(user: dict, workout_id: str) -> dict:
 
 from pywebpush import webpush, WebPushException
 
-def send_email_async(to_email: str, subject: str, body: str, attachments: Optional[list] = None):
+def send_email_async(to_email: str, subject: str, body: str, attachments: Optional[list] = None, reply_to: Optional[str] = None):
     smtp_user = os.environ.get("SMTP_USER")
     smtp_pass = os.environ.get("SMTP_PASSWORD")
     smtp_server = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
@@ -437,6 +437,8 @@ def send_email_async(to_email: str, subject: str, body: str, attachments: Option
         msg['From'] = f"Fit Tracker <{smtp_user}>"
         msg['To'] = to_email
         msg['Subject'] = subject
+        if reply_to:
+            msg['Reply-To'] = reply_to
 
         # Se envía como HTML para que quede presentable
         msg.attach(MIMEText(body, 'html'))
@@ -702,7 +704,7 @@ async def push_test(user=Depends(get_current_user)):
     return {"sent": sent, "devices": devices}
 
 # --- INFORMES DE PROBLEMAS (Ajustes > Informar de un problema) ---
-# Se guardan en la base de datos, llegan por email a SUPPORT_EMAIL (o, si no existe, a los emails de TRAINER_SIGNUP_EMAILS)
+# Se guardan en la base de datos, llegan por email al correo de desarrollo de la app (se puede cambiar con SUPPORT_EMAIL)
 # y el entrenador los ve en Ajustes > Problemas reportados, donde puede responder y marcarlos como resueltos.
 REPORT_CATEGORIES = {"bug": "Algo no funciona", "idea": "Sugerencia", "other": "Otra cosa"}
 REPORT_MAX_PER_HOUR = 10
@@ -720,8 +722,10 @@ class ProblemReportUpdate(BaseModel):
     status: Optional[str] = None          # 'open' | 'resolved'
     reply: Optional[str] = None
 
+DEV_SUPPORT_EMAIL = "claudiakiter31@gmail.com"  # correo de desarrollo de la app
+
 def support_emails() -> list:
-    raw = os.environ.get('SUPPORT_EMAIL') or os.environ.get('TRAINER_SIGNUP_EMAILS', '')
+    raw = os.environ.get('SUPPORT_EMAIL') or DEV_SUPPORT_EMAIL
     return [e.strip() for e in raw.split(',') if '@' in e]
 
 def _clean_diagnostics(d) -> dict:
@@ -794,7 +798,7 @@ async def create_problem_report(data: ProblemReportCreate, background_tasks: Bac
             ext = 'jpg' if shot[0] == 'jpeg' else shot[0]
             attachments.append((f"captura-{report['ref']}.{ext}", _b64.b64decode(shot[1].split(',', 1)[1]), shot[0]))
         subject = f"🐞 [{REPORT_CATEGORIES[report['category']]}] {report['user_name']}: {description[:60]}"
-        await notify(background_tasks, send_email_async, ", ".join(to), subject, _report_email_html(report), attachments)
+        await notify(background_tasks, send_email_async, ", ".join(to), subject, _report_email_html(report), attachments, report.get('user_email') or None)
     if user['role'] == 'athlete' and user.get('trainer_id'):
         await push_event(background_tasks, user['trainer_id'], "problem_reported", f"🐞 {user.get('name', 'Una deportista')} ha informado de un problema",
                          f"{report['area'] or REPORT_CATEGORIES[report['category']]}: {description[:150]}", "/settings?reports=1", f"report-{report_id}")
