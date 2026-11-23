@@ -2,18 +2,19 @@
 // A las deportistas mujeres se les muestra además el seguimiento del ciclo menstrual, y los textos se adaptan
 // al género (bienvenida/bienvenido). Se puede omitir en cualquier paso y volver a ver en Ajustes > Ayuda.
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Image, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { useTheme } from '../hooks/useTheme';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api';
+import { TUTORIAL_IMAGES } from './tutorialImages';
 
 // Sube este número cuando cambie el tutorial: se volverá a mostrar una vez a todo el mundo
 export const TUTORIAL_VERSION = 2;
 
-type Step = { key: string; icon: any; color: string; title: string; intro: string; bullets: { icon: any; text: string }[]; action?: { label: string; route: string } };
+type Step = { key: string; icon: any; color: string; title: string; intro: string; bullets: { icon: any; text: string }[]; action?: { label: string; route: string }; image?: string };
 type Gender = 'female' | 'male' | 'unknown';
 
 export const genderOf = (g?: string): Gender => {
@@ -29,61 +30,65 @@ export function buildTutorialSteps(role: string, gender: Gender, name: string): 
   const hello = `¡${g('Bienvenida', 'Bienvenido', 'Te damos la bienvenida')}${first ? `, ${first}` : ''}!`;
   const skipHint = 'Son pocos pasos. Puedes omitirlo cuando quieras y volver a verlo en Ajustes → Ayuda.';
 
+  const withImages = (prefix: string, list: Step[]) => list.map(st => (TUTORIAL_IMAGES[`${prefix}_${st.key}`] ? { ...st, image: `${prefix}_${st.key}` } : st));
+
   if (role === 'trainer') {
-    return [
+    return withImages('t', [
       { key: 'welcome', icon: 'sparkles', color: '#2563EB', title: hello, intro: `Este es tu panel de entrenador en AM Coaching. ${skipHint}`, bullets: [] },
       { key: 'athletes', icon: 'people', color: '#2563EB', title: 'Tus deportistas', intro: 'Todo empieza en Inicio.', bullets: [
-        { icon: 'person-add', text: 'Añade deportistas con el botón azul de la persona con «+», arriba a la derecha.' },
-        { icon: 'person-circle', text: 'Toca una para ver su perfil: sesiones, bienestar, tests y, en las mujeres, la fase del ciclo menstrual.' },
-        { icon: 'logo-whatsapp', text: 'Escríbeles por WhatsApp con un toque.' },
+        { icon: 'person-add', text: 'Añade deportistas con el botón azul de arriba a la derecha.' },
+        { icon: 'person-circle', text: 'Toca su tarjeta para ver su perfil: calendario, analíticas, tests, vídeos y, en las mujeres, la fase del ciclo menstrual.' },
+        { icon: 'logo-whatsapp', text: 'Escríbeles por WhatsApp con el icono verde de su tarjeta.' },
       ] },
-      { key: 'planning', icon: 'calendar', color: '#7C3AED', title: 'Programa sesiones en segundos', intro: 'Fuerza, HIIT o baterías de tests.', bullets: [
-        { icon: 'copy', text: 'Duplica una sesión en el calendario y pégala en otros días.' },
-        { icon: 'document-text', text: 'Importa uno o varios días con la plantilla CSV (descárgala desde «Importar CSV»).' },
+      { key: 'planning', icon: 'calendar', color: '#7C3AED', title: 'Programa sesiones en segundos', intro: 'En el perfil de la deportista → «Sesiones». Fuerza, HIIT o baterías de tests.', bullets: [
+        { icon: 'add-circle', text: '«+ Nueva» para crear una sesión.' },
+        { icon: 'document-text', text: '«CSV» para importar uno o varios días con la plantilla (se descarga desde ahí mismo).' },
+        { icon: 'copy', text: 'El icono de copiar duplica una sesión para pegarla en otro día.' },
         { icon: 'git-branch', text: 'Organiza la temporada con macrociclos y microciclos.' },
       ] },
-      { key: 'ai', icon: 'chatbubbles', color: '#0EA5E9', title: 'Asistente con IA', intro: 'En el calendario y en el perfil de cada deportista.', bullets: [
+      { key: 'ai', icon: 'chatbubbles', color: '#0EA5E9', title: 'Asistente con IA', intro: 'La burbuja azul del perfil de cada deportista (también en el calendario).', bullets: [
         { icon: 'flash', text: 'Pídele una sesión o una semana entera («3 sesiones de fuerza para la semana que viene»).' },
-        { icon: 'save', text: 'Revisa la propuesta y guárdala en el calendario con un toque.' },
+        { icon: 'save', text: 'Revisa la propuesta y pulsa «Añadir a la agenda» o «Añadir las 2 sesiones».' },
         { icon: 'analytics', text: 'Tiene en cuenta lo que ha hecho la deportista y cómo se encuentra.' },
       ] },
       { key: 'tracking', icon: 'checkmark-done-circle', color: '#10B981', title: 'Seguimiento al día', intro: 'Sabrás cómo va cada deportista sin preguntar.', bullets: [
         { icon: 'speedometer', text: 'Cada sesión hecha llega con el esfuerzo (RPE), la duración y las molestias; si no la hace, verás el motivo.' },
-        { icon: 'videocam', text: 'Corrige la técnica en sus vídeos con comentarios en el segundo exacto, o deja notas en cada ejercicio.' },
+        { icon: 'create', text: 'Deja una nota en cada ejercicio con «Guardar Feedback», o corrige sus vídeos en el segundo exacto.' },
         { icon: 'warning', text: 'Alertas cuando la fatiga, el dolor o el estrés están altos.' },
       ] },
       { key: 'reports', icon: 'trending-up', color: '#F59E0B', title: 'Rendimiento e informes', intro: 'En la pestaña Rendimiento.', bullets: [
         { icon: 'stats-chart', text: 'Evolución de tests y marcas, carga y fatiga.' },
-        { icon: 'document', text: 'Informe en PDF del periodo que elijas, con análisis de IA y tu comentario, para compartirlo.' },
+        { icon: 'document', text: 'El botón del documento abre el informe: elige 7 días, 30 días o 3 meses, añade el análisis de IA y tu comentario.' },
+        { icon: 'share', text: '«Compartir PDF» para mandarlo por WhatsApp, email o guardarlo.' },
       ] },
       { key: 'notify', icon: 'notifications', color: '#EF4444', title: 'Avisos y ayuda', intro: 'Para no perderte nada.', action: { label: 'Activar notificaciones', route: '/settings' }, bullets: [
-        { icon: 'notifications', text: 'Activa las notificaciones en Ajustes y elige cuáles quieres: sesión terminada, alertas de bienestar, vídeos…' },
+        { icon: 'notifications', text: 'En Ajustes, activa «Avisos en este dispositivo» y elige cuáles quieres: sesión terminada, alertas de bienestar, vídeos…' },
         { icon: 'phone-portrait', text: 'En iPhone, primero añade la app a la pantalla de inicio (Compartir → «Añadir a pantalla de inicio»).' },
         { icon: 'bug', text: 'Si algo falla, Ajustes → Ayuda → «Informar de un problema». Los de tus deportistas te llegan a «Problemas reportados».' },
       ] },
-    ];
+    ]);
   }
 
   const steps: Step[] = [
     { key: 'welcome', icon: 'sparkles', color: '#2563EB', title: hello, intro: `Aquí tienes tus entrenamientos y el contacto con tu entrenador. ${skipHint}`, bullets: [] },
     { key: 'today', icon: 'home', color: '#2563EB', title: 'Tu día de un vistazo', intro: 'En Inicio está todo lo de hoy.', bullets: [
-      { icon: 'barbell', text: 'La sesión que toca y la fase de tu planificación.' },
+      { icon: 'play', text: 'Pulsa «Empezar» en la sesión de hoy para entrenar.' },
       { icon: 'close-circle', text: '¿No puedes entrenar? Pulsa la ✕ roja junto a la sesión y explica el motivo: tu entrenador lo verá.' },
-      { icon: 'logo-whatsapp', text: 'Con el botón de WhatsApp le mandas a tu entrenador cómo estás hoy.' },
+      { icon: 'logo-whatsapp', text: 'Con «Enviar Status» le mandas por WhatsApp a tu entrenador cómo estás hoy.' },
     ] },
     { key: 'training', icon: 'play-circle', color: '#7C3AED', title: 'Modo entrenamiento', intro: 'Te guía serie a serie.', bullets: [
       { icon: 'timer', text: 'Temporizador con pitidos (3, 2, 1 y uno largo) que suenan por encima de tu música sin pararla.' },
-      { icon: 'create', text: 'Apunta pesos y repeticiones; tienes calculadora de discos.' },
+      { icon: 'calculator', text: 'Apunta pesos y repeticiones; la calculadora de discos está arriba a la derecha.' },
       { icon: 'battery-half', text: `¿Llegas ${g('muy cansada', 'muy cansado', 'con mucha fatiga')}? El botón «Supervivencia» baja un 20 % el volumen.` },
       { icon: 'flag', text: 'Al terminar, indica el esfuerzo (RPE) y si te molesta alguna zona.' },
     ] },
     { key: 'videos', icon: 'videocam', color: '#0EA5E9', title: 'Vídeos de técnica', intro: 'Tu entrenador te corrige aunque no esté contigo.', bullets: [
-      { icon: 'camera', text: 'Graba o sube un vídeo del ejercicio desde el modo entrenamiento.' },
-      { icon: 'chatbox-ellipses', text: 'Te dejará correcciones en el segundo exacto del vídeo.' },
-      { icon: 'eye', text: 'Las verás en Rendimiento → «Vídeos y feedback».' },
+      { icon: 'camera', text: 'Graba o sube un vídeo con el botón de la cámara del modo entrenamiento.' },
+      { icon: 'chatbox-ellipses', text: 'Tu entrenador te deja correcciones en el segundo exacto: toca el tiempo (p. ej. 0:04) para ver ese momento.' },
+      { icon: 'eye', text: 'Las verás en Rendimiento → «Vídeos y feedback», y puedes responderle.' },
     ] },
     { key: 'wellness', icon: 'pulse', color: '#10B981', title: 'Tu bienestar diario', intro: 'Un minuto al día que ayuda mucho a ajustar tus cargas.', bullets: [
-      { icon: 'happy', text: 'Indica fatiga, sueño, estrés y agujetas, y marca en el mapa del cuerpo si te duele algo.' },
+      { icon: 'happy', text: 'Pulsa «Anotar Fatiga» en Inicio: indica fatiga, estrés, sueño y agujetas, y marca en el mapa del cuerpo si te duele algo.' },
       { icon: 'alert-circle', text: 'Si algo está alto, tu entrenador recibe una alerta y puede adaptar la sesión.' },
     ] },
   ];
@@ -98,15 +103,15 @@ export function buildTutorialSteps(role: string, gender: Gender, name: string): 
     { key: 'progress', icon: 'trending-up', color: '#F59E0B', title: 'Tu progreso', intro: 'En las pestañas Tests y Rendimiento.', bullets: [
       { icon: 'trophy', text: 'Tus tests y mejores marcas, con su evolución.' },
       { icon: 'stats-chart', text: 'Cómo han ido tu carga y tu fatiga en las últimas semanas.' },
-      { icon: 'document', text: 'Un informe en PDF del periodo que quieras, para guardarlo o compartirlo.' },
+      { icon: 'document', text: 'El botón del documento, arriba, crea un informe en PDF para guardarlo o compartirlo.' },
     ] },
     { key: 'notify', icon: 'notifications', color: '#EF4444', title: 'Avisos y ayuda', intro: 'Para no perderte nada.', action: { label: 'Activar notificaciones', route: '/settings' }, bullets: [
-      { icon: 'notifications', text: 'Activa las notificaciones en Ajustes: te avisaremos de sesiones nuevas, cambios y correcciones.' },
+      { icon: 'notifications', text: 'En Ajustes, activa «Avisos en este dispositivo»: te avisaremos de sesiones nuevas, cambios y correcciones.' },
       { icon: 'phone-portrait', text: 'En iPhone, primero añade la app a la pantalla de inicio (Compartir → «Añadir a pantalla de inicio»).' },
       { icon: 'bug', text: 'Si algo falla, Ajustes → Ayuda → «Informar de un problema».' },
     ] },
   );
-  return steps;
+  return withImages('a', steps);
 }
 
 type Props = { isVisible: boolean; onClose: () => void; role: string; gender?: string; name?: string };
@@ -114,6 +119,7 @@ type Props = { isVisible: boolean; onClose: () => void; role: string; gender?: s
 export default function TutorialOverlay({ isVisible, onClose, role, gender, name }: Props) {
   const { colors } = useTheme();
   const router = useRouter();
+  const { width: winW, height: winH } = useWindowDimensions();
   const [i, setI] = useState(0);
   const steps = useMemo(() => buildTutorialSteps(role, genderOf(gender), name || ''), [role, gender, name]);
   useEffect(() => { if (isVisible) setI(0); }, [isVisible]);
@@ -121,6 +127,11 @@ export default function TutorialOverlay({ isVisible, onClose, role, gender, name
 
   const step = steps[Math.min(i, steps.length - 1)];
   const last = i >= steps.length - 1;
+  // La captura ocupa el ancho de la tarjeta, sin pasar de ~un tercio del alto de la pantalla (así caben las explicaciones)
+  const img = step.image ? TUTORIAL_IMAGES[step.image] : null;
+  const innerW = Math.min(440, winW - 32) - 44;
+  const imgH = img ? Math.min(innerW * (img.height / img.width), Math.max(170, winH * 0.31)) : 0;
+  const imgW = img ? imgH * (img.width / img.height) : 0;
 
   return (
     <Modal transparent visible={isVisible} animationType="fade" onRequestClose={onClose}>
@@ -135,10 +146,19 @@ export default function TutorialOverlay({ isVisible, onClose, role, gender, name
           </View>
 
           <ScrollView style={{ flexGrow: 0 }} contentContainerStyle={{ paddingBottom: 4 }}>
-            <View style={[styles.iconCircle, { backgroundColor: step.color + '18' }]}>
-              <Ionicons name={step.icon} size={38} color={step.color} />
+            {img ? (
+              <View style={[styles.shotFrame, { backgroundColor: colors.surfaceHighlight, borderColor: colors.border }]}>
+                <Image source={img.source} accessibilityLabel={`Captura de la app: ${step.title}`} style={{ width: imgW, height: imgH }} resizeMode="contain" />
+              </View>
+            ) : (
+              <View style={[styles.iconCircle, { backgroundColor: step.color + '18' }]}>
+                <Ionicons name={step.icon} size={38} color={step.color} />
+              </View>
+            )}
+            <View style={styles.titleRow}>
+              {img && <View style={[styles.titleIcon, { backgroundColor: step.color + '18' }]}><Ionicons name={step.icon} size={18} color={step.color} /></View>}
+              <Text accessibilityRole="header" style={[styles.title, { color: colors.textPrimary }, img && { fontSize: 20, flexShrink: 1 }]}>{step.title}</Text>
             </View>
-            <Text accessibilityRole="header" style={[styles.title, { color: colors.textPrimary }]}>{step.title}</Text>
             <Text style={[styles.intro, { color: colors.textSecondary }]}>{step.intro}</Text>
             {step.bullets.map((b, k) => (
               <View key={k} style={styles.bullet}>
@@ -215,6 +235,9 @@ const styles = StyleSheet.create({
   skipBtn: { flexDirection: 'row', alignItems: 'center', gap: 2, paddingVertical: 4, paddingLeft: 8 },
   iconCircle: { width: 76, height: 76, borderRadius: 38, alignItems: 'center', justifyContent: 'center', alignSelf: 'center', marginTop: 6, marginBottom: 14 },
   title: { fontSize: 22, fontWeight: '900', textAlign: 'center' },
+  titleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  titleIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  shotFrame: { alignSelf: 'stretch', alignItems: 'center', borderRadius: 14, borderWidth: 1, overflow: 'hidden', marginTop: 4, marginBottom: 14 },
   intro: { fontSize: 15, textAlign: 'center', lineHeight: 22, marginTop: 8, marginBottom: 12 },
   bullet: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginTop: 10 },
   bulletIcon: { width: 30, height: 30, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },

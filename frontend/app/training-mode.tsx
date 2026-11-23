@@ -1478,7 +1478,20 @@ export default function TrainingModeScreen() {
               ⏱ Tiempo Total: {formatGlobalTime(globalSeconds)}
             </Text>
 
-            <Text style={[styles.finishedSubtitle, { color: colors.textSecondary }]}>¿Cómo te has sentido hoy?</Text>
+            {/* Sesión ya hecha: primero cómo fue (esfuerzo, tiempo, molestias); la pregunta solo al terminarla */}
+            {workout.completed && workout.completion_data && (
+              <View style={{ alignSelf: 'stretch', backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
+                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Feedback General:</Text>
+                {workout.completion_data.duration_seconds && (
+                  <Text style={{ color: colors.textPrimary, marginBottom: 4 }}>⏱ Tiempo Activo: {formatGlobalTime(workout.completion_data.duration_seconds)}</Text>
+                )}
+                {workout.completion_data.rpe != null && workout.completion_data.rpe !== '' && <Text style={{ color: colors.textPrimary }}>RPE: {workout.completion_data.rpe}/10</Text>}
+                {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5, fontWeight: '600' }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
+                {workout.observations && <Text style={{ color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
+              </View>
+            )}
+
+            {!workout.completed && <Text style={[styles.finishedSubtitle, { color: colors.textSecondary }]}>¿Cómo te has sentido hoy?</Text>}
             
             {!workout.completed && (
               <View style={{ alignSelf: 'stretch', gap: 24, marginTop: 10 }}>
@@ -1544,17 +1557,6 @@ export default function TrainingModeScreen() {
               {renderSessionSummary()}
             </View>
 
-            {workout.completed && workout.completion_data && (
-              <View style={{ alignSelf: 'stretch', marginTop: 20, backgroundColor: colors.surfaceHighlight, padding: 20, borderRadius: 16 }}>
-                <Text style={{ fontSize: 16, fontWeight: '800', color: colors.textPrimary, marginBottom: 10 }}>Feedback General:</Text>
-                {workout.completion_data.duration_seconds && (
-                  <Text style={{ color: colors.textPrimary, marginBottom: 4 }}>⏱ Tiempo Activo: {formatGlobalTime(workout.completion_data.duration_seconds)}</Text>
-                )}
-                <Text style={{ color: colors.textPrimary }}>RPE: {workout.completion_data.rpe}/10</Text>
-                {workout.completion_data.sore_joints?.length > 0 && <Text style={{ color: colors.error, marginTop: 5, fontWeight: '600' }}>Molestias: {workout.completion_data.sore_joints.map((j: string) => SLUG_TRANSLATIONS[j] || j).join(', ')}</Text>}
-                {workout.observations && <Text style={{ color: colors.textSecondary, marginTop: 10, fontStyle: 'italic' }}>"{workout.observations}"</Text>}
-              </View>
-            )}
             {!workout.completed && ( <TouchableOpacity style={[styles.finishWorkoutBtn, { backgroundColor: colors.primary }]} onPress={handleFinish}><Text style={styles.finishWorkoutBtnText}>Finalizar Entrenamiento</Text></TouchableOpacity> )}
           </ScrollView>
         </KeyboardAvoidingView>
