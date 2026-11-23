@@ -115,6 +115,33 @@ export const api = {
     return res.json();
   },
 
+  // --- INFORMES DE PROBLEMAS ---
+  sendProblemReport: async (data: { category: string; area: string; description: string; screenshot?: string | null; diagnostics?: any }) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/reports`, { method: 'POST', headers, body: JSON.stringify(data) });
+    return res.json();
+  },
+  getProblemReports: async (): Promise<any[]> => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/reports`, { headers });
+    return res.json();
+  },
+  getProblemReportScreenshot: async (id: string): Promise<{ data: string }> => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/reports/${id}/screenshot`, { headers });
+    return res.json();
+  },
+  updateProblemReport: async (id: string, data: { status?: 'open' | 'resolved'; reply?: string }) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/reports/${id}`, { method: 'PATCH', headers, body: JSON.stringify(data) });
+    return res.json();
+  },
+  deleteProblemReport: async (id: string) => {
+    const headers = await getAuthHeaders();
+    const res = await authFetch(`${BACKEND_URL}/api/reports/${id}`, { method: 'DELETE', headers });
+    return res.json();
+  },
+
   // --- VÍDEOS DE TÉCNICA ---
   getTechniqueVideos: async (params?: { athlete_id?: string; workout_id?: string }) => {
     const headers = await getAuthHeaders();

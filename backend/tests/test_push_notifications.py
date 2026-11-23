@@ -98,7 +98,7 @@ def test_config_returns_stable_public_key_and_role_prefs(client, world):
     assert a["public_key"] == b["public_key"] and len(base64.urlsafe_b64decode(a["public_key"] + "==")) == 65
     server._vapid_cache.clear()  # otra copia del servidor: lee la misma clave de la base de datos
     assert client.get("/api/push/config", headers=auth(world["athlete"])).json()["public_key"] == a["public_key"]
-    assert a["prefs"] == {"workout_assigned": True, "workout_changed": True, "coach_feedback": True}
+    assert a["prefs"] == {"workout_assigned": True, "workout_changed": True, "coach_feedback": True, "report_updates": True}
     assert a["devices"] == 2
     assert b["prefs"]["wellness_submitted"] is False and b["prefs"]["workout_completed"] is True
 
@@ -115,7 +115,7 @@ def test_env_vapid_key_is_used_when_present(client, monkeypatch):
 
 def test_prefs_are_saved_per_profile_and_unknown_keys_ignored(client, world, sent):
     res = client.put("/api/push/prefs", headers=auth(world["athlete"]), json={"prefs": {"workout_assigned": False, "workout_completed": True, "hack": True}})
-    assert res.json()["prefs"] == {"workout_assigned": False, "workout_changed": True, "coach_feedback": True}
+    assert res.json()["prefs"] == {"workout_assigned": False, "workout_changed": True, "coach_feedback": True, "report_updates": True}
     client.post("/api/workouts", headers=auth(world["trainer"]), json={"title": "Fuerza", "date": FUTURE, "exercises": [], "athlete_id": world["athlete_id"]})
     assert to(sent, "movil-ana") == []
 

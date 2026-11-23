@@ -1,17 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   Platform, Alert, ScrollView, ActivityIndicator, KeyboardAvoidingView, Switch, Share, Modal, Image
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import PushSettings from '../../src/components/PushSettings';
+import ProblemReportModal from '../../src/components/ProblemReportModal';
+import ReportsInbox from '../../src/components/ReportsInbox';
 import { api } from '../../src/api';
 import { syncManager } from '../../src/offline';
 import { localDateStr } from '../../src/utils/dates';
@@ -32,8 +34,22 @@ export default function SettingsScreen() {
   const { colors, themeMode, updateTheme } = useTheme();
   const { user, logout, updateUser } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams();
 
   const isAthlete = user?.role === 'athlete';
+
+  // Informes de problemas: formulario y lista (se abre sola si se llega desde una notificación)
+  const [showReportForm, setShowReportForm] = useState(false);
+  const [showReportsInbox, setShowReportsInbox] = useState(params.reports === '1');
+  const [reportsSummary, setReportsSummary] = useState({ total: 0, open: 0, replied: 0 });
+  const summarizeReports = useCallback((list: any[]) => {
+    setReportsSummary({ total: list.length, open: list.filter(r => r.status !== 'resolved').length, replied: list.filter(r => r.reply || r.status === 'resolved').length });
+  }, []);
+  useEffect(() => {
+    if (!user?.id) return;
+    api.getProblemReports().then(summarizeReports).catch(() => {});
+  }, [user?.id, summarizeReports]);
+  useEffect(() => { if (params.reports === '1') setShowReportsInbox(true); }, [params.reports]);
 
   const [name, setName] = useState(user?.name || '');
   const [savingProfile, setSavingProfile] = useState(false);
@@ -653,6 +669,44 @@ export default function SettingsScreen() {
             </>
           )}
 
+          <Text style={[styles.sectionTitle, { marginTop: 25 }]}>AYUDA</Text>
+          <View style={[styles.cardList, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Informar de un problema" style={styles.settingRowAction} onPress={() => setShowReportForm(true)}>
+              <View style={styles.settingIconText}>
+                <View style={[styles.iconBox, { backgroundColor: '#EF444415' }]}><Ionicons name="bug" size={20} color="#EF4444" /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Informar de un problema</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Algo no funciona o tienes una idea para mejorar la app</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+            {(!isAthlete || reportsSummary.total > 0) && (
+              <>
+                <View style={[styles.divider, { backgroundColor: colors.border }]} />
+                <TouchableOpacity accessibilityRole="button" accessibilityLabel={isAthlete ? 'Mis informes' : 'Problemas reportados'} style={styles.settingRowAction} onPress={() => setShowReportsInbox(true)}>
+                  <View style={styles.settingIconText}>
+                    <View style={[styles.iconBox, { backgroundColor: '#3B82F615' }]}><Ionicons name={isAthlete ? 'document-text' : 'file-tray-full'} size={20} color="#3B82F6" /></View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.settingText, { color: colors.textPrimary }]}>{isAthlete ? 'Mis informes' : 'Problemas reportados'}</Text>
+                      <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>
+                        {isAthlete
+                          ? `${reportsSummary.total} enviado${reportsSummary.total === 1 ? '' : 's'}${reportsSummary.replied ? ` · ${reportsSummary.replied} con respuesta` : ''}`
+                          : 'Los que envían tus deportistas y los tuyos'}
+                      </Text>
+                    </View>
+                  </View>
+                  {!isAthlete && reportsSummary.open > 0 && (
+                    <View style={{ backgroundColor: '#EF4444', borderRadius: 11, minWidth: 22, height: 22, paddingHorizontal: 6, alignItems: 'center', justifyContent: 'center', marginRight: 6 }}>
+                      <Text style={{ color: '#FFF', fontWeight: '900', fontSize: 12 }}>{reportsSummary.open}</Text>
+                    </View>
+                  )}
+                  <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+
           <Text style={[styles.sectionTitle, { marginTop: 25 }]}>ZONA DE PELIGRO</Text>
           <View style={[styles.cardList, { backgroundColor: colors.surface, marginBottom: 40 }]}>
             <TouchableOpacity style={styles.settingRowAction} onPress={handleLogout}>
@@ -662,6 +716,16 @@ export default function SettingsScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {(user?.role === 'athlete' || user?.role === 'trainer') && (
+        <>
+          <ProblemReportModal visible={showReportForm} onClose={() => setShowReportForm(false)} colors={colors} role={user.role}
+            onSent={() => api.getProblemReports().then(summarizeReports).catch(() => {})}
+            onOpenReports={() => { setShowReportForm(false); setShowReportsInbox(true); }} />
+          <ReportsInbox visible={showReportsInbox} onClose={() => { setShowReportsInbox(false); if (params.reports) router.setParams({ reports: undefined } as any); }}
+            colors={colors} role={user.role} userId={user.id} onChanged={summarizeReports} />
+        </>
+      )}
 
       {/* --- MODAL DE AJUSTE Y ZOOM DE AVATAR CIRCULAR --- */}
       <Modal visible={showAvatarModal} transparent animationType="fade">
