@@ -35,8 +35,9 @@ def test_athlete_report_is_saved_emailed_and_trainer_notified(client, world, sen
     assert "data" not in r and "screenshot" not in r  # la imagen va aparte, no en la lista
 
     # Email a soporte con la captura adjunta y los datos del dispositivo
-    (to_addr, subject, body, attachments), = emails
+    (to_addr, subject, body, attachments, reply_to), = emails
     assert to_addr == "soporte@test.com" and subject.startswith("🐞 [Algo no funciona] Ana:")
+    assert reply_to == "ana@test.com"  # al pulsar «Responder» en el correo, se contesta a la deportista
     assert "El temporizador se para" in body and "Android · Chrome" in body and "TypeError" in body
     assert attachments[0][0] == f"captura-{r['ref']}.png" and attachments[0][1].startswith(b"\x89PNG")
 
@@ -52,10 +53,10 @@ def test_athlete_report_is_saved_emailed_and_trainer_notified(client, world, sen
     assert [x["id"] for x in client.get("/api/reports", headers=auth(world["athlete"])).json()] == [r["id"]]
 
 
-def test_without_support_email_it_goes_to_trainer_signup_emails(client, world, emails, monkeypatch):
+def test_by_default_reports_go_to_the_development_email(client, world, emails, monkeypatch):
     monkeypatch.delenv("SUPPORT_EMAIL")
     send(client, world["athlete"])
-    assert emails[0][0] == "coach.a@test.com, Coach.B@test.com" and emails[0][3] == []
+    assert emails[0][0] == "claudiakiter31@gmail.com" and emails[0][3] == []
 
 
 def test_validation(client, world, emails):
