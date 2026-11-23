@@ -14,6 +14,7 @@ import { useAuth } from '../../src/context/AuthContext';
 import PushSettings from '../../src/components/PushSettings';
 import ProblemReportModal from '../../src/components/ProblemReportModal';
 import ReportsInbox from '../../src/components/ReportsInbox';
+import TutorialOverlay from '../../src/components/TutorialOverlay';
 import { api } from '../../src/api';
 import { syncManager } from '../../src/offline';
 import { localDateStr } from '../../src/utils/dates';
@@ -40,6 +41,7 @@ export default function SettingsScreen() {
 
   // Informes de problemas: formulario y lista (se abre sola si se llega desde una notificación)
   const [showReportForm, setShowReportForm] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
   const [showReportsInbox, setShowReportsInbox] = useState(params.reports === '1');
   const [reportsSummary, setReportsSummary] = useState({ total: 0, open: 0, replied: 0 });
   const summarizeReports = useCallback((list: any[]) => {
@@ -671,6 +673,17 @@ export default function SettingsScreen() {
 
           <Text style={[styles.sectionTitle, { marginTop: 25 }]}>AYUDA</Text>
           <View style={[styles.cardList, { backgroundColor: colors.surface }]}>
+            <TouchableOpacity accessibilityRole="button" accessibilityLabel="Ver el tutorial de bienvenida" style={styles.settingRowAction} onPress={() => setShowTutorial(true)}>
+              <View style={styles.settingIconText}>
+                <View style={[styles.iconBox, { backgroundColor: '#8B5CF615' }]}><Ionicons name="school" size={20} color="#8B5CF6" /></View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.settingText, { color: colors.textPrimary }]}>Ver el tutorial de bienvenida</Text>
+                  <Text style={{ color: colors.textSecondary, fontSize: 12, marginTop: 2 }}>Lo más importante de la app en unos pasos</Text>
+                </View>
+              </View>
+              <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+            </TouchableOpacity>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
             <TouchableOpacity accessibilityRole="button" accessibilityLabel="Informar de un problema" style={styles.settingRowAction} onPress={() => setShowReportForm(true)}>
               <View style={styles.settingIconText}>
                 <View style={[styles.iconBox, { backgroundColor: '#EF444415' }]}><Ionicons name="bug" size={20} color="#EF4444" /></View>
@@ -722,6 +735,7 @@ export default function SettingsScreen() {
           <ProblemReportModal visible={showReportForm} onClose={() => setShowReportForm(false)} colors={colors} role={user.role}
             onSent={() => api.getProblemReports().then(summarizeReports).catch(() => {})}
             onOpenReports={() => { setShowReportForm(false); setShowReportsInbox(true); }} />
+          <TutorialOverlay isVisible={showTutorial} onClose={() => setShowTutorial(false)} role={user.role} gender={user.gender} name={user.name} />
           <ReportsInbox visible={showReportsInbox} onClose={() => { setShowReportsInbox(false); if (params.reports) router.setParams({ reports: undefined } as any); }}
             colors={colors} role={user.role} userId={user.id} onChanged={summarizeReports} />
         </>

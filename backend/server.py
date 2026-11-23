@@ -195,6 +195,7 @@ class AthleteUpdate(BaseModel):
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
+    tutorial_version: Optional[int] = None   # última versión del tutorial de bienvenida que ha visto u omitido
     sport: Optional[str] = None
     position: Optional[str] = None
     is_injured: Optional[bool] = None

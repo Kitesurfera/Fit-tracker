@@ -5,6 +5,7 @@ import { useTheme } from '../../src/hooks/useTheme';
 import { useAuth } from '../../src/context/AuthContext';
 import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WelcomeTutorialGate } from '../../src/components/TutorialOverlay';
 
 // 1. Separamos la navegación para poder leer los colores por dentro
 function TabNavigation() {
@@ -13,6 +14,7 @@ function TabNavigation() {
   const insets = useSafeAreaInsets();
 
   return (
+    <>
     <Tabs
       screenOptions={{
         headerShown: false,
@@ -75,6 +77,9 @@ function TabNavigation() {
         }}
       />
     </Tabs>
+    {/* Tutorial de bienvenida: sale una vez al entrar (se puede omitir) */}
+    <WelcomeTutorialGate />
+    </>
   );
 }
 
